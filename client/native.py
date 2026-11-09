@@ -27,7 +27,7 @@ DLL_NAME = "zexion_ap.dll"
 # looks for it in its own folder): while it exists neither the proxy nor the client loads the
 # game folder's helper.
 DISABLED_NAME = "zexion_ap.disabled"
-VERSION = "1.0.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+VERSION = "1.1.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
 # native/src/game_calls.cpp, kConfigKeys; it takes them in any order). A key added later makes the
 # offline cache written before it refused until the client runs: native/README.md, "The pipe".
@@ -89,14 +89,18 @@ def batch_text(
     cas: list[tuple[int, int, int]],
     popups: list[tuple[int, str] | tuple[int, str, bool]],
     refresh: bool = False,
+    intel: bool = False,
 ) -> str:
     """An ``apply`` request: (item, expected, value) writes, done all or none in one frame, and
     popups shown one at a time with the item's sound: (item, suffix) after the item's icon and
-    name, or (item, text, True) a notice, the text alone (an Area Map's hint)."""
+    name, or (item, text, True) a notice, the text alone (an Area Map's hint). With ``intel``,
+    its Area Maps' popups read Intel Chip."""
     lines = ["apply"]
     lines += [f"cas {item} {expected} {value}" for item, expected, value in cas]
     if refresh:
         lines.append("refresh")
+    if intel:
+        lines.append("intel")
     for popup in popups:
         item, text = popup[0], popup[1]
         notice = len(popup) > 2 and bool(popup[2])

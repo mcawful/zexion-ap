@@ -1,6 +1,6 @@
 // Reading and writing the game's memory: fault-safe reads, the write check, the walks every
 // module shares (the open menus, a menu's panels and widgets, a sprite's frame), and the image's
-// headers and code. Layouts are in game_layout.h.
+// headers and code, patched and put back (CodePatch). Layouts are in game_layout.h.
 #pragma once
 
 #include <windows.h>
@@ -152,5 +152,42 @@ bool code_reads(const BYTE* at, const void* bytes, size_t size);
 // the helper's (put back, or changed since). False while it still reads as written (the put-back
 // failed, or `size` is over kMaxCodePatch): the helper then holds it and refuses to unload.
 bool put_back_code(BYTE* at, const void* written, const void* original, size_t size);
+
+// N bytes of the game's code patched at a site, the patch made by `Build` from the bytes there
+// (false: not the code as traced, left alone). Game thread only. The site is held while its code
+// reads as written; the helper refuses to unload while one is (Game::unload_blocker).
+template <size_t N, bool (*Build)(const BYTE (&)[N], BYTE (&)[N])>
+class CodePatch {
+    static_assert(N <= kMaxCodePatch, "put_back_code reads it whole");
+
+public:
+    // Patched at `site` (null: put back), put back first if `site` moved.
+    void watch(BYTE* site) {
+        if (site != site_) restore();
+        if (site == nullptr) return;
+        if (site_ != nullptr) {
+            if (code_reads(site_, written_, N)) return;
+            site_ = nullptr;  // rewritten by something else: no longer ours to put back
+        }
+        BYTE now[N];
+        BYTE patch[N];
+        if (safe_read(site, now, N) && Build(now, patch) && patch_code(site, patch, N)) {
+            std::memcpy(original_, now, N);
+            std::memcpy(written_, patch, N);
+            site_ = site;
+        }
+    }
+    void restore() {
+        // Still held while it reads as written (put back failed): the helper then refuses to
+        // unload.
+        if (site_ != nullptr && put_back_code(site_, written_, original_, N)) site_ = nullptr;
+    }
+    bool patched() const { return site_ != nullptr; }
+
+private:
+    BYTE* site_ = nullptr;
+    BYTE original_[N] = {};
+    BYTE written_[N] = {};
+};
 
 }  // namespace zap

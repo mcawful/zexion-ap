@@ -893,6 +893,44 @@ void test_colored_stand_ins_dressed_later() {
     game.restore_ap_items();
 }
 
+// Another Zexion player's Scrap Chunk or Scrap Energy ("@48", "@47") is dressed as the game loads
+// it, not from its record, which the helper has restyled to a logo frame (the owner's in-game
+// check of 1.1.0: at Kresezoa 19,11 the arrow logo showed in palette 8, the room's colors).
+void test_zexion_scrap_shown_as_itself() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    g_frame_clock = 1006;  // 1006 / 6 = 167, odd: each scrap's second frame
+    put_object(3, 77, 47, 5, 2);     // in the Scrap Chunk's cell
+    put_object(4, 78, 47, 6, 2);     // in the Scrap Energy's cell
+    put_object(5, 79, 48, 6, 2);     // a progression stand-in (logo frame 95) there too
+    put_flipped(12, 501, 63, 5, 2);  // a general-pool one in the Scrap Chunk's cell
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 5 2 " + hex("@48\nfor bob") + "\nlabel 6 2 " +
+                          hex("@47\nfor bob"),
+                      labels);
+    game.set_labels(labels);
+    player_cell(5, 2);
+    game.watch_ap_items();
+    check(get<int16_t>(g_records + 48 * 100, 0x02) == 95, "the records are restyled");
+    check(object_base(3) == g_frames + (143 - 63) * 0x38 &&
+              object_palette(3) == g_palette_table[8] && object_palette_number(3) == 8,
+          "dressed as Scrap Chunk's own frame 143, in palette 8, not the arrow logo");
+    check(object_base(4) == g_frames + (135 - 63) * 0x38 && object_palette(4) == g_palette_table[8],
+          "and as Scrap Energy's own frame 135");
+    check(object_base(5) == g_frames + (135 - 95) * 0x38 && object_palette(5) == g_palette_table[8],
+          "from a progression stand-in's logo frame too");
+    check(general_ptr(12, 0x1A8) == g_frames && general_ptr(12, 0x1B0) == g_frames + 143 * 0x38 &&
+              general_ptr(12, 0x198) == g_palette_table[8],
+          "a general-pool one too");
+    check(game.looks().colored() == 0, "none drawn in palette 26: they are Zexion items");
+
+    game.restore_ap_items();
+    check(object_base(3) == g_frames && general_ptr(12, 0x1B0) == g_frames + 63 * 0x38 &&
+              get<int16_t>(g_records + 48 * 100, 0x02) == 142,
+          "restore puts the objects and the records back");
+}
+
 // Stand-ins not dressed as a Zexion item draw in palette 26 at style 34 while restyled; palette 8
 // and their own style come back once not restyled, and on restore.
 void test_stand_ins_in_their_own_colors() {
@@ -1129,13 +1167,32 @@ void test_zexion_items_show_as_themselves() {
     check(object_base(3) == moved, "a reused slot is left alone on restore");
 }
 
+// A received item's pickup event (3548 to 3550, 3553) as B1's AreaEvents holds it: type 11,
+// subtype 1, spawning `object` at the cell's corner plus (5, 8), no sound, then `next`.
+void spawn_event(int16_t event, int16_t object, int16_t next) {
+    const BYTE b1[0x28] = {0x0B, 0x00, 0x01, 0x00, 0x00, 0x00, 0xF3, 0x03, 0xFF, 0xFF,
+                           0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x05, 0x00,
+                           0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
+                           0x80, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    BYTE* ev = g_events + event * 0x28;
+    std::memcpy(ev, b1, sizeof(b1));
+    put<int16_t>(ev, 4, object);
+    put<int16_t>(ev, 0x20, next);
+    put<int16_t>(ev, 0x24, event);
+}
+
+// Scrap Chunk's next event, 3552, as B1 holds it: a fade of layer 7.
+void chunk_fade_event() {
+    const BYTE b1[0x28] = {0x01, 0x00, 0x07, 0x00, 0xF6, 0xFF, 0x08, 0x00, 0x03, 0x00,
+                           0x07, 0x00, 0x00, 0x00, 0xE9, 0xFF, 0xFD, 0xFF, 0xFC, 0xFF,
+                           0xFC, 0xFF, 0x04, 0x00, 0x04, 0x00, 0xFF, 0xFF, 0x00, 0x00,
+                           0x80, 0x3F, 0xFF, 0xFF, 0x00, 0x00, 0xE0, 0x0D, 0x00, 0x00};
+    std::memcpy(g_events + 3552 * 0x28, b1, sizeof(b1));
+}
+
 void shield_records(int16_t object) {
     reset_events();
-    BYTE* ev = g_events + 3553 * 0x28;
-    ev[0] = 11;
-    put<int16_t>(ev, 2, 1);
-    put<int16_t>(ev, 4, object);
-    put<int16_t>(ev, 0x24, 3553);
+    spawn_event(3553, object, -1);
     BYTE* shield = g_records + 50 * 100;
     std::memcpy(shield + 0x0A, "ENERGY SHIELD", sizeof("ENERGY SHIELD"));
     put<int16_t>(shield, 0x40, 3553);
@@ -1183,6 +1240,41 @@ void test_received_stand_in_popup() {
     check(g_text.rfind("SCRAP ENERGY", 0) == 0 && g_text.find("AP ITEM") == std::string::npos,
           "and the popup still SCRAP ENERGY");
     game.restore_ap_items();
+}
+
+// A received OS Install Disk (item 44) pops up after the disk glyph as OS INSTALL DISK, not as its
+// record's DATA DISC with no icon; its count notice follows it.
+void test_received_disk_popup() {
+    zap::Game game;
+    ready(game);
+    std::memcpy(g_records + 44 * 100 + 0x0A, "DATA DISC", sizeof("DATA DISC"));
+    int width = 0;
+    const std::string disk = zap::popup_text("\xFB" "OS INSTALL DISK", "FROM BOB", 24, &width);
+    apply(game, "apply\npopup 44 FROM BOB\nnotice 44 OS INSTALL DISK 1 OF 3");
+    game.pump_popups();
+    check(g_text == disk && g_message_args[0] == width && game.queued_popups() == 1,
+          "the disk glyph, OS INSTALL DISK, then FROM BOB; its count waiting");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == zap::notice_text("OS INSTALL DISK 1 OF 3", 24) && game.queued_popups() == 0,
+          "then its count, alone");
+}
+
+// A received Area Map from a seed with Intel Chips (`intel`) pops up as INTEL CHIP, though Intel
+// Chips are off when it shows (a load before the client turns them on again); otherwise as its
+// record names it.
+void test_received_intel_chip_popup() {
+    zap::Game game;
+    ready(game);
+    // As B1's record holds it: no popup icon (docs/re/memory.md, "Intel Chips").
+    std::memcpy(g_records + 49 * 100 + 0x0A, "AREA MAP", sizeof("AREA MAP"));
+    int width = 0;
+    const std::string chip = zap::popup_text("INTEL CHIP", "FROM BOB", 24, &width);
+    apply(game, "apply\nintel\npopup 49 FROM BOB");
+    game.pump_popups();
+    check(g_text == chip && g_message_args[0] == width, "an Intel Chip: INTEL CHIP");
+    apply(game, "apply\npopup 49 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(g_text == zap::popup_text("AREA MAP", "FROM BOB", 24), "an Area Map: AREA MAP");
 }
 
 void test_stand_ins_named_by_their_own_cell() {
@@ -1274,7 +1366,231 @@ void test_received_shield() {
     game.note_play(12000);
     shield_records(2017);  // not the event traced
     check(game.spawn_shield(13500) == "refused event not as traced", "an event not as traced");
+    shield_records(2018);
+    put<int16_t>(g_events + 3553 * 0x28, 0x20, 3552);  // a next event the trace did not see
+    check(game.spawn_shield(13500) == "refused event not as traced", "nor one that runs another");
+    shield_records(2018);
+    put<int16_t>(g_records + 50 * 100, 0x40, 3549);  // the record names another event
+    check(game.spawn_shield(13500) == "refused event not as traced", "nor another record's");
     check(g_spawn_calls == 1, "nothing else spawned");
+    reset_events();
+}
+
+void scrap_records() {
+    reset_events();
+    spawn_event(3548, 2010, -1);
+    spawn_event(3549, 2016, -1);
+    spawn_event(3550, 2017, 3552);
+    chunk_fade_event();
+    own_stand_ins(g_records);
+    BYTE* metal = g_records + 46 * 100;
+    std::memcpy(metal + 0x0A, "SCRAP METAL", sizeof("SCRAP METAL"));
+    put<int16_t>(metal, 0x40, 3548);
+    put<int16_t>(metal, 0x5A, -1);  // no sound
+    player_cell(7, 4);
+}
+
+// The next queued popup shown (the helper's gap between two, nothing of the game's up).
+void show_next(zap::Game& game) {
+    const int before = g_messages;
+    for (int i = 0; i < 100 && g_messages == before; ++i) game.pump_popups();
+}
+
+// A received scrap's drop: its pickup's event, run once after its popup shows, once the player
+// has been in one cell for a second, in the save its popup was for.
+void test_received_scrap_drops() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    check(game.drop_status() == "queued 0; last none", "nothing yet");
+    apply(game, "apply\npopup 46 FROM ALICE\npopup 47 FROM BOB");
+    game.note_play(5000);
+    game.pump_drops(9000);
+    check(game.queued_drops() == 0 && g_spawn_calls == 0, "nothing before its popup shows");
+    game.pump_popups();
+    check(g_messages == 1 && game.queued_drops() == 1 && g_spawn_calls == 0,
+          "queued as Scrap Metal's popup shows");
+    field<uint8_t>(0x107A) = 5;  // another cell (a room change): settles again
+    game.note_play(9100);
+    game.pump_drops(9500);
+    check(g_spawn_calls == 0, "not before the player has settled");
+    game.pump_drops(10100);
+    check(g_spawn_calls == 1 && g_spawn_row == 5 && g_spawn_column == 7 &&
+              g_spawn_event == g_events + 3548 * 0x28 && game.queued_drops() == 0 &&
+              game.drop_status() == "queued 0; last spawned 46",
+          "a second in one cell: Scrap Metal's event 3548, from the player's cell");
+    game.pump_drops(12000);
+    check(g_spawn_calls == 1, "once");
+    player_cell(7, 4);
+    game.note_play(12000);
+
+    // The stand-ins restyled as other players' items: their records name no event (-1).
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 5 2 4d61702057696474680a466f722046696e646572", labels);
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(at<int16_t>(g_records + 47 * 100, 0x40) == -1 &&
+              at<int16_t>(g_records + 48 * 100, 0x40) == -1,
+          "the stand-ins' records restyled");
+    show_next(game);
+    game.pump_drops(13000);
+    check(g_spawn_calls == 2 && g_spawn_event == g_events + 3549 * 0x28,
+          "a received Scrap Energy: event 3549, though its record is a stand-in's");
+    apply(game, "apply\npopup 48 FROM BOB");
+    show_next(game);
+    g_events[3552 * 0x28 + 8] = 4;  // its next event's step not as traced
+    game.pump_drops(13000);
+    check(g_spawn_calls == 2 && game.queued_drops() == 0 &&
+              game.drop_status() == "queued 0; last refused event not as traced 48",
+          "Scrap Chunk refused, and dropped, while the fade it runs next is not as traced");
+    chunk_fade_event();
+    apply(game, "apply\npopup 48 FROM BOB");
+    show_next(game);
+    game.pump_drops(13000);
+    check(g_spawn_calls == 3 && g_spawn_event == g_events + 3550 * 0x28,
+          "a received Scrap Chunk: event 3550 (which runs 3552 itself)");
+    game.restore_ap_items();
+
+    apply(game, "apply\nnotice 46 HINT: X\npopup 49 FROM ALICE\npopup 50 FROM ALICE");
+    for (int i = 0; i < 3; ++i) show_next(game);
+    check(game.queued_popups() == 0 && game.queued_drops() == 0,
+          "no drop for a notice, an Area Map, or an Energy Shield (the client's `shield`)");
+
+    // Dead, or off the map: it waits, queued.
+    apply(game, "apply\npopup 46 FROM ALICE");
+    show_next(game);
+    field<int16_t>(0xCEA) = 0;
+    game.note_play(14000);
+    game.pump_drops(16000);
+    check(g_spawn_calls == 3 && game.queued_drops() == 1, "not while dead");
+    field<int16_t>(0xCEA) = 48;
+    field<uint8_t>(0x107A) = 0xFF;  // the raw cell can be -1
+    game.note_play(16000);
+    game.pump_drops(17500);
+    check(g_spawn_calls == 3 && game.queued_drops() == 1, "off the map: kept");
+    player_cell(7, 4);
+    game.note_play(17500);
+    game.pump_drops(18500);
+    check(g_spawn_calls == 4 && game.queued_drops() == 0, "then spawned, on the map");
+
+    // In another save than its popup's: it waits for its own.
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x11;  // this seed's item table
+    g_rando_marker = 1;
+    apply(game, "apply\npopup 47 FROM BOB");
+    show_next(game);
+    g_section[0x26C] = 0x22;  // another seed's save
+    game.pump_drops(20000);
+    check(g_spawn_calls == 4 && game.queued_drops() == 1, "another seed's save: it waits");
+    g_rando_marker = 0;
+    game.pump_drops(20000);
+    check(g_spawn_calls == 4 && game.queued_drops() == 1, "and in a normal save");
+    g_rando_marker = 1;
+    g_section[0x26C] = 0x11;
+    // The client gone meanwhile: its drops stay, as its popups do (their items are given).
+    game.client_gone(&chosen);
+    game.pump_drops(20000);
+    check(g_spawn_calls == 5 && game.queued_drops() == 0,
+          "spawned in its own save, the client gone");
+    g_rando_marker = 0;
+    reset_events();
+}
+
+// A drop held through the game's ending, which reads as play, and not doubled by a popup the game
+// could not take yet; one whose record names no event refused unless it is a stand-in's.
+void test_received_scrap_drops_held() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    g_flags[250] = 0;
+    game.note_play(1000);
+    game.pump_drops(1000);  // the load's first frame in play: flag 250 clear
+    apply(game, "apply\npopup 46 FROM ALICE");
+    g_message_fails = true;  // all four message slots busy
+    for (int i = 0; i < 30; ++i) game.pump_popups();
+    check(game.queued_popups() == 1 && game.queued_drops() == 0, "no drop for a popup not shown");
+    g_message_fails = false;
+    show_next(game);
+    check(game.queued_popups() == 0 && game.queued_drops() == 1, "one, once it shows");
+    g_flags[250] = 1;  // the ending began in this load
+    game.pump_drops(5000);
+    check(g_spawn_calls == 0 && game.queued_drops() == 1, "held through the ending");
+    g_save_loaded = 0xFF;  // MISSION COMPLETE, then the title
+    game.pump_drops(6000);
+    g_save_loaded = 3;  // the save loaded again, past its ending
+    game.note_play(7000);
+    game.pump_drops(8000);
+    check(g_spawn_calls == 1 && g_spawn_event == g_events + 3548 * 0x28,
+          "spawned at the next load, though flag 250 stays set");
+    apply(game, "apply\npopup 46 FROM ALICE");
+    show_next(game);
+    game.pump_drops(9000);
+    check(g_spawn_calls == 2, "a save past its ending gets its drops");
+    g_flags[250] = 0;
+
+    // A popup that shows only after the grab (queued behind others, or applied just before it):
+    // the load began before its ending, so its drop waits too.
+    g_save_loaded = 0xFF;
+    game.pump_drops(9100);
+    g_save_loaded = 3;  // a load before its ending
+    game.note_play(9200);
+    game.pump_drops(9200);  // the load's first frame in play: flag 250 clear
+    apply(game, "apply\npopup 47 FROM ALICE");
+    g_flags[250] = 1;  // Zexion grabbed
+    show_next(game);
+    check(game.queued_drops() == 1, "its popup shown in the ending");
+    game.pump_drops(11000);
+    check(g_spawn_calls == 2 && game.queued_drops() == 1,
+          "a drop queued after the ending began in its load waits too");
+    g_save_loaded = 0xFF;
+    game.pump_drops(12000);
+    g_save_loaded = 3;
+    game.note_play(12000);
+    game.pump_drops(13000);
+    check(g_spawn_calls == 3 && g_spawn_event == g_events + 3549 * 0x28,
+          "and is spawned at the next load");
+
+    // A save past its ending playing it again: the escape sets flag 211, the ending clears it.
+    game.note_play(13000);
+    game.pump_drops(13000);
+    check(game.queued_drops() == 0, "nothing waiting");
+    apply(game, "apply\npopup 48 FROM ALICE");
+    g_menu = 3;  // at the ship: a frame not in play
+    g_flags[211] = 1;
+    game.pump_drops(13100);
+    g_menu = 0;
+    show_next(game);
+    g_flags[211] = 0;  // the ending's first cutscene
+    game.pump_drops(15000);
+    check(g_spawn_calls == 3 && game.queued_drops() == 1, "held through the ending played again");
+    g_save_loaded = 0xFF;
+    game.pump_drops(15100);
+    g_save_loaded = 3;
+    game.note_play(15200);
+    game.pump_drops(16500);
+    check(g_spawn_calls == 4 && g_spawn_event == g_events + 3550 * 0x28,
+          "and spawned at the next load");
+    g_flags[250] = 0;
+
+    put<int16_t>(g_records + 46 * 100, 0x40, -1);  // Scrap Metal's record names no event
+    apply(game, "apply\npopup 46 FROM ALICE");
+    show_next(game);
+    game.pump_drops(17000);
+    check(g_spawn_calls == 4 && game.drop_status() == "queued 0; last refused event not as traced 46",
+          "-1 is only a restyled stand-in's");
+    put<int16_t>(g_records + 47 * 100, 0x40, 3550);  // Scrap Energy's names Scrap Chunk's
+    apply(game, "apply\npopup 47 FROM ALICE");
+    show_next(game);
+    game.pump_drops(17000);
+    check(g_spawn_calls == 4 && game.drop_status() == "queued 0; last refused event not as traced 47",
+          "nor another item's event");
+    scrap_records();
+    g_event_count = 3552;  // a table without 3552
+    apply(game, "apply\npopup 48 FROM ALICE");
+    show_next(game);
+    game.pump_drops(17000);
+    check(g_spawn_calls == 4 && game.drop_status() == "queued 0; last refused no event 48",
+          "Scrap Chunk refused without the fade it runs next");
     reset_events();
 }
 
@@ -1845,6 +2161,27 @@ void test_popups_wait_for_the_mission_fade() {
     game.put_back_game(&chosen);
 }
 
+// A drop waits through RETURN HOME WITH THE DISKS?'s fade, as the popups do.
+void test_drops_wait_for_the_mission_fade() {
+    MissionGame m;
+    zap::Game& game = m.game;
+    scrap_records();
+    player_cell(13, 16);  // at the pod
+    game.note_play(1000);
+    apply(game, "apply\npopup 46 FROM ALICE");
+    show_next(game);
+    check(game.queued_drops() == 1, "a drop queued");
+    for (int i = 0; i < 30; ++i) game.pump_popups();  // the gap after the helper's popup
+    game.request_mission(kPodColumn, kPodRow);
+    message_showing(zap::kFadeMessageLeft);
+    game.watch_all(&chosen);
+    check(game.mission_status() == "opening after the fade", "the fade");
+    message_showing(1);
+    game.pump_drops(5000);
+    check(g_spawn_calls == 0 && game.queued_drops() == 1, "the drop waits through the fade");
+    reset_events();
+}
+
 // A save during the fade puts the pause opener back: the fade turned back and the prompt asked
 // again, except under a door's own fade.
 void test_a_save_during_the_mission_fade() {
@@ -2149,12 +2486,122 @@ void test_the_black_after_yes() {
     game.put_back_game(&chosen);
 }
 
+// The game's window over a message's text (0xA8210), as disassembled: glyph i in row i / w and
+// column i % w, tested at x 8c and y 10r against a window centered on 4w and on half the rows' 8
+// pixels each; a glyph inside is shown and cut at the top edge mod 8 (with no row offset;
+// `repaired`: less 2r, as TextCut's patch) and at the bottom edge less 2r, mod 8, its pixel rows
+// drawn `top` to `bottom`; a glyph outside is hidden, keeping its last cut. (The left and right
+// cuts, and the icon glyph's 10 x 9 cut mod 9, are left out.)
+struct GlyphCut {
+    bool shown = false;
+    int top = 0, bottom = 8;
+};
+
+void window_cut(std::vector<GlyphCut>& glyphs, int w, int wx, int wy, bool repaired) {
+    const int count = static_cast<int>(glyphs.size());
+    const int half_h = 8 * ((count - 1) / w + 1) / 2;
+    const int left = 4 * w - wx, right = 4 * w + wx, top = half_h - wy, bottom = half_h + wy;
+    for (int i = 0; i < count; ++i) {
+        const int r = i / w, x = 8 * (i % w), y = 10 * r;
+        GlyphCut& g = glyphs[i];
+        if (x + 8 <= left || x >= right || y + 8 <= top || y >= bottom) {
+            g.shown = false;
+            continue;
+        }
+        g = GlyphCut{true, 0, 8};
+        if (y + 8 > bottom) g.bottom = (bottom + 8 - 2 * r) % 8;
+        if (y < top) g.top = (repaired ? top - 2 * r : top) % 8;
+    }
+}
+
+// Whether, in a message of `rows` rows of `w` (its box as the game sizes it, or fitted as
+// fit_notice_box does), some row shows more of itself on a frame while the box closes than the
+// frame before, or less while it opens: a line flashing. The message's life as its update
+// (0x181E70) runs it, one call a frame, from the message routine's own window call (0x182C89,
+// the window empty): while frames left are under the half-height the window steps down, else
+// while the box is under the half-height the box and the window step up, else every glyph is
+// shown as last cut.
+bool flashes(int rows, int w, bool fitted, bool repaired) {
+    const int count = fitted ? (rows - 1) * w + 1 : rows * w;
+    const int half = fitted ? 4 * (rows - 1) + 4 : 4 * (rows - 1) + 7;
+    std::vector<GlyphCut> glyphs(static_cast<size_t>(count));
+    std::vector<int> last(static_cast<size_t>(rows), 0);
+    int wx = 0, wy = 0, box = 0;
+    bool flash = false;
+    window_cut(glyphs, w, wx, wy, repaired);
+    for (int frames = 179; frames >= 0; --frames) {
+        const bool closing = frames < half, opening = !closing && half > box;
+        if (closing) {
+            window_cut(glyphs, w, wx -= 100, wy -= 1, repaired);
+        } else if (opening) {
+            ++box;
+            window_cut(glyphs, w, wx += 100, wy += 1, repaired);
+        } else {
+            for (GlyphCut& g : glyphs) g.shown = true;
+        }
+        for (int r = 0; r < rows; ++r) {  // each row's first glyph
+            const GlyphCut& g = glyphs[static_cast<size_t>(r * w)];
+            const int now = g.shown ? (std::max)(0, g.bottom - g.top) : 0;
+            if ((closing && now > last[r]) || (opening && now < last[r])) flash = true;
+            last[r] = now;
+        }
+    }
+    return flash;
+}
+
+void test_text_cut() {
+    // The game's own cut: from five rows, a line grows back while the box closes, as filmed in
+    // game (2026-11-08) for the four-line reminder (five rows with its blank one, 23 wide). With
+    // four, the edge reaches 16 inside row 1 only on the last frame, the window shut across.
+    check(flashes(5, 23, true, false), "the game's cut: the four-line reminder flashes");
+    check(flashes(5, 24, false, false), "the game's cut: a five-line popup flashes");
+    check(!flashes(4, 24, false, false) && !flashes(4, 24, true, false),
+          "the game's cut: four rows do not");
+    check(!flashes(3, 24, false, false) && !flashes(2, 24, false, false),
+          "the game's cut: two or three lines do not");
+    // Repaired, no row of any height flashes.
+    bool any = false;
+    for (int rows = 1; rows <= 11; ++rows) {
+        for (int w : {12, 23, 24}) {
+            any = any || flashes(rows, w, false, true) || (rows >= 4 && flashes(rows, w, true, true));
+        }
+    }
+    check(!any, "the repaired cut: no line flashes, at any height");
+
+    // The patch: built from the game's bytes only, put back as it was.
+    BYTE game[zap::kTextCutSize], out[zap::kTextCutSize] = {};
+    std::memcpy(game, kTextCutGame, sizeof(game));
+    check(zap::text_cut_patch(game, out), "the patch is built from the game's cut");
+    const BYTE ours[] = {0x8B, 0xC5, 0x2B, 0xC6, 0x2B, 0xC6, 0x66, 0x44, 0x89, 0xA9, 0xA0, 0x01,
+                         0x00, 0x00, 0x83, 0xE0, 0x07, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00};
+    check(std::memcmp(out, ours, sizeof(ours)) == 0,
+          "mov eax, ebp; sub eax, esi twice; the game's store; and eax, 7; a 7-byte nop");
+    game[10] = 0x24;
+    check(!zap::text_cut_patch(game, out), "other bytes are not patched");
+
+    check_code_patch<zap::TextCut>("the text cut", kTextCutGame, ours);
+    // Through the helper: patched while configured, put back with the game, and an unload refused
+    // while it is still the helper's.
+    {
+        zap::Game game_;
+        ready(game_);
+        game_.watch_all(&chosen);
+        check(std::memcmp(g_text_cut_code, ours, sizeof(ours)) == 0, "the helper patches it");
+        check(game_.unload_blocker() != nullptr, "an unload waits for it");
+        game_.put_back_game(&chosen);
+        check(std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) == 0 && game_.unload_blocker() == nullptr,
+              "put back with the game");
+    }
+}
+
 }  // namespace
 
 int main() {
+    test_text_cut();
     test_the_black_after_yes();
     test_own_popup_needs_a_new_last_message();
     test_popups_wait_for_the_mission_fade();
+    test_drops_wait_for_the_mission_fade();
     test_a_save_during_the_mission_fade();
     test_the_mission_request_gives_home();
     test_return_home_lapses_away_from_the_pod();
@@ -2176,9 +2623,14 @@ int main() {
     test_the_marker_hidden();
     test_stand_ins_in_their_own_colors();
     test_colored_stand_ins_dressed_later();
+    test_zexion_scrap_shown_as_itself();
     test_stand_ins_named_by_their_own_cell();
     test_received_stand_in_popup();
+    test_received_disk_popup();
+    test_received_intel_chip_popup();
     test_received_shield();
+    test_received_scrap_drops();
+    test_received_scrap_drops_held();
     test_received_death();
     test_assist_watch();
     test_newgame_watch();

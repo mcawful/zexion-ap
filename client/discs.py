@@ -9,8 +9,8 @@ counts them,
                 + the disks received from other worlds
                 + this world's own disk locations the player has found
 
-Shown in popups ("OS Install Disk 3 of 15", "of 15" once the scanner has said how many; in
-capitals but in English(HD)).
+Shown in a notice after each disk's popup ("OS Install Disk 3 of 15", "of 15" once the scanner
+has said how many; in capitals but in English(HD)).
 "Found" is what clients reported from the game's map (storage.own_found), not the server's
 checked set, which a release fills; the disc the game gives for its secret boss does not count.
 Pure functions; client/ticks.py talks to the helper.
@@ -61,7 +61,7 @@ def owned(hunt: DiscHunt, received: Sequence[int], checked: Iterable[int]) -> in
 
 
 def note(count: int, required: int | None = None) -> str:
-    """A disk's popup text: the count, and how many are needed once the player has been told
+    """A disk's count notice: the count, and how many are needed once the player has been told
     (the scanner's message; ``required`` None before)."""
     if required is None:
         return f"{NAME} {count}"
@@ -69,11 +69,18 @@ def note(count: int, required: int | None = None) -> str:
 
 
 def received_notes(
-    hunt: DiscHunt, received: Sequence[int], checked: Iterable[int], told: bool = True
+    hunt: DiscHunt,
+    received: Sequence[int],
+    checked: Iterable[int],
+    told: bool = True,
+    pending: Iterable[int] = (),
 ) -> dict[int, str]:
-    """The popup text of each received disk, by its position in ``received``: the count with
-    that disk, so a batch of them counts up; with how many are needed once ``told``."""
-    count = hunt.start + len(hunt.locations & set(checked))
+    """The count shown after each received disk's popup, by its position in ``received``: the
+    count with that disk, so a batch of them counts up; with how many are needed once ``told``.
+    Found disks whose own count is still to be shown (``pending``) are left out: they count in
+    that later notice instead (ticks.followups_tick), so each count shows once, in the order
+    the helper shows them."""
+    count = hunt.start + len(hunt.locations & (set(checked) - set(pending)))
     out = {}
     for index, code in enumerate(received):
         if code == DATA_DISC:
@@ -175,8 +182,8 @@ def deaths(stamp: bytes) -> int | None:
 def popups_handed(queued: int, read: bool, received: int) -> bool:
     """Whether every received item's popup has gone to the helper (``Session.announced``, and
     ``read``: that count read on this connection, ``Session.announced_read``). The helper shows
-    its queue in order, so POD_NOTE queued after that comes after the disks' own popups (a
-    received item is handed over a poll after it arrives, once its grant is confirmed)."""
+    its queue in order, so POD_NOTE queued after that comes after the disks' own popups and
+    counts (a received item is handed over once any grant it makes is confirmed)."""
     return read and queued >= received
 
 

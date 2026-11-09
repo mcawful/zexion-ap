@@ -33,9 +33,12 @@ Set with the Goal option.
     then need no keys: once you have visited two of them, they work (checked in game). In the
     pause menu's RANDO SETTINGS, an OHKO seed then shows as Custom mode, with OHKO's items and
     amounts and Gates Unlocked (checked in game). The spoiler log's header names the change.
-  - Your count shows on each disk's popup, on the pause screen and on the file select.
-  - The scanner room at Vallahar 6,8, which shows where the keys are in the normal game, tells
-    you how many you need. Until you have been there, the pause screen shows "OF ?". With
+  - Your count shows after each disk's popup (a disk sent to you first pops up as any item
+    does, with who sent it), on the pause screen and on the file select.
+  - The scanner at Guardia 42,26, outside the core's door, which shows where the keys are in
+    the normal game, tells you how many you need. It was seen there in game after a visit to
+    Vallahar 6,8; whether that visit is needed first is not known yet. Until you have been
+    there, the pause screen shows "OF ?". With
     Hints Revealed (Custom), the game counts you as told from the start, so the number shows
     at once (by the game's code; not yet checked in game).
   - Once you have enough, save at the Landing Pod's save point (Kresezoa 16,13, the
@@ -167,6 +170,66 @@ What a new game can start with:
 Anything else, such as Scrap, Area Maps, Intel Chips, Energy Shields, Mega Bombs, Bomb Boxes
 or Assist Unlock, stops generation with an error that names it.
 
+## Can I use plando?
+
+Item plando (`plando_items`) works as in other Archipelago games: it puts the items you name in
+the locations you name, in your world or another player's, and other players can put theirs in
+yours. Generation reads it only with item plando turned on: `plando_options` in your Archipelago
+folder's `host.yaml` must include `items` (it doesn't by default, and generation then skips the
+plando with a warning). For example:
+
+```yaml
+Zexion:
+  plando_items:
+    - items:
+        Gravity Harness: 1
+      locations:
+        - Kresezoa 25,25
+    - items:
+        OS Install Disk: 3
+      world: Bob
+      locations:
+        - Machinus 24,29
+        - Machinus 27,24
+        - Vallahar 6,14
+```
+
+Locations are named by area and X,Y ("Where does the game start?"). In `locations`, an area's
+name, such as Machinus, stands for its locations; in `items`, an item group (Keys, Weapons,
+Weapon Upgrades, Supplies, Scrap) for one of its items. Keep `from_pool: true`, the default: it
+moves an item from your pool rather than making a new one.
+
+Played in game: another game's item and another Zexion player's in your locations, your own OS
+Install Disk and Intel Chip in your own, a Progressive Snake at Kresezoa 25,25, and your disks
+and Intel Chips in another Zexion player's world. What the generator refuses or warns about,
+below, is checked in generation only.
+
+Generation stops with an error naming the item if plando gives you items the game doesn't hold
+(`from_pool: false` makes new ones, and so does `from_pool: true` for an item your pool has
+none left of):
+
+- a second copy of an item the game holds once; with Guns First on (every preset), a third of
+  a Progressive weapon, or one of the five upgrades as an item of its own;
+- more than 40 Energy Tanks, or more than 999 missiles or Mega Bombs in all (ten per box), your
+  starting ones counted: the most the game's randomizer menu allows;
+- an OS Install Disk without the OS Install Disks goal, or more disks than `os_install_disks`
+  (with your starting disks) makes: set the number there;
+- an Area Map with Area Map Hints on (they are Intel Chips), or an Intel Chip with it off.
+
+The copies an item link's `replacement_item` adds aren't plando and are never refused, though a
+second copy of an item the game holds once gives nothing.
+
+If a plando names a location your seed doesn't have (and, in a plando into several worlds, no
+other of them has), the generator logs a warning saying why:
+Secret Shuffle's location with Secret Shuffle off, or a location your settings don't reach from
+your start (OHKO leaves some out). Archipelago then doesn't place it there (with `force: true`,
+generation stops). Plando into the locations around your start counts when the generator opens
+your start ("Where does the game start?"). Your own Assist Unlock can't go in your own
+locations.
+
+Plando connections, bosses and texts don't apply: Zexion has no entrances to shuffle (choose the
+start with `start_room`), its randomizer doesn't move bosses, and it has no hint texts.
+
 ## What do other players' items look like?
 
 - A location holding another player's item shows the Archipelago logo, with a flashing up arrow
@@ -183,15 +246,19 @@ or Assist Unlock, stops generation with an error that names it.
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
   when you pick it up.
 - Items sent to you pop up with the sender's name. An Energy Shield sent to you comes up
-  around you.
+  around you. Scrap sent to you drops what the game's own Scrap does, after its popup, once
+  you have stayed on one map square for a second. Scrap whose popup
+  you saw before version 1.1.0 drops nothing, and nothing drops during the game's ending: what
+  arrives then drops the next time you load the save.
 
 ## What do Area Maps and Intel Chips do?
 
 With the Area Map Hints option (on by default), Area Maps become **Intel Chips**. Each Intel
 Chip you get, found or sent to you, hints where one of your upgrades, keys or OS Install Disks
-is that you don't have yet, in any world. A popup shows the hint, such as HINT: SLIDE MOD IS AT
-GUARDIA 22,7 (in English(HD), Hint: Slide Mod is at Guardia 22,7), and it goes into your hint
-list. When nothing is left to hint, it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
+is that you don't have yet, in any world. After its popup (with who sent it, if it was sent),
+a second shows the hint, such as HINT: SLIDE MOD IS AT GUARDIA 22,7 (in English(HD), Hint:
+Slide Mod is at Guardia 22,7), and it goes into your hint list. When nothing is left to hint,
+it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
 
 With the option off, Area Maps work as in the normal game.
 

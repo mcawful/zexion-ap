@@ -59,6 +59,12 @@ def test_received_discs_count_up_in_their_popups() -> None:
     }
 
 
+def test_a_found_disc_whose_own_count_is_still_to_show_counts_there_not_here() -> None:
+    hunt = discs.from_slot_data(SLOT)
+    notes = discs.received_notes(hunt, [44], [40], pending={40, 3})
+    assert notes == {0: "OS Install Disk 1 of 3"}
+
+
 def test_the_helper_request_carries_the_count_and_the_line_in_hex() -> None:
     assert discs.request(2, 3) == "discs 2 3 " + b"Collect 3 OS Install Disks!".hex() + " 1"
     assert discs.request(2, 3, told=False).endswith(" 0")

@@ -1,6 +1,6 @@
-// What the native tests share: check() and report(), unaligned field access, code bytes, hex and
-// the stand-in items' records. The tests write offsets as raw hex, so they cross-check
-// src/game_layout.h rather than repeat it.
+// What the native tests share: check() and report(), unaligned field access, code bytes and a
+// code patch's test, hex and the stand-in items' records. The tests write offsets as raw hex, so
+// they cross-check src/game_layout.h rather than repeat it.
 #pragma once
 
 #include <windows.h>
@@ -70,6 +70,61 @@ inline void write_code(unsigned char* at, const unsigned char* bytes, size_t n) 
     FlushInstructionCache(GetCurrentProcess(), at, n);
 }
 
+// A CodePatch (src/game_mem.h) `Patch` over the game's bytes `game` at two sites of a code page
+// of its own, `ours` the patch they make: patched, kept, moved and put back; other bytes left
+// alone, and code rewritten by something else never put back over.
+template <typename Patch, size_t N>
+void check_code_patch(const char* name, const unsigned char (&game)[N],
+                      const unsigned char (&ours)[N]) {
+    auto* page = static_cast<unsigned char*>(
+        VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READ));
+    unsigned char* const site = page;
+    unsigned char* const moved = page + 2048;
+    write_code(site, game, N);
+    write_code(moved, game, N);
+    unsigned char other[N];
+    std::memcpy(other, game, N);
+    other[0] ^= 0xFF;
+    const auto reads = [](const unsigned char* at, const unsigned char* bytes) {
+        return std::memcmp(at, bytes, N) == 0;
+    };
+    const auto expect = [name](bool ok, const char* what) { check(ok, what, name); };
+
+    Patch p;
+    p.watch(nullptr);
+    expect(!p.patched(), "no site: nothing");
+    p.watch(site);
+    expect(p.patched() && reads(site, ours), "patched at its site");
+    MEMORY_BASIC_INFORMATION info{};
+    VirtualQuery(site, &info, sizeof(info));
+    expect(info.Protect == PAGE_EXECUTE_READ, "its protection put back");
+    p.watch(site);
+    expect(p.patched() && reads(site, ours), "watched again: kept as it was");
+    p.watch(moved);
+    expect(p.patched() && reads(site, game) && reads(moved, ours), "moved: put back, then patched");
+    p.watch(nullptr);
+    expect(!p.patched() && reads(moved, game), "no site: put back");
+    p.watch(site);
+    p.restore();
+    expect(!p.patched() && reads(site, game), "restored: the game's");
+
+    write_code(site, other, N);
+    p.watch(site);
+    expect(!p.patched() && reads(site, other), "reads otherwise: left alone");
+    write_code(site, game, N);
+    p.watch(site);
+    expect(p.patched() && reads(site, ours), "the game's again: patched");
+    write_code(site, other, N);
+    p.watch(site);
+    expect(!p.patched() && reads(site, other), "rewritten by something else: let go, left alone");
+    write_code(site, game, N);
+    p.watch(site);
+    write_code(site, other, N);
+    p.restore();
+    expect(!p.patched() && reads(site, other), "rewritten by something else: not put back over");
+    VirtualFree(page, 0, MEM_RELEASE);
+}
+
 // The item update's write of an on-screen item's square as on B1 (src/mapmarks.h), as an
 // array's initializer. src/mapmarks.cpp keeps its own copy, so the two check each other.
 #define ZAP_SEEN_MARKER_GAME                                                       \
@@ -77,6 +132,10 @@ inline void write_code(unsigned char* at, const unsigned char* bytes, size_t n) 
      0xF9, 0x20, 0x0F, 0x96, 0xC0, 0x04, 0x19, 0xEB, 0x14, 0x80, 0xFA, 0x0C, 0x7C, \
      0x17, 0x66, 0x41, 0x83, 0xE9, 0x03, 0x66, 0x41, 0x83, 0xF9, 0x20, 0x0F, 0x96, \
      0xC0, 0x04, 0x0D, 0x42, 0x88, 0x84, 0x31, 0xFD, 0x4F, 0x01, 0x00}
+
+// The text window's top cut as on B1 (src/text.h, TextCut), as an array's initializer.
+// src/text.cpp keeps its own copy, so the two check each other.
+#define ZAP_TEXT_CUT_GAME                                                             {0x8B, 0xC5, 0x66, 0x44, 0x89, 0xA9, 0xA0, 0x01, 0x00, 0x00, 0x25, 0x07,      0x00, 0x00, 0x80, 0x7D, 0x07, 0xFF, 0xC8, 0x83, 0xC8, 0xF8, 0xFF, 0xC0}
 
 // Bytes as hex digits (upper-case; the helper's parsers take either case).
 inline std::string hex(const void* bytes, size_t n) {

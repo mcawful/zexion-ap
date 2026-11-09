@@ -41,24 +41,10 @@ constexpr size_t kSeenMarkerSize = 50;
 // leaves them as the game's does, and calls nothing.
 bool seen_marker_patch(const BYTE (&game)[kSeenMarkerSize], BYTE (&out)[kSeenMarkerSize]);
 
-// The write patched while the labels' seed's save is loaded. Game thread only. The patch uses
-// nothing of the helper's, so one left behind cannot crash the game; but a plain randomizer
-// game's Scrap Chunks would show as majors, so an unload refuses while it is not put back.
-class SeenMarker {
-public:
-    // Patched at `site` while `on` (null: nothing), put back while not.
-    void watch(BYTE* site, bool on);
-    void restore();
-    bool patched() const { return site_ != nullptr; }
-    // Why it could not be patched the last time it tried, or "".
-    const std::string& error() const { return error_; }
-
-private:
-    BYTE* site_ = nullptr;
-    BYTE original_[kSeenMarkerSize] = {};
-    BYTE written_[kSeenMarkerSize] = {};
-    std::string error_;
-};
+// The write patched while the labels' seed's save is loaded. The patch uses nothing of the
+// helper's, so one left behind cannot crash the game; but a plain randomizer game's Scrap Chunks
+// would show as majors, so an unload refuses while it is not put back.
+using SeenMarker = CodePatch<kSeenMarkerSize, seen_marker_patch>;
 
 // A label (text.h) as the map cursor's name: its first line's text only (what the item is),
 // in capitals, cut at kMapNameMax.

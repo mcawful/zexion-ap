@@ -4,8 +4,9 @@
 outside: work on the game's own thread, between frames. It gets in two ways: **the proxy**
 `version.dll` in the game's folder loads it as the game starts, or the client loads it on
 attaching (`client/native.py`; `tools/helper.py` too, for tests). The client talks to it over a
-named pipe. With no client it changes only the title screen and the look of AP saves, and keeps
-Feats and Steam achievements out of AP saves.
+named pipe. With no client it changes only the title screen, the look of AP saves and, in every
+save, how the game's text window cuts tall text ("Popups"), and keeps Feats and Steam achievements
+out of AP saves.
 
 An **AP save** is a randomizer save whose item table and start match a seed a client has
 played (and its location list's size: 154, or 155 with Secret Shuffle, `src/game_layout.h`,
@@ -107,11 +108,12 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `ping` | `pong frames=<calls since load>` | |
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
-| `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `popup ITEM SUFFIX`, `notice ITEM TEXT` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups |
+| `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `intel`, `popup ITEM SUFFIX`, `notice ITEM TEXT` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups |
 | `ap_newgame` and lines `identify`, `expect`, `write` or `menu OFFSET HEX`, `start_table HEX`, `choice` (frame; a plan needs `write`, `menu` and `identify` lines) | `armed`, `refused <why>`, `error <why>` | New games |
 | `newgame_status`, `disarm` (frame) | `armed`, `idle`, `applied slot N`, `refused <why>`; `disarmed` | New games |
 | `ap_labels` and lines `label X Y HEX` (frame) | `labeled N`, `refused <why>` | Other players' items |
 | `shield`, `die` (frame) | `spawned`, `died`, `refused <why>` | Received Energy Shields; DeathLink |
+| `drop_status` (frame) | `queued N; last <outcome>`, the outcome `none`, `spawned ITEM` or `refused <why> ITEM`: the received scraps' drops, for live checks | Received scrap |
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
@@ -139,13 +141,17 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 `client/native.py`). The whole configuration is refused unless:
 
 - every name is there, from a client's `config` or from the offline cache a client wrote ("AP
-  saves without the client"), which holds them all. A cache lacking one is refused
-  (`read_error=cache:_missing_NAME`) until a client has run once and rewritten it. A release that
-  adds a key decides for that key alone: accept that, with everything the helper does without a
-  client off until the player's first client run after updating (the offline look of AP saves,
-  the file select's AP logo and disk counts, the map markers, the pause row from the seed file,
-  the major-item list, the title lines and the Feats guard), or let the helper configure without
-  that key, with a null check where it is read;
+  saves without the client"), which holds them all, but `text_cut_code` (below). A cache lacking
+  one is refused (`read_error=cache:_missing_NAME`) until a client has run once and rewritten it.
+  A release that adds a key decides for that key alone: accept that, with everything the helper
+  does without a client off until the player's first client run after updating (the offline look
+  of AP saves, the file select's AP logo and disk counts, the map markers, the pause row from the
+  seed file, the major-item list, the title lines, the Feats guard, the ASSIST lock and Intel
+  Chips), or let the helper configure without that key, with a null check where it is read.
+  1.1.0's `text_cut_code` is the second kind (`optional` in `kConfigKeys`, `src/game_calls.cpp`):
+  without it the rest configures (`hello` `configured=1`, no `read_error`) and the text window's
+  cut stays the game's ("Popups", "Tall text") until a client's config, which holds it (stand-in
+  tests, `tests/offline_tests.cpp`);
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -201,11 +207,11 @@ client in a live game").
 It also refuses (`error <why>; not unloading`) while the game may still call into the helper, or
 hold something of the helper's. That is an open menu's panel or entry, the pause menu's way back
 from OPTION MENU, the open map or the game's transition routine holding one of its wrappers, or
-the scanner's text, the pause screen's branch, an item record, the ending's patch or the map's
-on-screen marker write still the helper's; or, in a translation, a popup still showing the text
-the helper wrote into a borrowed entry (until that message ends: 3 seconds in play), or a
-translated name or the popups' moved entry 70 still the helper's when no frame came
-("Translations").
+the scanner's text, the pause screen's branch, an item record, the ending's patch, the map's
+on-screen marker write or the text window's cut still the helper's; or, in a translation, a
+popup still showing the text the helper wrote into a borrowed entry (until that message ends:
+3 seconds in play), or a translated name or the popups' moved entry 70 still the helper's when
+no frame came ("Translations").
 
 It refuses (`error the ending RETURN HOME WITH THE DISKS? started is on its way; not
 unloading`), before putting anything back, from RETURN HOME WITH THE DISKS?'s YES until the
@@ -319,28 +325,65 @@ select filled; the Machine Gun's row in a Standard save not singled out).
 - **Text:** a `popup` is the item's icon and name from its record, then the client's suffix (≤ 40
   characters); a `notice` is its text alone (≤ 200). Both are wrapped at the game's 24-character
   width (`src/text.cpp`; `docs/re/memory.md`, "Game functions the helper calls"), whatever
-  width the helper has set for the game's own pickup popup ("Other players' items").
+  width the helper has set for the game's own pickup popup ("Other players' items"). A popup
+  for item 44, a received OS Install Disk, is the disk glyph and OS INSTALL DISK (in a
+  translation, the HD disk icon and the name in its case), not the record's DATA DISC with no
+  icon (in translations other than English(HD): not run in game); an Area Map's reads Intel
+  Chip in an `apply` with `intel` ("Intel Chips").
 - **Stand-ins received:** a received Scrap Energy or Scrap Chunk (this player's own filler, found
   in another world) is named SCRAP ENERGY or SCRAP CHUNK with no icon, as the game loads them,
   not from its record, which the helper may have restyled as another player's item ("Other
-  players' items"). Stand-in tests (`tests/game_tests.cpp`); working in game 2026-11-02 (B1,
+  players' items"); its drop follows ("Received scrap"). Stand-in tests
+  (`tests/game_tests.cpp`); working in game 2026-11-02 (B1,
   `zexion_ap.dll` `1c286c57…`), each sent from the server's console: Scrap
   Energy away from any stand-in and Scrap Chunk in a labeled stand-in's room, in English(HD),
   read Scrap Energy and Scrap Chunk over FROM ARCHIPELAGO; in the default English, SCRAP ENERGY
   FROM ARCHIPELAGO.
 - **Follow-ups:** an `apply` may hold popups alone, such as the client's notice for an Area Map
-  or Intel Chip found in the world, after the game's own popup.
+  or Intel Chip found in the world, after the game's own popup. A received OS Install Disk's or
+  Intel Chip's `popup` is followed in the same `apply` by its count or hint as a `notice`, so
+  the two show one after the other, each with the item's sound, and wait together (a chip's
+  two waiting: not run in game).
+- **Tall text:** the game's window over a popup's text cuts a line's top wrong past the first
+  line, so from five rows of glyphs on (a four-line notice with its blank row, or a five-line
+  popup) a line flashes back whole while the box opens and closes; the game's own popups never
+  get there (`docs/re/memory.md`, "Game functions the helper calls"). While configured (with or
+  without a client, in every save; not from a 1.0.0 cache, which lacks the key: "The pipe"), the
+  helper repairs that cut in the game's code (`text_cut_code`, 24 bytes; `TextCut` in
+  `src/text.h`, built by `src/text.cpp`): each frame call it patches it if it still reads as the game's, and puts it
+  back with the rest of the game ("Unloading"). Every line then opens and closes with the box
+  as the game's short popups do. A translation draws its own text, never through this window;
+  the game's other message routine (`0x185540` on B1) draws its own through it too.
+  Tests: `tests/game_tests.cpp`. Working in game 2026-11-08 (B1, `zexion_ap.dll` `b8ef0214…`):
+  the pod reminder (four lines and its blank row) in the default English, every line opening
+  and closing with the box, filmed; in English(HD), a two-line hint as before. Again with the
+  patch in `CodePatch` (`src/game_mem.h`), 2026-11-08 (B1, `zexion_ap.dll` `0f51bb6f…`, develop
+  5597753, the seed `lab/ap/live57`, slot 6, the owner's report): the pod reminder in the
+  default English, no line flashing. Not run: a
+  five-line popup, a tall popup in a translation, the other message routine's text (what it
+  shows is not recorded).
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
   table entry; one may wait a frame or two for it ("Translations"; working in game 2026-11-02
   in English(HD), French and Japanese).
 
 Working in game: 2026-10-24, notices up to five lines ("Game functions the helper calls");
-2026-10-25, a notice after a found Intel Chip's popup ("Intel Chips").
+2026-10-25, a notice after a found Intel Chip's popup ("Intel Chips"); 2026-11-08 (B1,
+`zexion_ap.dll` `2c29d10e…`, PR #118's head `c0be163`, the seed `lab/ap/live55`, the owner's
+report), each received OS Install Disk named as the disk with its icon over its sender, then
+its count: one before the scanner and one after in the default English ("OS Install Disk 1",
+then "2 of 4"); two at once in English(HD), with the HD disk icon, in mixed case (popup, "3 of
+4", popup, "4 of 4", then the pod reminder); and one sent while RETURN HOME's question was up,
+with no popup over it, both its popups shown at the next load after YES and the ending (their
+language and the count's text not stated); and a received Intel Chip named as the chip over its
+sender, then its hint, in the default English and in English(HD) ("Intel Chips"). The sounds
+were not singled out.
 
 ### Received Energy Shields
 
 - **What:** `shield` runs the Energy Shield's pickup event as its pickup does, from the player's
-  cell (`spawn_shield`, which checks the record, the event and its handler first).
+  cell (`spawn_shield`, which checks first that the record names event 3553, that the event's
+  whole record is B1's, and that its handler is in the game's code: `run_item_event`, as for
+  "Received scrap").
 - **When:** once the player has been in play in one cell for a second, and not in an ending
   RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
   asks for each received shield not yet given, again for one not seen up within a few seconds,
@@ -354,7 +397,69 @@ client attached to a save already in play, each shield spawned once and read as 
 again, 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074); one received
 while disconnected, given once on reconnecting and not again after another reconnect, 2026-11-04
 (B1, `zexion_ap.dll` `a7469024…`, develop 345fea7). The stop after three not seen up: stand-in
-tests only, not reached in game (`docs/re/memory.md`, "Received Energy Shields").
+tests only, not reached in game (`docs/re/memory.md`, "Received Energy Shields"). The check of
+the whole event (since 2026-11-08; before, its type, subtype, object and own number): working
+in game 2026-11-09 (B1, `zexion_ap.dll` `5f761061…`, develop 88bebfb, the seed
+`lab/ap/live57`, slot 6, the owner's report): a shield sent from the server's console came up
+and was read as up.
+
+### Received scrap
+
+- **What:** a received Scrap Metal, Scrap Energy or Scrap Chunk (46 to 48) gets the drops its
+  pickup spawns: once its popup has shown, the helper runs the item's pickup event (3548, 3549
+  or 3550) as the pickup does, from the player's cell (`pump_drops`, `run_item_event`). Scrap
+  Chunk's runs a fade of layer 7 after it, as the game's does. The drops start near the top-left
+  corner of the player's cell (the corner plus (5, 8), as the pickup's start at its item's
+  cell's), not at the player: where that puts them in a room of several cells, and whether
+  they can be reached from anywhere in it, is not recorded (run once from the far side of a
+  big room, below). Its inventory byte stays the
+  client's grant, +1 Scrap Metal ("Grants"). The record must name the event (or −1, a
+  stand-in's record while the helper restyles it: "Other players' items"), and the event, and
+  the fade it runs next, must be B1's records byte for byte, their handlers in the game's code
+  (`docs/re/memory.md`, "Received scrap"); otherwise it is dropped, and `drop_status` says
+  why. Nothing is run for a received Area Map (its event, 3551, reveals the map; not given for
+  a received one, as before), an Energy Shield (the client's `shield`) or a notice, nor for a
+  stand-in found in the world (its record names no event while restyled: the item is another
+  player's).
+- **When:** as `shield`: once the player has been in play in one cell for a second, and not
+  from RETURN HOME WITH THE DISKS?'s fade through the ending it started; one a frame call, in
+  the order of their popups. In another seed's save or a normal save it waits for its popup's
+  save ("Popups"); off the map, for the player to be on it. Nor in the game's own ending, whose
+  cutscenes read as play: the helper reads the client's goal (flag 250 set, flag 211 clear:
+  `client/session.py`) every frame, and once a load has been in play with it false, every drop
+  waits while it reads true, whenever its popup showed, until the next load
+  (`docs/re/memory.md`, "The ending: flag 250", "The escape skip"), as the client holds
+  received items then. A save past its ending reads it true from the start and gets its drops,
+  until it plays the ending again (211 set at the ship, or by the escape skip's YES, and cleared
+  as the ending begins; 211 read set counts even on a frame not in play). As for the client, an
+  ending replayed under Abridged Finale (no escape, so no 211) is not told apart; that 211
+  behaves in a replay as measured in a first playthrough is assumed; and a death after 211 is
+  set at the ship (the save point's flags back: 250 set, 211 clear) holds drops, as it does
+  the client's items, until the next load. The popup itself still shows over the ending's
+  cutscenes, as before.
+- **Once:** a drop rides on its popup. The client hands each received item's popup over once
+  (its count in the server's data storage: "Grants"); the helper queues the drop as it shows
+  the popup and forgets it once run. So a scrap received while disconnected, or out of play,
+  drops after its popup at the next load; one whose popup was handed over before 1.1.0, or
+  that was written directly with no helper, never drops; one whose popup the client hands over
+  again drops again (the client stopped after `apply` took the popups and before the server
+  stored their count: the popup then shows twice too); and the queue outlives the client
+  ("A client going away") but not the helper: an unload, or the game closing, loses the drops
+  not spawned yet, as it does the popups. Drops lost to a death or a reload before they are
+  collected are not given again, as with the game's own pickup.
+- **Put back:** nothing to put back.
+
+Stand-in tests (`tests/game_tests.cpp`, `test_received_scrap_drops`). Working in game
+2026-11-09 (B1, `zexion_ap.dll` `5f761061…` with `version.dll` `02a5e7f4…`, develop 88bebfb,
+the seed `lab/ap/live57`, slot 6, the owner's report), each sent from the server's console: a
+Scrap Metal, a Scrap Energy and a Scrap Chunk dropped after their popups, the Scrap Chunk with
+the player at the far side of a big room, its fade looking right; a Scrap Metal sent while the
+client was disconnected dropped once after the reconnect, and nothing came again after a second
+reconnect. The owner said they worked as expected: which drops came, how many, where they
+appeared and what collecting them gave were not described (what a drop gives stays assumed:
+`docs/re/memory.md`, "Received scrap"), and `drop_status` was not read. Not run in game: drops
+held through the game's ending or RETURN HOME WITH THE DISKS?, or waiting for their save or for
+the player to be on the map.
 
 ### DeathLink
 
@@ -538,6 +643,16 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   objects there, in the game's pool of live item objects, as item N: N's palette, and the
   frame-list base moved so the frame the game computes lands on N's. The record, and so the
   pickup, stay the stand-in's.
+- **Scrap Energy and Scrap Chunk:** for another Zexion player's (`@47`, `@48`), N's record is
+  a stand-in's, restyled to the logo, so their look is taken as the game loads it (frames 134
+  and 135 or 142 and 143, palette 8: `kStandInOwnFrames`, `src/apitem.h`), as their names are,
+  not the logo in palette 8 (`docs/re/memory.md`, "Other players' items"). Working in game for
+  Scrap Chunk (`@48`), 2026-11-09 (B1, `zexion_ap.dll` `5f761061…`, develop 88bebfb, the seed
+  `lab/ap/live57`, slot 6, the owner's report): another Zexion player's at Kresezoa 19,11, a sky
+  room, showed as a Scrap Chunk (at develop 5597753 it had shown the logo in the room's
+  colors), and its pickup showed its popup for that player (the text not quoted); a
+  progression stand-in at Guardia 22,7 still drew the logo in its own colors. Not run in game:
+  Scrap Energy (`@47`), and the seed's other such cell (R'Talva 30,45, out of logic then).
 - **Safety:** it writes only stand-ins with the template's base and palette 8 or 26 (the
   helper's own colors, "Other players' items"), or ones it dressed (the same spawn); and, for
   R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared and set again, only
@@ -575,6 +690,12 @@ Working in game: 2026-10-23 ("Live item objects").
 - **When:** each frame call while the client has sent `intel on` (this seed's save loaded, its
   Area Maps Intel Chips).
 - **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
+- **Received:** a client's `popup 49` in an `apply` with `intel` (sent for a seed whose Area
+  Maps are Intel Chips) reads INTEL CHIP (Intel Chip in a translation), with `intel on` or not
+  when it shows, as after a load before the client sends it again ("Popups"). Working in game
+  with `intel on`, 2026-11-08 (B1, `zexion_ap.dll` `2c29d10e…`, PR #118's head `c0be163`, the
+  owner's report): named as the chip over its sender, then its hint, in the default English and
+  in English(HD). Not run in game: one shown with `intel off`, and other translations.
 - **In a translation:** the pickup popup reads ItemNames 49: Intel Chip (in capitals outside
   English(HD): "Translations", mixed case) is written there while the record is INTEL CHIP
   ("Translations"; working in game in English(HD) 2026-11-04, B1, `zexion_ap.dll` `a7469024…`,
@@ -592,7 +713,10 @@ the helper:
 - writes the scanner's message (Text entry 12) as the client's line (`src/scan.cpp`), in
   capitals (the client sends it in mixed case for English(HD): "Translations"), only over the
   game's text or its own;
-- paints the disk glyph into font glyph `0xFB`;
+- paints the disk glyph into font glyph `0xFB`; it is also kept, the goal on or not, while a
+  received disk's popup waits or shows ("Popups"; working in game on received disks' popups,
+  2026-11-08, `zexion_ap.dll` `2c29d10e…`, held ones at the next load included; one shown with
+  the goal off not singled out);
 - with a disk or more, wraps the pause screen's EQUIPMENT callback (`src/equip.cpp`): after the
   game builds the screen, it moves the Energy Tank left and adds a widget for the disk (the
   count as its label), showing OS INSTALL DISK, its icon and description when selected; the game
@@ -737,8 +861,8 @@ built again in the translation's font; the pause row's count is KEYS's translate
 again ("2 of 15", in capitals outside English(HD): "Translations", mixed case; centered on the
 row as the game centers a prompt's line, built again
 whenever the game builds KEYS again: in the same call on OPTION MENU's way back, above, and in the
-next frame call otherwise), the key slots' characters hidden; the disk count
-popups carry the HD disk icon. Working in game 2026-11-02 in English(HD) (B1; "Translations", "Run
+next frame call otherwise), the key slots' characters hidden.
+Working in game 2026-11-02 in English(HD) (B1; "Translations", "Run
 in game" and "Run in game again"): the received disks' count popups and the reminder in the HD font,
 NO, and YES sending the goal (`zexion_ap.dll` `1c286c57…`); the equipment screen's OS Install Disk
 after the HD disk icon and its description wrapped inside its box, the question centered, and the
@@ -811,9 +935,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
   is dressed), so another seed's save started earlier in the same client run is known as one
   (`other_save`). With no client yet, the cached addresses configure it if the cache is for its
-  build and holds every key ("The pipe"), and the game holds every checked function's bytes. So
-  the offline
-  look, the map markers and the title lines all run with no client once the cache checks out.
+  build and holds every required key ("The pipe"), and the game holds every checked function's
+  bytes. So the offline look, the map markers, the title lines and the text window's repair (with
+  `text_cut_code` in the cache) all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed as the client would,
   once it has been in play since it loaded (a menu or a death later keeps the same save, so it is
@@ -921,7 +1045,11 @@ game names its own and the markers still raised after a save, a return to the ti
 2026-10-27, two Custom seeds under Obscure Majors on and Minors off, Class off and on, the stand-ins
 marked as the game's own majors, a stand-in's minimap dot flashing while on screen; 2026-10-28, with
 the on-screen write's patch (`tests/mapmarks_tests.cpp` runs the game's bytes and the patch side by
-side), no flash.
+side), no flash; again with the patch in `CodePatch` (`src/game_mem.h`), 2026-11-08
+(`zexion_ap.dll` `0f51bb6f…`, develop 5597753, the seed `lab/ap/live57`, slot 6, the owner's
+report): another player's progression item on its stand-in (Guardia 25,11) a major with the
+Progression Item label on the map, and on the minimap, with the item on screen, a major whose
+border did not flash.
 
 ### The title screen's lines
 
@@ -1152,7 +1280,7 @@ lands, not only the place passed.
     text, with the mark the game's last translated message left in its slot cleared (told by
     the HD object's serial), so it shows, in its box.
   - **Mixed case** (English(HD) only, the owner's rule, 2026-11-02; `mixed_case`, by the
-    language's name): the client writes its text in mixed case (hints, the disks' popups and
+    language's name): the client writes its text in mixed case (hints, the disks' counts and
     reminder, the scanner's line, the labels, "from Bob": `client/hints.py`, `client/discs.py`,
     `client/aplabels.py`, `client/session.py`), and the helper writes its own in mixed case too
     (the notices, the title lines, Archipelago, Intel Chip, Return home with the disks?, OS
@@ -1365,7 +1493,8 @@ Most ctest tests run against **the stand-in game**: the test program's own data 
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
 configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
 (`apply_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for `apply_in_frames`,
-`unload_under_load` and `proxy`). They share `tests/check.h`; `tests/fake_gl.h` is the fake
+`unload_under_load` and `proxy`). They share `tests/check.h` (with one test of a code patch on a page of its own, `check_code_patch`,
+that `game` and `mapmarks` run on theirs); `tests/fake_gl.h` is the fake
 OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe client of `parts`,
 `apply_in_frames` and `unload_under_load`, and the last two's busy threads and wait for an
 unload.
@@ -1381,9 +1510,10 @@ unload.
   frame and on restore; no stand-in for names; another type left alone), the stand-ins drawn
   in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
   world's items left alone; put back when not restyled and on restore),
-  the popup queue, the
+  the popup queue, the text window's cut repaired and put back (and a model of the game's
+  update and window, its lines flashing without the repair), the
   new-game watch, a whole ARCHIPELAGO press, what an unload's put back keeps while putting the game's memory back
-  (and a refused unload's watches apply again, a client gone drops), the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
+  (and a refused unload's watches apply again, a client gone drops), the received shield, scraps' drops and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
   request lapsing outside home's cell, at a start that is not home too, the `mission_prompt`
   parser, a death's own fade left alone, the helper's own popup holding the fade while it is the
@@ -1477,11 +1607,11 @@ unload.
 | `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
-| `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws |
+| `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws; the text window's cut patch (`text_cut_patch`) |
 | `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
-| `game_mem.cpp`, `game_layout.h` | fault-safe memory access; the layouts several parts share |
+| `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access; code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut` and `SeenMarker`); the layouts several parts share |
 | `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
 `proxy/` is the proxy `version.dll`.

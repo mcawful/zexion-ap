@@ -29,6 +29,9 @@ struct Popup {
     // A client's (from `apply`), with the pickup sound and held for its save; else one of the
     // helper's own notices (game_offline.cpp), silent.
     bool counted = false;
+    // An Area Map's popup from an `apply` with `intel` (the client's seed has Intel Chips): named
+    // Intel Chip when shown, whether `intel on` holds then or not.
+    bool intel = false;
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.
     std::shared_ptr<const OfflineSeed> origin;
@@ -37,6 +40,7 @@ struct Popup {
 struct Batch {
     std::vector<Cas> cas;
     bool refresh = false;
+    bool intel = false;  // its Area Maps are Intel Chips
     std::vector<Popup> popups;
 };
 
@@ -101,8 +105,8 @@ bool parse_number_list(const std::string& text, size_t max_digits, int lo, int h
 // "config name=rva name=rva ...", RVAs in hex (0x...) or decimal.
 std::string parse_config(const std::string& request, std::map<std::string, uint64_t>& out);
 
-// "apply" followed by lines "cas ITEM EXPECTED VALUE", "refresh", "popup ITEM SUFFIX" and
-// "notice ITEM TEXT". A popup's suffix keeps only letters (in the case sent), digits, space and
+// "apply" followed by lines "cas ITEM EXPECTED VALUE", "refresh", "intel", "popup ITEM SUFFIX"
+// and "notice ITEM TEXT". A popup's suffix keeps only letters (in the case sent), digits, space and
 // . , ' ! ? -, at most 40 characters; a notice's text keeps the same and :, at most 200, and is
 // shown alone, with no icon or name (notice_text).
 std::string parse_batch(const std::string& request, Batch& out);

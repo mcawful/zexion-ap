@@ -47,6 +47,10 @@ Archipelago Mod and Start the AP client to play a seed).
   `zexion.apworld` from the same release as yours installed in their Archipelago.
   archipelago.gg can host the generated game, but can't generate it: Zexion isn't one of its
   games.
+- **Item plando:** a YAML with `plando_items` needs item plando turned on where the game is
+  generated (`plando_options` in `host.yaml` including `items`), or the plando is skipped with
+  a warning. What works and what generation refuses: the game page, `zexion-game-page.md`,
+  "Can I use plando?".
 
 ## Start playing
 
@@ -109,6 +113,8 @@ With the client closed, your other saves play as normal.
 - To update: download the new release from the Releases page, close Zexion, then replace all
   three files with the new release's. Install the new `zexion.apworld`, and copy the new
   `zexion_ap.dll` and `version.dll` into Zexion's folder.
+- Then connect the client once with Zexion running. Until you do, the mod's taller messages may
+  flicker as they open and close while the client is closed.
 
 ## When Steam updates Zexion
 

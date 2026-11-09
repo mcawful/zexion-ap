@@ -279,6 +279,11 @@ TARGETS = (
         rip("E9 ?? ?? ?? ?? 48 89 48 08 48 8B 05 ?? ?? ?? ?? 48 89 83 00 02 00 00", 1, 5, -0x32),
         at("80 BB 4C 03 00 00 00 0F 84 ?? ?? ?? ?? 48 0F BF 83 E8 01 00 00 48 89 6C 24 40", -0x32),
     )),
+    Target("text_cut_code", "the text window's top cut (24 bytes, `mov eax, ebp` to the signed mod 8, in 0xA8210 on B1); the helper rewrites it to take off the glyph's row, so tall popups' lines stop flashing", {"B1": 0xA85E3}, (
+        at("48 8B 05 ?? ?? ?? ?? 48 89 81 98 01 00 00 ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? 66 0F 6E C0 EB 8A 49 63 C3 49 8B 8C C1 20 02 00 00 C6 81 20 01 00 00 00", 0xE),
+        at("48 8B 05 ?? ?? ?? ?? 48 89 81 98 01 00 00 8D 04 36 66 44 89 A9 A0 01 00 00 B9 08 00 00 00 2B C8 41 03 CE 81 E1 07 00 00 80", 0xEA),
+        rip("44 8B 81 18 02 00 00 8B 91 14 02 00 00 44 2B 81 F8 01 00 00 2B 91 F4 01 00 00 E8 ?? ?? ?? ??", 27, 31, 0x3D3),
+    )),
     Target("file_panel_fn", "the save entries' panel handler (the file select, COPY FILE and DELETE FILE)", {"B1": 0xB6920}, (
         rip("4C 8D 05 ?? ?? ?? ?? 41 8B D5 B9 04 00 00 00 49 89 46 68", 3, 7),
         at("48 8B C4 56 57 48 83 EC 58 48 8B B9 F8 01 00 00"),

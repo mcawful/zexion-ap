@@ -37,7 +37,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "1.0.0";
+constexpr char kVersion[] = "1.1.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // Passes on the original's rax: the test target returns a value, SDL_GL_SwapWindow none.
@@ -272,6 +272,7 @@ uintptr_t frame(void* argument) {
                 ReleaseSRWLockExclusive(&g_menu_lock);
             }
             g_game.pump_popups();
+            g_game.pump_drops(GetTickCount64());
         } catch (...) {
             // Nothing may unwind into the game.
         }
@@ -473,6 +474,8 @@ const Request kRequests[] = {
     {"mission_status", true, [] { return g_game.mission_status(); }},
     // How the last black after YES ended (mission.h, black): for live checks.
     {"mission_black", true, [] { return g_game.mission_black(); }},
+    // The received scraps' drops (game_calls.h, drop_status): for live checks.
+    {"drop_status", false, [] { return g_game.drop_status(); }},
     {"disk_slots", false, nullptr, &disk_slots},
     {"discs_status", false, [] { return g_game.equipment_status(); }},
     {"discs", false, nullptr, &discs},

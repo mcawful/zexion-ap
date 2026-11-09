@@ -62,7 +62,9 @@ class Connection:
     # Received items' popups (announced_tick): the count last stored.
     announced_sent: int | None = None
     found_sent_at: float = 0.0  # when the locations found were last stored (store_found)
-    hints_recreated: bool = False  # the stored hints' CreateHints sent again (hints_tick)
+    # The stored hints' CreateHints sent again (hints_tick); cleared when a send of new ones
+    # fails, so all are created again.
+    hints_recreated: bool = False
     choice_refused: bool = False  # the game's start table differed: no ARCHIPELAGO
     newgame: NewGame | None = None  # None: to arm
     # Whose "To play" lines were made (ARCHIPELAGO's or RANDOMIZER's: once a connection), and

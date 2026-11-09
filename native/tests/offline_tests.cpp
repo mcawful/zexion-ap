@@ -720,11 +720,46 @@ void test_the_logo_through_the_frame_call() {
     g_save_loaded = 3;
 }
 
-// The cache needs every key, as a client's config does: one missing refuses.
+// A received disk's glyph is painted while its popup waits and while it shows, with the goal off
+// (a load before the client turns it on again), and cleared once the popup has gone.
+void test_the_disk_glyph_kept_for_its_popup() {
+    reset_game();
+    gl_fake::reset_gl();
+    g_slots_live = g_message_is_last = true;  // the popup the game's last message, as in play
+    zap::Game game;
+    check(configure(game).empty(), "a client's config");
+    game.set_gl(gl_fake::fake_gl());
+    auto glyphs = [] {
+        std::vector<gl_fake::Upload> out;
+        for (const gl_fake::Upload& u : gl_fake::g_uploads) {
+            if (u.x == zap::font_x(zap::kDiskGlyph) && u.y == zap::font_y(zap::kDiskGlyph)) {
+                out.push_back(u);
+            }
+        }
+        return out;
+    };
+    check(apply(game, "apply\npopup 44 FROM BOB") == "applied", "a received disk");
+    game.watch_all(&no_callback);
+    check(glyphs().size() == 1 && !gl_fake::all_blank(glyphs()), "painted while it waits");
+    game.pump_popups();
+    check(!g_text.empty() && static_cast<uint8_t>(g_text[0]) == zap::kDiskGlyph, "then shown");
+    gl_fake::g_uploads.clear();
+    game.watch_all(&no_callback);
+    check(glyphs().empty(), "kept while it shows");
+    put<int32_t>(g_slots, 0x1EC, 0);  // its frames run out
+    game.watch_all(&no_callback);
+    check(glyphs().size() == 1 && gl_fake::all_blank(glyphs()), "cleared once it has gone");
+    game.put_back_game(&no_callback);
+    g_slots_live = g_message_is_last = false;
+}
+
+// The cache needs every key but the optional text_cut_code (the next test), as a client's config
+// does: one missing refuses.
 void test_a_cache_needs_every_key() {
     HMODULE self = GetModuleHandleW(nullptr);
     const auto full = stand_in_config();
     for (const auto& [key, rva] : full) {
+        if (key == "text_cut_code") continue;  // optional: the next test
         auto older = full;
         older.erase(key);
         zap::Game refused;
@@ -732,6 +767,35 @@ void test_a_cache_needs_every_key() {
             check(false, ("a cache missing " + key + " refuses").c_str());
         }
     }
+}
+
+// 1.0.0's cache, written before text_cut_code: it configures everything else, the text window's
+// cut left the game's, until a client's config, which holds the key, patches it.
+void test_a_cache_without_the_text_cut() {
+    HMODULE self = GetModuleHandleW(nullptr);
+    auto older = stand_in_config();
+    older.erase("text_cut_code");
+    auto is_games = [] {
+        return std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) == 0;
+    };
+    reset_game();
+    zap::Game game;
+    check(game.configure(self, older, false).empty() && game.configured() && !game.active(),
+          "a cache without text_cut_code configures");
+    game.watch_all(&no_callback);
+    check(is_games(), "the cut left the game's");
+    check(configure(game).empty(), "a client's config, text_cut_code in it");
+    game.watch_all(&no_callback);
+    check(!is_games(), "then the cut is patched");
+    game.put_back_game(&no_callback);
+    check(is_games(), "and put back with the game");
+
+    zap::Game full;
+    check(full.configure(self, stand_in_config(), false).empty(), "a cache with it configures");
+    full.watch_all(&no_callback);
+    check(!is_games(), "and the cut is patched with no client");
+    full.put_back_game(&no_callback);
+    check(is_games(), "put back with the game");
 }
 
 }  // namespace
@@ -748,6 +812,8 @@ int main() {
     test_a_seed_put_with_a_client_reaches_the_look();
     test_the_ap_saves_slots();
     test_the_logo_through_the_frame_call();
+    test_the_disk_glyph_kept_for_its_popup();
     test_a_cache_needs_every_key();
+    test_a_cache_without_the_text_cut();
     return report("offline tests");
 }

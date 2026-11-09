@@ -8,7 +8,7 @@ import struct
 import pytest
 from fakes import CELLS, SECRET_CELLS, SECRET_LIST, plan, secret_plan, section
 
-from client import game, native
+from client import game, ids, native
 from client import save_patch as sp
 from client import session as ss
 
@@ -111,7 +111,7 @@ def look_away(session: ss.Session, g: FakeGame) -> None:
 def reconnect(session: ss.Session) -> ss.Session:
     """The session as the next connection to its seed finds it (zexion_client's connected):
     the same one, its popup count to read again."""
-    session.announced_read = False
+    session.connected()
     return session
 
 
@@ -142,6 +142,15 @@ def test_secret_shuffles_155th_is_checked_by_its_location_index() -> None:
     other = ss.Session(p)
     other.listed = list(SECRET_CELLS)
     assert other.step(g, [], gap=0).left_seed
+
+
+def test_a_new_connection_gives_nothing_before_its_own_look_at_the_save(setup) -> None:
+    # Its poll then knows which found disks' counts are still to show (discs.received_notes).
+    session, g = setup
+    session.step(g, [17], gap=0)  # owed, seen by the last connection's poll
+    reconnect(session)
+    assert session.step(g, [17], gap=0).granted == {}
+    assert session.step(g, [17], gap=0).granted == {17: 1}
 
 
 def test_a_received_item_is_given_once(setup) -> None:
@@ -439,6 +448,22 @@ def test_popups_announce_each_received_item_once(with_helper) -> None:
     assert len(helper.requests) == 1, "nothing more to send: no repeat popup"
 
 
+def test_received_scrap_pops_up_as_itself_once(with_helper) -> None:
+    # The helper spawns a received scrap's drops after its popup (native/README.md, "Received
+    # scrap"), so each keeps its own item there, though all three count as Scrap Metal.
+    session, g, helper, _ = with_helper
+    scrap = [ids.SCRAP_METAL, ids.STAND_IN, ids.STAND_IN_PROGRESSION]
+    assert give(session, g, scrap, senders=["Bob"] * 3) == {ids.SCRAP_METAL: 3}
+    assert helper.requests[-1].splitlines()[1:] == [
+        "cas 46 0 3",
+        "popup 46 from Bob",
+        "popup 47 from Bob",
+        "popup 48 from Bob",
+    ]
+    session.step(g, scrap, gap=0, senders=["Bob"] * 3)
+    assert len(helper.requests) == 1 and session.announced == 3, "no popup, no drop, twice"
+
+
 def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:
     # Zenith Thrusters (26) sent again from the console: its byte stays 1.
     session, g, helper, _ = with_helper
@@ -449,15 +474,52 @@ def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) 
     assert session.announced == 2
 
 
-def test_an_area_maps_popup_shows_its_hint(with_helper) -> None:
-    session, g, helper, _ = with_helper
-    received, senders = [17, 49], ["Bob", "Alice"]
-    notes = {1: "HINT: SLIDE MOD AT GUARDIA 22,7"}
-    session.step(g, received, gap=0, senders=senders, notes=notes)
-    session.step(g, received, gap=0, senders=senders, notes=notes)
+def shown(helper: FakeHelper) -> list[str]:
+    """The popup and notice lines of the last batch, in order."""
     lines = helper.requests[-1].splitlines()
-    popups = [line for line in lines if line.startswith(("popup", "notice"))]
-    assert popups == ["popup 17 from Bob", "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7"]
+    return [line for line in lines if line.startswith(("popup", "notice"))]
+
+
+def give_with(session, g, received, senders, followups) -> None:
+    """Two polls giving ``received``, with the notices after their popups."""
+    for _ in range(2):
+        session.step(g, received, gap=0, senders=senders, followups=followups)
+
+
+def test_each_received_disk_or_chip_pops_up_from_its_sender_then_its_note(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    received, senders = [44, 49, 17, 44], ["Bob", "Alice", "Dan", "Carol"]
+    followups = {
+        0: "OS Install Disk 1 of 3",
+        1: "HINT: SLIDE MOD AT GUARDIA 22,7",
+        3: "OS Install Disk 2 of 3",
+    }
+    give_with(session, g, received, senders, followups)
+    assert len(helper.requests) == 1, "in one batch"
+    assert shown(helper) == [
+        "popup 44 from Bob",
+        "notice 44 OS Install Disk 1 of 3",
+        "popup 49 from Alice",
+        "notice 49 HINT: SLIDE MOD AT GUARDIA 22,7",
+        "popup 17 from Dan",
+        "popup 44 from Carol",
+        "notice 44 OS Install Disk 2 of 3",
+    ]
+    assert session.announced == 4, "four items handed over, not seven popups"
+    give_with(session, g, received, senders, followups)
+    assert len(helper.requests) == 1, "nothing shown again"
+
+
+def test_a_refused_batch_sends_both_of_a_disks_popups_again(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    helper.reply = "refused not in play"
+    give_with(session, g, [44], ["Bob"], {0: "OS Install Disk 1 of 3"})
+    assert session.announced == 0
+    helper.reply = "applied"
+    session.step(g, [44], gap=0, senders=["Bob"], followups={0: "OS Install Disk 1 of 3"})
+    assert len(helper.requests) == 2
+    assert shown(helper) == ["popup 44 from Bob", "notice 44 OS Install Disk 1 of 3"]
+    assert session.announced == 1
 
 
 def test_nothing_is_given_through_the_helper_until_the_popup_count_is_known(setup) -> None:
@@ -485,6 +547,18 @@ def test_a_received_upgrade_with_guns_first_pops_up_as_the_byte_it_sets(with_hel
     give(session, g, [14, 4], senders=["Alice"] * 2)
     assert helper.popups() == ["popup 4 from Alice", "popup 14 from Alice"]
     assert (g.inv[4], g.inv[14]) == (1, 1)
+
+
+@pytest.mark.parametrize("chips", [True, False])
+def test_a_seed_with_intel_chips_says_so_in_its_batches(chips: bool) -> None:
+    # The helper names its Area Maps' popups Intel Chip from it, whatever it has been told since.
+    session, g = ss.Session(PLAN, intel_chips=chips), FakeGame(PLAN)
+    helper = FakeHelper(g)
+    through(session, helper)
+    session.announced_read = True
+    give(session, g, [49], senders=["Bob"])
+    lines = helper.requests[-1].splitlines()
+    assert ("intel" in lines) is chips and lines[-1] == "popup 49 from Bob"
 
 
 def test_without_guns_first_each_item_pops_up_as_itself() -> None:

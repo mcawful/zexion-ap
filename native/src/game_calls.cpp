@@ -25,6 +25,10 @@ constexpr ptrdiff_t kPlayerCellRow = 0x107A, kPlayerCellColumn = 0x107B;
 constexpr uint64_t kPlayerStateSize = 0x1110;  // through the position, the last field used
 constexpr uint8_t kEnergyTank = 0, kMissileContainer = 1, kMegaBomb = 2, kMagnusArmor = 25;
 constexpr uint8_t kMissileBox = 36, kBombPack = 37;
+// A received OS Install Disk's popup: the disk glyph and OS INSTALL DISK, as its map label shows
+// it, not the record's DATA DISC with no icon (docs/re/memory.md, "The Data Disc").
+bool disk_popup(const Popup& popup) { return !popup.bare && popup.item == kDiskItem; }
+
 // The last message's frames left and its sequence beside the pointer to it (docs/re/memory.md,
 // "Game functions the helper calls"), and the frame calls between two of the helper's popups.
 constexpr size_t kMessageFramesLeft = 0x1EC;
@@ -45,11 +49,51 @@ using PlayerFn = void (*)(void* player);
 using EnergyHudFn = void (*)(void* player, char force);
 using SuitColorFn = void (*)(int slot, short palette);
 using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event handler
-// A received Energy Shield runs its pickup's area event (Game::run_item_event).
-constexpr uint8_t kEnergyShield = 50;
-constexpr uint8_t kSpawnEventType = 11;  // its arguments: the subtype, then the object
-constexpr int16_t kShieldObject = 2018;
-constexpr uint64_t kSettledMs = 1000;  // in play in one cell this long: a shield, a death
+// A received Energy Shield, Scrap Metal, Scrap Energy or Scrap Chunk runs its pickup's area
+// event (Game::run_item_event), each as B1's AreaEvents file holds it, which the game reads into
+// the table as is (docs/re/memory.md, "Received Energy Shields" and "Received scrap"): type 11,
+// subtype 1, which spawns the object at +4 at the cell's corner plus (5, 8), no sound, then runs
+// the event at +0x20 (-1: none) itself.
+constexpr uint8_t kScrapMetal = 46, kScrapEnergy = 47, kScrapChunk = 48, kEnergyShield = 50;
+static_assert(kScrapEnergy == kStandInItem && kScrapChunk == kStandInProgression,
+              "kStandInOwnEvents is in the stand-ins' order");
+constexpr uint8_t kSpawnEventType = 11, kFadeEventType = 1;
+constexpr ptrdiff_t kEventNext = 0x20;
+// The record, but for each item's object (+4), next event (+0x20) and own number (+0x24).
+constexpr BYTE kSpawnRecord[event::kSize] = {
+    0x0B, 0x00, 0x01, 0x00, 0x00, 0x00, 0xF3, 0x03, 0xFF, 0xFF, 0x01, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x02, 0x00, 0x05, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF,
+    0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+// Scrap Chunk's next event, 3552: type 1 (a fade) of layer 7 alone, toward -10 from 8, a step
+// every 3 frames; no sound, no next event.
+constexpr int16_t kChunkFade = 3552;
+constexpr BYTE kChunkFadeRecord[event::kSize] = {
+    0x01, 0x00, 0x07, 0x00, 0xF6, 0xFF, 0x08, 0x00, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00,
+    0xE9, 0xFF, 0xFD, 0xFF, 0xFC, 0xFF, 0xFC, 0xFF, 0x04, 0x00, 0x04, 0x00, 0xFF, 0xFF,
+    0x00, 0x00, 0x80, 0x3F, 0xFF, 0xFF, 0x00, 0x00, 0xE0, 0x0D, 0x00, 0x00};
+struct ItemEvent {
+    uint8_t item;
+    int16_t event, object, next;
+};
+constexpr ItemEvent kItemEvents[] = {
+    {kScrapMetal, 3548, 2010, -1},
+    {kScrapEnergy, kStandInOwnEvents[0], 2016, -1},
+    {kScrapChunk, kStandInOwnEvents[1], 2017, kChunkFade},
+    {kEnergyShield, 3553, 2018, -1},
+};
+const ItemEvent* item_event(uint8_t item) {
+    for (const ItemEvent& e : kItemEvents) {
+        if (e.item == item) return &e;
+    }
+    return nullptr;
+}
+// A received item whose drop the helper spawns after its popup: the scraps (the shield is the
+// client's to ask for, `shield`).
+bool has_drop(const Popup& popup) {
+    return popup.counted && !popup.bare &&
+           (popup.item == kScrapMetal || popup.item == kScrapEnergy || popup.item == kScrapChunk);
+}
+constexpr uint64_t kSettledMs = 1000;  // in play in one cell this long: a shield, a drop, a death
 // The player's death: death_fn(player, 0), as the damage code calls it (docs/re/memory.md,
 // "DeathLink").
 using DeathFn = void (*)(void* player, char kind);
@@ -57,8 +101,9 @@ using DeathFn = void (*)(void* player, char kind);
 // The config keys (client/patterns.py target names), in checking order, each with the member it
 // fills. Each lies in the image with kKeyBytes there (the offline cache checks a function's first
 // 16): functions in code, data in writable data, the CRT's import slots (only read) outside code.
-// Every key is required, from a client's config or the offline cache it wrote; what adding one
-// costs a cache written before it: native/README.md, "The pipe".
+// Every key is required, from a client's config or the offline cache it wrote, but text_cut_code:
+// a 1.0.0 cache lacks it, and without it only the cut stays the game's (null: TextCut never
+// patches). What adding a key costs a cache written before it: native/README.md, "The pipe".
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;
@@ -68,15 +113,17 @@ struct ConfigKey {
     Held held;
     uint64_t room;    // bytes from the address that must lie in its section, if not 0
     uint64_t before;  // and bytes before it
+    bool optional;    // a config without it configures, the member left null
 };
-constexpr ConfigKey code(const char* name, Member member) {
-    return {name, member, Held::kCode, 0, 0};
+constexpr bool kOptional = true;
+constexpr ConfigKey code(const char* name, Member member, bool optional = false) {
+    return {name, member, Held::kCode, 0, 0, optional};
 }
 constexpr ConfigKey data(const char* name, Member member, uint64_t room = 0, uint64_t before = 0) {
-    return {name, member, Held::kData, room, before};
+    return {name, member, Held::kData, room, before, false};
 }
 constexpr ConfigKey import_slot(const char* name, Member member) {
-    return {name, member, Held::kImportSlot, 0, 0};
+    return {name, member, Held::kImportSlot, 0, 0, false};
 }
 using G = GameAddresses;  // for the table's width
 constexpr ConfigKey kConfigKeys[] = {
@@ -121,6 +168,7 @@ constexpr ConfigKey kConfigKeys[] = {
     code("text_new_fn", &G::text_new_fn), code("text_link_fn", &G::text_link_fn),
     data("draw_layer", &G::draw_layer), data("map_handler", &G::map_handler),
     code("seen_marker_code", &G::seen_marker_code),
+    code("text_cut_code", &G::text_cut_code, kOptional),  // added in 1.1.0
     // Feats and achievements (feats.h). The slot is written while an AP save is loaded.
     code("ending_unlocks", &G::ending_unlocks), code("ending_join", &G::ending_join),
     data("stats_context", &G::stats_context, 3 * sizeof(void*)),
@@ -191,6 +239,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     found.hooks = at_.hooks;
     for (const ConfigKey& key : kConfigKeys) {
         auto it = rvas.find(key.name);
+        if (it == rvas.end() && key.optional) continue;  // left null
         std::string why = it == rvas.end() ? std::string("missing ") + key.name
                                            : check_key(image, image_size, key, it->second);
         if (!why.empty()) return why;
@@ -308,13 +357,16 @@ std::string Game::apply(const Batch& batch) {
     }
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
+        popup.intel = batch.intel && !popup.bare && popup.item == kAreaMapItem;
         popups_.push_back(std::move(popup));
     }
     return "applied";
 }
 
-bool Game::showable(const Popup& popup) const {
-    return !popup.origin || (rando_save_loaded() && section_is(*popup.origin, at_.rando_blob));
+bool Game::showable(const Popup& popup) const { return origin_loaded(popup.origin); }
+
+bool Game::origin_loaded(const std::shared_ptr<const OfflineSeed>& origin) const {
+    return !origin || (rando_save_loaded() && section_is(*origin, at_.rando_blob));
 }
 
 bool Game::popup_busy() const { return popup_frames_left() > 1; }
@@ -366,9 +418,11 @@ void Game::pump_popups() {
         if (stand_in >= 0) {
             // A received stand-in: the game's own name and no icon, not the restyled record's.
             head = kStandInNames[stand_in];
+        } else if (disk_popup(popup)) {
+            head = static_cast<char>(kDiskGlyph) + in_capitals(kDiskName);
         } else {
             if (rec[record::kIcon] != 0) head += static_cast<char>(rec[record::kIcon]);
-            head += record_name(rec);
+            head += popup.intel ? in_capitals(kIntelName) : std::string(record_name(rec));
         }
         text = popup_text(head, in_capitals(popup.text), kGamePopupWidth, &per_line);
     }
@@ -391,6 +445,9 @@ void Game::pump_popups() {
             at_.sound_system, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);
     }
+    own_disk_ = disk_popup(popup);
+    // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops).
+    if (has_drop(popup)) drops_.push_back({popup.item, popup.origin});
     popups_.erase(next);
     frames_since_popup_ = 0;
     // The game's last message now, with a new sequence: kept only if this call changed it
@@ -447,9 +504,14 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
     constexpr double kCap = kGamePopupWidth * 8.0;
     constexpr size_t kCapCharacters = kGamePopupWidth + kGamePopupWidth / 4;
     if (popup.bare) return layout_popup(L"", hd_case(at_, popup.text), m, kCap, kCapCharacters);
+    if (disk_popup(popup)) {
+        return layout_popup(hd_icon(kDiskGlyph) + hd_case(at_, kDiskName),
+                            hd_case(at_, popup.text), m, kCap, kCapCharacters);
+    }
     const int stand_in = stand_in_index(popup.item);
     // A stand-in's own name, under the label the helper wrote.
-    std::wstring name = translated_name(popup.item, stand_in >= 0, now);
+    std::wstring name = popup.intel ? hd_case(at_, kIntelName)
+                                    : translated_name(popup.item, stand_in >= 0, now);
     if (name.empty()) {
         name = hd_text(stand_in >= 0 ? std::string(kStandInNames[stand_in])
                                      : std::string(record_name(rec)));
@@ -502,29 +564,91 @@ std::string Game::kill(uint64_t now_ms) {
     return "died";
 }
 
+void Game::pump_drops(uint64_t now_ms) {
+    if (!configured_) return;
+    // The game's ending, whose cutscenes read as play: an ending this load was seen in play
+    // before keeps every drop for the next load, as the client holds received items (its goal
+    // read false, then true: client/session.py; docs/re/memory.md, "The ending: flag 250"). Read
+    // every frame, whether drops wait or not. A save past its ending reads as one throughout, and
+    // gets its drops until it plays the ending again (flag 211 set at the ship, or by the escape
+    // skip's YES, then cleared as the ending begins). 211 set counts in or out of play: the ship
+    // may show no frame in play before the ending.
+    const bool ending = ending_flag();
+    if (*at_.save_loaded == kNoSaveLoaded) {
+        load_before_ending_ = false;
+    } else if ((!ending && in_play()) || at_.flags[flag::kFinale] != 0) {
+        load_before_ending_ = true;
+    }
+    if (drops_.empty() || (ending && load_before_ending_)) return;
+    // As spawn_shield waits: in play in one cell for a second, and not from RETURN HOME's fade
+    // through its ending (kept for this save's next load, as the popups are).
+    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) return;
+    if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
+    auto next = std::find_if(drops_.begin(), drops_.end(),
+                             [this](const Drop& d) { return origin_loaded(d.origin); });
+    if (next == drops_.end()) return;
+    const uint8_t item = next->item;
+    std::string why = run_item_event(item);
+    if (why == "off the map") return;  // the raw cell can be -1 for a while: tried again
+    drops_.erase(next);
+    drop_status_ = (why.empty() ? "spawned " : "refused " + why + " ") + std::to_string(item);
+}
+
+bool Game::ending_flag() const {
+    return *at_.save_loaded != kNoSaveLoaded && at_.flags[flag::kEnding] != 0 &&
+           at_.flags[flag::kFinale] == 0;
+}
+
+std::string Game::drop_status() const {
+    return "queued " + std::to_string(drops_.size()) + "; last " + drop_status_;
+}
+
 std::string Game::run_item_event(uint8_t item) {
-    // The Energy Shield's pickup event, run as the pickup does, every field checked first
-    // (docs/re/memory.md, "Received Energy Shields").
+    // The item's pickup event, run as the pickup does, its record and every event it runs
+    // checked first (docs/re/memory.md, "Received Energy Shields" and "Received scrap").
+    const ItemEvent* traced = item_event(item);
+    if (traced == nullptr) return "no event traced";
     BYTE* rec = record(item);
     if (rec == nullptr) return "no item record";
-    int16_t event = at<int16_t>(rec, record::kEvent);
+    // The stand-ins' records read -1 while the helper restyles them (apitem.cpp, which restyles
+    // only a record holding the game's own event).
+    int16_t named = at<int16_t>(rec, record::kEvent);
+    if (named != traced->event && !(stand_in_index(item) >= 0 && named == -1)) {
+        return "event not as traced";
+    }
+    const int16_t event = traced->event;
     BYTE* table = pointer_at(at_.event_table);
     int16_t events = 0;
-    if (event < 0 || table == nullptr || !read(at_.event_count, 0, events) || event >= events) {
+    if (table == nullptr || !read(at_.event_count, 0, events) || event >= events ||
+        traced->next >= events) {
         return "no event";
     }
     BYTE* ev = table + static_cast<ptrdiff_t>(event) * event::kSize;
     BYTE copy[event::kSize];
     if (!safe_read(ev, copy, sizeof(copy))) return "no event";
-    if (copy[event::kType] != kSpawnEventType || copy[event::kTypeHigh] != 0 ||
-        word(copy, event::kArg0) != 1 || word(copy, event::kArg1) != kShieldObject ||
-        word(copy, event::kSelf) != event) {
-        return "event not as traced";
-    }
+    BYTE want[event::kSize];
+    std::memcpy(want, kSpawnRecord, sizeof(want));
+    std::memcpy(want + event::kArg1, &traced->object, sizeof(int16_t));
+    std::memcpy(want + kEventNext, &traced->next, sizeof(int16_t));
+    std::memcpy(want + event::kSelf, &event, sizeof(int16_t));
+    if (std::memcmp(copy, want, sizeof(copy)) != 0) return "event not as traced";
     BYTE* handler = pointer_at(at_.event_handlers, kSpawnEventType * sizeof(void*));
     if (handler == nullptr) return "no handler";
     if (!in_image_code(reinterpret_cast<HMODULE>(base_), handler)) {
         return "handler not in the game's code";
+    }
+    if (traced->next == kChunkFade) {
+        // The type-11 handler runs it from the table itself (0xF719 to 0xF73F).
+        BYTE* fade = table + static_cast<ptrdiff_t>(kChunkFade) * event::kSize;
+        if (!safe_read(fade, copy, sizeof(copy)) ||
+            std::memcmp(copy, kChunkFadeRecord, sizeof(copy)) != 0) {
+            return "event not as traced";
+        }
+        BYTE* fade_handler = pointer_at(at_.event_handlers, kFadeEventType * sizeof(void*));
+        if (fade_handler == nullptr ||
+            !in_image_code(reinterpret_cast<HMODULE>(base_), fade_handler)) {
+            return "handler not in the game's code";
+        }
     }
     BYTE* p = player();
     uint8_t row = at<uint8_t>(p, kPlayerCellRow), column = at<uint8_t>(p, kPlayerCellColumn);
@@ -615,6 +739,7 @@ void Game::watch_all(WidgetCallback callback) {
     watch_map_marks();
     watch_pickups();
     watch_translation();
+    text_cut_.watch(at_.text_cut_code);  // tall popups' lines cut right (text.h)
 }
 
 void Game::watch_pickups() {
@@ -859,7 +984,10 @@ void Game::watch_equipment() {
     pause_row_.prepare(known_disk_row());
     show_glyph(pause_disc_, pause_row_.on());
     pause_row_.watch(at_, pause_disc_.painted());
-    show_glyph(disk_glyph_, !scan_line_.empty());
+    // Also while a received disk's popup waits or shows: after a load the goal may not be on yet.
+    const bool disk_popup_due = (own_disk_ && own_popup_up()) ||
+                                std::any_of(popups_.begin(), popups_.end(), disk_popup);
+    show_glyph(disk_glyph_, !scan_line_.empty() || disk_popup_due);
     if (!scan_line_.empty()) {
         equip_.install(at_);
     } else {
@@ -1059,7 +1187,7 @@ void Game::watch_map_marks() {
     // The write and the passes put back the first frame out of the seed's save: a plain
     // randomizer game's Scrap Chunks are minors.
     if (!seed) {
-        seen_marker_.watch(at_.seen_marker_code, false);
+        seen_marker_.restore();
         map_seed_passes_ = 0;
     }
     if (!ap_items_.active()) return;
@@ -1070,7 +1198,7 @@ void Game::watch_map_marks() {
     if (map_seed_passes_ < 2) ++map_seed_passes_;
     if (map_seed_passes_ < 2) return;
     // Before the raise, so an item on screen stays raised.
-    seen_marker_.watch(at_.seen_marker_code, true);
+    seen_marker_.watch(at_.seen_marker_code);
     mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0);
 }
 
@@ -1359,6 +1487,7 @@ void Game::put_back_game(WidgetCallback callback) {
     }
     put_back_files();
     leave_offline();
+    text_cut_.restore();
     if (configured_) {
         // The translation's entries back; the popup areas emptied once free (unload waits).
         const std::optional<Loaded> now = loaded_translation(at_);
