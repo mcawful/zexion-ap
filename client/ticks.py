@@ -691,8 +691,10 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
     waiting = sorted(ctx.load.save_collected - done)
     if not waiting:
         return
-    hunt, plan = conn.hunt, conn.plan
-    disks = [i for i in waiting if hunt is not None and i in hunt.locations]
+    hunt, plan, current = conn.hunt, conn.plan, seed.session
+    # A disk's count waits for the popup count's read: it counts the received disks handed over.
+    counts = hunt is not None and current.announced_read
+    disks = [i for i in waiting if counts and i in hunt.locations]
     maps = [i for i in waiting if plan.location_items[i] == ids.AREA_MAP and conn.hint_targets]
     used = hints_used(ctx) or {}
     maps = [i for i in maps if f"l{i}" in used]  # its hint assigned (hints_tick)
@@ -700,9 +702,10 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
         return
     popups: list[tuple[int, str, bool]] = []
     if disks:
-        have = discs.owned(hunt, p.codes, p.found)
-        # The ones shown now are the latest found: they count up to the count as it is.
-        first = have - len(disks) + 1
+        # The ones shown now are the latest found: they count up from the disks the player has,
+        # the received ones counted up to those whose popup has gone to the helper (a received
+        # disk still to be handed over counts these in its own notice: discs.received_notes).
+        first = discs.owned(hunt, p.codes[: current.announced], p.found) - len(disks) + 1
         told_count = hunt.required if seed.discs_told else None
         popups += [
             (ids.DATA_DISC, discs.note(first + k, told_count), True) for k in range(len(disks))

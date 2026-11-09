@@ -8,7 +8,7 @@ import types
 
 from fakes import connection, seed_state
 
-from client import state, storage
+from client import ids, state, storage
 
 HINTED = [1, 3392510_520]  # (player, location) of a hint an Area Map gave
 
@@ -143,3 +143,55 @@ def test_a_connection_that_has_ended_neither_reads_nor_stores_the_count() -> Non
     p = types.SimpleNamespace(codes=[16, 17, 18], found=[])
     asyncio.run(storage.announced_tick(ctx, old, current, p))
     assert not current.announced_read and ctx.sent == []
+
+
+CHIP_HINT = "Hint: Slide Mod is at Guardia 22,7"
+
+
+def chip_seed() -> tuple[FakeContext, state.Connection, types.SimpleNamespace]:
+    """An Intel Chip seed whose slot has received one chip from another world (while the client
+    was away), its popup not handed over yet."""
+    conn = connection(hints=[[*HINTED, 16]], intel_chip=True)
+    ctx = FakeContext(conn)
+    ctx.item_names = types.SimpleNamespace(lookup_in_slot=lambda code, slot: "Slide Mod")
+    ctx.location_names = types.SimpleNamespace(lookup_in_slot=lambda loc, player: "Guardia 22,7")
+    ctx.seed_state.session.announced, ctx.seed_state.session.announced_read = 0, False
+    return ctx, conn, types.SimpleNamespace(codes=[ids.AREA_MAP], found=[])
+
+
+def test_the_popup_count_is_not_read_before_the_hints() -> None:
+    # Were it read first, the chip's popup would go out with no hint and the count move past it:
+    # its hint, given later, would never show in the game.
+    ctx, conn, p = chip_seed()
+    current = ctx.seed_state.session
+    ctx.stored_data[conn.announced_key] = 0
+    asyncio.run(storage.announced_tick(ctx, conn, current, p))
+    assert not current.announced_read, "not before the hints are read"
+    ctx.stored_data[conn.hints_key] = None  # read: the server has none stored
+    asyncio.run(storage.announced_tick(ctx, conn, current, p))
+    assert current.announced_read and current.announced == 0
+    asyncio.run(storage.hints_tick(ctx, p))
+    assert storage.hint_notes(ctx, p.codes) == {0: CHIP_HINT}
+
+
+def test_without_area_map_hints_the_popup_count_needs_no_hints_read() -> None:
+    conn = connection()
+    ctx = FakeContext(conn)
+    current = ctx.seed_state.session
+    current.announced_read = False
+    ctx.stored_data[conn.announced_key] = 1
+    asyncio.run(storage.announced_tick(ctx, conn, current, types.SimpleNamespace(codes=[16, 17])))
+    assert current.announced_read and current.announced == 1
+
+
+def test_a_chip_whose_hint_failed_to_send_still_has_its_hint_and_it_is_sent_again() -> None:
+    ctx, conn, p = chip_seed()
+    ctx.stored_data[conn.hints_key] = {}
+    conn.hints_recreated = True  # this connection's hints created again already
+    ctx.fail = True
+    asyncio.run(storage.hints_tick(ctx, p))
+    assert storage.hint_notes(ctx, p.codes) == {0: CHIP_HINT}
+    ctx.fail = False
+    asyncio.run(storage.hints_tick(ctx, p))
+    hints = [m for m in ctx.sent if m["cmd"] == "CreateHints"]
+    assert hints == [{"cmd": "CreateHints", "player": 1, "locations": [3392510_520]}]

@@ -26,13 +26,17 @@ class CommonContext:
         self.items_received: list = []
         self.locations_checked: set[int] = set()
         self.stored_data: dict = {}
+        self.stored_data_notification_keys: set[str] = set()
+        self.gets: list[list[str]] = []  # the keys of each Get sent, as CommonClient sends them
         self.player_names: dict[int, str] = {}
         self.slot, self.team = 1, 0
         self.server_seed_name = self.seed_name = None
         self.finished_game = False
 
     def set_notify(self, *keys: str) -> None:
-        pass
+        if new := [k for k in keys if k not in self.stored_data_notification_keys]:
+            self.stored_data_notification_keys.update(new)
+            self.gets.append(new)
 
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
         pass
@@ -660,3 +664,49 @@ def test_a_received_disk_has_its_count_and_a_chip_its_hint_after_its_popup(monke
         1: "OS Install Disk 1",
         2: "OS Install Disk 2",
     }
+
+
+@pytest.mark.parametrize("shown", [False, True])
+def test_a_received_disks_count_leaves_out_a_found_disk_whose_count_is_still_to_show(
+    shown, monkeypatch
+) -> None:
+    # The player picked up the disk at location 12 and its count has not shown yet: it counts
+    # in that notice (followups_tick), which comes after this one. Once shown, it counts here.
+    hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
+    conn = connection(**hunt)
+    ctx = context(conn, Showing(game.IN_PLAY))
+    ctx.locations_checked = {zc.LOCATION_ID_BASE + 12}
+    ctx.load.save_collected = {12}
+    ctx.stored_data[conn.popped_key] = {"12": 1} if shown else {}
+    monkeypatch.setattr(ctx, "received", lambda: ([44], ["Bob"]))
+    monkeypatch.setattr(zc, "hints_tick", nothing)
+    passed: dict = {}
+
+    def step(g, received, **kwargs):
+        passed.update(kwargs)
+        raise game.GameNotRunning("Zexion is not running")  # the poll ends here
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert passed["followups"] == {0: f"OS Install Disk {2 if shown else 1}"}
+
+
+@pytest.mark.parametrize("hints", [[], [[1, 3392510_520, 16]]])
+def test_the_popup_count_and_the_hints_are_asked_for_in_one_get(hints, monkeypatch) -> None:
+    # Two Gets get two replies, and a poll between them would read the count without the hints:
+    # an Intel Chip received while the client was away would pop up with no hint.
+    monkeypatch.setattr(zc.Utils, "async_start", lambda coro, name="": coro.close(), raising=False)
+    ctx = zc.ZexionContext(None, None)
+    ctx.seed_name = "A"
+    ctx.connected(slot_data(hints=hints, intel_chip=bool(hints)))
+    conn = ctx.conn
+    keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key]
+    assert ctx.gets == [keys + ([conn.hints_key] if hints else [])]
+    # The replies, then a drop: reset_server_state keeps stored_data and what is subscribed.
+    ctx.stored_data = {key: 3 for key in keys} | {conn.hints_key: {}}
+    ctx.gets = []
+    ctx.connected(slot_data(hints=hints, intel_chip=bool(hints)))
+    conn = ctx.conn
+    assert conn.announced_key not in ctx.stored_data, "the last connection's count not read"
+    assert conn.hints_key not in ctx.stored_data
+    assert ctx.gets == [[conn.announced_key] + ([conn.hints_key] if hints else [])]

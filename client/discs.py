@@ -69,11 +69,18 @@ def note(count: int, required: int | None = None) -> str:
 
 
 def received_notes(
-    hunt: DiscHunt, received: Sequence[int], checked: Iterable[int], told: bool = True
+    hunt: DiscHunt,
+    received: Sequence[int],
+    checked: Iterable[int],
+    told: bool = True,
+    pending: Iterable[int] = (),
 ) -> dict[int, str]:
     """The count shown after each received disk's popup, by its position in ``received``: the
-    count with that disk, so a batch of them counts up; with how many are needed once ``told``."""
-    count = hunt.start + len(hunt.locations & set(checked))
+    count with that disk, so a batch of them counts up; with how many are needed once ``told``.
+    Found disks whose own count is still to be shown (``pending``) are left out: they count in
+    that later notice instead (ticks.followups_tick), so each count shows once, in the order
+    the helper shows them."""
+    count = hunt.start + len(hunt.locations & (set(checked) - set(pending)))
     out = {}
     for index, code in enumerate(received):
         if code == DATA_DISC:

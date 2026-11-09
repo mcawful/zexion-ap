@@ -266,6 +266,14 @@ class Session:
                 step.helper_error = exc
         return step
 
+    def connected(self) -> None:
+        """A new connection to this seed (zexion_client's connected): the popup count is read
+        from the server again (announced_tick), and nothing is given before a step of this
+        connection has looked at the save, so the poll knows which found disks' counts are still
+        to show (discs.received_notes) before a received disk's count is worked out."""
+        self.announced_read = False
+        self._due = None
+
     def hold_ending(self) -> None:
         """The ending began again in this load, on a save past it (RETURN HOME's YES: the
         helper says so, ticks.replay_tick): held as an ending beginning is, which flag 250, set
