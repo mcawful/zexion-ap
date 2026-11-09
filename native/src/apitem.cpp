@@ -26,8 +26,14 @@ const char kApLogoRows[16][17] = {
 namespace {
 
 // What Scrap Energy and Scrap Chunk share as the game loads them (B1); their frames: StandIn.
-constexpr RecordShape kOwnShape = {.kind = 34, .ticks = 6, .frames = 2, .icon = 0, .palette = 8,
-                                   .inventory = 46, .redirect = 0, .pickup_class = 1};
+constexpr RecordShape kOwnShape = {.kind = 34,
+                                   .ticks = kStandInOwnTicks,
+                                   .frames = kStandInOwnFrameCount,
+                                   .icon = 0,
+                                   .palette = kStandInOwnPalette,
+                                   .inventory = 46,
+                                   .redirect = 0,
+                                   .pickup_class = 1};
 // What they become: one frame each and no area event at pickup; their names start with the logo
 // glyph, their icons stay 0.
 constexpr int16_t kLogoFrames = 1, kNoEvent = -1;
@@ -84,8 +90,9 @@ struct StandIn {
     const char (*logo)[17];
 };
 constexpr StandIn kStandIns[kStandInCount] = {
-    {kStandInItem, 134, 3549, kStandInNames[0], kStandInFrame, kApLogoRows},
-    {kStandInProgression, 142, 3550, kStandInNames[1], kStandInProgressionFrame, kLogoArrow},
+    {kStandInItem, kStandInOwnFrames[0], 3549, kStandInNames[0], kStandInFrame, kApLogoRows},
+    {kStandInProgression, kStandInOwnFrames[1], 3550, kStandInNames[1], kStandInProgressionFrame,
+     kLogoArrow},
 };
 
 bool is_own(const BYTE* r, const StandIn& s) {

@@ -32,6 +32,12 @@ constexpr int kStandInRecords[kStandInCount] = {kStandInItem, kStandInProgressio
 constexpr int kStandInFrames[kStandInCount] = {kStandInFrame, kStandInProgressionFrame};
 // Their own names, as the game loads their records (47's, then 48's).
 constexpr const char* kStandInNames[kStandInCount] = {"SCRAP ENERGY", "SCRAP CHUNK"};
+// Their own looks, as the game loads their records (B1, docs/re/memory.md, "Other players'
+// items"): first frames 134 and 142, two frames of 6 ticks each, palette 8. While the records are
+// restyled, another Zexion player's Scrap Energy or Scrap Chunk is dressed from these (looks.cpp).
+constexpr int16_t kStandInOwnFrames[kStandInCount] = {134, 142};
+constexpr int16_t kStandInOwnTicks = 6, kStandInOwnFrameCount = 2;
+constexpr uint8_t kStandInOwnPalette = 8;
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
 
 // Font glyph `code`'s place in the sprite texture: 16 a row of 8 x 8, from (0, 976).

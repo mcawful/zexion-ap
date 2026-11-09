@@ -11,7 +11,7 @@ namespace zap {
 
 namespace {
 
-constexpr int kStandInPalette = 8;  // Scrap Energy's and Scrap Chunk's
+constexpr int kStandInPalette = kStandInOwnPalette;  // Scrap Energy's and Scrap Chunk's
 // The helper's look for them: palette 26 (no shader, glColor from the style) at style 34, which
 // every rewrite of the style table sets to color 3: white, or cream with the fourth PALETTE
 // display option (docs/re/memory.md, "Other players' items").
@@ -31,15 +31,26 @@ struct Look {
 
 // The look of item `item` (its record in `records`) for an object whose frame list holds
 // `count` frames: false if the record does not read, its frames do not lie in the list, or its
-// palette is not in the table.
+// palette is not in the table. A stand-in's record restyled now (`ours`) shows the logo, not the
+// item: Scrap Energy or Scrap Chunk then looks as the game loads it (kStandInOwnFrames).
 bool look_of(const BYTE* palette_table, const BYTE* records, int item, int64_t clock,
-             int32_t count, Look& out) {
-    BYTE r[record::kSize];
-    if (!safe_read(records + item * record::kSize, r, sizeof(r))) return false;
-    int16_t first = field<int16_t>(r, record::kFrame);
-    int16_t ticks = field<int16_t>(r, record::kTicks);
-    int16_t frames = field<int16_t>(r, record::kFrames);
-    int palette = static_cast<int8_t>(r[record::kPalette]);
+             int32_t count, const bool (&ours)[kStandInCount], Look& out) {
+    int16_t first = 0, ticks = 0, frames = 0;
+    int palette = -1;
+    const int stand_in = stand_in_index(item);
+    if (stand_in >= 0 && ours[stand_in]) {
+        first = kStandInOwnFrames[stand_in];
+        ticks = kStandInOwnTicks;
+        frames = kStandInOwnFrameCount;
+        palette = kStandInOwnPalette;
+    } else {
+        BYTE r[record::kSize];
+        if (!safe_read(records + item * record::kSize, r, sizeof(r))) return false;
+        first = field<int16_t>(r, record::kFrame);
+        ticks = field<int16_t>(r, record::kTicks);
+        frames = field<int16_t>(r, record::kFrames);
+        palette = static_cast<int8_t>(r[record::kPalette]);
+    }
     if (ticks <= 0 || frames <= 0 || first < 0 || first + frames > count || palette < 0 ||
         palette >= kPalettes) {
         return false;
@@ -297,7 +308,7 @@ void ItemLooks::apply(const GameAddresses& at, const BYTE* pool, BYTE* base) {
                                   : now_base == d.base || now_base == base;
         Look look;
         if (!expected || !look_of(at.palette_table, records, item, clock,
-                                  field<int32_t>(seen, sprite::kFrameCount), look)) {
+                                  field<int32_t>(seen, sprite::kFrameCount), ours, look)) {
             continue;
         }
         BYTE* new_base = base + (look.frame - kStandInFrames[stand_in]) * sprite::kFrameSize;
@@ -404,7 +415,7 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
         int32_t count = field<int32_t>(seen, sprite::kFrameCount);
         Look look;
         if (frame < 0 || frame >= count ||
-            !look_of(at.palette_table, records, item, clock, count, look)) {
+            !look_of(at.palette_table, records, item, clock, count, ours, look)) {
             continue;
         }
         put(object, sprite::kFrameShown, base + look.frame * sprite::kFrameSize);
