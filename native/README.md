@@ -356,7 +356,10 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   the game's other message routine (`0x185540` on B1) draws its own through it too.
   Tests: `tests/game_tests.cpp`. Working in game 2026-11-08 (B1, `zexion_ap.dll` `b8ef0214…`):
   the pod reminder (four lines and its blank row) in the default English, every line opening
-  and closing with the box, filmed; in English(HD), a two-line hint as before. Not run: a
+  and closing with the box, filmed; in English(HD), a two-line hint as before. Again with the
+  patch in `CodePatch` (`src/game_mem.h`), 2026-11-08 (B1, `zexion_ap.dll` `0f51bb6f…`, develop
+  5597753, the seed `lab/ap/live57`, slot 6, the owner's report): the pod reminder in the
+  default English, no line flashing. Not run: a
   five-line popup, a tall popup in a translation, the other message routine's text (what it
   shows is not recorded).
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
@@ -395,8 +398,10 @@ again, 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76
 while disconnected, given once on reconnecting and not again after another reconnect, 2026-11-04
 (B1, `zexion_ap.dll` `a7469024…`, develop 345fea7). The stop after three not seen up: stand-in
 tests only, not reached in game (`docs/re/memory.md`, "Received Energy Shields"). The check of
-the whole event (since 2026-11-08; before, its type, subtype, object and own number): stand-in
-tests only, not run in game.
+the whole event (since 2026-11-08; before, its type, subtype, object and own number): working
+in game 2026-11-09 (B1, `zexion_ap.dll` `5f761061…`, develop 88bebfb, the seed
+`lab/ap/live57`, slot 6, the owner's report): a shield sent from the server's console came up
+and was read as up.
 
 ### Received scrap
 
@@ -406,7 +411,8 @@ tests only, not run in game.
   Chunk's runs a fade of layer 7 after it, as the game's does. The drops start near the top-left
   corner of the player's cell (the corner plus (5, 8), as the pickup's start at its item's
   cell's), not at the player: where that puts them in a room of several cells, and whether
-  they can be reached from anywhere in it, is not seen in game. Its inventory byte stays the
+  they can be reached from anywhere in it, is not recorded (run once from the far side of a
+  big room, below). Its inventory byte stays the
   client's grant, +1 Scrap Metal ("Grants"). The record must name the event (or −1, a
   stand-in's record while the helper restyles it: "Other players' items"), and the event, and
   the fade it runs next, must be B1's records byte for byte, their handlers in the game's code
@@ -443,7 +449,17 @@ tests only, not run in game.
   collected are not given again, as with the game's own pickup.
 - **Put back:** nothing to put back.
 
-Stand-in tests (`tests/game_tests.cpp`, `test_received_scrap_drops`). Not run in game.
+Stand-in tests (`tests/game_tests.cpp`, `test_received_scrap_drops`). Working in game
+2026-11-09 (B1, `zexion_ap.dll` `5f761061…` with `version.dll` `02a5e7f4…`, develop 88bebfb,
+the seed `lab/ap/live57`, slot 6, the owner's report), each sent from the server's console: a
+Scrap Metal, a Scrap Energy and a Scrap Chunk dropped after their popups, the Scrap Chunk with
+the player at the far side of a big room, its fade looking right; a Scrap Metal sent while the
+client was disconnected dropped once after the reconnect, and nothing came again after a second
+reconnect. The owner said they worked as expected: which drops came, how many, where they
+appeared and what collecting them gave were not described (what a drop gives stays assumed:
+`docs/re/memory.md`, "Received scrap"), and `drop_status` was not read. Not run in game: drops
+held through the game's ending or RETURN HOME WITH THE DISKS?, or waiting for their save or for
+the player to be on the map.
 
 ### DeathLink
 
@@ -630,7 +646,13 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
 - **Scrap Energy and Scrap Chunk:** for another Zexion player's (`@47`, `@48`), N's record is
   a stand-in's, restyled to the logo, so their look is taken as the game loads it (frames 134
   and 135 or 142 and 143, palette 8: `kStandInOwnFrames`, `src/apitem.h`), as their names are,
-  not the logo in palette 8 (`docs/re/memory.md`, "Other players' items"). Not run in game.
+  not the logo in palette 8 (`docs/re/memory.md`, "Other players' items"). Working in game for
+  Scrap Chunk (`@48`), 2026-11-09 (B1, `zexion_ap.dll` `5f761061…`, develop 88bebfb, the seed
+  `lab/ap/live57`, slot 6, the owner's report): another Zexion player's at Kresezoa 19,11, a sky
+  room, showed as a Scrap Chunk (at develop 5597753 it had shown the logo in the room's
+  colors), and its pickup showed its popup for that player (the text not quoted); a
+  progression stand-in at Guardia 22,7 still drew the logo in its own colors. Not run in game:
+  Scrap Energy (`@47`), and the seed's other such cell (R'Talva 30,45, out of logic then).
 - **Safety:** it writes only stand-ins with the template's base and palette 8 or 26 (the
   helper's own colors, "Other players' items"), or ones it dressed (the same spawn); and, for
   R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared and set again, only
@@ -1023,7 +1045,11 @@ game names its own and the markers still raised after a save, a return to the ti
 2026-10-27, two Custom seeds under Obscure Majors on and Minors off, Class off and on, the stand-ins
 marked as the game's own majors, a stand-in's minimap dot flashing while on screen; 2026-10-28, with
 the on-screen write's patch (`tests/mapmarks_tests.cpp` runs the game's bytes and the patch side by
-side), no flash.
+side), no flash; again with the patch in `CodePatch` (`src/game_mem.h`), 2026-11-08
+(`zexion_ap.dll` `0f51bb6f…`, develop 5597753, the seed `lab/ap/live57`, slot 6, the owner's
+report): another player's progression item on its stand-in (Guardia 25,11) a major with the
+Progression Item label on the map, and on the minimap, with the item on screen, a major whose
+border did not flash.
 
 ### The title screen's lines
 
