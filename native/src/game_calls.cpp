@@ -29,9 +29,9 @@ constexpr uint8_t kMissileBox = 36, kBombPack = 37;
 // it, not the record's DATA DISC with no icon (docs/re/memory.md, "The Data Disc").
 bool disk_popup(const Popup& popup) { return !popup.bare && popup.item == kDiskItem; }
 
-// The last message's sequence beside the pointer to it (docs/re/memory.md, "Game functions the
-// helper calls"; its frames left: kMessageFramesLeft), and the frame calls between two of the
-// helper's popups.
+// The last message's frames left and its sequence beside the pointer to it (docs/re/memory.md,
+// "Game functions the helper calls"), and the frame calls between two of the helper's popups.
+constexpr size_t kMessageFramesLeft = 0x1EC;
 constexpr ptrdiff_t kLastSequence = 8;
 constexpr int kPopupGapFrames = 20;
 constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' slots
@@ -124,7 +124,7 @@ constexpr ConfigKey kConfigKeys[] = {
     data("rando_slots", &G::rando_slots, slot::kCount * kSectionSize),
     code("text_new_fn", &G::text_new_fn), code("text_link_fn", &G::text_link_fn),
     data("draw_layer", &G::draw_layer), data("map_handler", &G::map_handler),
-    code("seen_marker_code", &G::seen_marker_code),
+    code("seen_marker_code", &G::seen_marker_code), code("text_cut_code", &G::text_cut_code),
     // Feats and achievements (feats.h). The slot is written while an AP save is loaded.
     code("ending_unlocks", &G::ending_unlocks), code("ending_join", &G::ending_join),
     data("stats_context", &G::stats_context, 3 * sizeof(void*)),
@@ -386,7 +386,6 @@ void Game::pump_popups() {
         text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
     if (message == nullptr) return;  // all four slots busy: try again next frame
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
-    show_text_when_open(static_cast<BYTE*>(message));
     // The translation's font; failing that, the pixel text, the slot's last translated mark
     // cleared so it shows (clear_mark checks the flag itself).
     if (!translated || !popup_areas_.show(at_, *now, where, static_cast<BYTE*>(message), hd)) {
@@ -629,6 +628,7 @@ void Game::watch_all(WidgetCallback callback) {
     watch_map_marks();
     watch_pickups();
     watch_translation();
+    text_cut_.watch(at_.text_cut_code);  // tall popups' lines cut right (text.h)
 }
 
 void Game::watch_pickups() {
@@ -1376,6 +1376,7 @@ void Game::put_back_game(WidgetCallback callback) {
     }
     put_back_files();
     leave_offline();
+    text_cut_.restore();
     if (configured_) {
         // The translation's entries back; the popup areas emptied once free (unload waits).
         const std::optional<Loaded> now = loaded_translation(at_);

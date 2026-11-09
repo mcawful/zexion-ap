@@ -1,6 +1,7 @@
 #include "text.h"
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 
 #include "apitem.h"  // kItemNameMax
@@ -137,44 +138,64 @@ void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
     put(message, kMessageY, y - 4);
 }
 
-void show_text_when_open(BYTE* message) {
-    // The window (0xA8210) tests glyph row r at 10r and cuts a glyph's top at the window's top
-    // edge mod 8, leaving out the row's own offset, so a row past the first cut there shows the
-    // wrong part; past three rows it comes back whole when the edge reaches a multiple of 8, so
-    // lines flash while the box opens and closes (docs/re/memory.md, "Game functions the helper
-    // calls"). The message's update moves the window's half-width by its step each frame the box
-    // opens or closes, and leaves it while the box is open. Started at 4w - step x half-height,
-    // it holds no glyph until the opening's last frame, all of them whole from then on, and none
-    // from the closing's first; the half-height is started so that it then holds every row whole.
-    // The text then shows for the frames left less twice the half-height, plus one.
-    int32_t glyphs = 0, w = 0, half = 0, step_x = 0, step_y = 0, wx = -1, wy = -1, frames = 0;
-    double bottom = -1;
-    if (message == nullptr || !read(message, kMessageGlyphs, glyphs) ||
-        !read(message, kMessageLineLength, w) || !read(message, kMessageHalfHeight, half) ||
-        !read(message, kTextWindowStepX, step_x) || !read(message, kTextWindowStepY, step_y) ||
-        !read(message, kTextWindowX, wx) || !read(message, kTextWindowY, wy) ||
-        !read(message, kMessageBoxBottom, bottom) || !read(message, kMessageFramesLeft, frames)) {
-        return;
+namespace {
+
+// The game's top cut (B1, 0xA85E3; listing in docs/re/memory.md), esi the glyph's row, ebp the
+// window's top edge, r13w the cut glyph's draw (31):
+//   mov eax, ebp; mov [rcx+0x1A0], r13w; and eax, 0x80000007; jge +7; dec eax; or eax, -8;
+//   inc eax  (eax: the edge mod 8, signed)
+constexpr BYTE kTextCutGame[kTextCutSize] = {0x8B, 0xC5, 0x66, 0x44, 0x89, 0xA9, 0xA0, 0x01,
+                                             0x00, 0x00, 0x25, 0x07, 0x00, 0x00, 0x80, 0x7D,
+                                             0x07, 0xFF, 0xC8, 0x83, 0xC8, 0xF8, 0xFF, 0xC0};
+constexpr size_t kTextCutStore = 2, kTextCutStoreSize = 8;  // the mov [rcx+0x1A0], r13w
+// Ours: the row's 10 less its 8 taken off too, the edge then past 10 x row so never negative:
+//   mov eax, ebp; sub eax, esi; sub eax, esi; mov [rcx+0x1A0], r13w; and eax, 7; nop (7 bytes)
+constexpr BYTE kTextCutHead[] = {0x8B, 0xC5, 0x2B, 0xC6, 0x2B, 0xC6};
+constexpr BYTE kTextCutTail[] = {0x83, 0xE0, 0x07, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00};
+static_assert(sizeof(kTextCutHead) + kTextCutStoreSize + sizeof(kTextCutTail) == kTextCutSize,
+              "as laid out");
+
+}  // namespace
+
+bool text_cut_patch(const BYTE (&game)[kTextCutSize], BYTE (&out)[kTextCutSize]) {
+    if (std::memcmp(game, kTextCutGame, sizeof(kTextCutGame)) != 0) return false;
+    std::memcpy(out, kTextCutHead, sizeof(kTextCutHead));
+    std::memcpy(out + sizeof(kTextCutHead), game + kTextCutStore, kTextCutStoreSize);
+    std::memcpy(out + sizeof(kTextCutHead) + kTextCutStoreSize, kTextCutTail,
+                sizeof(kTextCutTail));
+    return true;
+}
+
+void TextCut::watch(BYTE* site) {
+    if (site != site_) restore();
+    if (site == nullptr) return;
+    if (site_ != nullptr) {
+        if (code_reads(site_, written_, sizeof(written_))) return;
+        site_ = nullptr;  // rewritten by something else: no longer ours to put back
     }
-    // A line's half-width in pixels, 8 a character: what the window must reach to hold a row.
-    const int32_t reach = 4 * w;
-    // As the message routine left it (0x182A4E to 0x182C89): steps of 100 and 1, the window
-    // empty and the box not yet opened; within the game's widths and the slot's 256 glyphs; and
-    // up long enough for the box to open fully before it closes, else the text would never show.
-    if (w <= 0 || w > kGamePopupWidth || glyphs <= 0 ||
-        glyphs > static_cast<int32_t>(kMessageMax) + 1 || half <= 0 ||
-        half > 4 * static_cast<int32_t>(kMessageMax) || step_x != 100 || step_y != 1 || wx != 0 ||
-        wy != 0 || !(bottom == 0.0) || reach > step_x - 4 || frames <= 2 * half) {
-        return;
+    BYTE now[kTextCutSize];
+    BYTE patch[kTextCutSize];
+    if (!safe_read(site, now, sizeof(now))) {
+        error_ = "the text window's cut cannot be read";
+    } else if (!text_cut_patch(now, patch)) {
+        error_ = "the text window's cut reads otherwise";
+    } else if (!patch_code(site, patch, sizeof(patch))) {
+        error_ = "the text window's cut could not be written";
+    } else {
+        std::memcpy(original_, now, sizeof(now));
+        std::memcpy(written_, patch, sizeof(patch));
+        site_ = site;
+        error_.clear();
     }
-    const int32_t rows = (glyphs - 1) / w + 1;
-    if (rows < kMiscutRows || !writable(message + kTextWindowX, 8)) return;
-    // Half-width after the opening's half-height of steps: reach (every column), and reach - step
-    // (at most -4: no column) at the closing's first.
-    put<int32_t>(message, kTextWindowX, reach - step_x * half);
-    // Half-height after the opening: 6 a row or more, so the window, centered on the rows' 8
-    // pixels each, takes in every row's 10 whole.
-    put<int32_t>(message, kTextWindowY, (std::max)(0, 6 * rows - step_y * half));
+}
+
+static_assert(kTextCutSize <= kMaxCodePatch, "put_back_code reads it whole");
+
+void TextCut::restore() {
+    // Still held while it reads as written (put back failed): the helper then refuses to unload.
+    if (site_ != nullptr && put_back_code(site_, written_, original_, sizeof(original_))) {
+        site_ = nullptr;
+    }
 }
 
 std::string in_capitals(std::string text) {

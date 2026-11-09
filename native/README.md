@@ -201,11 +201,11 @@ client in a live game").
 It also refuses (`error <why>; not unloading`) while the game may still call into the helper, or
 hold something of the helper's. That is an open menu's panel or entry, the pause menu's way back
 from OPTION MENU, the open map or the game's transition routine holding one of its wrappers, or
-the scanner's text, the pause screen's branch, an item record, the ending's patch or the map's
-on-screen marker write still the helper's; or, in a translation, a popup still showing the text
-the helper wrote into a borrowed entry (until that message ends: 3 seconds in play), or a
-translated name or the popups' moved entry 70 still the helper's when no frame came
-("Translations").
+the scanner's text, the pause screen's branch, an item record, the ending's patch, the map's
+on-screen marker write or the text window's cut still the helper's; or, in a translation, a
+popup still showing the text the helper wrote into a borrowed entry (until that message ends:
+3 seconds in play), or a translated name or the popups' moved entry 70 still the helper's when
+no frame came ("Translations").
 
 It refuses (`error the ending RETURN HOME WITH THE DISKS? started is on its way; not
 unloading`), before putting anything back, from RETURN HOME WITH THE DISKS?'s YES until the
@@ -337,17 +337,16 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   Intel Chip's `popup` is followed in the same `apply` by its count or hint as a `notice`, so
   the two show one after the other, each with the item's sound, and wait together (a chip's
   two waiting: not run in game).
-- **Tall text:** the game's window over a popup's text cuts rows past the first wrong while the
-  box opens and closes; from four rows of glyphs on, a line flashes back whole
-  (`docs/re/memory.md`, "Game functions the helper calls"; the game's own popups never reach
-  four lines). For a popup or notice of four rows of glyphs or more (a notice's blank line counted), `show_text_when_open` (`src/text.cpp`)
-  starts that window, once, right after the game made the message, so the game's own steps keep
-  the text hidden while the box opens, show all of it whole once it is open, and hide it from
-  the close's first frame: the box opens and closes empty. The text so shows for the popup's
-  180 frames less twice the half-height, plus one: 141 for a four-line notice (half-height 20),
-  where the game showed part of it through most of the 180. Shorter ones, and one too short for
-  its box to open fully, are left as the game makes them. Tests: a model of the game's update and window (`tests/game_tests.cpp`); not run
-  in game.
+- **Tall text:** the game's window over a popup's text cuts a line's top wrong past the first
+  line, so from five rows of glyphs on (a four-line notice with its blank row, or a five-line
+  popup) a line flashes back whole while the box opens and closes; the game's own popups never
+  get there (`docs/re/memory.md`, "Game functions the helper calls"). While configured, the
+  helper repairs that cut in the game's code (`text_cut_code`, 24 bytes; `TextCut`,
+  `src/text.cpp`): each frame call it patches it if it still reads as the game's, and puts it
+  back with the rest of the game ("Unloading"). Every line then opens and closes with the box
+  as the game's short popups do. The patch uses nothing of the helper's. Tests: the patch and
+  its put-back on stand-in code, and a model of the game's update and window, flashing without
+  the repair and not with it (`tests/game_tests.cpp`); not run in game.
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
   table entry; one may wait a frame or two for it ("Translations"; working in game 2026-11-02
   in English(HD), French and Japanese).
@@ -1417,8 +1416,8 @@ unload.
   frame and on restore; no stand-in for names; another type left alone), the stand-ins drawn
   in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
   world's items left alone; put back when not restyled and on restore),
-  the popup queue, tall popups' text shown only while the box is open (against a model of the
-  game's update and window), the
+  the popup queue, the text window's cut repaired and put back (and a model of the game's
+  update and window, its lines flashing without the repair), the
   new-game watch, a whole ARCHIPELAGO press, what an unload's put back keeps while putting the game's memory back
   (and a refused unload's watches apply again, a client gone drops), the received shield and death, the ASSIST watch and the scanner's text, and RETURN HOME
   WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a

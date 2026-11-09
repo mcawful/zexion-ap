@@ -183,6 +183,13 @@ __declspec(allocate(".zapcode")) inline unsigned char g_keys_branch[4] = {0x75, 
 // The item update's write of an on-screen item's square (mapmarks.h), as on B1.
 constexpr unsigned char kSeenMarkerGame[50] = ZAP_SEEN_MARKER_GAME;
 __declspec(allocate(".zapcode")) inline unsigned char g_seen_marker_code[50] = ZAP_SEEN_MARKER_GAME;
+// The text window's top cut (text.h, TextCut), as on B1.
+constexpr unsigned char kTextCutGame[24] = {0x8B, 0xC5, 0x66, 0x44, 0x89, 0xA9, 0xA0, 0x01,
+                                            0x00, 0x00, 0x25, 0x07, 0x00, 0x00, 0x80, 0x7D,
+                                            0x07, 0xFF, 0xC8, 0x83, 0xC8, 0xF8, 0xFF, 0xC0};
+__declspec(allocate(".zapcode")) inline unsigned char g_text_cut_code[24] = {
+    0x8B, 0xC5, 0x66, 0x44, 0x89, 0xA9, 0xA0, 0x01, 0x00, 0x00, 0x25, 0x07,
+    0x00, 0x00, 0x80, 0x7D, 0x07, 0xFF, 0xC8, 0x83, 0xC8, 0xF8, 0xFF, 0xC0};
 inline void* g_free_slot = nullptr;
 inline std::string g_steps;
 inline bool g_slot_taken = false;
@@ -718,6 +725,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"draw_layer", rva(&g_draw_layer)},
         {"map_handler", rva(&g_map_handler)},
         {"seen_marker_code", rva(g_seen_marker_code)},
+        {"text_cut_code", rva(g_text_cut_code)},
         {"start_count", rva(&g_start_count)},
         {"start_cells", rva(g_start_cells)},
         {"start_flags", rva(g_start_flags)},

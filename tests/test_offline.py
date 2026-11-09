@@ -45,6 +45,7 @@ def test_the_cached_config_carries_its_checks() -> None:
     assert "keys_branch" in offline.NOT_CHECKED  # the helper patches it
     assert "ending_unlocks" in offline.NOT_CHECKED  # and this, in AP saves
     assert "seen_marker_code" in offline.NOT_CHECKED  # and the on-screen marker
+    assert "text_cut_code" in offline.NOT_CHECKED  # and the text window's cut
 
 
 def test_grid_cells() -> None:

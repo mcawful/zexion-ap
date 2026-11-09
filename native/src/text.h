@@ -1,6 +1,7 @@
 // The helper's popups as the game's message routine lays them out: a set number of characters a
 // line, cut where a line ends, with no line-break code (docs/re/memory.md, "Other players' items"
-// and "Game functions the helper calls"). Pure text, apart from fit_notice_box.
+// and "Game functions the helper calls"). Pure text, apart from fit_notice_box
+// and the window's cut (TextCut).
 #pragma once
 
 #include <windows.h>
@@ -26,19 +27,6 @@ constexpr int kPopupX = 0xA0, kPopupY = 0x58, kPopupFrames = 0xB4;
 constexpr size_t kMessageMax = 255;
 // The popup message's box: its center's y (a double) and its half-height (32-bit).
 constexpr ptrdiff_t kMessageY = 0x48, kMessageHalfHeight = 0x1FC;
-// A message's frames left (32-bit), counting down by one a frame.
-constexpr ptrdiff_t kMessageFramesLeft = 0x1EC;
-// The window over a message's text (`0xA8210`; docs/re/memory.md, "Game functions the helper
-// calls"): the glyph count and line length it reads, its half-width and half-height, and the
-// steps the message's update adds to those each frame the box opens and takes off each frame it
-// closes (32-bit each); the box's bottom (a double), 0 until the box first opens.
-constexpr ptrdiff_t kMessageGlyphs = 0x200, kMessageLineLength = 0x204;
-constexpr ptrdiff_t kTextWindowX = 0x214, kTextWindowY = 0x218;
-constexpr ptrdiff_t kTextWindowStepX = 0x1F4, kTextWindowStepY = 0x1F8;
-constexpr ptrdiff_t kMessageBoxBottom = 0x160;
-// From this many rows of glyphs on, a row the window cuts wrong comes back whole while the box
-// opens and closes (with three, row 1 is cut two pixels short for two frames).
-constexpr int kMiscutRows = 4;
 
 // The helper's text is kept in the case it was sent or written in, mixed case for its own;
 // capitals only where they are drawn: the 8 x 8 font, and every translation but English(HD)
@@ -104,10 +92,35 @@ std::string notice_text(const std::string& text, int per_line, int* width = null
 // Game thread, right after the game made a notice's message from `text`: fits the box to the
 // notice's real lines when it ends in its blank line (notice_text), else leaves it alone.
 void fit_notice_box(BYTE* message, const std::string& text, int per_line);
-// Game thread, right after the game made a message (and fit_notice_box): when its text is
-// kMiscutRows rows or more, has the game show the text only while the box is fully open, all of
-// it, so the box opens and closes empty; else, or with the message not as the game made it,
-// leaves it alone.
-void show_text_when_open(BYTE* message);
+
+// The window over a message's text (0xA8210 on B1; docs/re/memory.md, "Game functions the
+// helper calls") cuts a glyph's top at the window's top edge mod 8, leaving out the row's own
+// offset: from three rows on a row past the first is cut wrong, and from five a line comes back
+// whole while the box opens and closes. The patch subtracts the row, so the window cuts every
+// row as it does the first.
+constexpr size_t kTextCutSize = 24;
+// The patch built from the game's bytes `game` at text_cut_code: false if they are not the cut
+// as traced on B1. It reads only registers the game's reads, leaves them as the game's does
+// (eax holds the cut either way), and calls nothing.
+bool text_cut_patch(const BYTE (&game)[kTextCutSize], BYTE (&out)[kTextCutSize]);
+
+// The cut patched while the helper is configured. Game thread only. It uses nothing of the
+// helper's, so one left behind cannot crash the game; an unload still puts it back first, and
+// refuses while it is not put back.
+class TextCut {
+public:
+    // Patched at `site` (null: nothing), put back first if `site` moved.
+    void watch(BYTE* site);
+    void restore();
+    bool patched() const { return site_ != nullptr; }
+    // Why it could not be patched the last time it tried, or "".
+    const std::string& error() const { return error_; }
+
+private:
+    BYTE* site_ = nullptr;
+    BYTE original_[kTextCutSize] = {};
+    BYTE written_[kTextCutSize] = {};
+    std::string error_;
+};
 
 }  // namespace zap
