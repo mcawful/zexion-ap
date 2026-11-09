@@ -346,7 +346,10 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   back with the rest of the game ("Unloading"). Every line then opens and closes with the box
   as the game's short popups do. The patch uses nothing of the helper's. Tests: the patch and
   its put-back on stand-in code, and a model of the game's update and window, flashing without
-  the repair and not with it (`tests/game_tests.cpp`); not run in game.
+  the repair and not with it (`tests/game_tests.cpp`). Working in game 2026-11-08 (B1,
+  `zexion_ap.dll` `b8ef0214…`): the pod reminder (four lines and its blank row) in the default
+  English, every line opening and closing with the box, filmed; in English(HD), which draws its
+  own text, a hint popup as before. Not run: a five-line popup.
 - **In a translation:** popups and notices show in the translation's font, from a borrowed
   table entry; one may wait a frame or two for it ("Translations"; working in game 2026-11-02
   in English(HD), French and Japanese).
