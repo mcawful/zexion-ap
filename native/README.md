@@ -424,10 +424,13 @@ tests only, not run in game.
   waits while it reads true, whenever its popup showed, until the next load
   (`docs/re/memory.md`, "The ending: flag 250", "The escape skip"), as the client holds
   received items then. A save past its ending reads it true from the start and gets its drops,
-  until it plays the ending again (211 set through the escape, cleared as the ending begins).
-  As for the client, an ending replayed under Abridged Finale (no escape, so no 211) is not
-  told apart; that 211 behaves in a replay as measured in a first playthrough is assumed. The
-  popup itself still shows over the ending's cutscenes, as before.
+  until it plays the ending again (211 set at the ship, or by the escape skip's YES, and cleared
+  as the ending begins; 211 read set counts even on a frame not in play). As for the client, an
+  ending replayed under Abridged Finale (no escape, so no 211) is not told apart; that 211
+  behaves in a replay as measured in a first playthrough is assumed; and a death after 211 is
+  set at the ship (the save point's flags back: 250 set, 211 clear) holds drops, as it does
+  the client's items, until the next load. The popup itself still shows over the ending's
+  cutscenes, as before.
 - **Once:** a drop rides on its popup. The client hands each received item's popup over once
   (its count in the server's data storage: "Grants"); the helper queues the drop as it shows
   the popup and forgets it once run. So a scrap received while disconnected, or out of play,

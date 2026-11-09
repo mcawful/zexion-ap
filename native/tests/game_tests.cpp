@@ -1555,8 +1555,10 @@ void test_received_scrap_drops_held() {
     game.pump_drops(13000);
     check(game.queued_drops() == 0, "nothing waiting");
     apply(game, "apply\npopup 48 FROM ALICE");
-    g_flags[211] = 1;  // the escape, Zexion grabbed again
+    g_menu = 3;  // at the ship: a frame not in play
+    g_flags[211] = 1;
     game.pump_drops(13100);
+    g_menu = 0;
     show_next(game);
     g_flags[211] = 0;  // the ending's first cutscene
     game.pump_drops(15000);
@@ -2159,6 +2161,27 @@ void test_popups_wait_for_the_mission_fade() {
     game.put_back_game(&chosen);
 }
 
+// A drop waits through RETURN HOME WITH THE DISKS?'s fade, as the popups do.
+void test_drops_wait_for_the_mission_fade() {
+    MissionGame m;
+    zap::Game& game = m.game;
+    scrap_records();
+    player_cell(13, 16);  // at the pod
+    game.note_play(1000);
+    apply(game, "apply\npopup 46 FROM ALICE");
+    show_next(game);
+    check(game.queued_drops() == 1, "a drop queued");
+    for (int i = 0; i < 30; ++i) game.pump_popups();  // the gap after the helper's popup
+    game.request_mission(kPodColumn, kPodRow);
+    message_showing(zap::kFadeMessageLeft);
+    game.watch_all(&chosen);
+    check(game.mission_status() == "opening after the fade", "the fade");
+    message_showing(1);
+    game.pump_drops(5000);
+    check(g_spawn_calls == 0 && game.queued_drops() == 1, "the drop waits through the fade");
+    reset_events();
+}
+
 // A save during the fade puts the pause opener back: the fade turned back and the prompt asked
 // again, except under a door's own fade.
 void test_a_save_during_the_mission_fade() {
@@ -2578,6 +2601,7 @@ int main() {
     test_the_black_after_yes();
     test_own_popup_needs_a_new_last_message();
     test_popups_wait_for_the_mission_fade();
+    test_drops_wait_for_the_mission_fade();
     test_a_save_during_the_mission_fade();
     test_the_mission_request_gives_home();
     test_return_home_lapses_away_from_the_pod();

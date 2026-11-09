@@ -57,8 +57,9 @@ constexpr uint64_t kFlagCount = 0x9C4;
 namespace flag {
 constexpr int kScannerTold = 39;  // the scanner has said how many disks there are
 constexpr int kEnding = 250;      // set only by the ending
-// Set through the escape (and by the escape skip's YES, with 250), cleared as the ending begins:
-// 250 set and 211 clear is the client's goal, the ending begun (client/session.py).
+// Set at the ship at the escape's end (or at once by the escape skip's YES, with 250), cleared
+// as the ending begins: 250 set and 211 clear is the client's goal, the ending begun
+// (client/session.py).
 constexpr int kFinale = 211;
 constexpr int kFeat = 251;  // set with each Feat the ending gives (feats.h)
 }  // namespace flag

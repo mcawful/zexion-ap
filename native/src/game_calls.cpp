@@ -570,12 +570,13 @@ void Game::pump_drops(uint64_t now_ms) {
     // before keeps every drop for the next load, as the client holds received items (its goal
     // read false, then true: client/session.py; docs/re/memory.md, "The ending: flag 250"). Read
     // every frame, whether drops wait or not. A save past its ending reads as one throughout, and
-    // gets its drops until it plays the ending again (flag 211 set through the escape, then
-    // cleared).
+    // gets its drops until it plays the ending again (flag 211 set at the ship, or by the escape
+    // skip's YES, then cleared as the ending begins). 211 set counts in or out of play: the ship
+    // may show no frame in play before the ending.
     const bool ending = ending_flag();
     if (*at_.save_loaded == kNoSaveLoaded) {
         load_before_ending_ = false;
-    } else if (!ending && in_play()) {
+    } else if ((!ending && in_play()) || at_.flags[flag::kFinale] != 0) {
         load_before_ending_ = true;
     }
     if (drops_.empty() || (ending && load_before_ending_)) return;

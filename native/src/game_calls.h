@@ -388,8 +388,9 @@ private:
         std::shared_ptr<const OfflineSeed> origin;
     };
     std::deque<Drop> drops_;
-    // This load has been in play outside its ending (ending_flag false), since the last frame
-    // with no save loaded. While ending_flag then reads true, drops wait (pump_drops).
+    // This load has been in play outside its ending (ending_flag false), or has read flag 211
+    // set (the ship, or the escape skip's YES: an ending on its way), since the last frame with
+    // no save loaded. While ending_flag then reads true, drops wait (pump_drops).
     bool load_before_ending_ = false;
     std::string drop_status_ = "none";
     // Frame calls since the helper's last popup (more of them than game frames on a fast monitor).
