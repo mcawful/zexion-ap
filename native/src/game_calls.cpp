@@ -1076,7 +1076,7 @@ void Game::watch_map_marks() {
     // The write and the passes put back the first frame out of the seed's save: a plain
     // randomizer game's Scrap Chunks are minors.
     if (!seed) {
-        seen_marker_.watch(at_.seen_marker_code, false);
+        seen_marker_.restore();
         map_seed_passes_ = 0;
     }
     if (!ap_items_.active()) return;
@@ -1087,7 +1087,7 @@ void Game::watch_map_marks() {
     if (map_seed_passes_ < 2) ++map_seed_passes_;
     if (map_seed_passes_ < 2) return;
     // Before the raise, so an item on screen stays raised.
-    seen_marker_.watch(at_.seen_marker_code, true);
+    seen_marker_.watch(at_.seen_marker_code);
     mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0);
 }
 

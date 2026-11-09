@@ -106,38 +106,6 @@ bool seen_marker_patch(const BYTE (&game)[kSeenMarkerSize], BYTE (&out)[kSeenMar
     return true;
 }
 
-void SeenMarker::watch(BYTE* site, bool on) {
-    if (!on || site != site_) restore();
-    if (!on || site == nullptr) return;
-    if (site_ != nullptr) {
-        if (code_reads(site_, written_, sizeof(written_))) return;
-        site_ = nullptr;  // rewritten by something else: no longer ours to put back
-    }
-    BYTE now[kSeenMarkerSize];
-    BYTE patch[kSeenMarkerSize];
-    if (!safe_read(site, now, sizeof(now))) {
-        error_ = "the on-screen marker cannot be read";
-    } else if (!seen_marker_patch(now, patch)) {
-        error_ = "the on-screen marker reads otherwise";
-    } else if (!patch_code(site, patch, sizeof(patch))) {
-        error_ = "the on-screen marker could not be written";
-    } else {
-        std::memcpy(original_, now, sizeof(now));
-        std::memcpy(written_, patch, sizeof(patch));
-        site_ = site;
-        error_.clear();
-    }
-}
-
-static_assert(kSeenMarkerSize <= kMaxCodePatch, "put_back_code reads it whole");
-
-void SeenMarker::restore() {
-    // Still held while it reads as written (put back failed): the helper then refuses to unload.
-    if (site_ != nullptr && put_back_code(site_, written_, original_, sizeof(original_))) {
-        site_ = nullptr;
-    }
-}
-
 namespace {
 
 // The map child's two handler slots, both given the map's handler by its builder

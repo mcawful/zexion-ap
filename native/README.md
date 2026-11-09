@@ -341,8 +341,8 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   line, so from five rows of glyphs on (a four-line notice with its blank row, or a five-line
   popup) a line flashes back whole while the box opens and closes; the game's own popups never
   get there (`docs/re/memory.md`, "Game functions the helper calls"). While configured, the
-  helper repairs that cut in the game's code (`text_cut_code`, 24 bytes; `TextCut`,
-  `src/text.cpp`): each frame call it patches it if it still reads as the game's, and puts it
+  helper repairs that cut in the game's code (`text_cut_code`, 24 bytes; `TextCut` in
+  `src/text.h`, built by `src/text.cpp`): each frame call it patches it if it still reads as the game's, and puts it
   back with the rest of the game ("Unloading"). Every line then opens and closes with the box
   as the game's short popups do. A translation draws its own text, never through this window.
   Tests: `tests/game_tests.cpp`. Working in game 2026-11-08 (B1, `zexion_ap.dll` `b8ef0214…`):
@@ -1402,7 +1402,8 @@ Most ctest tests run against **the stand-in game**: the test program's own data 
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
 configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
 (`apply_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for `apply_in_frames`,
-`unload_under_load` and `proxy`). They share `tests/check.h`; `tests/fake_gl.h` is the fake
+`unload_under_load` and `proxy`). They share `tests/check.h` (with one test of a code patch on a page of its own, `check_code_patch`,
+that `game` and `mapmarks` run on theirs); `tests/fake_gl.h` is the fake
 OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe client of `parts`,
 `apply_in_frames` and `unload_under_load`, and the last two's busy threads and wait for an
 unload.
@@ -1515,11 +1516,11 @@ unload.
 | `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
 | `game_offline.cpp` | `Game`'s offline look |
 | `requests.cpp` | the requests' parsers |
-| `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws; the text window's cut patch (`TextCut`) |
+| `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws; the text window's cut patch (`text_cut_patch`) |
 | `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
-| `game_mem.cpp`, `game_layout.h` | fault-safe memory access; the layouts several parts share |
+| `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access; code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut` and `SeenMarker`); the layouts several parts share |
 | `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
 `proxy/` is the proxy `version.dll`.

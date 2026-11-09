@@ -166,38 +166,6 @@ bool text_cut_patch(const BYTE (&game)[kTextCutSize], BYTE (&out)[kTextCutSize])
     return true;
 }
 
-void TextCut::watch(BYTE* site) {
-    if (site != site_) restore();
-    if (site == nullptr) return;
-    if (site_ != nullptr) {
-        if (code_reads(site_, written_, sizeof(written_))) return;
-        site_ = nullptr;  // rewritten by something else: no longer ours to put back
-    }
-    BYTE now[kTextCutSize];
-    BYTE patch[kTextCutSize];
-    if (!safe_read(site, now, sizeof(now))) {
-        error_ = "the text window's cut cannot be read";
-    } else if (!text_cut_patch(now, patch)) {
-        error_ = "the text window's cut reads otherwise";
-    } else if (!patch_code(site, patch, sizeof(patch))) {
-        error_ = "the text window's cut could not be written";
-    } else {
-        std::memcpy(original_, now, sizeof(now));
-        std::memcpy(written_, patch, sizeof(patch));
-        site_ = site;
-        error_.clear();
-    }
-}
-
-static_assert(kTextCutSize <= kMaxCodePatch, "put_back_code reads it whole");
-
-void TextCut::restore() {
-    // Still held while it reads as written (put back failed): the helper then refuses to unload.
-    if (site_ != nullptr && put_back_code(site_, written_, original_, sizeof(original_))) {
-        site_ = nullptr;
-    }
-}
-
 std::string in_capitals(std::string text) {
     for (char& c : text) c = capital(c);
     return text;

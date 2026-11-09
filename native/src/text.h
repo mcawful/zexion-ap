@@ -12,6 +12,8 @@
 #include <string_view>
 #include <vector>
 
+#include "game_mem.h"  // CodePatch
+
 namespace zap {
 
 // What the game's 8 x 8 font draws besides capital letters and digits (the popups' sets are
@@ -104,23 +106,9 @@ constexpr size_t kTextCutSize = 24;
 // (eax holds the cut either way), and calls nothing.
 bool text_cut_patch(const BYTE (&game)[kTextCutSize], BYTE (&out)[kTextCutSize]);
 
-// The cut patched while the helper is configured. Game thread only. It uses nothing of the
-// helper's, so one left behind cannot crash the game; an unload still puts it back first, and
-// refuses while it is not put back.
-class TextCut {
-public:
-    // Patched at `site` (null: nothing), put back first if `site` moved.
-    void watch(BYTE* site);
-    void restore();
-    bool patched() const { return site_ != nullptr; }
-    // Why it could not be patched the last time it tried, or "".
-    const std::string& error() const { return error_; }
-
-private:
-    BYTE* site_ = nullptr;
-    BYTE original_[kTextCutSize] = {};
-    BYTE written_[kTextCutSize] = {};
-    std::string error_;
-};
+// The cut patched while the helper is configured. It uses nothing of the helper's, so one left
+// behind cannot crash the game; an unload still puts it back first, and refuses while it is not
+// put back.
+using TextCut = CodePatch<kTextCutSize, text_cut_patch>;
 
 }  // namespace zap
