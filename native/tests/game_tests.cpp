@@ -1549,26 +1549,45 @@ void test_received_scrap_drops_held() {
     game.pump_drops(13000);
     check(g_spawn_calls == 3 && g_spawn_event == g_events + 3549 * 0x28,
           "and is spawned at the next load");
+
+    // A save past its ending playing it again: the escape sets flag 211, the ending clears it.
+    game.note_play(13000);
+    game.pump_drops(13000);
+    check(game.queued_drops() == 0, "nothing waiting");
+    apply(game, "apply\npopup 48 FROM ALICE");
+    g_flags[211] = 1;  // the escape, Zexion grabbed again
+    game.pump_drops(13100);
+    show_next(game);
+    g_flags[211] = 0;  // the ending's first cutscene
+    game.pump_drops(15000);
+    check(g_spawn_calls == 3 && game.queued_drops() == 1, "held through the ending played again");
+    g_save_loaded = 0xFF;
+    game.pump_drops(15100);
+    g_save_loaded = 3;
+    game.note_play(15200);
+    game.pump_drops(16500);
+    check(g_spawn_calls == 4 && g_spawn_event == g_events + 3550 * 0x28,
+          "and spawned at the next load");
     g_flags[250] = 0;
 
     put<int16_t>(g_records + 46 * 100, 0x40, -1);  // Scrap Metal's record names no event
     apply(game, "apply\npopup 46 FROM ALICE");
     show_next(game);
-    game.pump_drops(10000);
-    check(g_spawn_calls == 3 && game.drop_status() == "queued 0; last refused event not as traced 46",
+    game.pump_drops(17000);
+    check(g_spawn_calls == 4 && game.drop_status() == "queued 0; last refused event not as traced 46",
           "-1 is only a restyled stand-in's");
     put<int16_t>(g_records + 47 * 100, 0x40, 3550);  // Scrap Energy's names Scrap Chunk's
     apply(game, "apply\npopup 47 FROM ALICE");
     show_next(game);
-    game.pump_drops(10000);
-    check(g_spawn_calls == 3 && game.drop_status() == "queued 0; last refused event not as traced 47",
+    game.pump_drops(17000);
+    check(g_spawn_calls == 4 && game.drop_status() == "queued 0; last refused event not as traced 47",
           "nor another item's event");
     scrap_records();
     g_event_count = 3552;  // a table without 3552
     apply(game, "apply\npopup 48 FROM ALICE");
     show_next(game);
-    game.pump_drops(10000);
-    check(g_spawn_calls == 3 && game.drop_status() == "queued 0; last refused no event 48",
+    game.pump_drops(17000);
+    check(g_spawn_calls == 4 && game.drop_status() == "queued 0; last refused no event 48",
           "Scrap Chunk refused without the fade it runs next");
     reset_events();
 }

@@ -338,7 +338,8 @@ private:
     int32_t popup_frames_left() const;
     // Whether a queued popup may show in the save loaded now (Popup::origin).
     bool showable(const Popup& popup) const;
-    // A save loaded with flag 250 set: the ending begun, in this load or before.
+    // A save loaded with flag 250 set and 211 clear, the client's goal: the ending begun, in
+    // this load or before (a save past its ending reads so throughout).
     bool ending_flag() const;
     // Whether `origin` (a popup's or a drop's) is the save loaded now, or none.
     bool origin_loaded(const std::shared_ptr<const OfflineSeed>& origin) const;
@@ -387,9 +388,9 @@ private:
         std::shared_ptr<const OfflineSeed> origin;
     };
     std::deque<Drop> drops_;
-    // Flag 250 (the ending) on this load's first frame in play: 0 clear, 1 set, -1 not read yet
-    // (no save loaded since). While it reads set and this says clear, drops wait (pump_drops).
-    int8_t load_ending_ = -1;
+    // This load has been in play outside its ending (ending_flag false), since the last frame
+    // with no save loaded. While ending_flag then reads true, drops wait (pump_drops).
+    bool load_before_ending_ = false;
     std::string drop_status_ = "none";
     // Frame calls since the helper's last popup (more of them than game frames on a fast monitor).
     int frames_since_popup_ = 1 << 20;

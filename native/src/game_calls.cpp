@@ -566,17 +566,19 @@ std::string Game::kill(uint64_t now_ms) {
 
 void Game::pump_drops(uint64_t now_ms) {
     if (!configured_) return;
-    // The game's ending, whose cutscenes read as play: flag 250 read on the load's first frame in
-    // play, every frame whether drops wait or not, so one set since keeps them all for the next
-    // load, as the client holds items (docs/re/memory.md, "The ending: flag 250"). A save past
-    // its ending reads it set from the start, and gets its drops.
+    // The game's ending, whose cutscenes read as play: an ending this load was seen in play
+    // before keeps every drop for the next load, as the client holds received items (its goal
+    // read false, then true: client/session.py; docs/re/memory.md, "The ending: flag 250"). Read
+    // every frame, whether drops wait or not. A save past its ending reads as one throughout, and
+    // gets its drops until it plays the ending again (flag 211 set through the escape, then
+    // cleared).
     const bool ending = ending_flag();
     if (*at_.save_loaded == kNoSaveLoaded) {
-        load_ending_ = -1;
-    } else if (load_ending_ < 0 && in_play()) {
-        load_ending_ = static_cast<int8_t>(ending ? 1 : 0);
+        load_before_ending_ = false;
+    } else if (!ending && in_play()) {
+        load_before_ending_ = true;
     }
-    if (drops_.empty() || (ending && load_ending_ == 0)) return;
+    if (drops_.empty() || (ending && load_before_ending_)) return;
     // As spawn_shield waits: in play in one cell for a second, and not from RETURN HOME's fade
     // through its ending (kept for this save's next load, as the popups are).
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) return;
@@ -592,7 +594,8 @@ void Game::pump_drops(uint64_t now_ms) {
 }
 
 bool Game::ending_flag() const {
-    return *at_.save_loaded != kNoSaveLoaded && at_.flags[flag::kEnding] != 0;
+    return *at_.save_loaded != kNoSaveLoaded && at_.flags[flag::kEnding] != 0 &&
+           at_.flags[flag::kFinale] == 0;
 }
 
 std::string Game::drop_status() const {

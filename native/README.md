@@ -419,10 +419,15 @@ tests only, not run in game.
   from RETURN HOME WITH THE DISKS?'s fade through the ending it started; one a frame call, in
   the order of their popups. In another seed's save or a normal save it waits for its popup's
   save ("Popups"); off the map, for the player to be on it. Nor in the game's own ending, whose
-  cutscenes read as play: the helper reads flag 250 on each load's first frame in play, and
-  while the flag is set after reading clear then, every drop waits for the next load, whenever
-  its popup showed (`docs/re/memory.md`, "The ending: flag 250"), as the client holds received
-  items then; a save past its ending, with the flag set from the start, gets its drops.
+  cutscenes read as play: the helper reads the client's goal (flag 250 set, flag 211 clear:
+  `client/session.py`) every frame, and once a load has been in play with it false, every drop
+  waits while it reads true, whenever its popup showed, until the next load
+  (`docs/re/memory.md`, "The ending: flag 250", "The escape skip"), as the client holds
+  received items then. A save past its ending reads it true from the start and gets its drops,
+  until it plays the ending again (211 set through the escape, cleared as the ending begins).
+  As for the client, an ending replayed under Abridged Finale (no escape, so no 211) is not
+  told apart; that 211 behaves in a replay as measured in a first playthrough is assumed. The
+  popup itself still shows over the ending's cutscenes, as before.
 - **Once:** a drop rides on its popup. The client hands each received item's popup over once
   (its count in the server's data storage: "Grants"); the helper queues the drop as it shows
   the popup and forgets it once run. So a scrap received while disconnected, or out of play,
