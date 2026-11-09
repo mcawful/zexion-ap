@@ -113,6 +113,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `newgame_status`, `disarm` (frame) | `armed`, `idle`, `applied slot N`, `refused <why>`; `disarmed` | New games |
 | `ap_labels` and lines `label X Y HEX` (frame) | `labeled N`, `refused <why>` | Other players' items |
 | `shield`, `die` (frame) | `spawned`, `died`, `refused <why>` | Received Energy Shields; DeathLink |
+| `drop_status` (frame) | `queued N; last <outcome>`, the outcome `none`, `spawned ITEM` or `refused <why> ITEM`: the received scraps' drops, for live checks | Received scrap |
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
@@ -332,7 +333,8 @@ select filled; the Machine Gun's row in a Standard save not singled out).
 - **Stand-ins received:** a received Scrap Energy or Scrap Chunk (this player's own filler, found
   in another world) is named SCRAP ENERGY or SCRAP CHUNK with no icon, as the game loads them,
   not from its record, which the helper may have restyled as another player's item ("Other
-  players' items"). Stand-in tests (`tests/game_tests.cpp`); working in game 2026-11-02 (B1,
+  players' items"); its drop follows ("Received scrap"). Stand-in tests
+  (`tests/game_tests.cpp`); working in game 2026-11-02 (B1,
   `zexion_ap.dll` `1c286c57…`), each sent from the server's console: Scrap
   Energy away from any stand-in and Scrap Chunk in a labeled stand-in's room, in English(HD),
   read Scrap Energy and Scrap Chunk over FROM ARCHIPELAGO; in the default English, SCRAP ENERGY
@@ -376,7 +378,9 @@ were not singled out.
 ### Received Energy Shields
 
 - **What:** `shield` runs the Energy Shield's pickup event as its pickup does, from the player's
-  cell (`spawn_shield`, which checks the record, the event and its handler first).
+  cell (`spawn_shield`, which checks first that the record names event 3553, that the event's
+  whole record is B1's, and that its handler is in the game's code: `run_item_event`, as for
+  "Received scrap").
 - **When:** once the player has been in play in one cell for a second, and not in an ending
   RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
   asks for each received shield not yet given, again for one not seen up within a few seconds,
@@ -390,7 +394,39 @@ client attached to a save already in play, each shield spawned once and read as 
 again, 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074); one received
 while disconnected, given once on reconnecting and not again after another reconnect, 2026-11-04
 (B1, `zexion_ap.dll` `a7469024…`, develop 345fea7). The stop after three not seen up: stand-in
-tests only, not reached in game (`docs/re/memory.md`, "Received Energy Shields").
+tests only, not reached in game (`docs/re/memory.md`, "Received Energy Shields"). The check of
+the whole event (since 2026-11-08; before, its type, subtype, object and own number): stand-in
+tests only, not run in game.
+
+### Received scrap
+
+- **What:** a received Scrap Metal, Scrap Energy or Scrap Chunk (46 to 48) gets the drops its
+  pickup spawns: once its popup has shown, the helper runs the item's pickup event (3548, 3549
+  or 3550) as the pickup does, from the player's cell (`pump_drops`, `run_item_event`). Scrap
+  Chunk's runs a fade of layer 7 after it, as the game's does. Its inventory byte stays the
+  client's grant, +1 Scrap Metal ("Grants"). The record must name the event (or −1, a
+  stand-in's record while the helper restyles it: "Other players' items"), and the event, and
+  the fade it runs next, must be B1's records byte for byte, their handlers in the game's code
+  (`docs/re/memory.md`, "Received scrap"); otherwise it is dropped, and `drop_status` says
+  why. Nothing is run for a received Area Map (its event, 3551, reveals the map; not given for
+  a received one, as before), an Energy Shield (the client's `shield`) or a notice, nor for a
+  stand-in found in the world (its record names no event while restyled: the item is another
+  player's).
+- **When:** as `shield`: once the player has been in play in one cell for a second, and not
+  from RETURN HOME WITH THE DISKS?'s fade through the ending it started; one a frame call, in
+  the order of their popups. In another seed's save or a normal save it waits for its popup's
+  save ("Popups"); off the map, for the player to be on it.
+- **Once:** a drop rides on its popup. The client hands each received item's popup over once
+  (its count in the server's data storage: "Grants"); the helper queues the drop as it shows
+  the popup and forgets it once run. So a scrap received while disconnected, or out of play,
+  drops after its popup at the next load; one whose popup was handed over before 1.1.0, or
+  that was written directly with no helper, never drops; and the queue outlives the client
+  ("A client going away") but not the helper: an unload, or the game closing, loses the drops
+  not spawned yet, as it does the popups. Drops lost to a death or a reload before they are
+  collected are not given again, as with the game's own pickup.
+- **Put back:** nothing to put back.
+
+Stand-in tests (`tests/game_tests.cpp`, `test_received_scrap_drops`). Not run in game.
 
 ### DeathLink
 

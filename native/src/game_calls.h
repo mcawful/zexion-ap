@@ -245,6 +245,14 @@ public:
     // Game thread (`shield`): spawns a received Energy Shield as its pickup does, once in play
     // in one cell for a second: "spawned", or "refused <why>".
     std::string spawn_shield(uint64_t now_ms);
+    // Game thread, every frame: spawns the drop of each received Scrap Metal, Scrap Energy or
+    // Scrap Chunk whose popup has shown, as its pickup does, one at a time, once in play in one
+    // cell for a second in the save its popup was for (pump_popups queues them).
+    void pump_drops(uint64_t now_ms);
+    // `drop_status` (for live checks): "queued N; last <outcome>", the outcome "none", "spawned
+    // <item>" or "refused <why> <item>".
+    std::string drop_status() const;
+    size_t queued_drops() const { return drops_.size(); }
     // Game thread (`die`): energy 0 and the game's death routine, once settled in one cell for a
     // second, not halted, no message up, no RETURN HOME prompt or ending on its way: "died" or
     // "refused <why>".
@@ -329,6 +337,8 @@ private:
     int32_t popup_frames_left() const;
     // Whether a queued popup may show in the save loaded now (Popup::origin).
     bool showable(const Popup& popup) const;
+    // Whether `origin` (a popup's or a drop's) is the save loaded now, or none.
+    bool origin_loaded(const std::shared_ptr<const OfflineSeed>& origin) const;
     void refresh_hud();
 
     bool configured_ = false;
@@ -367,6 +377,14 @@ private:
     std::map<int, int> client_file_counts_, offline_file_counts_;
     void apply_file_counts();
     std::deque<Popup> popups_;
+    // Received scraps whose popup has shown, their drop not spawned yet (pump_drops), each with
+    // its popup's save; lost, as queued popups are, with the helper.
+    struct Drop {
+        uint8_t item;
+        std::shared_ptr<const OfflineSeed> origin;
+    };
+    std::deque<Drop> drops_;
+    std::string drop_status_ = "none";
     // Frame calls since the helper's last popup (more of them than game frames on a fast monitor).
     int frames_since_popup_ = 1 << 20;
     // The helper's last popup as the game's last message holds it (own_popup_up).
@@ -427,7 +445,7 @@ private:
     int scan_frames_ = 0;  // frames until the next scanner check
     ApItems ap_items_;
     IconSheets icon_sheets_;  // the helper's icons in the translations' fonts
-    // Runs a received item's pickup event (the Energy Shield's): "" or why not.
+    // Runs a received item's pickup event (the Energy Shield's, a scrap's): "" or why not.
     std::string run_item_event(uint8_t item);
     int play_cell_ = -1;
     uint64_t play_since_ms_ = 0;
