@@ -42,9 +42,9 @@ inline constexpr char kEndingRefusal[] =
 
 class Game {
 public:
-    // Game thread. Checks each kConfigKeys entry is present and in the right kind of section,
-    // with the room it needs (game_calls.cpp, check_key), then keeps the addresses. "" or an
-    // error. `active`: false for the offline cache (no client there yet).
+    // Game thread. Checks each required kConfigKeys entry is present (an optional one may be
+    // missing, its member left null) and each given one in the right kind of section, with the
+    // room it needs (game_calls.cpp, check_key), then keeps the addresses. "" or an error. `active`: false for the offline cache (no client there yet).
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                           bool active = true);
     bool configured() const { return configured_; }

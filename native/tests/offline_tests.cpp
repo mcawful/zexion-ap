@@ -753,11 +753,13 @@ void test_the_disk_glyph_kept_for_its_popup() {
     g_slots_live = g_message_is_last = false;
 }
 
-// The cache needs every key, as a client's config does: one missing refuses.
+// The cache needs every key but the optional text_cut_code (the next test), as a client's config
+// does: one missing refuses.
 void test_a_cache_needs_every_key() {
     HMODULE self = GetModuleHandleW(nullptr);
     const auto full = stand_in_config();
     for (const auto& [key, rva] : full) {
+        if (key == "text_cut_code") continue;  // optional: the next test
         auto older = full;
         older.erase(key);
         zap::Game refused;
@@ -765,6 +767,35 @@ void test_a_cache_needs_every_key() {
             check(false, ("a cache missing " + key + " refuses").c_str());
         }
     }
+}
+
+// 1.0.0's cache, written before text_cut_code: it configures everything else, the text window's
+// cut left the game's, until a client's config, which holds the key, patches it.
+void test_a_cache_without_the_text_cut() {
+    HMODULE self = GetModuleHandleW(nullptr);
+    auto older = stand_in_config();
+    older.erase("text_cut_code");
+    auto is_games = [] {
+        return std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) == 0;
+    };
+    reset_game();
+    zap::Game game;
+    check(game.configure(self, older, false).empty() && game.configured() && !game.active(),
+          "a cache without text_cut_code configures");
+    game.watch_all(&no_callback);
+    check(is_games(), "the cut left the game's");
+    check(configure(game).empty(), "a client's config, text_cut_code in it");
+    game.watch_all(&no_callback);
+    check(!is_games(), "then the cut is patched");
+    game.put_back_game(&no_callback);
+    check(is_games(), "and put back with the game");
+
+    zap::Game full;
+    check(full.configure(self, stand_in_config(), false).empty(), "a cache with it configures");
+    full.watch_all(&no_callback);
+    check(!is_games(), "and the cut is patched with no client");
+    full.put_back_game(&no_callback);
+    check(is_games(), "put back with the game");
 }
 
 }  // namespace
@@ -783,5 +814,6 @@ int main() {
     test_the_logo_through_the_frame_call();
     test_the_disk_glyph_kept_for_its_popup();
     test_a_cache_needs_every_key();
+    test_a_cache_without_the_text_cut();
     return report("offline tests");
 }

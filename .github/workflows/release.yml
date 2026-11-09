@@ -77,7 +77,8 @@ jobs:
           notes="$RUNNER_TEMP/release-notes.md"
           gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="v$VERSION" \
             -f target_commitish="$GITHUB_SHA" -f previous_tag_name="$previous" -q .body > "$notes"
-          if [ ! -s "$notes" ]; then
+          # gh -q writes a newline even for an empty or null body, so look for text, not size.
+          if ! grep -q '[^[:space:]]' "$notes"; then
             echo "::error::GitHub generated no release notes for v$VERSION since $previous."
             exit 1
           fi
