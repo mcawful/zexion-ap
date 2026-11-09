@@ -2186,7 +2186,179 @@ void test_the_black_after_yes() {
 
 }  // namespace
 
+// The game's window over a message's text (0xA8210), as disassembled: glyph i in row i / w and
+// column i % w, tested at x 8c and y 10r against a window centered on 4w and on half the rows' 8
+// pixels each; a glyph inside is shown and cut at the window's edges, its left and right at those
+// edges mod 8, its top at the top edge mod 8 (with no row offset), its bottom at the bottom edge
+// less 2r, mod 8. A glyph outside is hidden, keeping its last cut. The cut: the glyph's pixel
+// columns and rows drawn, 0 to 8. (The icon glyph, 10 x 9 and cut mod 9, is left out.)
+struct GlyphCut {
+    bool shown = false;
+    int left = 0, top = 0, right = 8, bottom = 8;
+    bool whole() const { return shown && left == 0 && top == 0 && right == 8 && bottom == 8; }
+};
+
+void window_cut(std::vector<GlyphCut>& glyphs, int w, int wx, int wy) {
+    const int count = static_cast<int>(glyphs.size());
+    const int half_h = 8 * ((count - 1) / w + 1) / 2;
+    const int left = 4 * w - wx, right = 4 * w + wx, top = half_h - wy, bottom = half_h + wy;
+    for (int i = 0; i < count; ++i) {
+        const int r = i / w, x = 8 * (i % w), y = 10 * r;
+        GlyphCut& g = glyphs[i];
+        if (x + 8 <= left || x >= right || y + 8 <= top || y >= bottom) {
+            g.shown = false;
+            continue;
+        }
+        g = GlyphCut{true, 0, 0, 8, 8};
+        if (x + 8 > right) g.right = right % 8;
+        if (x < left) g.left = left % 8;
+        if (y + 8 > bottom) g.bottom = (bottom + 8 - 2 * r) % 8;
+        if (y < top) g.top = top % 8;
+    }
+}
+
+// A message's life as its update (0x181E70) runs it, one call a frame from its frames left and the
+// window as the message routine (and the helper) left them: while frames left are under the half-height the box closes a pixel a side and the window
+// steps down, else while the box is under the half-height both step up, else every glyph is
+// shown as last cut. `seen(phase, glyphs)` after each frame: 'o' opening, 's' open, 'c' closing.
+template <typename Seen>
+void run_message(const BYTE* message, Seen seen) {
+    const int count = get<int32_t>(message, 0x200), w = get<int32_t>(message, 0x204);
+    const int half = get<int32_t>(message, 0x1FC);
+    int wx = get<int32_t>(message, 0x214), wy = get<int32_t>(message, 0x218), box = 0;
+    // Every glyph as the message routine's own call (0x182C89, with the window empty) left it:
+    // each later call tests them all again.
+    std::vector<GlyphCut> glyphs(static_cast<size_t>(count));
+    window_cut(glyphs, w, 0, 0);
+    for (int frames = get<int32_t>(message, 0x1EC); frames > 0;) {
+        --frames;
+        char phase = 's';
+        if (frames < half) {
+            --box;
+            window_cut(glyphs, w, wx -= 100, wy -= 1);
+            phase = 'c';
+        } else if (half > box) {
+            ++box;
+            window_cut(glyphs, w, wx += 100, wy += 1);
+            phase = 'o';
+        } else {
+            for (GlyphCut& g : glyphs) g.shown = true;
+        }
+        seen(phase, glyphs);
+    }
+}
+
+// The pixel rows shown of row r's first glyph.
+int row_shown(const std::vector<GlyphCut>& glyphs, int w, int r) {
+    const GlyphCut& g = glyphs[static_cast<size_t>(r * w)];
+    return g.shown ? g.bottom - g.top : 0;
+}
+
+void test_tall_text_window() {
+    const std::string pod = "ENOUGH OS INSTALL DISKS FOUND. SAVE AT THE LANDING POD TO RETURN HOME.";
+    // The game left alone: a four-line notice (five rows with its blank one) has a line grow back
+    // to whole while the box closes, as filmed in game (lab/popup-close, 2026-11-08).
+    {
+        reset_game();
+        g_slots_live = true;  // its frames left set too
+        int w = 0;
+        const std::string text = zap::notice_text(pod, 24, &w);
+        message_fn(text.c_str(), w, 0xA0, 0x58, 0, 0, 180);
+        zap::fit_notice_box(g_message, text, w);
+        check(w == 23 && get<int32_t>(g_message, 0x1FC) == 20 &&
+                  get<int32_t>(g_message, 0x200) == 4 * 23 + 1,
+              "the reminder: four lines of 23 and its blank one, the box fitted");
+        std::vector<int> last(5, 0);
+        bool grew = false;
+        run_message(g_message, [&](char phase, const std::vector<GlyphCut>& glyphs) {
+            for (int r = 0; r < 5; ++r) {
+                const int now = row_shown(glyphs, w, r);
+                if (phase == 'c' && now > last[r]) grew = true;
+                last[r] = now;
+            }
+        });
+        check(grew, "the game's window alone: a line grows back while the box closes");
+    }
+    // The helper's popup: no glyph while the box opens, until its last frame; every glyph whole
+    // while it is open; none while it closes.
+    for (const bool notice : {true, false}) {
+        zap::Game game;
+        ready(game);
+        g_slots_live = true;  // the message's frames left set too
+        if (notice) {
+            ::apply(game, "apply\nnotice 36 " + pod);
+            for (int i = 0; i < 30; ++i) game.pump_popups();
+        } else {  // four full rows of 24 with no blank one, as a long name over its sender wraps
+            const std::string text(96, 'A');
+            message_fn(text.c_str(), 24, 0xA0, 0x58, 0, 0, 180);
+            zap::show_text_when_open(g_message);
+        }
+        const int count = get<int32_t>(g_message, 0x200), w = get<int32_t>(g_message, 0x204);
+        const int rows = (count - 1) / w + 1;
+        check(rows >= 4, notice ? "the reminder is five rows" : "the item popup is four rows");
+        int opening = 0, hidden_opening = 0, open_whole = 0, open = 0, closing = 0,
+            hidden_closing = 0;
+        run_message(g_message, [&](char phase, const std::vector<GlyphCut>& glyphs) {
+            bool none = true, whole = true;
+            for (const GlyphCut& g : glyphs) {
+                none = none && !g.shown;
+                whole = whole && g.whole();
+            }
+            if (phase == 'o') {
+                ++opening;
+                hidden_opening += none;
+            } else if (phase == 's') {
+                ++open;
+                open_whole += whole;
+            } else {
+                ++closing;
+                hidden_closing += none;
+            }
+        });
+        check(opening == get<int32_t>(g_message, 0x1FC) && hidden_opening == opening - 1,
+              notice ? "the reminder: no text while the box opens, but at its last frame"
+                     : "the item popup: no text while the box opens, but at its last frame");
+        check(open > 0 && open_whole == open,
+              notice ? "the reminder: all of its text whole while the box is open"
+                     : "the item popup: all of its text whole while the box is open");
+        check(closing > 0 && hidden_closing == closing,
+              notice ? "the reminder: no text while the box closes"
+                     : "the item popup: no text while the box closes");
+    }
+    // Three rows or fewer, which the window cuts right, are left as the game made them.
+    {
+        zap::Game game;
+        ready(game);
+        apply(game, "apply\nnotice 36 HINT: PHASER AT MACHINUS 29,30");
+        for (int i = 0; i < 30; ++i) game.pump_popups();
+        check(get<int32_t>(g_message, 0x214) == 0 && get<int32_t>(g_message, 0x218) == 0,
+              "a short notice's window is left alone");
+    }
+    // A message not as the game made it is left alone.
+    {
+        reset_game();
+        int w = 0;
+        const std::string text = zap::notice_text(pod, 24, &w);
+        message_fn(text.c_str(), w, 0xA0, 0x58, 0, 0, 180);
+        put<int32_t>(g_message, 0x1EC, 180);
+        put<double>(g_message, 0x160, 3.0);  // the box already opening
+        zap::show_text_when_open(g_message);
+        check(get<int32_t>(g_message, 0x214) == 0 && get<int32_t>(g_message, 0x218) == 0,
+              "a message whose box has started opening is left alone");
+        put<double>(g_message, 0x160, 0.0);
+        put<int32_t>(g_message, 0x1EC, 2 * get<int32_t>(g_message, 0x1FC));
+        zap::show_text_when_open(g_message);
+        check(get<int32_t>(g_message, 0x214) == 0 && get<int32_t>(g_message, 0x218) == 0,
+              "a message too short for its box to open fully is left alone");
+        put<int32_t>(g_message, 0x1EC, 2 * get<int32_t>(g_message, 0x1FC) + 1);
+        zap::show_text_when_open(g_message);
+        check(get<int32_t>(g_message, 0x214) != 0, "one frame longer, it is set");
+        zap::show_text_when_open(nullptr);
+    }
+}
+
 int main() {
+    test_tall_text_window();
     test_the_black_after_yes();
     test_own_popup_needs_a_new_last_message();
     test_popups_wait_for_the_mission_fade();

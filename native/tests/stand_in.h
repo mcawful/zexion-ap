@@ -225,6 +225,15 @@ inline void* message_fn(const char* text, int per_line, int x, int y, int, int, 
     BYTE* message = g_slots + 0x1628 * g_message_slot;
     *reinterpret_cast<double*>(message + 0x48) = y - 1;
     *reinterpret_cast<int32_t*>(message + 0x1FC) = 4 * extra + 7;
+    // Its glyphs and line length, the window's steps, the window empty, the box not yet opened.
+    *reinterpret_cast<int32_t*>(message + 0x200) = len;
+    *reinterpret_cast<int32_t*>(message + 0x204) = per_line;
+    *reinterpret_cast<int32_t*>(message + 0x1F4) = 100;
+    *reinterpret_cast<int32_t*>(message + 0x1F8) = 1;
+    *reinterpret_cast<int32_t*>(message + 0x214) = 0;
+    *reinterpret_cast<int32_t*>(message + 0x218) = 0;
+    *reinterpret_cast<double*>(message + 0x150) = 0;
+    *reinterpret_cast<double*>(message + 0x160) = 0;
     if (g_slots_live) {
         *reinterpret_cast<int32_t*>(message + 0x1E0) = g_message_slot;
         *reinterpret_cast<int32_t*>(message + 0x1D8) = ++g_serial;

@@ -26,6 +26,19 @@ constexpr int kPopupX = 0xA0, kPopupY = 0x58, kPopupFrames = 0xB4;
 constexpr size_t kMessageMax = 255;
 // The popup message's box: its center's y (a double) and its half-height (32-bit).
 constexpr ptrdiff_t kMessageY = 0x48, kMessageHalfHeight = 0x1FC;
+// A message's frames left (32-bit), counting down by one a frame.
+constexpr ptrdiff_t kMessageFramesLeft = 0x1EC;
+// The window over a message's text (`0xA8210`; docs/re/memory.md, "Game functions the helper
+// calls"): the glyph count and line length it reads, its half-width and half-height, and the
+// steps the message's update adds to those each frame the box opens and takes off each frame it
+// closes (32-bit each); the box's bottom (a double), 0 until the box first opens.
+constexpr ptrdiff_t kMessageGlyphs = 0x200, kMessageLineLength = 0x204;
+constexpr ptrdiff_t kTextWindowX = 0x214, kTextWindowY = 0x218;
+constexpr ptrdiff_t kTextWindowStepX = 0x1F4, kTextWindowStepY = 0x1F8;
+constexpr ptrdiff_t kMessageBoxBottom = 0x160;
+// From this many rows of glyphs on, a row the window cuts wrong comes back whole while the box
+// opens and closes (with three, row 1 is cut two pixels short for two frames).
+constexpr int kMiscutRows = 4;
 
 // The helper's text is kept in the case it was sent or written in, mixed case for its own;
 // capitals only where they are drawn: the 8 x 8 font, and every translation but English(HD)
@@ -91,5 +104,10 @@ std::string notice_text(const std::string& text, int per_line, int* width = null
 // Game thread, right after the game made a notice's message from `text`: fits the box to the
 // notice's real lines when it ends in its blank line (notice_text), else leaves it alone.
 void fit_notice_box(BYTE* message, const std::string& text, int per_line);
+// Game thread, right after the game made a message (and fit_notice_box): when its text is
+// kMiscutRows rows or more, has the game show the text only while the box is fully open, all of
+// it, so the box opens and closes empty; else, or with the message not as the game made it,
+// leaves it alone.
+void show_text_when_open(BYTE* message);
 
 }  // namespace zap

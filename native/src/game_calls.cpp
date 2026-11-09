@@ -29,9 +29,9 @@ constexpr uint8_t kMissileBox = 36, kBombPack = 37;
 // it, not the record's DATA DISC with no icon (docs/re/memory.md, "The Data Disc").
 bool disk_popup(const Popup& popup) { return !popup.bare && popup.item == kDiskItem; }
 
-// The last message's frames left and its sequence beside the pointer to it (docs/re/memory.md,
-// "Game functions the helper calls"), and the frame calls between two of the helper's popups.
-constexpr size_t kMessageFramesLeft = 0x1EC;
+// The last message's sequence beside the pointer to it (docs/re/memory.md, "Game functions the
+// helper calls"; its frames left: kMessageFramesLeft), and the frame calls between two of the
+// helper's popups.
 constexpr ptrdiff_t kLastSequence = 8;
 constexpr int kPopupGapFrames = 20;
 constexpr int kFileSlotFrames = 15;  // frames between looks for the AP saves' slots
@@ -386,6 +386,7 @@ void Game::pump_popups() {
         text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
     if (message == nullptr) return;  // all four slots busy: try again next frame
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
+    show_text_when_open(static_cast<BYTE*>(message));
     // The translation's font; failing that, the pixel text, the slot's last translated mark
     // cleared so it shows (clear_mark checks the flag itself).
     if (!translated || !popup_areas_.show(at_, *now, where, static_cast<BYTE*>(message), hd)) {

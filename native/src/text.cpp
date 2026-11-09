@@ -137,6 +137,46 @@ void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
     put(message, kMessageY, y - 4);
 }
 
+void show_text_when_open(BYTE* message) {
+    // The window (0xA8210) tests glyph row r at 10r and cuts a glyph's top at the window's top
+    // edge mod 8, leaving out the row's own offset, so a row past the first cut there shows the
+    // wrong part; past three rows it comes back whole when the edge reaches a multiple of 8, so
+    // lines flash while the box opens and closes (docs/re/memory.md, "Game functions the helper
+    // calls"). The message's update moves the window's half-width by its step each frame the box
+    // opens or closes, and leaves it while the box is open. Started at 4w - step x half-height,
+    // it holds no glyph until the opening's last frame, all of them whole from then on, and none
+    // from the closing's first; the half-height is started so that it then holds every row whole.
+    // The text then shows for the frames left less twice the half-height, plus one.
+    int32_t glyphs = 0, w = 0, half = 0, step_x = 0, step_y = 0, wx = -1, wy = -1, frames = 0;
+    double bottom = -1;
+    if (message == nullptr || !read(message, kMessageGlyphs, glyphs) ||
+        !read(message, kMessageLineLength, w) || !read(message, kMessageHalfHeight, half) ||
+        !read(message, kTextWindowStepX, step_x) || !read(message, kTextWindowStepY, step_y) ||
+        !read(message, kTextWindowX, wx) || !read(message, kTextWindowY, wy) ||
+        !read(message, kMessageBoxBottom, bottom) || !read(message, kMessageFramesLeft, frames)) {
+        return;
+    }
+    // A line's half-width in pixels, 8 a character: what the window must reach to hold a row.
+    const int32_t reach = 4 * w;
+    // As the message routine left it (0x182A4E to 0x182C89): steps of 100 and 1, the window
+    // empty and the box not yet opened; within the game's widths and the slot's 256 glyphs; and
+    // up long enough for the box to open fully before it closes, else the text would never show.
+    if (w <= 0 || w > kGamePopupWidth || glyphs <= 0 ||
+        glyphs > static_cast<int32_t>(kMessageMax) + 1 || half <= 0 ||
+        half > 4 * static_cast<int32_t>(kMessageMax) || step_x != 100 || step_y != 1 || wx != 0 ||
+        wy != 0 || !(bottom == 0.0) || reach > step_x - 4 || frames <= 2 * half) {
+        return;
+    }
+    const int32_t rows = (glyphs - 1) / w + 1;
+    if (rows < kMiscutRows || !writable(message + kTextWindowX, 8)) return;
+    // Half-width after the opening's half-height of steps: reach (every column), and reach - step
+    // (at most -4: no column) at the closing's first.
+    put<int32_t>(message, kTextWindowX, reach - step_x * half);
+    // Half-height after the opening: 6 a row or more, so the window, centered on the rows' 8
+    // pixels each, takes in every row's 10 whole.
+    put<int32_t>(message, kTextWindowY, (std::max)(0, 6 * rows - step_y * half));
+}
+
 std::string in_capitals(std::string text) {
     for (char& c : text) c = capital(c);
     return text;
