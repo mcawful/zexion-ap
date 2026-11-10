@@ -54,6 +54,7 @@ from ..world import (
     ZexionWorld,
 )
 from .bases import ZexionTestBase, every_list
+from .test_plando import generate
 
 
 def fake_world(**options: Any) -> ZexionWorld:
@@ -888,12 +889,8 @@ class TestAreaMapHints(ZexionTestBase):
         self.assertEqual(chip.code, 3392510_000 + 101)
         self.assertEqual(chip.classification, ItemClassification.filler, "as the Area Map")
         self.assertIs(self.world.fill_slot_data()["intel_chip"], True)
-
-    def test_intel_chips_are_not_kept_local(self) -> None:
-        # They reveal nothing, so a received one loses nothing.
-        local = self.world.options.local_items.value
-        self.assertNotIn("Intel Chip", local)
-        self.assertNotIn("Area Map", local)
+        # They reveal nothing, so a received one loses nothing: not kept in this world.
+        self.assertNotIn("Area Map", self.world.options.local_items.value)
 
     def test_the_game_holds_an_intel_chip_as_the_area_map(self) -> None:
         # The pool's Area Maps are drawn per seed, and some seeds draw none: one of this
@@ -969,6 +966,22 @@ class TestAreaMapsStayInTheirOwnWorld(unittest.TestCase):
         for location in maps:
             with self.subTest(location.name, player=location.player):
                 self.assertEqual(location.item.player, location.player)
+        self.assertTrue(multiworld.can_beat_game(CollectionState(multiworld)))
+
+    def test_the_fill_does_not_strand_one_beside_a_player_short_of_filler(self) -> None:
+        # Beta: 30 disks (no filler left) and 16 excluded locations, which take Alpha's Scrap.
+        # Left to the fill's last step, one of Alpha's Area Maps found only Beta's locations
+        # open on this seed ("No more spots to place"): the world places them first.
+        names = sorted(ZexionWorld.location_name_to_id)
+        options = [
+            {"mode": "standard", "area_map_hints": False},
+            {**disks(placed=30, required=20), "exclude_locations": names[0::2][:16]},
+        ]
+        multiworld = generate(options, seed=3)
+        distribute_items_restrictive(multiworld)
+        maps = [loc for loc in multiworld.get_filled_locations() if loc.item.name == "Area Map"]
+        self.assertTrue(maps)
+        self.assertEqual({loc.player for loc in maps}, {1})
         self.assertTrue(multiworld.can_beat_game(CollectionState(multiworld)))
 
 
@@ -1060,7 +1073,9 @@ class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
             ).progress_type = LocationProgressType.EXCLUDED
         with self.assertRaises(OptionError) as caught:
             ZexionWorld.stage_pre_fill(multiworld)
-        self.assertIn(f"Zexion (Beta): {filler + 1} excluded locations", str(caught.exception))
+        message = str(caught.exception)
+        self.assertIn(f"Zexion (Beta): {filler + 1} excluded locations", message)
+        self.assertIn("Area Maps do with Area Map Hints off", message)
         # The same Area Maps with Area Map Hints on would go anywhere: counted for Beta.
         alpha.options.local_items.value.discard("Area Map")
         ZexionWorld.stage_pre_fill(multiworld)

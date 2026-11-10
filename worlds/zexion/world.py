@@ -114,13 +114,12 @@ def important_elsewhere(item: Item | None) -> bool:
 
 def kept_local(multiworld: MultiWorld, item: Item) -> bool:
     """Whether ``item`` is in its player's own ``local_items``, so only that player's locations
-    take it (Archipelago's locality rules; empty with one player). An item link's is not
-    counted: its group has no options of its own."""
-    if multiworld.players == 1 or item.player in multiworld.groups:
-        return False
-    options = getattr(multiworld.worlds.get(item.player), "options", None)
-    local = getattr(options, "local_items", None)
-    return local is not None and item.name in local.value
+    take it (Archipelago's locality rules; empty with one player). An item link's group keeps
+    its locality in the link's settings, not counted here."""
+    return (
+        multiworld.players > 1
+        and item.name in multiworld.worlds[item.player].options.local_items.value
+    )
 
 
 def pairs_of(
@@ -173,10 +172,8 @@ class ZexionWorld(World):
         self.choose_starts()
         self.fit_pool()
         if not self.options.area_map_hints:
-            # An Area Map reveals the map around the square it lies in (its pickup's area event:
-            # docs/re/memory.md, "Intel Chips"), so it stays in this world, where the game's own
-            # pickup reveals it; in another world it would have no square here. With Area Map
-            # Hints on, they are Intel Chips, which reveal nothing and go anywhere.
+            # An Area Map reveals the map around the square it lies in (docs/re/memory.md, "Intel
+            # Chips"): kept in this world (place_area_maps). Intel Chips reveal nothing.
             self.options.local_items.value.add(NAMES[AREA_MAP])
         # The core is entered from its door (create_regions); the disks' goal returns home from
         # the Landing Pod (set_rules).
@@ -380,6 +377,27 @@ class ZexionWorld(World):
         fill_locations: list[Location],
     ) -> None:
         self.open_the_start(progitempool, fill_locations)
+        self.place_area_maps(filleritempool, fill_locations)
+
+    def place_area_maps(self, filleritempool: list[Item], fill_locations: list[Location]) -> None:
+        """Place this player's Area Maps, kept in this world (``local_items``, Area Map Hints
+        off), in its own locations before the main fill, its excluded ones first: placed last,
+        among the other filler, one can find only other players' locations left, and the fill
+        stops with "No more spots to place"."""
+        name = NAMES[AREA_MAP]
+        if name not in self.options.local_items.value:  # emptied in a one-player seed
+            return
+        state = self.multiworld.state
+        spots = [loc for loc in fill_locations if loc.player == self.player]
+        spots.sort(key=lambda loc: loc.progress_type != LocationProgressType.EXCLUDED)
+        for item in [i for i in filleritempool if i.player == self.player and i.name == name]:
+            spot = next((s for s in spots if s.can_fill(state, item, check_access=False)), None)
+            if spot is None:
+                return
+            spots.remove(spot)
+            fill_locations.remove(spot)
+            filleritempool.remove(item)
+            self.multiworld.push_item(spot, item, collect=False)
 
     def open_the_start(self, progitempool: list[Item], fill_locations: list[Location]) -> None:
         """Place items that open the way out of what the starting items reach, one step at a
@@ -751,9 +769,10 @@ class ZexionWorld(World):
 
     def generate_basic(self) -> None:
         # Archipelago has just read the plando and places it after this step (Main.py): say why
-        # a location one names is not in this seed, and count the items as the world made them,
-        # for pre_fill to tell plando's from them and from the item links' (plando.py).
-        for warning in plando.left_out(self):
+        # a location one names is not in this seed, or that this player's Area Maps cannot go to
+        # another world, and count the items as the world made them, for pre_fill to tell
+        # plando's from them and from the item links' (plando.py).
+        for warning in plando.left_out(self) + plando.area_maps_away(self):
             logging.warning(warning)
         self.made_items = plando.made_items(self)
 
@@ -799,6 +818,16 @@ class ZexionWorld(World):
         shared = sum(filler.values()) - sum(local.values())
         if sum(max(0, n - local[player]) for player, n in excluded.items()) <= shared:
             return
+
+        def held_back(player: int) -> str:
+            held = sum(n for p, n in local.items() if p != player)
+            if not held:
+                return ""
+            return (
+                f" ({held} of theirs stay in their own worlds, local_items: a Zexion player's Area "
+                f"Maps do with Area Map Hints off)"
+            )
+
         for world in multiworld.get_game_worlds(GAME):
             n, have = excluded[world.player], filler[world.player]
             if n <= have:
@@ -811,7 +840,7 @@ class ZexionWorld(World):
             raise OptionError(
                 f"Zexion ({world.player_name}): {n} excluded {locations}, but only {have} filler "
                 f"items (Scrap, Area Maps or Intel Chips) to put there, and the other players' "
-                f"filler does not make up the difference: {fix}"
+                f"filler does not make up the difference{held_back(world.player)}: {fix}"
             )
 
     def write_spoiler_header(self, spoiler_handle: TextIO) -> None:

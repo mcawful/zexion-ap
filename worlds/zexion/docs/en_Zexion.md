@@ -262,13 +262,14 @@ Slide Mod is at Guardia 22,7), and it goes into your hint list. When nothing is 
 it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
 
 With the option off, Area Maps work as in the normal game: picking one up reveals the map
-around the square it lay in. So they stay in your own world: the generator never places your
-Area Maps in another player's world (as if they were in your `local_items`, which wins over
-your `non_local_items`), and an item plando
-that puts one there isn't placed (with `force: true`, generation stops). Area Maps you put in
-an item link aren't kept this way. An Area Map that still reaches you from elsewhere, such as
-one sent from the server's console or through an item link, has no square in your world and
-reveals nothing.
+around the square it lay in (by the game's code; not yet checked in game). So they stay in your
+own world: the generator never places your Area Maps in another player's world (as if they were
+in your `local_items`, which wins over your `non_local_items`), and they don't count toward
+filling other players' excluded locations. An item plando that puts one there isn't placed: the
+generator logs a warning saying why, and with `force: true` generation stops. An Area Map that
+still reaches you from elsewhere, such as one sent from the server's console or through an item
+link (Area Maps in an item link aren't kept this way), has no square in your world and reveals
+nothing.
 
 ## Can I use the assist menu?
 

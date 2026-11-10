@@ -2,7 +2,7 @@
 
 Archipelago's own item plando places this world's items, and other worlds' items in this world's
 locations, as any world's: the client and the game then treat a plando'd item as any other
-(world.py's ``location_items``; client/reconcile.py). The world adds two checks, both here:
+(world.py's ``location_items``; client/reconcile.py). The world adds three checks, all here:
 
 - ``left_out``, from generate_basic, just after Archipelago reads the plando: a warning for each
   plando that names a location of this world the seed does not have, saying why: a location its
@@ -11,6 +11,10 @@ locations, as any world's: the client and the game then treat a plando'd item as
   it could not place the items (and stops, with ``force: true``). A plando for several worlds
   (``world: null`` or a list) gets no warning for a location another of them has, where
   Archipelago places it.
+- ``area_maps_away``, from generate_basic too: a warning for each plando of this player's Area
+  Maps into other worlds only, with Area Map Hints off, which keeps them in this world
+  (``local_items``: world.py's ``place_area_maps``). Archipelago does not place them there and,
+  with ``force: true``, stops with only "Could not place".
 - ``problems``, from pre_fill, once Archipelago has placed the plando: why the player's items
   (in the pool, in any world's locations and in the start inventory: ``own_items``) are more than
   the game holds or a kind it does not hold, one line each, where plando made them more than the
@@ -39,8 +43,8 @@ locations, as any world's: the client and the game then treat a plando'd item as
   - with Area Map Hints on, no Area Map (they are Intel Chips); with it off, no Intel Chip, which
     would hint nothing (the slot data's ``hints`` is empty).
 
-Pure but for ``own_items``, ``made_items``, ``linked_items`` and ``left_out``, which read the
-multiworld.
+Pure but for ``own_items``, ``made_items``, ``linked_items``, ``left_out`` and
+``area_maps_away``, which read the multiworld.
 """
 
 from __future__ import annotations
@@ -227,3 +231,18 @@ def left_out(world: ZexionWorld) -> list[str]:
                     f"{why}; Archipelago cannot place an item there"
                 )
     return out
+
+
+def area_maps_away(world: ZexionWorld) -> list[str]:
+    """A warning for each of this player's plandos that puts Area Maps in other worlds only,
+    while Area Map Hints off keeps them in this one (the module's docstring)."""
+    name = NAMES[AREA_MAP]
+    if name not in world.options.local_items.value:
+        return []
+    return [
+        f"Zexion ({world.player_name}): plando_items puts an Area Map in another world, but "
+        f"with Area Map Hints off the Area Maps stay in their own world (they reveal the map "
+        f"around where they lie); Archipelago cannot place it there"
+        for block in world.multiworld.plando_item_blocks.get(world.player, [])
+        if name in block.items and world.player not in block.worlds
+    ]
