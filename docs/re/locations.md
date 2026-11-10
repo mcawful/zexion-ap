@@ -335,16 +335,19 @@ where its subject is:
   `open_the_start`, through Archipelago's own `remaining_fill`), in the player's own empty locations
   in this order: excluded ones (only filler goes there), those the starting state
   (`open_the_start`'s, its items placed) does not reach, those it does, and priority ones last, so
-  the last three are left to progression in that order, as the main fill would. Left to the fill's
-  last step (`remaining_fill` over every player's filler, in a shuffled order), one could find only
-  other players' locations left, and its two swaps per item name run out: "No more spots to place".
-  The planning session's round 7 reviews, 2026-11-09, their notes `round7/world.md` and
-  `round7/recheck.md` outside the repo, ran seeds through Archipelago 0.6.8's `Generate.main` and
-  `Main.main`: beside a player with 30 disks and 16 excluded locations, 11 of 24 seeds failed so
-  with the Area Maps local and without `place_area_maps`, against 0 of 24 on `develop` before they
-  were kept local; with `place_area_maps` (at 920e36b, where the order was excluded first and
-  priority last only), none of 1,358 seeds failed so (the only "No more spots" left, 10 seeds of a
-  player whose own `non_local_items` holds the filler, fail the same on `develop`); `test_world.py`,
+  the last three are left to progression in that order (the reason for the order, not measured).
+  Left to the fill's last step (`remaining_fill` over every player's filler, in a shuffled order),
+  one could find only other players' locations left, and its two swaps per item name run out: "No
+  more spots to place". The planning session's round 7 reviews, 2026-11-09, their notes
+  `round7/world.md` and `round7/recheck.md` outside the repo, ran seeds through Archipelago 0.6.8's
+  `Generate.main` and `Main.main`: beside a player with 30 disks and 16 excluded locations, 11 of 24
+  seeds failed so with the Area Maps local and without `place_area_maps`, against 0 of 24 on
+  `develop` before they were kept local; with `place_area_maps` (at 920e36b, where the order was
+  excluded first and priority last only), none of 1,358 seeds failed so (the only "No more spots"
+  left, 10 seeds of a player whose own `non_local_items` holds the filler, fail the same on
+  `develop`); the same 1,358 at 4eb50a8, with this order and `remaining_fill`, through the same
+  harness (`round7/wrev/gen.py`) in a copy of Archipelago 0.6.8 with no links, each gave the result
+  it gave at 920e36b, but for the refusal's reworded message; `test_world.py`,
   `test_the_fill_does_not_strand_one_beside_a_player_short_of_filler` (seed 3 of the tests' harness)
   fails without it, and `test_area_maps_take_excluded_then_unreached_and_leave_priority_last` checks
   the order. The game's pickup reveals the map around the square the Area Map lay in, and a received
