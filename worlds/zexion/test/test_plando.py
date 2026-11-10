@@ -279,8 +279,15 @@ class TestPlandoRefused(PlandoTestCase):
         with self.assertLogs(level="WARNING") as logs, self.assertRaises(Exception) as caught:
             generate([*options, {"mode": "easy"}])
         self.assertIn("Could not place", str(caught.exception.__cause__))
-        want = "Zexion (Tester1): plando_items puts an Area Map in another world, but with Area"
+        want = "Zexion (Tester1): plando_items puts an Area Map in another world, but Area Map"
         self.assertTrue(any(want in line for line in logs.output), logs.output)
+
+    def test_an_area_map_in_another_world_silently(self) -> None:
+        # force: silent asks for no warning: Archipelago logs only at debug, and so does the world.
+        away = block({"Area Map": 1}, ["Vallahar 6,14"], world="Tester2", force="silent")
+        options = {"mode": "easy", "area_map_hints": False, "plando_items": [away]}
+        world = generate([options, {"mode": "easy"}]).worlds[1]
+        self.assertEqual(plando.area_maps_away(world), [])
 
     def test_an_area_map_in_its_own_world_without_area_map_hints(self) -> None:
         own = block({"Area Map": 1}, ["Vallahar 6,14"])

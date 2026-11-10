@@ -312,9 +312,10 @@ where its subject is:
   Area Maps or Intel Chips, whose places the OS Install Disks take before Energy Shields':
   `world.DISC_REPLACES`) and the other players' filler does not make up the difference (filler in
   its player's `local_items`, such as Area Maps with Area Map Hints off, counted for that player
-  alone, and the message says how much was held back so), counted over the whole multiworld after
-  plando and every world's `pre_fill`, the seed is refused with the options to change, in place of
-  the fill's "Not enough filler items for excluded locations" (`ZexionWorld.stage_pre_fill`, since
+  alone; the message says how much other players' filler stays in their own worlds so, such as a
+  Zexion player's Area Maps with Area Map Hints off), counted over the whole multiworld after plando
+  and every world's `pre_fill`, the seed is refused with the options to change, in place of the
+  fill's "Not enough filler items for excluded locations" (`ZexionWorld.stage_pre_fill`, since
   2026-10-26; tested only: `test_world.py`, `TestExcludedLocationsNeedFiller` and
   `TestExcludedLocationsNameThePlayerOver`).
 - **Item plando past what the game holds is refused** (`worlds/zexion/plando.py`, from
@@ -331,25 +332,31 @@ where its subject is:
   on every other player's locations; since 2026-11-09, decided by the owner the same day: "the area
   maps should only be shuffled within the player's own world due to their nature"), **and placed
   there first** (`ZexionWorld.place_area_maps`, from Archipelago's `fill_hook` after
-  `open_the_start`): each in one of the player's own empty locations that takes it, excluded ones
-  first and priority ones last. Left to the fill's last step (`remaining_fill`, among the other filler, in a shuffled
-  order), one could find only other players' locations left, and its two swaps per item name run
-  out: "No more spots to place" (the planning session's round 7 review, 2026-11-09, its notes
-  `round7/world.md` outside the repo, through Archipelago 0.6.8's `Generate.main` and `Main.main`:
-  beside a player with 30 disks and 16 excluded locations, 11 of 24 seeds failed so with the Area
-  Maps local and without `place_area_maps`, 0 of 24 on `develop` before they were kept local; with
-  `place_area_maps`, none of about 1,460 seeds failed; `test_world.py`,
-  `test_the_fill_does_not_strand_one_beside_a_player_short_of_filler`, seed 3 of the tests' harness,
-  fails without it). The game's pickup reveals the map around the square the Area Map lay in, and a
-  received one has none in this world (`memory.md`, "Intel Chips"); the game's randomizer is
-  single-player, so its own Area Maps are always its own. Plando goes through the same rule: one put
-  in another world is not placed, the world warning why from `generate_basic`
-  (`plando.area_maps_away`), and with `force: true` generation stops. Intel Chips (the option on)
-  reveal nothing and go anywhere. One Area Map still arriving from elsewhere (the server's console)
-  reveals nothing, as before. **Not kept by an item link:** Archipelago reads a group's locality
-  from the link's own settings, not its members' `local_items`, so Area Maps in an `item_links` pool
-  can land in another member's world and arrive there revealing nothing (by the code; left as it is,
-  as a link's items are the players' choice). Tested only (`test_world.py`,
+  `open_the_start`, through Archipelago's own `remaining_fill`), in the player's own empty locations
+  in this order: excluded ones (only filler goes there), those the starting state
+  (`open_the_start`'s, its items placed) does not reach, those it does, and priority ones last, so
+  the last three are left to progression in that order, as the main fill would. Left to the fill's
+  last step (`remaining_fill` over every player's filler, in a shuffled order), one could find only
+  other players' locations left, and its two swaps per item name run out: "No more spots to place".
+  The planning session's round 7 reviews, 2026-11-09, their notes `round7/world.md` and
+  `round7/recheck.md` outside the repo, ran seeds through Archipelago 0.6.8's `Generate.main` and
+  `Main.main`: beside a player with 30 disks and 16 excluded locations, 11 of 24 seeds failed so
+  with the Area Maps local and without `place_area_maps`, against 0 of 24 on `develop` before they
+  were kept local; with `place_area_maps` (at 920e36b, where the order was excluded first and
+  priority last only), none of 1,358 seeds failed so (the only "No more spots" left, 10 seeds of a
+  player whose own `non_local_items` holds the filler, fail the same on `develop`); `test_world.py`,
+  `test_the_fill_does_not_strand_one_beside_a_player_short_of_filler` (seed 3 of the tests' harness)
+  fails without it, and `test_area_maps_take_excluded_then_unreached_and_leave_priority_last` checks
+  the order. The game's pickup reveals the map around the square the Area Map lay in, and a received
+  one has none in this world (`memory.md`, "Intel Chips"); the game's randomizer is single-player,
+  so its own Area Maps are always its own. Plando goes through the same rule: one put in another
+  world is not placed, the world warning why from `generate_basic` (`plando.area_maps_away`; not
+  with `force: silent`), and with `force: true` generation stops. Intel Chips (the option on) reveal
+  nothing and go anywhere. One Area Map still arriving from elsewhere (the server's console) reveals
+  nothing, as before. **Not kept by an item link:** Archipelago reads a group's locality from the
+  link's own settings, not its members' `local_items`, so Area Maps in an `item_links` pool can land
+  in another member's world and arrive there revealing nothing (by the code; left as it is, as a
+  link's items are the players' choice). Tested only (`test_world.py`,
   `TestAreaMapsStayInTheirOwnWorld`; `test_plando.py`); not run in game.
 - **Filler:** where the pool has too little filler for the locations left out and the disks,
   ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement

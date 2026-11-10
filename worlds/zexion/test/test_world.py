@@ -968,6 +968,33 @@ class TestAreaMapsStayInTheirOwnWorld(unittest.TestCase):
                 self.assertEqual(location.item.player, location.player)
         self.assertTrue(multiworld.can_beat_game(CollectionState(multiworld)))
 
+    def test_area_maps_take_excluded_then_unreached_and_leave_priority_last(self) -> None:
+        multiworld = two_zexion_players({"area_map_hints": False})
+        world = multiworld.worlds[1]
+        start = multiworld.state.copy()
+        start.sweep_for_advancements()
+        own = [loc for loc in multiworld.get_locations(1) if loc.address is not None]
+        reached = [loc for loc in own if loc.can_reach(start)]
+        unreached = [loc for loc in own if not loc.can_reach(start)]
+        excluded, priority = unreached[:2], unreached[2:4]
+        for location in excluded:
+            location.progress_type = LocationProgressType.EXCLUDED
+        for location in priority:
+            location.progress_type = LocationProgressType.PRIORITY
+        # In an order the sort must undo: priority, reached, unreached, then excluded.
+        spots = [*priority, reached[0], unreached[4], *excluded]
+        scrap = world.create_item("Scrap Metal")
+        pool = [*(world.create_item("Area Map") for _ in range(3)), scrap]
+        world.place_area_maps(pool, spots)
+        self.assertEqual(pool, [scrap])
+        self.assertEqual(spots, [*priority, reached[0]], "excluded, then what the start misses")
+        for location in (*excluded, unreached[4]):
+            self.assertEqual(location.item.name, "Area Map", location.name)
+        world.place_area_maps([world.create_item("Area Map")], spots)
+        self.assertEqual(spots, priority, "then what the start reaches, priority left")
+        world.place_area_maps([world.create_item("Area Map")], spots)
+        self.assertEqual(len(spots), 1, "priority taken once nothing else is left")
+
     def test_the_fill_does_not_strand_one_beside_a_player_short_of_filler(self) -> None:
         # Beta: 30 disks (no filler left) and 16 excluded locations, which take Alpha's Scrap.
         # Left to the fill's last step, one of Alpha's Area Maps found only Beta's locations
@@ -1075,7 +1102,7 @@ class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
             ZexionWorld.stage_pre_fill(multiworld)
         message = str(caught.exception)
         self.assertIn(f"Zexion (Beta): {filler + 1} excluded locations", message)
-        self.assertIn("Area Maps do with Area Map Hints off", message)
+        self.assertIn("such as a Zexion player's Area Maps with Area Map Hints off", message)
         # The same Area Maps with Area Map Hints on would go anywhere: counted for Beta.
         alpha.options.local_items.value.discard("Area Map")
         ZexionWorld.stage_pre_fill(multiworld)
