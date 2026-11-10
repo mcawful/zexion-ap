@@ -183,8 +183,7 @@ Zexion:
     # take all four keys, becomes Unlocked, even if you start with keys (Start Keys or
     # start_inventory): the gates then take no keys, only two of them visited. The scanner at
     # Guardia 42,26, outside the core's door, which shows where the keys are in the normal game,
-    # tells you how many disks you need (seen there in game after a visit to Vallahar 6,8;
-    # whether that visit is needed first is not known yet).
+    # tells you how many disks you need.
     core: 50
     os_install_disks: 0
 
