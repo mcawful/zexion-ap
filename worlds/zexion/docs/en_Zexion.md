@@ -36,11 +36,9 @@ Set with the Goal option.
   - Your count shows after each disk's popup (a disk sent to you first pops up as any item
     does, with who sent it), on the pause screen and on the file select.
   - The scanner at Guardia 42,26, outside the core's door, which shows where the keys are in
-    the normal game, tells you how many you need. It was seen there in game after a visit to
-    Vallahar 6,8; whether that visit is needed first is not known yet. Until you have been
-    there, the pause screen shows "OF ?". With
-    Hints Revealed (Custom), the game counts you as told from the start, so the number shows
-    at once (by the game's code; not yet checked in game).
+    the normal game, tells you how many you need. Until you have been there, the pause screen
+    shows "OF ?". With Hints Revealed (Custom), the game counts you as told from the start, so
+    the number shows at once (by the game's code; not yet checked in game).
   - Once you have enough, save at the Landing Pod's save point (Kresezoa 16,13, the
     `landing_pod` start room, whichever room you started in) and answer YES to RETURN HOME WITH
     THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
