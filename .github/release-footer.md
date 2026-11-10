@@ -1,6 +1,6 @@
 ## Installing or updating
 
-A reminder for those who've done it before; the full steps are in the
+A quick reminder; the full steps are in the
 [setup guide](https://github.com/mcawful/zexion-ap/blob/v{{VERSION}}/worlds/zexion/docs/setup_en.md),
 also attached below as `zexion-setup-guide.md`. You need Zexion on Steam (Windows), Steam build
 23943567, and Archipelago 0.6.8 or newer.
@@ -15,15 +15,14 @@ also attached below as `zexion-setup-guide.md`. You need Zexion on Steam (Window
 4. Start Zexion, open **Zexion Client** from the Launcher and connect.
 5. In Zexion, pick an empty save slot and choose **ARCHIPELAGO**.
 
-**Updating**
+**Updating from {{PREVIOUS}}**
 
-- Finish your seed first, or keep the old release until it ends: a seed made with an older
-  release may not play with a newer one, and every Zexion player in a game uses the same release.
+- Finish your seed first, or keep {{PREVIOUS}} until it ends. Everyone playing Zexion in a game should
+  use the same release.
 - Close Zexion and replace all three files together: install the new `zexion.apworld`, and copy
-  the new `zexion_ap.dll` and `version.dll` into Zexion's folder. The client refuses a mod from
-  another release.
-- Then connect the client once with Zexion running. Until you do, the mod's taller messages may
-  flicker as they open and close while the client is closed.
+  the new `zexion_ap.dll` and `version.dll` into Zexion's folder.
+- Then connect the client once with Zexion running.
+{{UPDATE_STEPS}}
 
 Something wrong? See Troubleshooting in the setup guide, or report it at
 [github.com/mcawful/zexion-ap/issues](https://github.com/mcawful/zexion-ap/issues) with the

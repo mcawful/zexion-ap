@@ -17,9 +17,9 @@ permissions:
 jobs:
   release-gate:
     name: release gate
-    # It must come from this repo's develop and raise the version above the last release and
-    # above the version on main (a merged release waiting for approval has no tag yet, but main
-    # already holds its version).
+    # It must come from this repo's develop, raise the version above the last release and above
+    # the version on main (a merged release waiting for approval has no tag yet, but main
+    # already holds its version), and have the version's notes for players, docs/releases/.
     runs-on: ubuntu-latest
     steps:
       - name: From develop
@@ -39,7 +39,7 @@ jobs:
       # Every release's tag (none before the first), and main's version as fetched now. A failing
       # call fails the step (and release_check fails if it can't read main's version), so the
       # gate never passes on an error.
-      - name: Version above the last release and main
+      - name: Version above the last release and main, with its notes
         env:
           GH_TOKEN: ${{ github.token }}
           BASE_REF: ${{ github.base_ref }}
