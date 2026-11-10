@@ -39,7 +39,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        # A release of this version that is a draft (a publish that failed part-way) or tags
+        # release_check fails here too if the version's notes are missing or unfinished. A
+        # release of this version that is a draft (a publish that failed part-way) or tags
         # another commit (main changed under a released number) fails here: skipping it would
         # leave this commit in no release with the run green.
         run: |
@@ -67,22 +68,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
-        # The notes: GitHub's generated ones (the pull requests since the latest release, named
-        # here: left to itself, GitHub may compare against no tag and list every pull request),
-        # then the install guide, .github/release-footer.md, with {{VERSION}} filled in. Any
-        # failure, or empty generated notes, stops the job before anything is published.
+        # The message (tools/release_notes.py): the version's notes for players,
+        # docs/releases/<VERSION>.md, then the install guide, .github/release-footer.md, then the
+        # compare link from the latest release, which is the one before this (the Version step
+        # stopped if this one exists). Missing or unfinished notes, or any other failure, stop the
+        # job before anything is published.
         run: |
           set -euo pipefail
           previous="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name)"
           notes="$RUNNER_TEMP/release-notes.md"
-          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="v$VERSION" \
-            -f target_commitish="$GITHUB_SHA" -f previous_tag_name="$previous" -q .body > "$notes"
-          # gh -q writes a newline even for an empty or null body, so look for text, not size.
-          if ! grep -q '[^[:space:]]' "$notes"; then
-            echo "::error::GitHub generated no release notes for v$VERSION since $previous."
-            exit 1
-          fi
-          printf '\n\n' >> "$notes"
-          sed "s/{{VERSION}}/$VERSION/g" .github/release-footer.md >> "$notes"
+          python tools/release_notes.py "$VERSION" --previous "$previous" --out "$notes"
           gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "Zexion-AP $VERSION" --notes-file "$notes"

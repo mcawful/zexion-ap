@@ -1,4 +1,4 @@
-"""The version check a pull request into main must pass (tools/release_check.py)."""
+"""The check a pull request into main must pass (tools/release_check.py): the version, the notes."""
 
 from __future__ import annotations
 
@@ -8,6 +8,13 @@ from pathlib import Path
 import pytest
 
 import release_check as rc
+import release_notes as rn
+
+
+@pytest.fixture(autouse=True)
+def notes_written(monkeypatch) -> None:
+    """Every version these tests make up has finished notes, unless a test says otherwise."""
+    monkeypatch.setattr(rc, "notes_problems", lambda version, previous=None: [])
 
 
 def test_versions_are_read_with_or_without_a_v() -> None:
@@ -90,3 +97,30 @@ def test_an_unreadable_main_fails_the_gate(monkeypatch) -> None:
     monkeypatch.setattr(rc, "version_at", unreadable)
     with pytest.raises(SystemExit):
         rc.main(["--base", "origin/main", "--above", "v0.29.0"])
+
+
+def test_a_release_without_notes_fails_the_gate(monkeypatch, tmp_path: Path, capsys) -> None:
+    monkeypatch.setattr(rc, "client_version", lambda: "0.30.0")
+    monkeypatch.setattr(rc, "notes_problems", rn.problems)
+    monkeypatch.setattr(rn, "NOTES", tmp_path)
+    assert rc.main(["--above", "v0.29.0"]) == 1
+    assert "0.30.0.md is missing" in capsys.readouterr().err
+    (tmp_path / "0.30.0.md").write_text("", encoding="utf-8")
+    assert rc.main(["--above", "v0.29.0"]) == 1
+    (tmp_path / "0.30.0.md").write_text("## Fixes\n\n- TODO.\n", encoding="utf-8")
+    assert rc.main(["--above", "v0.29.0"]) == 1
+    assert "TODO" in capsys.readouterr().err
+    (tmp_path / "0.30.0.md").write_text("## Fixes\n\n- A fix.\n", encoding="utf-8")
+    assert rc.main(["--above", "v0.29.0"]) == 0
+    assert capsys.readouterr().out.strip() == "0.30.0"
+
+
+def test_the_gate_checks_the_notes_against_the_last_release(monkeypatch) -> None:
+    monkeypatch.setattr(rc, "client_version", lambda: "0.30.0")
+    asked = []
+    monkeypatch.setattr(
+        rc, "notes_problems", lambda version, previous=None: asked.append((version, previous))
+    )
+    rc.main(["--above", "v0.9.0", "v0.29.0"])
+    rc.main([])  # release.yml's call: no tags, so no last release to check an update against
+    assert asked == [("0.30.0", "v0.29.0"), ("0.30.0", None)]

@@ -266,11 +266,11 @@ every check but `ruff and pytest (macos-latest)`, which a pull request must stil
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate
-(`.github/workflows/release-gate.yml`): it must come from this repo's `develop` and raise the
-version above every release's tag and above the version on `main` (`tools/release_check.py`).
-The second matters while a merged release waits for approval: it has no tag yet, but `main`
-already holds its number. If GitHub can't list the releases or `main`'s version can't be read,
-the gate fails. The gate runs again on any edit to the pull request, so one retargeted from
+(`.github/workflows/release-gate.yml`): it must come from this repo's `develop`, raise the
+version above every release's tag and above the version on `main`, and have the version's notes
+written (`tools/release_check.py`). Being above `main` matters while a merged release waits for
+approval: it has no tag yet, but `main` already holds its number. If GitHub can't list the
+releases or `main`'s version can't be read, the gate fails. The gate runs again on any edit to the pull request, so one retargeted from
 `develop` to `main` is checked too.
 
 A release has one version number, in three places, which the tests and the builder check
@@ -279,7 +279,12 @@ A release has one version number, in three places, which the tests and the build
 To release:
 
 1. On a topic branch, raise the version in all three places and run
-   `tools/gen_sample_yamls.py`; merge it into `develop`.
+   `tools/gen_sample_yamls.py`. In the same pull request, write the release's notes for players:
+   copy `docs/releases/TEMPLATE.md` to `docs/releases/<version>.md` and draft it from the pull
+   requests merged into `develop` since the last release, as
+   [`docs/releases/README.md`](releases/README.md) says. The owner approves the wording in that
+   pull request. Preview the whole message with `tools/release_notes.py <version> --previous
+   v<last>`. Merge it into `develop`.
 2. Open a pull request from `develop` into `main`. Only the owner merges it, with **Create a
    merge commit** (a ruleset on `main` allows nothing else: a squash or rebase would put a
    commit on `main` that `develop` lacks, and the branches would drift apart). Claude never
@@ -289,13 +294,12 @@ To release:
    `release`, so it waits on the Actions page until the owner approves it; nothing is built,
    tagged or published before that. It then builds the helper and proxy, runs the native
    tests, builds the release with `tools/build_apworld.py`, tags `v<VERSION>` and publishes a
-   GitHub Release of the files below. Its notes are GitHub's generated ones, the pull requests
-   since the latest release (named to GitHub, which otherwise may compare against no tag and list
-   every pull request), followed by the install-and-update guide in `.github/release-footer.md`
-   with `{{VERSION}}` filled in; if the notes can't be generated, nothing is published. A
-   version already released from this same commit is skipped (a re-run). The job fails instead
-   if that version's release is a draft (a publish that failed part-way: publish or delete it
-   on GitHub, then re-run) or was released from another commit.
+   GitHub Release of the files below. Its message is the one `tools/release_notes.py` builds:
+   the version's notes, then the install-and-update guide in `.github/release-footer.md`, then
+   the compare link from the latest release; if the notes are missing or unfinished, nothing is
+   built or published. A version already released from this same commit is skipped (a re-run).
+   The job fails instead if that version's release is a draft (a publish that failed part-way:
+   publish or delete it on GitHub, then re-run) or was released from another commit.
 4. If the approval is rejected or times out, or the job fails, `main` holds the version with no
    release: re-run the workflow from the Actions page, or fix the cause on a topic branch into
    `develop`, raise the version (the gate wants it above `main`'s), and merge `develop` into

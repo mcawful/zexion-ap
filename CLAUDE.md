@@ -149,7 +149,8 @@ game or save folders.
 | `gen_world_data.py` | regenerate `worlds/zexion/data.py` | no |
 | `gen_sample_yamls.py` | regenerate `samples/` (needs `.ap/`) | no |
 | `build_apworld.py` | a release into `dist/` | no |
-| `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF` | no |
+| `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF`, and its notes are written | no |
+| `release_notes.py [VERSION] [--previous TAG] [--notes FILE] [--out FILE]` | the release's message, to check before it is published | no |
 
 The tools find the game through Steam's library list (on Windows, from the registry) and the
 saves through `%APPDATA%`. `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR`
@@ -168,10 +169,12 @@ missing, stale or mismatched DLLs, a mismatched `world_version`, and samples tha
 untracked or for another version (its docstring): rebuild `native/` first. The packaged client has no build of
 its own, so it uses the helper in the game's folder. On GitHub,
 `.github/workflows/release.yml` builds the release and publishes it once the owner approves
-(`docs/DEVELOPING.md`, "Branches and releases"). The release's notes are GitHub's generated
-ones (the pull requests since the latest release) followed by the install guide in
-`.github/release-footer.md`, with `{{VERSION}}` filled in; `tests/test_release_footer.py` checks
-the files it names are the release's.
+(`docs/DEVELOPING.md`, "Branches and releases"). The release's message is written for
+players: the version's notes, `docs/releases/<version>.md`, then the install guide in
+`.github/release-footer.md`, then the compare link from the previous release, put together by
+`tools/release_notes.py`. `tests/test_release_notes.py` checks the notes here rebuild the
+published messages; `tests/test_release_footer.py` that the files the guide names are the
+release's.
 
 - **The release version** is one number in three places: `VERSION` in `client/native.py`,
   `kVersion` in `native/src/dllmain.cpp` and `world_version` in
@@ -180,6 +183,13 @@ the files it names are the release's.
   (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last release and the version on `main`. The
   helper shows it on the title screen. The sample YAMLs name it too: run
   `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py` check).
+- **The release notes** are written in the pull request that raises the version, drafted from
+  the pull requests merged since the last release; the owner approves the wording there. Copy
+  `docs/releases/TEMPLATE.md` to `docs/releases/<version>.md`; how they read, with 1.1.0's as
+  the example: [`docs/releases/README.md`](docs/releases/README.md). The release gate refuses a
+  version whose notes are missing, empty, unfinished (a `TODO` from the template or a `{{...}}`
+  left in), or with an "Updating from" section that is malformed or not from the last release;
+  pytest fails on `develop` until the repo's version has notes.
 - `pyproject.toml`'s `0.0.0` is unused.
 
 ## Layout
@@ -229,16 +239,17 @@ the files it names are the release's.
   Custom mode's own options, written by `tools/gen_sample_yamls.py`;
   `worlds/zexion/test/test_samples.py` fails while one is out of date (after a change to the
   options, their descriptions or the version: run the tool again).
-- `tools/`: RE and save tooling, and the release builder. `tools/protected.py` defines the
-  protected folders (for the tools and the write guard) and `append_log`.
+- `tools/`: RE and save tooling, and the release builder and its checks. `tools/protected.py`
+  defines the protected folders (for the tools and the write guard) and `append_log`.
 - `docs/re/`: the reverse-engineering record.
+- `docs/releases/`: each release's notes for players, the template and the style guide.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
   a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
   must agree on (version, builds, `config` keys, the flags and layouts both read), and the
   world's `world_version`.
-  `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py` and
-  `test_release_footer.py` test the release builder, the data generator, the release gate and
-  the install guide under the release notes.
+  `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
+  `test_release_notes.py` and `test_release_footer.py` test the release builder, the data
+  generator, the release gate, the release's message and the install guide in it.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not
   be public), `.ap/` (the pinned AP checkout).
 
