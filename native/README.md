@@ -417,8 +417,10 @@ and was read as up.
   stand-in's record while the helper restyles it: "Other players' items"), and the event, and
   the fade it runs next, must be B1's records byte for byte, their handlers in the game's code
   (`docs/re/memory.md`, "Received scrap"); otherwise it is dropped, and `drop_status` says
-  why. Nothing is run for a received Area Map (its event, 3551, reveals the map; not given for
-  a received one, as before), an Energy Shield (the client's `shield`) or a notice, nor for a
+  why. Nothing is run for a received Area Map (its event, 3551, reveals the map around the
+  cell it is run from, and a received one has no square of its own: with Area Map Hints off
+  the world keeps the Area Maps in their own world, where the game's pickup reveals,
+  `docs/re/memory.md`, "Intel Chips"), an Energy Shield (the client's `shield`) or a notice, nor for a
   stand-in found in the world (its record names no event while restyled: the item is another
   player's).
 - **When:** as `shield`: once the player has been in play in one cell for a second, and not

@@ -216,6 +216,9 @@ none left of):
   (with your starting disks) makes: set the number there;
 - an Area Map with Area Map Hints on (they are Intel Chips), or an Intel Chip with it off.
 
+With Area Map Hints off, your Area Maps stay in your own world, plando too ("What do Area Maps
+and Intel Chips do?").
+
 The copies an item link's `replacement_item` adds aren't plando and are never refused, though a
 second copy of an item the game holds once gives nothing.
 
@@ -260,7 +263,14 @@ a second shows the hint, such as HINT: SLIDE MOD IS AT GUARDIA 22,7 (in English(
 Slide Mod is at Guardia 22,7), and it goes into your hint list. When nothing is left to hint,
 it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
 
-With the option off, Area Maps work as in the normal game.
+With the option off, Area Maps work as in the normal game: picking one up reveals the map
+around the square it lay in. So they stay in your own world: the generator never places your
+Area Maps in another player's world (as if they were in your `local_items`, which wins over
+your `non_local_items`), and an item plando
+that puts one there isn't placed (with `force: true`, generation stops). Area Maps you put in
+an item link aren't kept this way. An Area Map that still reaches you from elsewhere, such as
+one sent from the server's console or through an item link, has no square in your world and
+reveals nothing.
 
 ## Can I use the assist menu?
 

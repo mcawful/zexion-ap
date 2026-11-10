@@ -112,6 +112,17 @@ def important_elsewhere(item: Item | None) -> bool:
     return not (item.game == ZexionItem.game and code_of.get(item.name) in SUPPLIES)
 
 
+def kept_local(multiworld: MultiWorld, item: Item) -> bool:
+    """Whether ``item`` is in its player's own ``local_items``, so only that player's locations
+    take it (Archipelago's locality rules; empty with one player). An item link's is not
+    counted: its group has no options of its own."""
+    if multiworld.players == 1 or item.player in multiworld.groups:
+        return False
+    options = getattr(multiworld.worlds.get(item.player), "options", None)
+    local = getattr(options, "local_items", None)
+    return local is not None and item.name in local.value
+
+
 def pairs_of(
     kinds: dict[tuple[int, str], list[Item]], keys: list[tuple[int, str]]
 ) -> Iterator[tuple[tuple[int, str], tuple[int, str], list[Item]]]:
@@ -161,6 +172,12 @@ class ZexionWorld(World):
         self.draw_items()
         self.choose_starts()
         self.fit_pool()
+        if not self.options.area_map_hints:
+            # An Area Map reveals the map around the square it lies in (its pickup's area event:
+            # docs/re/memory.md, "Intel Chips"), so it stays in this world, where the game's own
+            # pickup reveals it; in another world it would have no square here. With Area Map
+            # Hints on, they are Intel Chips, which reveal nothing and go anywhere.
+            self.options.local_items.value.add(NAMES[AREA_MAP])
         # The core is entered from its door (create_regions); the disks' goal returns home from
         # the Landing Pod (set_rules).
         goal = HOME["cell"] if self.disc_hunt else data.CORE["door"]
@@ -769,16 +786,18 @@ class ZexionWorld(World):
         Install Disks goal each disk takes a filler item's place. The fill takes any player's
         filler, so this counts the whole multiworld's, after plando and every world's pre_fill
         but this stage, and refuses for a Zexion player whose excluded locations outnumber
-        their own filler."""
+        their own filler. A player's filler in their own ``local_items`` (a Zexion player's
+        Area Maps with Area Map Hints off) counts toward their own excluded locations only."""
         unfilled = multiworld.get_unfilled_locations()
         excluded = Counter(
             loc.player for loc in unfilled if loc.progress_type == LocationProgressType.EXCLUDED
         )
         # As Fill.distribute_items_restrictive sorts the pool: filler is neither kind.
-        filler = Counter(
-            item.player for item in multiworld.itempool if not item.advancement and not item.useful
-        )
-        if sum(excluded.values()) <= sum(filler.values()):
+        pool = [item for item in multiworld.itempool if not item.advancement and not item.useful]
+        filler = Counter(item.player for item in pool)
+        local = Counter(item.player for item in pool if kept_local(multiworld, item))
+        shared = sum(filler.values()) - sum(local.values())
+        if sum(max(0, n - local[player]) for player, n in excluded.items()) <= shared:
             return
         for world in multiworld.get_game_worlds(GAME):
             n, have = excluded[world.player], filler[world.player]

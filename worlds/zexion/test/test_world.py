@@ -889,6 +889,12 @@ class TestAreaMapHints(ZexionTestBase):
         self.assertEqual(chip.classification, ItemClassification.filler, "as the Area Map")
         self.assertIs(self.world.fill_slot_data()["intel_chip"], True)
 
+    def test_intel_chips_are_not_kept_local(self) -> None:
+        # They reveal nothing, so a received one loses nothing.
+        local = self.world.options.local_items.value
+        self.assertNotIn("Intel Chip", local)
+        self.assertNotIn("Area Map", local)
+
     def test_the_game_holds_an_intel_chip_as_the_area_map(self) -> None:
         # The pool's Area Maps are drawn per seed, and some seeds draw none: one of this
         # player's filler items gives way to an Intel Chip (filler too), so the fill places one.
@@ -944,6 +950,26 @@ class TestAreaMapHintsOff(ZexionTestBase):
         self.assertNotIn("Intel Chip", pool)
         self.assertEqual(pool.count("Area Map"), self.world.pool_codes.count(code_of["Area Map"]))
         self.assertIs(self.world.fill_slot_data()["intel_chip"], False)
+
+    def test_area_maps_stay_in_this_world(self) -> None:
+        # An Area Map reveals the map around the square it lies in, by the game's own pickup.
+        self.assertIn("Area Map", self.world.options.local_items.value)
+
+
+class TestAreaMapsStayInTheirOwnWorld(unittest.TestCase):
+    """Two Zexion players with Area Map Hints off: through the fill, with Archipelago's locality
+    rules, each player's Area Maps land in their own world only."""
+
+    def test_each_players_area_maps_are_in_their_own_world(self) -> None:
+        multiworld = two_zexion_players({"area_map_hints": False})
+        locality_rules(multiworld)
+        distribute_items_restrictive(multiworld)
+        maps = [loc for loc in multiworld.get_filled_locations() if loc.item.name == "Area Map"]
+        self.assertTrue({1, 2} <= {loc.item.player for loc in maps}, "both players have some")
+        for location in maps:
+            with self.subTest(location.name, player=location.player):
+                self.assertEqual(location.item.player, location.player)
+        self.assertTrue(multiworld.can_beat_game(CollectionState(multiworld)))
 
 
 def filler_left(world: ZexionWorld, placed: int) -> int:
@@ -1013,6 +1039,31 @@ class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
         message = str(caught.exception)
         want = f"Zexion (Beta): {filler[2] + 1} excluded locations, but only {filler[2]} filler"
         self.assertIn(want, message)
+
+    def test_another_players_area_maps_do_not_make_up_the_difference(self) -> None:
+        # Area Map Hints off: Alpha's Area Maps stay in Alpha's world (local_items), so they
+        # cannot fill Beta's excluded locations. Alpha keeps only them as filler here.
+        multiworld = two_zexion_players({**disks(placed=16, required=12), "area_map_hints": False})
+        alpha = multiworld.worlds[1]
+        pool = multiworld.itempool
+        pool[:] = [
+            item
+            for item in pool
+            if item.player != 1 or item.advancement or item.useful or item.name == "Area Map"
+        ]
+        pool += [alpha.create_item("Area Map") for _ in range(3)]
+        filler = filler_left(multiworld.worlds[2], 16)
+        kept = sorted(multiworld.worlds[2].kept_locations)[: filler + 1]
+        for i in kept:
+            multiworld.get_location(
+                location_name(i), 2
+            ).progress_type = LocationProgressType.EXCLUDED
+        with self.assertRaises(OptionError) as caught:
+            ZexionWorld.stage_pre_fill(multiworld)
+        self.assertIn(f"Zexion (Beta): {filler + 1} excluded locations", str(caught.exception))
+        # The same Area Maps with Area Map Hints on would go anywhere: counted for Beta.
+        alpha.options.local_items.value.discard("Area Map")
+        ZexionWorld.stage_pre_fill(multiworld)
 
 
 class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):

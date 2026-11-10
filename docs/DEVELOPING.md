@@ -141,6 +141,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   one received while the client was disconnected, its hint made once after the reconnect:
   2026-11-08 (develop 5597753). Not run in game: a received chip's two popups held for the next
   load.
+- Area Maps kept in their own world with Area Map Hints off, so the game's own pickup reveals
+  the map: generation only, not run in game (`docs/re/locations.md`, "Where the world departs
+  from the game"; why: `docs/re/memory.md`, "Intel Chips").
 - OS Install Disks goal: the count, the scanner, the equipment, pause and file-select screens:
   2026-10-24 and 25; RETURN HOME WITH THE DISKS?: 2026-10-24, at the Landing Pod's save point
   2026-10-25 (whatever the start room since 2026-10-30: 2026-11-02), a replay past the ending

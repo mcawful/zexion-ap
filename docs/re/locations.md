@@ -311,7 +311,9 @@ where its subject is:
   Archipelago's own refusal is named too: where a Zexion player's excluded locations outnumber
   their filler (Scrap, Area Maps or Intel Chips, whose places the OS Install Disks take before
   Energy Shields': `world.DISC_REPLACES`) and the other
-  players' filler does not make up the difference, counted over the whole multiworld after
+  players' filler does not make up the difference (filler in its player's `local_items`, such
+  as Area Maps with Area Map Hints off, counted for that player alone), counted over the whole
+  multiworld after
   plando and every world's `pre_fill`, the seed is refused with the options to change, in place
   of the fill's "Not enough filler items for excluded locations" (`ZexionWorld.stage_pre_fill`,
   since 2026-10-26; tested only: `test_world.py`, `TestExcludedLocationsNeedFiller` and
@@ -325,6 +327,24 @@ where its subject is:
   or Secret Shuffle's without it) and no other world of the plando has, which Archipelago alone
   reports only as items it could not place. Tested only (`worlds/zexion/test/test_plando.py`); a
   refused seed never reaches the game.
+- **Area Maps stay in their own world** with Area Map Hints off (`ZexionWorld.generate_early`
+  adds Area Map to the player's `local_items`, which Archipelago's locality rules turn into an
+  item rule on every other player's locations; since 2026-11-09, decided by the owner the same
+  day: "the area maps should only be shuffled within the player's own world due to their
+  nature"). The game's pickup reveals the map around the square the Area Map lay in, and a
+  received one has none in this world (`memory.md`, "Intel Chips"); the game's randomizer is
+  single-player, so its own Area Maps are always its own. Plando goes through the same rule: one
+  put in another world is not placed, and with `force: true` generation stops. Intel Chips
+  (the option on) reveal nothing and go anywhere. One Area Map still arriving from elsewhere (the
+  server's console) reveals nothing, as before. **Not kept by an item link:** Archipelago reads
+  a group's locality from the link's own settings, not its members' `local_items`, so Area Maps
+  in an `item_links` pool can land in another member's world and arrive there revealing
+  nothing (by the code; left as it is, as a link's items are the players' choice). The
+  excluded-locations check (`stage_pre_fill`, below) counts a player's filler in their own
+  `local_items` toward their own excluded locations only, as the fill can place it. Tested only
+  (`test_world.py`, `TestAreaMapsStayInTheirOwnWorld` and
+  `test_another_players_area_maps_do_not_make_up_the_difference`; `test_plando.py`); not run
+  in game.
 - **Filler:** where the pool has too little filler for the locations left out and the disks,
   ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
   does, in every mode; with no ten left the seed is refused ("The OS Install Disks goal: the
