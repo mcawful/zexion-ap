@@ -359,8 +359,15 @@ where its subject is:
   nothing, as before. **Not kept by an item link:** Archipelago reads a group's locality from the
   link's own settings, not its members' `local_items`, so Area Maps in an `item_links` pool can land
   in another member's world and arrive there revealing nothing (by the code; left as it is, as a
-  link's items are the players' choice). Tested only (`test_world.py`,
-  `TestAreaMapsStayInTheirOwnWorld`; `test_plando.py`); not run in game.
+  link's items are the players' choice). Tested (`test_world.py`,
+  `TestAreaMapsStayInTheirOwnWorld`; `test_plando.py`); working in game, 2026-11-09, B1, develop
+  4205871 (`lab/ap/live58`, slot 5, three Zexion players in Easy, two with Area Map Hints off and
+  the played one's start Lower Tower with an Area Map plando'd at Guardia 43,22: the spoiler held
+  its 8 Area Maps and the other hints-off player's 3 all in their own worlds, the hints-on player's
+  7 Intel Chips spread over all three; the two Area Maps picked up, at Guardia 43,22 and 41,7,
+  each showed the one usual Area Map popup, revealed the minimap and the map around its square
+  and sent one check, the owner's report: `memory.md`, "Intel Chips"). Not run in game: the other
+  players' sides (not connected), an Area Map received with the option off, and an item link.
 - **Filler:** where the pool has too little filler for the locations left out and the disks,
   ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game's placement
   does, in every mode; with no ten left the seed is refused ("The OS Install Disks goal: the
