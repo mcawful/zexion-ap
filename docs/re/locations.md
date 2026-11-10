@@ -332,16 +332,18 @@ where its subject is:
   maps should only be shuffled within the player's own world due to their nature"), **and placed
   there first** (`ZexionWorld.place_area_maps`, from Archipelago's `fill_hook` after
   `open_the_start`): each in one of the player's own empty locations that takes it, excluded ones
-  first. Left to the fill's last step (`remaining_fill`, among the other filler, in a shuffled
+  first and priority ones last. Left to the fill's last step (`remaining_fill`, among the other filler, in a shuffled
   order), one could find only other players' locations left, and its two swaps per item name run
-  out: "No more spots to place" (the planning session's round 7 review, 2026-11-09, through
-  Archipelago's `Main.main`: beside a player with 30 disks and 16 excluded locations, 11 of 24 seeds
-  failed so and 0 of 24 before the change; with the placement, none of about 1,460 seeds failed;
-  `test_world.py`, `test_the_fill_does_not_strand_one_beside_a_player_short_of_filler`, seed 3 of
-  the tests' harness, fails without it). The game's pickup reveals the map around the square the
-  Area Map lay in, and a received one has none in this world (`memory.md`, "Intel Chips"); the
-  game's randomizer is single-player, so its own Area Maps are always its own. Plando goes through
-  the same rule: one put in another world is not placed, the world warning why from `generate_basic`
+  out: "No more spots to place" (the planning session's round 7 review, 2026-11-09, its notes
+  `round7/world.md` outside the repo, through Archipelago 0.6.8's `Generate.main` and `Main.main`:
+  beside a player with 30 disks and 16 excluded locations, 11 of 24 seeds failed so with the Area
+  Maps local and without `place_area_maps`, 0 of 24 on `develop` before they were kept local; with
+  `place_area_maps`, none of about 1,460 seeds failed; `test_world.py`,
+  `test_the_fill_does_not_strand_one_beside_a_player_short_of_filler`, seed 3 of the tests' harness,
+  fails without it). The game's pickup reveals the map around the square the Area Map lay in, and a
+  received one has none in this world (`memory.md`, "Intel Chips"); the game's randomizer is
+  single-player, so its own Area Maps are always its own. Plando goes through the same rule: one put
+  in another world is not placed, the world warning why from `generate_basic`
   (`plando.area_maps_away`), and with `force: true` generation stops. Intel Chips (the option on)
   reveal nothing and go anywhere. One Area Map still arriving from elsewhere (the server's console)
   reveals nothing, as before. **Not kept by an item link:** Archipelago reads a group's locality

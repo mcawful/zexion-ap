@@ -9,7 +9,8 @@ Secret Shuffle. A location the seed can't reach holds Scrap, as in the game's ow
 Items found in Zexion can belong to other players, and their games can send items to
 you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, Area Maps or Intel
 Chips): exclude more locations than you have filler, and generation stops with an error that
-says so, unless the other players' filler makes up the difference.
+says so, unless the other players' filler makes up the difference (not Area Maps kept in their
+own world: "What do Area Maps and Intel Chips do?").
 
 You need the Zexion Archipelago mod and the Zexion Client: see the setup guide
 (`zexion-setup-guide.md` in the release).

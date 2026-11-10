@@ -381,15 +381,17 @@ class ZexionWorld(World):
 
     def place_area_maps(self, filleritempool: list[Item], fill_locations: list[Location]) -> None:
         """Place this player's Area Maps, kept in this world (``local_items``, Area Map Hints
-        off), in its own locations before the main fill, its excluded ones first: placed last,
-        among the other filler, one can find only other players' locations left, and the fill
-        stops with "No more spots to place"."""
+        off), in its own locations before the main fill, its excluded ones first and its
+        priority ones last: placed last, among the other filler, one can find only other
+        players' locations left, and the fill stops with "No more spots to place"."""
         name = NAMES[AREA_MAP]
         if name not in self.options.local_items.value:  # emptied in a one-player seed
             return
         state = self.multiworld.state
         spots = [loc for loc in fill_locations if loc.player == self.player]
-        spots.sort(key=lambda loc: loc.progress_type != LocationProgressType.EXCLUDED)
+        # Excluded first (only filler goes there), priority last (kept for progression).
+        kind = {LocationProgressType.EXCLUDED: 0, LocationProgressType.PRIORITY: 2}
+        spots.sort(key=lambda loc: kind.get(loc.progress_type, 1))
         for item in [i for i in filleritempool if i.player == self.player and i.name == name]:
             spot = next((s for s in spots if s.can_fill(state, item, check_access=False)), None)
             if spot is None:
