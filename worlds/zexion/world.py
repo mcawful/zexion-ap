@@ -17,6 +17,7 @@ from BaseClasses import (
     MultiWorld,
     Region,
 )
+from Fill import remaining_fill
 from Options import OptionError
 from worlds.AutoWorld import World
 from worlds.generic.Rules import add_item_rule
@@ -112,6 +113,16 @@ def important_elsewhere(item: Item | None) -> bool:
     return not (item.game == ZexionItem.game and code_of.get(item.name) in SUPPLIES)
 
 
+def kept_local(multiworld: MultiWorld, item: Item) -> bool:
+    """Whether ``item`` is in its player's own ``local_items``, so only that player's locations
+    take it (Archipelago's locality rules; empty with one player). An item link's group keeps
+    its locality in the link's settings, not counted here."""
+    return (
+        multiworld.players > 1
+        and item.name in multiworld.worlds[item.player].options.local_items.value
+    )
+
+
 def pairs_of(
     kinds: dict[tuple[int, str], list[Item]], keys: list[tuple[int, str]]
 ) -> Iterator[tuple[tuple[int, str], tuple[int, str], list[Item]]]:
@@ -161,6 +172,10 @@ class ZexionWorld(World):
         self.draw_items()
         self.choose_starts()
         self.fit_pool()
+        if not self.options.area_map_hints:
+            # An Area Map reveals the map around the square it lies in (docs/re/memory.md, "Intel
+            # Chips"): kept in this world (place_area_maps). Intel Chips reveal nothing.
+            self.options.local_items.value.add(NAMES[AREA_MAP])
         # The core is entered from its door (create_regions); the disks' goal returns home from
         # the Landing Pod (set_rules).
         goal = HOME["cell"] if self.disc_hunt else data.CORE["door"]
@@ -363,6 +378,34 @@ class ZexionWorld(World):
         fill_locations: list[Location],
     ) -> None:
         self.open_the_start(progitempool, fill_locations)
+        self.place_area_maps(filleritempool, fill_locations)
+
+    def place_area_maps(self, filleritempool: list[Item], fill_locations: list[Location]) -> None:
+        """Place this player's Area Maps, kept in this world (``local_items``, Area Map Hints
+        off), in its own locations before the main fill: placed last, among the other filler,
+        one can find only other players' locations left, and the fill stops with "No more spots
+        to place". Excluded locations first, as only filler goes there; then those the starting
+        state (``open_the_start``'s, its items placed) does not reach, then those it does, and
+        priority ones last, the last three kept for progression in that order. Archipelago's
+        ``remaining_fill`` places them, in that order."""
+        name = NAMES[AREA_MAP]
+        if name not in self.options.local_items.value:  # emptied in a one-player seed
+            return
+        start = self.multiworld.state.copy()
+        start.sweep_for_advancements()
+
+        def order(loc: Location) -> int:
+            if loc.progress_type == LocationProgressType.EXCLUDED:
+                return 0
+            if loc.progress_type == LocationProgressType.PRIORITY:
+                return 3
+            return 2 if loc.can_reach(start) else 1
+
+        spots = sorted((loc for loc in fill_locations if loc.player == self.player), key=order)
+        maps = [i for i in filleritempool if i.player == self.player and i.name == name]
+        remaining_fill(self.multiworld, spots, maps, "Area Maps", check_location_can_fill=True)
+        filleritempool[:] = [i for i in filleritempool if i.location is None]
+        fill_locations[:] = [loc for loc in fill_locations if loc.item is None]
 
     def open_the_start(self, progitempool: list[Item], fill_locations: list[Location]) -> None:
         """Place items that open the way out of what the starting items reach, one step at a
@@ -734,9 +777,10 @@ class ZexionWorld(World):
 
     def generate_basic(self) -> None:
         # Archipelago has just read the plando and places it after this step (Main.py): say why
-        # a location one names is not in this seed, and count the items as the world made them,
-        # for pre_fill to tell plando's from them and from the item links' (plando.py).
-        for warning in plando.left_out(self):
+        # a location one names is not in this seed, or that this player's Area Maps cannot go to
+        # another world, and count the items as the world made them, for pre_fill to tell
+        # plando's from them and from the item links' (plando.py).
+        for warning in plando.left_out(self) + plando.area_maps_away(self):
             logging.warning(warning)
         self.made_items = plando.made_items(self)
 
@@ -769,17 +813,20 @@ class ZexionWorld(World):
         Install Disks goal each disk takes a filler item's place. The fill takes any player's
         filler, so this counts the whole multiworld's, after plando and every world's pre_fill
         but this stage, and refuses for a Zexion player whose excluded locations outnumber
-        their own filler."""
+        their own filler. A player's filler in their own ``local_items`` (a Zexion player's
+        Area Maps with Area Map Hints off) counts toward their own excluded locations only."""
         unfilled = multiworld.get_unfilled_locations()
         excluded = Counter(
             loc.player for loc in unfilled if loc.progress_type == LocationProgressType.EXCLUDED
         )
         # As Fill.distribute_items_restrictive sorts the pool: filler is neither kind.
-        filler = Counter(
-            item.player for item in multiworld.itempool if not item.advancement and not item.useful
-        )
-        if sum(excluded.values()) <= sum(filler.values()):
+        pool = [item for item in multiworld.itempool if not item.advancement and not item.useful]
+        filler = Counter(item.player for item in pool)
+        local = Counter(item.player for item in pool if kept_local(multiworld, item))
+        shared = sum(filler.values()) - sum(local.values())
+        if sum(max(0, n - local[player]) for player, n in excluded.items()) <= shared:
             return
+
         for world in multiworld.get_game_worlds(GAME):
             n, have = excluded[world.player], filler[world.player]
             if n <= have:
@@ -789,10 +836,17 @@ class ZexionWorld(World):
                 disks = world.options.os_install_disks.value
                 fix = f"lower OS Install Disks ({disks}: each takes a filler item's place) or {fix}"
             locations = "location" if n == 1 else "locations"
+            held = sum(local.values()) - local[world.player]
+            why = (
+                f" ({held} of theirs stay in their own worlds by their local_items, such as a "
+                f"Zexion player's Area Maps with Area Map Hints off)"
+                if held
+                else ""
+            )
             raise OptionError(
                 f"Zexion ({world.player_name}): {n} excluded {locations}, but only {have} filler "
                 f"items (Scrap, Area Maps or Intel Chips) to put there, and the other players' "
-                f"filler does not make up the difference: {fix}"
+                f"filler does not make up the difference{why}: {fix}"
             )
 
     def write_spoiler_header(self, spoiler_handle: TextIO) -> None:

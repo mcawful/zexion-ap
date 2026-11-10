@@ -9,7 +9,8 @@ Secret Shuffle. A location the seed can't reach holds Scrap, as in the game's ow
 Items found in Zexion can belong to other players, and their games can send items to
 you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, Area Maps or Intel
 Chips): exclude more locations than you have filler, and generation stops with an error that
-says so, unless the other players' filler makes up the difference.
+says so, unless the other players' filler makes up the difference (not Area Maps kept in their
+own world: "What do Area Maps and Intel Chips do?").
 
 You need the Zexion Archipelago mod and the Zexion Client: see the setup guide
 (`zexion-setup-guide.md` in the release).
@@ -214,6 +215,9 @@ none left of):
   (with your starting disks) makes: set the number there;
 - an Area Map with Area Map Hints on (they are Intel Chips), or an Intel Chip with it off.
 
+With Area Map Hints off, your Area Maps stay in your own world, plando too ("What do Area Maps
+and Intel Chips do?").
+
 The copies an item link's `replacement_item` adds aren't plando and are never refused, though a
 second copy of an item the game holds once gives nothing.
 
@@ -258,7 +262,15 @@ a second shows the hint, such as HINT: SLIDE MOD IS AT GUARDIA 22,7 (in English(
 Slide Mod is at Guardia 22,7), and it goes into your hint list. When nothing is left to hint,
 it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
 
-With the option off, Area Maps work as in the normal game.
+With the option off, Area Maps work as in the normal game: picking one up reveals the map around
+the square it lay in (by the game's code; not yet checked in game). So they stay in your own
+world: the generator never places your Area Maps in another player's world (as if they were in
+your `local_items`, which wins over your `non_local_items`), and they don't count toward filling
+other players' excluded locations. An item plando that puts one there isn't placed: the
+generator logs a warning saying why (not with `force: silent`), and with `force: true`
+generation stops. An Area Map that still reaches you from elsewhere, such as one sent from the
+server's console or through an item link (Area Maps in an item link aren't kept this way), has
+no square in your world and reveals nothing.
 
 ## Can I use the assist menu?
 

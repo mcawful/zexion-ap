@@ -35,11 +35,15 @@ pool is the one `worlds/zexion/custom.py` builds by the game's pool rule from th
 (`randocells.md`, "The pool"); `data.py` holds the presets' fresh saves' pools as a reference
 for the tests.
 
-Two generation-time steps are not rules from the data, and `locations.md`, "Where the world
-departs from the game", records both: `ZexionWorld.open_the_start` (from Archipelago's
+Three generation-time steps are not rules from the data, and `locations.md`, "Where the world
+departs from the game", records them: `ZexionWorld.open_the_start` (from Archipelago's
 `fill_hook`, it places progression items until the starting state reaches `START_REACH` of the
-player's locations that are not excluded: check it for soft-locks by placement, finding 3) and
-`ZexionWorld.stage_pre_fill` (it refuses a seed whose excluded locations outnumber the filler).
+player's locations that are not excluded: check it for soft-locks by placement, finding 3),
+`ZexionWorld.place_area_maps` (from `fill_hook` after it, with Area Map Hints off: the player's
+Area Maps, filler kept in their own world, into the player's own locations: excluded ones
+first, then those the starting state does not reach, those it does, and priority ones last)
+and `ZexionWorld.stage_pre_fill` (it refuses a seed whose excluded locations outnumber the
+filler).
 
 These docs are long: find the section with a search for `^## ` and read only that range.
 

@@ -426,7 +426,8 @@ class AllowAssists(Toggle):
 class AreaMapHints(DefaultOnToggle):
     """Area Maps become Intel Chips: each one you get, found or sent to you, hints where one of
     your upgrades, keys or OS Install Disks is. Intel Chips don't reveal the map. Off: Area
-    Maps work as in the normal game."""
+    Maps work as in the normal game, revealing the map around where they lie, and stay in your
+    own world."""
 
     display_name = "Area Map Hints"
 
