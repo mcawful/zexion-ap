@@ -144,9 +144,11 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   `docs/re/memory.md`, "Ailments: the script step that sets them"). The design since (at once,
   about 12 s, one of each kind at a time, past a shield, AILMENTS's tests patched while one
   runs, disguised as a Zexion upgrade, another game's trap as a progression item): 2026-11-11
-  (81dd8cc, `lab/ap/live60`). Not run in game: the pickup popup naming the trap, a queued
-  trap's popup waiting for it, one held through a death, a reload, the ending or RETURN HOME,
-  and the traps held at a slot's first connection.
+  (81dd8cc, `lab/ap/live60`); the pickup popup naming the trap, a queued trap's popup waiting
+  for it, the drawn disguises, a trap held at a slot's first connection and `/reload_mod`
+  refused during a trap: 2026-11-11 (5f66f1b, `lab/ap/live61`). Not run in game: one held
+  through a death, a reload, the ending or RETURN HOME, and a client restarted or going away
+  while a trap waits or runs.
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,

@@ -312,8 +312,8 @@ closed, it goes off when you next connect with that save loaded. Other games' tr
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or
 while the client was closed (on an earlier build); your own trap and other players' in your
-world, and their look. Not yet checked in the game: the pickup popup naming a trap, and a second
-trap's popup waiting for it.
+world, their look and their pickup popups; a second trap's popup waiting for it; and a trap
+sent before you first connected.
 
 ## Can I use the assist menu?
 

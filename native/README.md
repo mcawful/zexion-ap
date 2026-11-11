@@ -233,7 +233,9 @@ only (`native/tests/mission_tests.cpp`, `game_tests.cpp`).
 
 It refuses (`error a trap is running; not unloading`), before putting anything back, while a
 trap's AILMENTS patch is held ("Traps"): putting it back would let AILMENTS end or shorten the
-trap. That is at most a trap's 12 s, longer with traps of one kind queued. Stand-in tests only.
+trap. That is at most a trap's 12 s, longer with traps of one kind queued. Working in game
+2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8, the owner's reports; `lab/ingame-138-traps-check3.md` in the traps worktree: `/reload_mod` during a Disruption Trap was refused with the client's "can't be
+reloaded right now (a trap is running)", and the trap ran on.
 
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
@@ -596,9 +598,13 @@ disruption's patch read in memory 2 s in (both `jne`s `EB`, the other timer's un
 back after; another game's trap as PROGRESSION ITEM FOR BUB and another Zexion player's
 disguised, nothing to the player; and the three AILMENTS targets resolved live. The owner then
 asked for the pickup popup to name the trap (it named the disguise) and for a queued trap's
-popup to wait for it: both since, stand-in tests only. **Not run in game:** those two, a trap
-through a death, a reload, the ending or RETURN HOME, and the traps held at a slot's first
-connection.
+popup to wait for it. **Working in game** with those, the drawn disguises and round 8b's fixes
+(2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8, the owner's reports; `lab/ingame-138-traps-check3.md` in the traps worktree): a trap sent before the slot's first connection, popping up and going off
+when the owner started the save; this world's own trap disguised as Zenith Thrusters and another
+Zexion player's as the Jump Booster, each pickup popup naming the trap (FOR BOB for Bob's); two
+Disruption Traps at once, each popup showing as its trap went off; and the refused unload above.
+**Not run in game:** a trap through a death, a reload, the ending or RETURN HOME; a client
+restarted, or going away, while a trap from before the first connection waits or a trap runs.
 
 ### The assist menu
 
