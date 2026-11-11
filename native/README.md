@@ -28,7 +28,12 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
 - Which file: the client's build (`native/build/Release/zexion_ap.dll`, or `ZEXION_DLL`), else
   the game folder's copy, read only. The client never writes the game's files.
 - A loaded helper of another version is unloaded and the build loaded instead. A game-folder
-  copy with no build to replace it is refused: the player updates it there.
+  copy with no build to replace it is refused: the player updates it there. One that refuses to
+  unload ("Unloading": a menu open, a trap waiting or running) is asked again every 5 s, and the
+  client's line says why (`native.NotUnloaded`); meanwhile items are held back as after a failed
+  attach (up to 30 s, then given with no popup: "AP saves without the client"), also when
+  the client attaches first with the game already running (stand-in tests,
+  `tests/test_zexion_client.py`).
 - A file that loads as another version is not loaded again until it changes; the client says to
   rebuild `native/` or copy this release's DLLs.
 - A helper whose `hello` the client can't read counts as another version. Without a build it is
@@ -1130,8 +1135,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   disconnects. Such a save then gets this look and its notice too. The client keeps the helper for a
   save it dressed before a drop (its look stays), in the ending (its hold), and at the title, where
   after a drop an armed new game stays armed until a save is loaded. It attaches again on
-  connecting, before it gives any item; an attach that fails holds the items back for up to 30 s,
-  then they are given as with no helper (`client/zexion_client.py`, `leave_helper_tick` and `poll`;
+  connecting, before it gives any item; an attach that fails holds the items back for up to 30 s
+  (counted afresh at each connection: a drop during it starts it over), then they are given as
+  with no helper (`client/zexion_client.py`, `leave_helper_tick` and `poll`;
   stand-in tests, `tests/test_zexion_client.py`). Working in game 2026-10-29 (the Launcher's
   client): a save loaded during a drop and a Disconnect in play, each given this look and its
   notice, then the client's again on connecting, with CLIENT CONNECTED and received items' popups;

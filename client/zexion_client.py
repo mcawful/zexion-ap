@@ -139,6 +139,9 @@ class ZexionContext(CommonContext):
         # the items owed get their popups.
         self.helper_lost = False
         self.helper_back_by = 0.0  # when a failing attach after it stops holding back the step
+        # A helper of another version refused to unload (native.NotUnloaded): not asked again
+        # before then, as each try has it put things back (attach_helper).
+        self.attach_again_at = 0.0
         # The last step in play that had a helper found it failing, or waited for one lost just
         # before it (poll): one failing again is not attached again before the next step.
         self.step_failed = False
@@ -401,6 +404,7 @@ def game_closed(ctx: ZexionContext, seed: state.SeedState) -> None:
     ctx.drop_helper()
     # The next game's is attached with it.
     ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
+    ctx.attach_again_at = 0.0
     ctx.step_failed = False
     # The next game's failures are news, and its language is told again.
     ctx.said.clear("read", "read detail", "mismatch", "language")
@@ -478,6 +482,9 @@ async def poll(ctx: ZexionContext) -> None:
             break  # none, or it failed in the tick before
         await side_tick(ctx, name, tick)
     if ctx.conn is None or not ctx.slot:
+        # A hold cut short by the disconnect starts over at the next connection, with its own
+        # HELPER_RETRY_SECONDS (else a reconnect after them would step at once without it).
+        ctx.helper_back_by = 0.0
         await away_tick(ctx)
         await leave_helper_tick(ctx)
         return
@@ -496,7 +503,11 @@ async def poll(ctx: ZexionContext) -> None:
             return
         ctx.said.clear("game")
         logger.info("Attached to Zexion.")
-        await attach_helper(ctx)
+        # One that failed but may attach on a later try (an old helper refusing to unload, no
+        # frame yet): held for as after a lost helper, so this poll's step writes nothing with
+        # no popup and drops no waiting trap.
+        if await attach_helper(ctx) and ctx.helper is None:
+            ctx.helper_lost = True
     elif ctx.helper is None and (ctx.helper_left or ctx.helper_lost):
         # Let go while no connection stepped (leave_helper_tick), or lost in a side tick:
         # attached again before any step, as a step with no helper writes the items owed with
@@ -507,7 +518,10 @@ async def poll(ctx: ZexionContext) -> None:
         now = time.monotonic()
         if ctx.helper_back_by == 0.0:
             ctx.helper_back_by = now + HELPER_RETRY_SECONDS
-        waiting = await attach_helper(ctx) and now < ctx.helper_back_by
+        if now < ctx.attach_again_at:  # refused to unload just now: asked again in a while
+            waiting = now < ctx.helper_back_by
+        else:
+            waiting = await attach_helper(ctx) and now < ctx.helper_back_by
         if ctx.helper is None and waiting and game_alive(ctx):
             await asyncio.sleep(BACK_RETRY_SECONDS)
             return

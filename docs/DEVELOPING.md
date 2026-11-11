@@ -257,7 +257,10 @@ them, and there a missing one fails a test as well.
 
 On Windows, with the game. The command, what it needs and its flags: [`CLAUDE.md`](../CLAUDE.md),
 "The client". Running it may load the helper into the game: the one already there if it is this
-version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). Beyond that:
+version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). One of another version
+that refuses to unload for it (a menu open, a trap waiting or running) is asked again every 5 s,
+the client saying why, with items held back up to 30 s ([`native/README.md`](../native/README.md),
+"Getting in"). Beyond that:
 
 - A new game started from RANDOMIZER (kept by `--keep-randomizer`) with the seed's text typed
   into the menu gets the seed: the helper places it again with the seed's settings, whatever

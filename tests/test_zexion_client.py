@@ -421,13 +421,59 @@ def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
     monkeypatch, tmp_path
 ) -> None:
     # A menu open or a trap waiting, say: a later try may unload it and load the game folder's
-    # copy, so the step waits for it a while, as for a helper lost, then goes on.
+    # copy, so the step waits for it a while, as for a helper lost, then goes on. It is asked
+    # again only every few seconds: each try has it put back what a client going away does.
     ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll", native.NotUnloaded)
     asyncio.run(zc.poll(ctx))
     assert order == ["attach"], "no step gives items without their popups meanwhile"
-    ctx.helper_back_by = 1.0  # long past: given up
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach"], "held, and not asked again at once"
+    ctx.attach_again_at, ctx.helper_back_by = 0.0, 1.0  # both long past: given up
     asyncio.run(zc.poll(ctx))
     assert len(order) == 3 and order[2] != "step, retry at inf"
+
+
+@pytest.mark.parametrize("error", [native.NotUnloaded, native.ReplyLost])
+def test_a_first_attach_that_may_work_later_holds_back_the_step(monkeypatch, error) -> None:
+    # The client started with the game running: an old helper refusing to unload (or no
+    # frame yet) gives no step that writes items with no popup or drops a waiting trap.
+    ctx = context(connection(), None)
+    order: list[str] = []
+    monkeypatch.setattr(zc.game.Game, "attach", staticmethod(lambda: Running(game.IN_PLAY)))
+
+    def attach(*args) -> None:
+        order.append("attach")
+        raise error("the mod loaded in Zexion is 0.29.0, and it didn't unload (a menu is open)")
+
+    def step(g, received, helper=None, give=True, **kwargs):
+        order.append(f"step, {'gives' if give else 'waits'}")
+        return session.Step(state=game.IN_PLAY)
+
+    monkeypatch.setattr(native, "attach", attach)
+    monkeypatch.setattr(native, "default_dll", lambda: types.SimpleNamespace(is_file=lambda: True))
+    monkeypatch.setattr(zc, "BACK_RETRY_SECONDS", 0.0)
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    for name in ("newgame_tick", "labels_tick", "toggle_tick", "discs_helper_tick"):
+        monkeypatch.setattr(zc, name, nothing)
+    for name in ("slots_tick", "language_tick", "replay_tick", "offline_tick"):
+        monkeypatch.setattr(zc, name, nothing)
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach", "step, waits"] and ctx.helper_lost
+    ctx.attach_again_at = 0.0
+    asyncio.run(zc.poll(ctx))
+    assert order[-1] == "attach", "then held while it is tried again"
+
+
+def test_a_disconnect_during_the_hold_lets_the_next_connection_hold_afresh(monkeypatch) -> None:
+    ctx, order = failing_reattach(monkeypatch)
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach"] and ctx.helper_back_by > 0
+    ctx.slot = None  # dropped mid-hold
+    asyncio.run(zc.poll(ctx))
+    assert ctx.helper_back_by == 0.0, "the bound starts over"
+    ctx.slot = 1
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach", "attach"], "held again, not stepped at once without the helper"
 
 
 async def nothing(*args) -> None:

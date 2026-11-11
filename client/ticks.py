@@ -64,8 +64,10 @@ async def attach_helper(ctx: ZexionContext) -> bool:
             # Only the player can fix it, with Zexion closed: not tried again until it restarts.
             ctx.mismatched(exc)
             return False
-        # Tried every 30 s (a rebuild of the client's own build, or an old helper that unloads
-        # on a later try, fixes a mismatch): each line said again only when it changes.
+        # Tried every 30 s, or every REFUSED_RETRY_SECONDS while the step is held for an old
+        # helper that refused to unload (a rebuild of the client's own build, or an old helper
+        # that unloads on a later try, fixes a mismatch): each line said again only when it
+        # changes.
         line = state.helper_failed(exc)
         if line is not None and ctx.said("helper", line):
             logger.warning(line)
@@ -73,8 +75,12 @@ async def attach_helper(ctx: ZexionContext) -> bool:
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
         # One that didn't unload (a menu open, a trap waiting or running) may on a later try:
-        # worth waiting for, as for a helper lost.
-        return not mismatch or isinstance(exc, native.NotUnloaded)
+        # worth waiting for, as for a helper lost, but asked only every REFUSED_RETRY_SECONDS
+        # (each try has the old helper put back what a client going away does).
+        if isinstance(exc, native.NotUnloaded):
+            ctx.attach_again_at = time.monotonic() + REFUSED_RETRY_SECONDS
+            return True
+        return not mismatch
     ctx.said.clear("helper", "helper detail")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything

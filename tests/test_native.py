@@ -454,6 +454,28 @@ def test_a_mod_of_another_version_that_wont_unload_says_they_dont_match(
     assert "(a menu is open)" in str(caught.value), "the refusal's reason, for the player"
 
 
+@pytest.mark.parametrize(
+    ("error", "said"),
+    [
+        (native.ReplyLost("no reply within 2.0 s"), "it didn't answer"),
+        (
+            native.ModMismatch("both are version 0, but from different builds"),
+            "it doesn't know unload",
+        ),
+        (
+            native.HelperError("a trap is waiting to go off; not unloading"),
+            "a trap is waiting to go off",
+        ),
+    ],
+)
+def test_why_an_old_helper_did_not_unload_reads_plainly(error, said) -> None:
+    class Old:
+        def request(self, text: str, *args: object) -> str:
+            raise error
+
+    assert native._unload_refusal(Old(), 0) == said
+
+
 def test_a_mod_that_doesnt_know_the_games_build_is_another_build(tmp_path, monkeypatch) -> None:
     built = tmp_path / "zexion_ap.dll"
     built.write_bytes(b"")

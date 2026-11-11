@@ -490,11 +490,14 @@ def _unload_refusal(helper: Helper, handle: int) -> str | None:
     try:
         if helper.request("unload") == "bye" and wait_unloaded(handle):
             return None
-        return "it was still loaded"
+        return "it was still loaded"  # it said bye but stayed, or answered something else
     except GameExited:
         raise
-    except HelperError as exc:
-        log.warning(f"The helper of another version did not unload: {exc}")
+    except ReplyLost:
+        return "it didn't answer"
+    except ModMismatch:  # "error unknown request": too old to unload on request
+        return "it doesn't know unload"
+    except HelperError as exc:  # its refusal ("<why>; not unloading"), or a pipe closed
         return str(exc).removesuffix(UNLOAD_REFUSED)
 
 
