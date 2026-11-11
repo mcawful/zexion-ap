@@ -930,7 +930,7 @@ class ZexionWorld(World):
             # the game holds a stand-in there, and the client sets the trap off once it is found
             # (client/ticks.py, followups_tick). Older seeds lack it.
             "trap_locations": self.trap_locations(),
-            # The upgrade each Zexion trap in this world's locations is shown as (client/
+            # The item each Zexion trap in this world's locations is shown as (client/
             # aplabels.py, trap_label). Older seeds lack it.
             "trap_looks": self.trap_looks(),
         }

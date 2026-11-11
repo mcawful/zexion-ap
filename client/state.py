@@ -59,7 +59,7 @@ class Connection:
     # This world's own traps in its own locations, by location index: the trap's item code
     # (set off once found: ticks.followups_tick). Empty for a seed from before the traps.
     traps: dict[int, int] = field(default_factory=dict)
-    # The upgrade each Zexion trap in this world's locations is shown as, by location index (the
+    # The item each Zexion trap in this world's locations is shown as, by location index (the
     # world's draw: client/aplabels.py, trap_label). Empty for a seed from before it.
     trap_looks: dict[int, int] = field(default_factory=dict)
     # The server's full item list has come (the packet after Connected may be it).
@@ -70,6 +70,9 @@ class Connection:
     # yet).
     announced_sent: int | None = None
     held_sent: list[int] | None = None
+    # This connection has stored the held traps' record once: later stores replace it, even
+    # before the server's reply says so (announced_tick).
+    held_stored: bool = False
     found_sent_at: float = 0.0  # when the locations found were last stored (store_found)
     # The stored hints' CreateHints sent again (hints_tick); cleared when a send of new ones
     # fails, so all are created again.

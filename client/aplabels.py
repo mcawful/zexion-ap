@@ -8,7 +8,8 @@ Disks goal, disks too. The client scouts those locations and sends the helper a 
 (its own icon and name), which the pickup popup shows (native/README.md; docs/re/memory.md,
 "Other players' items"). A trap looks important: another game's as a progression item, a Zexion
 trap (this player's own, which the world puts a stand-in for too, or another Zexion player's) as
-a Zexion upgrade, its pickup popup naming the trap (``trap_label``). Labels keep only what the
+one of its owner's upgrades, keys or OS Install Disks, its pickup popup naming the trap
+(``trap_label``). Labels keep only what the
 game's 8 x 8 font draws, 24 characters a line, in the case they are written in: the helper shows
 them in capitals but in English(HD).
 Pure functions; client/ticks.py (labels_tick, foreign_labels) sends them.

@@ -528,7 +528,8 @@ dealt on the next load ("DeathLink").
     so the duration is the same); and where the sounds play: each at the player's position,
     where the game plays 26 at the touching object's and 82 at a point on the screen.
 - **This world's own**, found in it: the game hands out an important stand-in there, labeled as
-  one of its owner's items, whose pickup popup names the trap (`@N/NAME`: "Other players' items";
+  one of its owner's items, whose pickup popup names the trap (`@N/NAME`, `@N NAME/PICKUP` for a
+  disk: "Other players' items";
   `client/aplabels.py`, `trap_label`); the client then sends `trap ITEM` in an `apply` (`client/ticks.py`,
   `followups_tick`), which queues the trap with no popup of the helper's, to go off at once as a
   received one does. One found with no client (the offline look shows its label) is sent when a
@@ -570,13 +571,18 @@ dealt on the next load ("DeathLink").
   once its reply was lost (it may have been queued), so it is not sent again. As with a received
   scrap's drop, a trap can run twice where the helper took it and the client closed before the
   server stored its record (the popup count, the held traps' record, or the follow-ups): at that
-  moment, or after the connection dropped then and before a reconnect. A reconnect keeps the
-  session's own list of held traps, not the server's record, so an emptying store the connection
-  lost does not hand a held trap over again (it writes the record again instead), and a second
-  client of the slot writes the record only when its own list changes. A client's first record
-  of them is made only where the server has none (the `default` operation), so a second client's
-  first, arriving late, never lands over the other's emptied one. A trap whose effect a reload or
-  a death ends early is not given again, as with the enemies' own.
+  moment, or after the connection dropped then and before a reconnect. That includes a held
+  trap's first record lost with the connection: the client restarted then finds no count and no
+  record, and counts that trap held again. A reconnect keeps the session's own list of held
+  traps, not the server's record, so an emptying store the connection lost does not hand a held
+  trap over again (it writes the record again instead), and a second client of the slot writes
+  the record only when its own list changes. A connection's first record of them is made only
+  where the server has none (the `default` operation; later ones `replace`, sent without waiting
+  for the server's reply: `Connection.held_stored`), so a second client's first, arriving late,
+  never lands over the other's emptied one. A null some other client of the room wrote there
+  counts to the server as a record, so that first record keeps the null and a restart before
+  the hand-over finds no held trap: lost, which needs another client to write the key. A trap
+  whose effect a reload or a death ends early is not given again, as with the enemies' own.
 - `trap_status` (for live checks): `queued N; last <outcome>`, the outcome `none`, `set ITEM`,
   or `nothing ITEM` (its timer already longer).
 - **Put back:** the AILMENTS tests' patches, as above, but not when a client goes away: a running
@@ -734,7 +740,10 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   or left out, in Custom mode or by `start_inventory_from_pool`, and no key or disk placed), any
   of the 16 upgrades, which the owner may then hold, or which may not be in the seed. A trap shown
   as a disk is never counted as one: the client counts disks from those received and the slot's
-  own disk locations (`client/discs.py`), which never hold a trap. See `client/aplabels.py`.
+  own disk locations (`client/discs.py`), which never hold a trap. A trap shown as one of this
+  player's own keys has no key marker on the map, which a real one in this world has once the
+  scanner has set flag 39 (`docs/re/memory.md`, "Keys, the gates and the key markers"): a tell
+  the owner accepted; by the code, not run in game. See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of

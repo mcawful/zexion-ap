@@ -399,7 +399,8 @@ where its subject is:
   Energy Shield, and no rule reads them or the Scrap, so the logic is unchanged. Each copies an
   enemy's touch the game already has (`memory.md`, "The Phazo's disruption", "The Balorb's
   disorienting wave"), longer, past a shield and AILMENTS, and looking important (a Zexion trap
-  as a Zexion upgrade), kept by the owner's decisions, 2026-11-11.
+  as one of its owner's upgrades, keys or OS Install Disks), kept by the owner's decisions,
+  2026-11-11.
 - **The ASSIST lock** (`allow_assists`, off by default) is a protection the game does not have
   (the game's randomizer menu has no assist setting: `randocells.md`, "The randomizer menu's
   settings"), kept by the owner's decision, 2026-10-27.

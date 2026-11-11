@@ -251,6 +251,40 @@ def test_a_second_clients_late_first_record_never_lands_over_an_emptied_one() ->
     assert a.stored_data[conn.held_key] == [], "B's late first record changed nothing"
 
 
+def apply_sets(server: dict, sent: list[dict]) -> None:
+    """AP 0.6.8's Set (MultiServer.py): the stored value, or the default for a key it lacks,
+    then each operation on it ("default" keeps it)."""
+    for m in sent:
+        if m["cmd"] != "Set":
+            continue
+        value = server.get(m["key"], m["default"])
+        for operation in m["operations"]:
+            if operation["operation"] != "default":
+                value = operation["value"]  # replace and max, as used here (max on counts)
+        server[m["key"]] = value
+    sent.clear()
+
+
+def test_an_emptying_store_sent_before_the_first_ones_reply_still_empties_the_record() -> None:
+    # A first connection to a far server: the first record [1] is sent, the trap is handed over
+    # in the same poll, and the emptying store goes out before the server's reply to the first.
+    conn = connection()
+    ctx = FakeContext(conn)
+    ctx.stored_data[conn.announced_key] = ctx.stored_data[conn.held_key] = None
+    server: dict = {}  # the server's own data, apart from what the client has been told
+    codes = types.SimpleNamespace(codes=[17, ids.DISRUPTION_TRAP])
+    current = ctx.seed_state.session
+    asyncio.run(storage.announced_tick(ctx, conn, current, codes))
+    assert current.held_traps == [1]
+    current.held_traps = []  # handed over; no reply has come yet
+    asyncio.run(storage.announced_tick(ctx, conn, current, codes))
+    apply_sets(server, ctx.sent)
+    assert server[conn.held_key] == [], "the trap handed over is not left in the record"
+    ctx.stored_data[conn.held_key] = server[conn.held_key]  # the replies come
+    asyncio.run(storage.announced_tick(ctx, conn, current, codes))
+    assert not [m for m in ctx.sent if m["key"] == conn.held_key], "nothing more to store"
+
+
 def test_a_failed_record_of_the_held_traps_stores_no_count() -> None:
     # Sent again on the next poll, the count with it: a restart never finds one without the other.
     conn = connection()

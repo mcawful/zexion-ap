@@ -143,9 +143,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   and another Zexion player's in this world, AILMENTS REDUCED and IMMUNE ("Traps";
   `docs/re/memory.md`, "Ailments: the script step that sets them"). The design since (at once,
   about 12 s, one of each kind at a time, past a shield, AILMENTS's tests patched while one
-  runs, disguised as a Zexion upgrade, another game's trap as a progression item): 2026-11-11
-  (81dd8cc, `lab/ap/live60`); the pickup popup naming the trap, a queued trap's popup waiting
-  for it, the drawn disguises, a trap held at a slot's first connection and `/reload_mod`
+  runs, disguised (then as a Zexion upgrade), another game's trap as a progression item):
+  2026-11-11 (81dd8cc, `lab/ap/live60`); the pickup popup naming the trap, a queued trap's popup
+  waiting for it, the drawn disguises, a trap held at a slot's first connection and `/reload_mod`
   refused during a trap: 2026-11-11 (5f66f1b, `lab/ap/live61`). Not run in game: one held
   through a death, a reload, the ending or RETURN HOME, a client restarted or going away while a
   trap waits or runs, and what changed since 5f66f1b (the held traps' record, a trap's popup

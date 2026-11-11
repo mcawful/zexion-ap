@@ -309,9 +309,11 @@ player's, looks like one of that player's upgrades, keys or OS Install Disks tha
 items. That's on purpose: you can't tell a trap from a real item until you pick it up. Picking up
 a Zexion trap says what it is (DISORIENT TRAP, and FOR BOB if it's Bob's), and one that looks
 like an OS Install Disk never counts as a disk; another game's trap still says PROGRESSION ITEM.
-If none of those is in the seed (its owner starts with, or left out, every upgrade, and has no
+If none of those is in the seed (its owner starts with, or leaves out, every upgrade, and has no
 key or disk in the seed), a Zexion trap looks like any upgrade: maybe one they already have, or
-one not in the seed. Picking up your own sets it off at once; if you picked it up with the client
+one not in the seed. Once the scanner has shown your keys on the map, a trap that looks like one
+of your keys has no key marker there (not yet checked in the game). Picking up your own sets it
+off at once; if you picked it up with the client
 closed, it goes off when you next connect with that save loaded. Other games' traps sent to you
 do nothing in Zexion.
 

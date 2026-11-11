@@ -154,7 +154,7 @@ class TestOwnTraps(unittest.TestCase):
             if loc.item.player == player and code_of.get(loc.item.name) in LOOKS
         }
 
-    def test_each_trap_looks_like_one_of_its_owners_upgrades_in_the_seed(self) -> None:
+    def test_each_trap_looks_like_one_of_its_owners_important_items_in_the_seed(self) -> None:
         # Easy starts with the Power Cartridge (13), one of the disguises: never drawn there;
         # every look lies in the seed, none twice until they run out.
         multiworld = generate([{"mode": "easy", "trap_percentage": 100}])
@@ -168,6 +168,9 @@ class TestOwnTraps(unittest.TestCase):
         self.assertLessEqual(set(looks), pool)
         first = looks[: len(pool)]
         self.assertEqual(len(first), len(set(first)), "no repeat until they run out")
+        self.assertGreaterEqual(len(looks), len(pool), "more traps than looks here")
+        self.assertEqual(set(first), pool, "every look dealt before any repeats")
+        self.assertTrue(set(looks) & set(KEY_CODES), "a key drawn")
         self.assertEqual(world.trap_looks(), world.trap_looks(), "drawn once")
 
     def test_custom_modes_excluded_and_started_upgrades_are_never_a_look(self) -> None:
@@ -199,9 +202,6 @@ class TestOwnTraps(unittest.TestCase):
             looks = [code for _, code in multiworld.worlds[1].trap_looks()]
             self.assertLessEqual(set(looks), self.placed_looks(multiworld, 1))
             self.assertFalse(set(looks) & set(KEY_CODES), "no keys with the disks goal")
-            world = multiworld.worlds[1]
-            traps = {i for i, _ in world.trap_locations()}
-            self.assertFalse(traps & set(world.disc_locations()), "a trap never counts as a disk")
             found |= set(looks)
         self.assertIn(DATA_DISC, found, "the disks drawn too")
 
@@ -237,13 +237,14 @@ class TestOwnTraps(unittest.TestCase):
         distribute_items_restrictive(multiworld)
         world = multiworld.worlds[1]
         self.assertFalse(self.placed_looks(multiworld, 1), "nothing of the owner's placed")
+        self.assertTrue(world.trap_locations())
         looks = [code for _, code in world.trap_looks()]
         self.assertEqual(len(looks), len(world.trap_locations()))
         self.assertLessEqual(set(looks), set(DISGUISES))
         first = looks[: len(DISGUISES)]
         self.assertEqual(len(first), len(set(first)), "no repeat until they run out")
 
-    def test_another_players_trap_looks_like_one_of_their_upgrades(self) -> None:
+    def test_another_players_trap_looks_like_one_of_their_important_items(self) -> None:
         # Bob (Easy) starts with the Power Cartridge; Alpha (Custom) starts with the Phaser.
         trap = block({"Disorient Trap": 1}, ["Machinus 24,29"], world="Tester1")
         options = [

@@ -163,11 +163,15 @@ async def announced_tick(
     held_now = list(current.held_traps)
     if held_now != conn.held_sent:
         # The slot's first record ("default": made only if the server has none yet), so a
-        # second client's first, late, never lands over another's emptied one; then "replace".
-        op = "default" if held_raw is None else "replace"
+        # second client's first, late, never lands over another's emptied one; then "replace",
+        # once this connection has stored it (its reply may not be here yet: an emptying store
+        # sent as "default" before it came would leave the first record standing).
+        first = held_raw is None and not conn.held_stored
+        op = "default" if first else "replace"
         if not await store(ctx, conn.held_key, op, held_now, held_now, "Recording the traps"):
             return  # sent again on the next poll, the count with it
         conn.held_sent = held_now
+        conn.held_stored = True
     count = state.announced_to_store(current.announced, raw, conn.announced_sent)
     if count is None:
         return

@@ -100,7 +100,8 @@ class TestClientCodes(unittest.TestCase):
         # A scouted item's progression flag, which the client keeps without Archipelago.
         self.assertEqual(aplabels.PROGRESSION, ItemClassification.progression)
         self.assertEqual(aplabels.TRAP, ItemClassification.trap)
-        # A trap is disguised as a Zexion upgrade held once (client/aplabels.py).
+        # A trap is disguised as one of its owner's important items (client/aplabels.py): an
+        # upgrade held once, a key or an OS Install Disk.
         self.assertLessEqual(set(items.DISGUISES), items.PROGRESSION - items.SUPPLIES)
         self.assertFalse(set(items.DISGUISES) & (set(items.KEY_CODES) | set(items.PROGRESSIVE)))
         # The client writes every other item's byte as 1 at most.
@@ -249,7 +250,7 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         self.assertLessEqual(set(traps.values()), ids.TRAPS)
         for i in traps:
             self.assertEqual(plan.location_items[i], ids.STAND_IN_PROGRESSION)
-        # Each has a drawn look: an upgrade this player does not start with.
+        # Each has a drawn look: an important item this player does not start with.
         looks = {i: code for i, code in slot["trap_looks"]}
         self.assertLessEqual(set(looks), set(traps) | set(foreign))
         self.assertLessEqual(set(looks.values()), items.LOOKS)
