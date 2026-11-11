@@ -454,19 +454,19 @@ class Goal(Choice):
 
 
 class OSInstallDisks(Range):
-    """OS Install Disks goal only: how many disks are placed. They replace filler items: the
-    Scrap first (the keys' four places among it), then Area Maps, so there are fewer Intel Chips
-    (or Area Maps), then Energy Shields. Each seed draws its filler as the game does: Easy and
-    Standard 27 filler items, on average about 17 Scrap, 5 Area Maps and 5 Energy Shields, and
-    OHKO 32, 4 of them for the locations it leaves out. In Easy, Standard and OHKO the 30 disks
-    always fit; in Custom your pool sets the numbers. Excluded locations can hold only filler:
-    Scrap, traps and Area Maps. A seed has about 26 of them, counting the keys' places (as few
-    as 17), and the disks take some, so many excluded locations can stop one seed and not another:
-    generation then stops with an error saying so, unless the other players' filler makes up
-    the difference. Where there is not enough filler for the disks, ten Missile
-    Containers or Mega Bombs become a box and nine Scrap Metal, as the game makes filler when it
-    runs short. The disks placed and any in start_inventory can be 99 at most, the most the
-    pause screen and the file select show."""
+    """OS Install Disks goal only: how many disks are placed. They replace filler items: the Scrap
+    first (the keys' four places among it), then Area Maps, so there are fewer Intel Chips (or
+    Area Maps), then Energy Shields. Each seed draws its filler as the game does: Easy and
+    Standard 27 filler items, on average about 17 Scrap (traps take some of it: Trap Percentage),
+    5 Area Maps and 5 Energy Shields, and OHKO 32, 4 of them for the locations it leaves out. In
+    Easy, Standard and OHKO the 30 disks always fit; in Custom your pool sets the numbers.
+    Excluded locations can hold only filler: Scrap, traps and Area Maps. A seed has about 26 of
+    them, counting the keys' places (as few as 17), and the disks take some, so many excluded
+    locations can stop one seed and not another: generation then stops with an error saying so,
+    unless the other players' filler makes up the difference. Where there is not enough filler for
+    the disks, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game
+    makes filler when it runs short. The disks placed and any in start_inventory can be 99 at
+    most, the most the pause screen and the file select show."""
 
     display_name = "OS Install Disks"
     range_start = 1
@@ -497,7 +497,7 @@ class TrapPercentage(Range):
     Mega Bombs do; an Energy Shield doesn't stop it), the Disorient Trap the Balorb's wave (your
     controls are reversed). The game's AILMENTS assist setting doesn't change traps. A trap
     goes off as it reaches you, with its popup, once you are in play. In a Zexion world a trap
-    looks like a Zexion upgrade."""
+    looks like one of its owner's upgrades, keys or OS Install Disks."""
 
     display_name = "Trap Percentage"
     range_start = 0

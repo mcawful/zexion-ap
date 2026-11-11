@@ -31,6 +31,15 @@ def test_this_worlds_own_traps_come_from_the_slot_data() -> None:
             state.Connection.from_slot_data(slot_data(trap_locations=bad), 0, 1)
 
 
+def test_the_trap_looks_come_from_the_slot_data() -> None:
+    assert connection().trap_looks == {}, "a seed from before the looks lists none"
+    conn = connection(trap_looks=[[3, 24], [40, ids.DATA_DISC]])
+    assert conn.trap_looks == {3: 24, 40: ids.DATA_DISC}
+    for bad in ([[3, ids.DISRUPTION_TRAP]], [[3, 250]], [[200, 24]], [3], "x"):
+        with pytest.raises(state.UnsupportedSeed):
+            state.Connection.from_slot_data(slot_data(trap_looks=bad), 0, 1)
+
+
 def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
     conn = state.Connection.from_slot_data(
         slot_data(

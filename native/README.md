@@ -142,19 +142,19 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 `client/native.py`). The whole configuration is refused unless:
 
 - every name is there, from a client's `config` or from the offline cache a client wrote ("AP
-  saves without the client"), which holds them all, but `text_cut_code` and the three AILMENTS keys (below). A cache lacking
-  one is refused (`read_error=cache:_missing_NAME`) until a client has run once and rewritten it.
-  A release that adds a key decides for that key alone: accept that, with everything the helper
-  does without a client off until the player's first client run after updating (the offline look
-  of AP saves, the file select's AP logo and disk counts, the map markers, the pause row from the
-  seed file, the major-item list, the title lines, the Feats guard, the ASSIST lock and Intel
-  Chips), or let the helper configure without that key, with a null check where it is read.
-  1.1.0's `text_cut_code` is the second kind (`optional` in `kConfigKeys`, `src/game_calls.cpp`):
-  without it the rest configures (`hello` `configured=1`, no `read_error`) and the text window's
-  cut stays the game's ("Popups", "Tall text") until a client's config, which holds it (stand-in
-  tests, `tests/offline_tests.cpp`). `ailments`, `ailments_hit_code` and `ailments_wave_code`, added after
-  1.1.0 for the traps, are too: without them a trap runs with AILMENTS as the game applies it
-  ("Traps");
+  saves without the client"), which holds them all, but `text_cut_code` and the three AILMENTS
+  keys (below). A cache lacking one is refused (`read_error=cache:_missing_NAME`) until a client
+  has run once and rewritten it. A release that adds a key decides for that key alone: accept
+  that, with everything the helper does without a client off until the player's first client run
+  after updating (the offline look of AP saves, the file select's AP logo and disk counts, the map
+  markers, the pause row from the seed file, the major-item list, the title lines, the Feats
+  guard, the ASSIST lock and Intel Chips), or let the helper configure without that key, with a
+  null check where it is read. 1.1.0's `text_cut_code` is the second kind (`optional` in
+  `kConfigKeys`, `src/game_calls.cpp`): without it the rest configures (`hello` `configured=1`, no
+  `read_error`) and the text window's cut stays the game's ("Popups", "Tall text") until a
+  client's config, which holds it (stand-in tests, `tests/offline_tests.cpp`). `ailments`,
+  `ailments_hit_code` and `ailments_wave_code`, added after 1.1.0 for the traps, are too: without
+  them a trap runs with AILMENTS as the game applies it ("Traps");
 - each lies inside the game's image: functions in its code, data outside it and writable;
 - the exception being import slots, which lie outside code: the C runtime's `malloc` and
   `free`, only read, and steam_api64's `SteamInternal_ContextInit`, written while an AP save is
@@ -212,11 +212,10 @@ It also refuses (`error <why>; not unloading`) while the game may still call int
 hold something of the helper's. That is an open menu's panel or entry, the pause menu's way back
 from OPTION MENU, the open map or the game's transition routine holding one of its wrappers, or
 the scanner's text, the pause screen's branch, an item record, the ending's patch, the map's
-on-screen marker write, the text window's cut or the AILMENTS tests (a trap's: "Traps") still
-the helper's; or, in a translation, a
-popup still showing the text the helper wrote into a borrowed entry (until that message ends:
-3 seconds in play), or a translated name or the popups' moved entry 70 still the helper's when
-no frame came ("Translations").
+on-screen marker write, the text window's cut or the AILMENTS tests (a trap's: "Traps") still the
+helper's; or, in a translation, a popup still showing the text the helper wrote into a borrowed
+entry (until that message ends: 3 seconds in play), or a translated name or the popups' moved
+entry 70 still the helper's when no frame came ("Translations").
 
 It refuses (`error the ending RETURN HOME WITH THE DISKS? started is on its way; not
 unloading`), before putting anything back, from RETURN HOME WITH THE DISKS?'s YES until the
@@ -233,9 +232,16 @@ only (`native/tests/mission_tests.cpp`, `game_tests.cpp`).
 
 It refuses (`error a trap is running; not unloading`), before putting anything back, while a
 trap's AILMENTS patch is held ("Traps"): putting it back would let AILMENTS end or shorten the
-trap. That is at most a trap's 12 s, longer with traps of one kind queued. Working in game
-2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8, the owner's reports; `lab/ingame-138-traps-check3.md` in the traps worktree: `/reload_mod` during a Disruption Trap was refused with the client's "can't be
-reloaded right now (a trap is running)", and the trap ran on.
+trap. That is at most a trap's 12 s, longer with traps of one kind queued. It refuses too (`error
+a trap is waiting to go off; not unloading`) while a trap for the save loaded, or for any save
+(one received with none loaded), waits to go off: the unload would drop it, and the client counts
+it handed over. That is a quarter of a second of play, longer while the game is halted, a menu is
+open, or RETURN HOME or the ending holds it. A trap waiting for another save is lost with the
+helper, as its popup is (stand-in tests: `tests/apply_test.cpp` over the pipe,
+`tests/game_tests.cpp`; not run in game). Working in game 2026-11-11, B1, `zexion_ap.dll`
+`9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8, the owner's reports;
+`lab/ingame-138-traps-check3.md` in the traps worktree: `/reload_mod` during a Disruption Trap was
+refused with the client's "can't be reloaded right now (a trap is running)", and the trap ran on.
 
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
@@ -325,7 +331,8 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   whose item has no record (records not loaded yet) is dropped. `applied` means queued, not
   shown; the client counts a received item's popup as done once `apply` took it. The queue
   outlives the client ("A client going away"), but not the helper: an unload, or the game
-  closing, loses the popups still queued (their items are given).
+  closing, loses the popups still queued (their items are given). A received trap's popup goes
+  with its trap, which an unload waits for in the save loaded ("Traps", "Unloading").
 - **Their save:** a client's popup is for the seed of the randomizer save loaded when `apply`
   took it (with none loaded, it shows in any save). While a save of another seed, or a normal
   save, is in play it waits (not keeping RETURN HOME WITH THE DISKS? waiting), and the next one
@@ -513,46 +520,46 @@ dealt on the next load ("DeathLink").
     chains to, 2904): unless `+0xDC4` is already 660 or more, `+0xDDB` turns by 4 (mod 8) if
     none is running, then `+0xD20` becomes at least 2 and `+0xDC4` 660. Then sound 82, 2904's,
     whatever op 5 did, as the game's chain plays it. The controls are reversed while it runs.
-  - **AILMENTS left out** (the owner's choice): op 5's test of it is not made, and while a timer
-    a trap set runs, the helper patches that timer's two tests of AILMENTS in the per-frame
-    update (`ailments_hit_code`, `ailments_wave_code`: each test's `jne` made a `jmp`,
-    `trap::HitPatch` and `trap::WavePatch`), so it counts down as at NORMAL: REDUCED (1) would
-    make the disruption a third as long and cut the disorientation to 60 frames, IMMUNE (2)
-    would end either at once. It patches only code that reads as B1's (but the loads'
-    displacements) and whose loads lead to the configured `ailments` (`trap::ailments_reads`),
-    as a trap starts (before the game's next frame) and each frame call while the timer runs,
-    and puts it back once the timer has run out, with no save loaded, and on an unload, which
-    is refused while it is held (`a trap is running`, "Unloading"); a client going away leaves
-    it to the trap, which outlives the client. An enemy's touch of the same kind meanwhile also counts down as at NORMAL.
+  - **AILMENTS left out** (the owner's choice): op 5's test of it is not made, and while a timer a
+    trap set runs, the helper patches that timer's two tests of AILMENTS in the per-frame update
+    (`ailments_hit_code`, `ailments_wave_code`: each test's `jne` made a `jmp`, `trap::HitPatch`
+    and `trap::WavePatch`), so it counts down as at NORMAL: REDUCED (1) would make the disruption
+    a third as long and cut the disorientation to 60 frames, IMMUNE (2) would end either at once.
+    It patches only code that reads as B1's (but the loads' displacements) and whose loads lead to
+    the configured `ailments` (`trap::ailments_reads`), as a trap starts (before the game's next
+    frame) and each frame call while the timer runs, and puts it back once the timer has run out,
+    with no save loaded, and on an unload, which is refused while it is held (`a trap is running`,
+    "Unloading"); a client going away leaves it to the trap, which outlives the client. An enemy's
+    touch of the same kind meanwhile also counts down as at NORMAL.
   - **Left out:** the game's random number the handler draws (the two states' random part is 0,
     so the duration is the same); and where the sounds play: each at the player's position,
     where the game plays 26 at the touching object's and 82 at a point on the screen.
 - **This world's own**, found in it: the game hands out an important stand-in there, labeled as
   one of its owner's items, whose pickup popup names the trap (`@N/NAME`, `@N NAME/PICKUP` for a
-  disk: "Other players' items";
-  `client/aplabels.py`, `trap_label`); the client then sends `trap ITEM` in an `apply` (`client/ticks.py`,
-  `followups_tick`), which queues the trap with no popup of the helper's, to go off at once as a
-  received one does. One found with no client (the offline look shows its label) is sent when a
-  client next connects with that save loaded (the follow-ups take this world's finds made without
-  a client too), so it starts then, wherever the player is.
+  disk: "Other players' items"; `client/aplabels.py`, `trap_label`); the client then sends `trap
+  ITEM` in an `apply` (`client/ticks.py`, `followups_tick`), which queues the trap with no popup
+  of the helper's, to go off at once as a received one does. One found with no client (the offline
+  look shows its label) is sent when a client next connects with that save loaded (the follow-ups
+  take this world's finds made without a client too), so it starts then, wherever the player is.
 - **When:** one a frame call (`pump_traps`, after the watches, so never while an unload runs),
-  once the player has been in play for a quarter of a second in any cell (not the frame of a
-  load, whose reset would undo it) with the game's halt byte clear, not from RETURN HOME WITH THE
-  DISKS?'s fade through the ending it started, and not in the game's own ending, held as
-  received scrap's drops are ("Received scrap", "When"), in the save its `apply` was for (another
-  seed's save or a normal save: it waits). One of each kind at a time (the owner's choice): a
-  trap waits while one of its kind that a trap started still runs, and starts as it runs out, so
-  traps that arrive together (after a reconnect, say) each get their 12 s, one after another; an
-  enemy's own effect does not hold one (the trap restarts it, as the enemy's touch would), but an
-  enemy's touch in a trap's last 240 or 251 frames extends that timer, and the next trap of its
-  kind waits for it too. A received trap's popup goes with it: queued as the trap goes off,
-  before the first popup of the save loaded that is no notice (so after a disk's count or a
-  chip's hint whose popup has just shown, and past popups waiting for another save), so one
-  waiting for another of its kind shows its popup only as it starts (the owner's choice). Held
-  through the pause and every menu (not in play), a death (energy 0) and a load. A cutscene
-  other than the ending's is not told apart from play: none was measured (`docs/re/memory.md`, "Telling play from menus, the title screen and death").
-  Without the AILMENTS keys (an offline cache written before the traps, configuring a helper that
-  a client has not configured since), a trap runs with AILMENTS as the game applies it.
+  once the player has been in play for a quarter of a second in any cell (not the frame of a load,
+  whose reset would undo it) with the game's halt byte clear, not from RETURN HOME WITH THE
+  DISKS?'s fade through the ending it started, and not in the game's own ending, held as received
+  scrap's drops are ("Received scrap", "When"), in the save its `apply` was for (another seed's
+  save or a normal save: it waits). One of each kind at a time (the owner's choice): a trap waits
+  while one of its kind that a trap started still runs, and starts as it runs out, so traps that
+  arrive together (after a reconnect, say) each get their 12 s, one after another; an enemy's own
+  effect does not hold one (the trap restarts it, as the enemy's touch would), but an enemy's
+  touch in a trap's last 240 or 251 frames extends that timer, and the next trap of its kind waits
+  for it too. A received trap's popup goes with it: queued as the trap goes off, before the first
+  popup of the save loaded that is no notice (so after a disk's count or a chip's hint whose popup
+  has just shown, and past popups waiting for another save), so one waiting for another of its
+  kind shows its popup only as it starts (the owner's choice). Held through the pause and every
+  menu (not in play), a death (energy 0) and a load. A cutscene other than the ending's is not
+  told apart from play: none was measured (`docs/re/memory.md`, "Telling play from menus, the
+  title screen and death"). Without the AILMENTS keys (an offline cache written before the traps,
+  configuring a helper that a client has not configured since), a trap runs with AILMENTS as the
+  game applies it.
 - **Once:** a received trap rides on its popup's `apply`: the client hands each received item's
   popup over once (its count in the server's data storage), and the helper queues the trap as
   the `apply` takes it and forgets it once run. So one received while disconnected, or out of
@@ -581,50 +588,55 @@ dealt on the next load ("DeathLink").
   for the server's reply: `Connection.held_stored`), so a second client's first, arriving late,
   never lands over the other's emptied one. A null some other client of the room wrote there
   counts to the server as a record, so that first record keeps the null and a restart before
-  the hand-over finds no held trap: lost, which needs another client to write the key. A trap
+  the hand-over finds no held trap: lost, which needs another client to write the key. Junk in
+  the popup count (not a count, from another client) reads as none stored, so a client
+  restarted then counts every trap the slot ever received as held and sets them off again. A trap
   whose effect a reload or a death ends early is not given again, as with the enemies' own.
 - `trap_status` (for live checks): `queued N; last <outcome>`, the outcome `none`, `set ITEM`,
   or `nothing ITEM` (its timer already longer).
 - **Put back:** the AILMENTS tests' patches, as above, but not when a client goes away: a running
-  trap keeps its patch, as it outlives the client, and an unload is refused while one is held
-  (`a trap is running`, before anything is put back), then puts it back (`put_back_traps`); the timers are the game's, and run out
-  as the enemies' do.
+  trap keeps its patch, as it outlives the client, and an unload is refused while one is held (`a
+  trap is running`, before anything is put back), then puts it back (`put_back_traps`); the timers
+  are the game's, and run out as the enemies' do.
 
 Stand-in tests (`tests/game_tests.cpp`: `test_received_traps`, `test_own_traps`,
 `test_traps_without_ailments`, `test_traps_held_for_the_ending`). **Run in game in its first
 design** (2026-11-11, B1, `zexion_ap.dll` `8fb38a28…` built from PR #138's 57381bf, the seed
 `lab/ap/live59`, slot 7, the owner's reports; the record in the traps worktree's
 `lab/ingame-138-traps-checks.md`), when a trap went off after its popup closed, for 240 and 251
-frames, an Energy Shield took a Disruption Trap and AILMENTS applied: a received Disruption
-Trap and Disorient Trap ("that all worked as expected"); a Disruption Trap with a shield up
-("the shield kept the trap from working"), no shield spawned again; one sent in the pause menu,
-set off after it ("popup then trap"); one sent while the client was disconnected, once after the
-reconnect, not again after a second; this world's own Disruption Trap after its pickup popup,
-then labeled by its name; another Zexion player's Disorient Trap in this world, nothing to the
-player; a Disorient Trap with AILMENTS REDUCED ("about a second") and IMMUNE ("got the sound but
-no effect"). The owner then asked for the design above. **Run in game as it is now** but for
-the pickup text and the popup waiting with its trap (2026-11-11, B1, `zexion_ap.dll`
-`a5647085…` built from 81dd8cc, the seed `lab/ap/live60` with a Bumper Stickers player, slot 7,
-the owner's reports; `lab/ingame-138-traps-recheck.md` in the traps worktree): this world's own
-Disruption Trap, its important marker and disguised look, going off at once for about 12 s; a
-received one with its popup, at once, about 12 s; two Disorient Traps at once, one after the
-other; a Disruption Trap past a shield, whose strength read 80 after (a full one); a Disorient
-Trap with AILMENTS IMMUNE and a Disruption Trap with REDUCED, each its full length, the
-disruption's patch read in memory 2 s in (both `jne`s `EB`, the other timer's untouched) and put
-back after; another game's trap as PROGRESSION ITEM FOR BUB and another Zexion player's
-disguised, nothing to the player; and the three AILMENTS targets resolved live. The owner then
-asked for the pickup popup to name the trap (it named the disguise) and for a queued trap's
-popup to wait for it. **Working in game** with those, the drawn disguises and round 8b's fixes
-(2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8, the owner's reports; `lab/ingame-138-traps-check3.md` in the traps worktree): a trap sent before the slot's first connection, popping up and going off
-when the owner started the save; this world's own trap disguised as Zenith Thrusters and another
-Zexion player's as the Jump Booster, each pickup popup naming the trap (FOR BOB for Bob's); two
-Disruption Traps at once, each popup showing as its trap went off; and the refused unload above.
-**Not run in game:** a trap through a death, a reload, the ending or RETURN HOME; a client
-restarted, or going away, while a trap from before the first connection waits or a trap runs;
-and what changed since 5f66f1b (5bb478d and after): the held traps' record (the first count
-stored at once again, the first record made only where the server has none), a trap's popup
-placed after a notice, the look drawn from the owner's upgrades, keys and OS Install Disks in
-the seed (`@N NAME/PICKUP` for a disk), and its fallback.
+frames, an Energy Shield took a Disruption Trap and AILMENTS applied: a received Disruption Trap
+and Disorient Trap ("that all worked as expected"); a Disruption Trap with a shield up ("the
+shield kept the trap from working"), no shield spawned again; one sent in the pause menu, set off
+after it ("popup then trap"); one sent while the client was disconnected, once after the
+reconnect, not again after a second; this world's own Disruption Trap after its pickup popup, then
+labeled by its name; another Zexion player's Disorient Trap in this world, nothing to the player;
+a Disorient Trap with AILMENTS REDUCED ("about a second") and IMMUNE ("got the sound but no
+effect"). The owner then asked for the design above. **Run in game as it is now** but for the
+pickup text and the popup waiting with its trap (2026-11-11, B1, `zexion_ap.dll` `a5647085…` built
+from 81dd8cc, the seed `lab/ap/live60` with a Bumper Stickers player, slot 7, the owner's reports;
+`lab/ingame-138-traps-recheck.md` in the traps worktree): this world's own Disruption Trap, its
+important marker and disguised look, going off at once for about 12 s; a received one with its
+popup, at once, about 12 s; two Disorient Traps at once, one after the other; a Disruption Trap
+past a shield, whose strength read 80 after (a full one); a Disorient Trap with AILMENTS IMMUNE
+and a Disruption Trap with REDUCED, each its full length, the disruption's patch read in memory 2
+s in (both `jne`s `EB`, the other timer's untouched) and put back after; another game's trap as
+PROGRESSION ITEM FOR BUB and another Zexion player's disguised, nothing to the player; and the
+three AILMENTS targets resolved live. The owner then asked for the pickup popup to name the trap
+(it named the disguise) and for a queued trap's popup to wait for it. **Working in game** with
+those and the drawn disguises (2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the
+seed `lab/ap/live61`, slot 8, the owner's reports; `lab/ingame-138-traps-check3.md` in the traps
+worktree): a trap sent before the slot's first connection, popping up and going off when the owner
+started the save; this world's own trap disguised as Zenith Thrusters and another Zexion player's
+as the Jump Booster, each pickup popup naming the trap (FOR BOB for Bob's); two Disruption Traps
+at once, each popup showing as its trap went off; and the refused unload above. **Not run in
+game:** a trap through a death, a reload (and that the load's reset comes within the quarter
+second a trap waits in play, `kTrapSettledMs`: `docs/re/memory.md` has the reset only at "that
+moment"), the ending or RETURN HOME; an unload refused while a trap waits; a client restarted, or
+going away, while a trap from before the first connection waits or a trap runs; and what changed
+since 5f66f1b (5bb478d and after): the held traps' record (the first count stored at once again,
+the first record made only where the server has none), a trap's popup placed after a notice, the
+look drawn from the owner's upgrades, keys and OS Install Disks in the seed (`@N NAME/PICKUP` for
+a disk), and its fallback.
 
 ### The assist menu
 
@@ -723,28 +735,27 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
 
 - **Labels:** `ap_labels` names map cells (this repo's (x, y); the game shows X = y, Y = x) for
   the **stand-ins**, Scrap Energy (47) and Scrap Chunk (48), which the world puts at every
-  location holding another player's item (48 for progression and traps, but not for another
-  Zexion player's supplies), this world's own OS Install Disks and traps (48). HEX is the item and
-  whom it is for, joined by a newline; or `@N` and whom
-  it is for (another Zexion player's item N, named from its record); or `@N NAME` (item N under
-  that name: this player's own OS Install Disk, or another Zexion player's disk, Area Map or
-  Intel Chip). A trap looks important: the world gives it the progression stand-in (48),
-  another game's labeled as its progression items are, and a Zexion trap, this player's own or
-  another Zexion player's, as `@N/PICKUP` (`@N NAME/PICKUP` for a disk, under its name): the
-  Zexion item the world drew for it (slot data `trap_looks`: one of the trap's owner's upgrades,
-  keys and OS Install Disks that lies in the seed, so none they start with or the seed leaves
-  out, none twice in a world until they run out, `world.trap_looks`; `aplabels.trap_label`), so
-  it looks like that item and the map's cursor names it so ("Other Zexion players' items, as
-  themselves"), but its pickup popup reads PICKUP, the trap's name, with no icon, then whom it is
-  for (`Label::pickup`; "Traps"). With none of those in the seed to draw (every upgrade started
-  or left out, in Custom mode or by `start_inventory_from_pool`, and no key or disk placed), any
-  of the 16 upgrades, which the owner may then hold, or which may not be in the seed. A trap shown
-  as a disk is never counted as one: the client counts disks from those received and the slot's
-  own disk locations (`client/discs.py`), which never hold a trap. A trap shown as one of this
-  player's own keys has no key marker on the map, which a real one in this world has once flag
-  39 is set, by the scanner or from the start by a map revealed in full (flag 291, Hints
-  Revealed; `docs/re/memory.md`, "Keys, the gates and the key markers" and "The scanner"): a
-  tell the owner accepted; by the code, not run in game. See `client/aplabels.py`.
+  location holding another player's item (48 for progression and traps, but not for another Zexion
+  player's supplies), this world's own OS Install Disks and traps (48). HEX is the item and whom
+  it is for, joined by a newline; or `@N` and whom it is for (another Zexion player's item N,
+  named from its record); or `@N NAME` (item N under that name: this player's own OS Install Disk,
+  or another Zexion player's disk, Area Map or Intel Chip). A trap looks important: the world
+  gives it the progression stand-in (48), another game's labeled as its progression items are, and
+  a Zexion trap, this player's own or another Zexion player's, as `@N/PICKUP` (`@N NAME/PICKUP`
+  for a disk, under its name): the Zexion item the world drew for it (slot data `trap_looks`: one
+  of the trap's owner's upgrades, keys and OS Install Disks that lies in the seed, so none they
+  start with or the seed leaves out, none twice in a world until they run out, `world.trap_looks`;
+  `aplabels.trap_label`), so it looks like that item and the map's cursor names it so ("Other
+  Zexion players' items, as themselves"), but its pickup popup reads PICKUP, the trap's name, with
+  no icon, then whom it is for (`Label::pickup`; "Traps"). With none of those in the seed to draw
+  (every upgrade started or left out, in Custom mode or by `start_inventory_from_pool`, and no key
+  or disk placed), any of the 16 upgrades, which the owner may then hold, or which may not be in
+  the seed. A trap shown as a disk is never counted as one: the client counts disks from those
+  received and the slot's own disk locations (`client/discs.py`), which never hold a trap. A trap
+  shown as one of this player's own keys has no key marker on the map, which a real one in this
+  world has once flag 39 is set, by the scanner or from the start by a map revealed in full (flag
+  291, Hints Revealed; `docs/re/memory.md`, "Keys, the gates and the key markers" and "The
+  scanner"): a tell the owner accepted; by the code, not run in game. See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of

@@ -262,11 +262,13 @@ version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). Beyond tha
   into the menu gets the seed: the helper places it again with the seed's settings, whatever
   else the menu holds (`client/newgame.py`; `native/README.md`, "New games"; working in game,
   2026-10-27). From the Launcher: `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
-- `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
-  meanwhile (popups still queued are lost; items are not); with a menu or the map open, or
-  while the ending RETURN HOME WITH THE DISKS? started is on its way, it refuses and says why,
-  and the mod stays loaded. While the client is not connected and has let the helper go (the
-  client, above), it says so and does nothing.
+- `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items meanwhile
+  (popups still queued are lost; items are not, nor traps waiting in the save loaded, which it
+  waits for; one waiting for another save is lost); with a menu or the map open, while the ending
+  RETURN HOME WITH THE DISKS? started is on its way, or while a trap runs or waits to go off, it
+  refuses and says why, and the mod stays loaded. If the mod does not come back (no frame, the
+  game in the background, say), items wait for it as after any lost helper. While the client is
+  not connected and has let the helper go (the client, above), it says so and does nothing.
 - While this seed's save is loaded, the client asks the helper whether its Feats and
   achievements guard is on ([`native/README.md`](../native/README.md), "Feats and achievements
   in AP saves"). If the helper says it could not do all of it (`feats=on:<why>` in its

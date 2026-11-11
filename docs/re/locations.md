@@ -310,19 +310,20 @@ where its subject is:
 - **Refused at generation, not clamped** (`custom.problems`): a state the game's menu cannot hold;
   one it allows whose pool can be longer than its places for some coin flip or box draw
   (`custom.most_entries`), which the game would cut at random, keys and items among them
-  (`randocells.md`, "The pool", step 7); Abridged Finale with the OS Install Disks goal (decided by
-  the owner, 2026-10-27); starting Mega Bombs, until the client can give them
+  (`randocells.md`, "The pool", step 7); Abridged Finale with the OS Install Disks goal (decided
+  by the owner, 2026-10-27); starting Mega Bombs, until the client can give them
   (`worlds/zexion/starting.py`); and more than 99 OS Install Disks, placed and starting, the most
-  the helper's counts show (`world.MAX_DISKS`; the game has no disk count). A pool's keys, items and
-  Energy Tanks alone are never more than its places (4 + 27 + 40 at most, of 154). Archipelago's own
-  refusal is named too: where a Zexion player's excluded locations outnumber their filler (Scrap,
-  traps, Area Maps or Intel Chips, whose places the OS Install Disks take before Energy Shields':
-  `world.DISC_REPLACES`; the traps take some of the Scrap left after that, one for one) and the other players' filler does not make up the difference (filler in
-  its player's `local_items`, such as Area Maps with Area Map Hints off, counted for that player
+  the helper's counts show (`world.MAX_DISKS`; the game has no disk count). A pool's keys, items
+  and Energy Tanks alone are never more than its places (4 + 27 + 40 at most, of 154).
+  Archipelago's own refusal is named too: where a Zexion player's excluded locations outnumber
+  their filler (Scrap, traps, Area Maps or Intel Chips, whose places the OS Install Disks take
+  before Energy Shields': `world.DISC_REPLACES`; the traps take some of the Scrap left after that,
+  one for one) and the other players' filler does not make up the difference (filler in its
+  player's `local_items`, such as Area Maps with Area Map Hints off, counted for that player
   alone; the message says how much other players' filler stays in their own worlds so, such as a
-  Zexion player's Area Maps with Area Map Hints off), counted over the whole multiworld after plando
-  and every world's `pre_fill`, the seed is refused with the options to change, in place of the
-  fill's "Not enough filler items for excluded locations" (`ZexionWorld.stage_pre_fill`, since
+  Zexion player's Area Maps with Area Map Hints off), counted over the whole multiworld after
+  plando and every world's `pre_fill`, the seed is refused with the options to change, in place of
+  the fill's "Not enough filler items for excluded locations" (`ZexionWorld.stage_pre_fill`, since
   2026-10-26; tested only: `test_world.py`, `TestExcludedLocationsNeedFiller` and
   `TestExcludedLocationsNameThePlayerOver`).
 - **Item plando past what the game holds is refused** (`worlds/zexion/plando.py`, from

@@ -736,8 +736,11 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
     except native.ReplyLost:
         # The helper may have queued the traps (its queue outlives this client): not sent again,
         # so each is set off at most once, as Session.give counts a lost batch's popups. A disk's
-        # count or a hint is sent again (at worst shown twice).
+        # count or a hint is sent again (at worst shown twice). Stored now, as storing needs no
+        # helper: a client closed before one comes back would send the trap again.
         ctx.seed_state.popped_mine |= set(traps)
+        if traps:
+            await store_popped(ctx, conn)
         raise
     if reply != "applied":
         return  # not shown: tried again

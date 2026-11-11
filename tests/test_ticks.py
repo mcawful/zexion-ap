@@ -292,6 +292,32 @@ def test_an_own_trap_whose_reply_was_lost_is_not_sent_again() -> None:
     assert len(ctx.helper.requests) == 1, "not sent again"
 
 
+def test_an_own_trap_whose_reply_was_lost_is_stored_at_once() -> None:
+    # Storing needs no helper: a client closed before one comes back must not send it again.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
+    ctx.server = types.SimpleNamespace(socket=types.SimpleNamespace(open=True, closed=False))
+    sent: list[dict] = []
+
+    async def send_msgs(msgs: list[dict]) -> None:
+        sent.extend(msgs)
+
+    ctx.send_msgs = send_msgs
+    ctx.helper = Homing()
+    ctx.told.client_back_sent = True
+    ctx.stored_data = {ctx.conn.popped_key: {}}
+    ctx.load.save_collected = {3}
+
+    def lost(text: str) -> str:
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    ctx.helper.apply = lost
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    with pytest.raises(native.ReplyLost):
+        run(ticks.followups_tick(ctx, no_finds(), shown))
+    stores = [m for m in sent if m["cmd"] == "Set" and m["key"] == ctx.conn.popped_key]
+    assert stores and stores[-1]["operations"][0]["value"] == {"3": 1}
+
+
 def test_a_secret_shuffle_seeds_labels_go_on_each_locations_own_cell() -> None:
     ctx = Ctx(secret_connection())
     ctx.scout(progression=True)

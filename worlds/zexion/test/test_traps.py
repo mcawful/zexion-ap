@@ -2,8 +2,10 @@
 this world's own locations reaches the client (world.py, ``add_traps``, ``location_items``,
 ``trap_locations``)."""
 
+import contextlib
 import unittest
 from collections import Counter
+from unittest import mock
 
 from BaseClasses import CollectionState, ItemClassification, LocationProgressType
 from Fill import distribute_items_restrictive
@@ -65,6 +67,28 @@ class TestTheTrapsInThePool(unittest.TestCase):
         b = placed({"mode": "easy", "disruption_trap_weight": 0, "disorient_trap_weight": 0})
         self.assertEqual(a, b)
         self.assertFalse({name for _, name in a} & {NAMES[c] for c in TRAPS})
+
+    def test_no_traps_draws_nothing_the_seed_before_them_did_not(self) -> None:
+        # trap_percentage 0 against the traps' code bypassed (the seed before the traps): the
+        # same placement and the same random state after the slot data, so no draw moved.
+        def run(options: dict, bypass: bool):
+            with contextlib.ExitStack() as stack:
+                if bypass:
+                    stack.enter_context(
+                        mock.patch.object(ZexionWorld, "add_traps", lambda self, codes: codes)
+                    )
+                    stack.enter_context(mock.patch.object(ZexionWorld, "trap_looks", lambda s: []))
+                multiworld = generate([{**options, "trap_percentage": 0}])
+                distribute_items_restrictive(multiworld)
+                world = multiworld.worlds[1]
+                world.fill_slot_data()
+                placed = [(loc.name, loc.item.name) for loc in multiworld.get_filled_locations()]
+                return placed, world.random.getstate()
+
+        disks = {"mode": "standard", "goal": "os_install_disks"}
+        for options in ({"mode": "easy"}, disks):
+            with self.subTest(**options):
+                self.assertEqual(run(options, False), run(options, True))
 
     def test_the_weights_pick_the_traps(self) -> None:
         only = pool_of(generate([{"mode": "standard", "disorient_trap_weight": 0}]))
@@ -172,6 +196,15 @@ class TestOwnTraps(unittest.TestCase):
         self.assertEqual(set(first), pool, "every look dealt before any repeats")
         self.assertTrue(set(looks) & set(KEY_CODES), "a key drawn")
         self.assertEqual(world.trap_looks(), world.trap_looks(), "drawn once")
+
+    def test_the_same_seed_draws_the_same_looks(self) -> None:
+        looks = []
+        for _ in range(2):
+            multiworld = generate([{"mode": "standard", "trap_percentage": 100}], seed=7)
+            distribute_items_restrictive(multiworld)
+            looks.append(multiworld.worlds[1].trap_looks())
+        self.assertTrue(looks[0])
+        self.assertEqual(looks[0], looks[1])
 
     def test_custom_modes_excluded_and_started_upgrades_are_never_a_look(self) -> None:
         excluded = ["Magnus Armor", "Power Chip", "G-Diffuser", "Power Core", "X-Missile"]

@@ -222,6 +222,14 @@ void test_frames() {
 
 // The code patches (game_mem.h): put back only where the code still reads as written, and
 // still the helper's while it does.
+// A two-byte jne made a jmp, for test_code_patches' CodePatch.
+bool jne_to_jmp(const BYTE (&game)[2], BYTE (&out)[2]) {
+    if (game[0] != 0x75) return false;
+    out[0] = 0xEB;
+    out[1] = game[1];
+    return true;
+}
+
 void test_code_patches() {
     const BYTE game[2] = {0x75, 0x2E}, ours[2] = {0xEB, 0x2E}, other[2] = {0x74, 0x2E};
     auto* code = static_cast<BYTE*>(
@@ -258,6 +266,32 @@ void test_code_patches() {
     check(!zap::put_back_code(view, big, big, sizeof(big)), "one too long to check: held");
     UnmapViewOfFile(view);
     CloseHandle(section);
+
+    // A patch whose put-back fails stays held (patched()), as the AILMENTS patches' do, which
+    // Game::unload_blocker reads: the page made non-executable under it (the same bytes, mapped
+    // again where it was, without execute).
+    HANDLE exec_section = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_EXECUTE_READWRITE,
+                                             0, 0x1000, nullptr);
+    auto* exec = static_cast<BYTE*>(
+        MapViewOfFile(exec_section, FILE_MAP_WRITE | FILE_MAP_EXECUTE, 0, 0, 0x1000));
+    check(exec != nullptr, "an executable section view");
+    if (exec == nullptr) return;
+    std::memcpy(exec, game, sizeof(game));
+    zap::CodePatch<2, jne_to_jmp> patch;
+    patch.watch(exec);
+    check(patch.patched() && zap::code_reads(exec, ours, 2), "patched");
+    UnmapViewOfFile(exec);
+    auto* again = static_cast<BYTE*>(
+        MapViewOfFileEx(exec_section, FILE_MAP_WRITE, 0, 0, 0x1000, exec));
+    check(again == exec, "mapped again where it was, not executable");
+    if (again == exec) {
+        patch.restore();
+        check(patch.patched() && zap::code_reads(exec, ours, 2), "a failed put-back: still held");
+        patch.watch(nullptr);
+        check(patch.patched(), "held through another try");
+        UnmapViewOfFile(again);
+    }
+    CloseHandle(exec_section);
 }
 
 void test_build_check() {

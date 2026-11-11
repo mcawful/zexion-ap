@@ -459,9 +459,12 @@ async def poll(ctx: ZexionContext) -> None:
         (logger.info if unloaded else logger.warning)(line)
         if unloaded:
             ctx.drop_helper()
-            # Nothing else this pass, so no item is written directly (no popup) meanwhile.
             await asyncio.sleep(RELOAD_SECONDS)
             await attach_helper(ctx)
+            # An attach that failed (no frame while the game is in the background, say) holds
+            # the step back as a lost helper does (tried again below), rather than write the
+            # items owed with no popup and drop the traps waiting.
+            ctx.helper_lost = ctx.helper is None
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("item labels", lambda: labels_tick(ctx)),

@@ -16,7 +16,7 @@ from unittest import mock
 import pytest
 from fakes import connection, seed_state, slot_data
 
-from client import game, native, session, state, ticks
+from client import game, ids, native, session, state, ticks
 
 
 class CommonContext:
@@ -542,6 +542,30 @@ def test_a_helper_lost_just_before_the_step_holds_its_grants_once(monkeypatch, f
     asyncio.run(zc.poll(ctx))
     after = "helper, gives" if fails == 1 else "none, gives"
     assert order == ["none, waits", "attach", after]
+
+
+def test_received_items_keep_the_traps_with_their_senders() -> None:
+    # A trap is no game item, but it is given as its popup (session.py): kept in step.
+    ctx = context(connection(), None)
+    ctx.slot, ctx.player_names = 1, {1: "Me", 2: "Bob"}
+    ctx.items_received = [
+        types.SimpleNamespace(item=ids.ITEM_ID_BASE + code, player=player)
+        for code, player in ((17, 2), (ids.DISRUPTION_TRAP, 2), (ids.DISORIENT_TRAP, 1))
+    ]
+    assert ctx.received() == ([17, ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP], ["Bob", "Bob", ""])
+
+
+def test_a_failed_reattach_after_reload_mod_holds_back_the_step(monkeypatch) -> None:
+    # /reload_mod unloaded the helper and the attach after it failed: the step gives nothing
+    # (no item written with no popup, no trap dropped) while the attach is tried again.
+    ctx, order = lost_helper(monkeypatch, attaches=False)
+    monkeypatch.setattr(zc, "offline_tick", nothing)
+    monkeypatch.setattr(zc, "RELOAD_SECONDS", 0.0)
+    ctx.reload_mod_pending = True
+    ctx.helper.unload = lambda: "bye"
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach", "attach"], "no step: the helper is waited for"
+    assert ctx.helper is None and ctx.helper_lost
 
 
 def test_a_disconnect_undresses_the_save_for_the_next_connection() -> None:

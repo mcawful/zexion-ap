@@ -6,6 +6,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -42,6 +43,9 @@ inline constexpr char kEndingRefusal[] =
     "the ending RETURN HOME WITH THE DISKS? started is on its way";
 // A trap's AILMENTS patch is held (trap.h): putting it back would end the trap at IMMUNE.
 inline constexpr char kTrapRefusal[] = "a trap is running";
+// A trap queued for the save loaded (or any save) waits to go off: an unload would drop it, and
+// the client counts it handed over. One for another save is lost with the helper.
+inline constexpr char kTrapWaitingRefusal[] = "a trap is waiting to go off";
 
 class Game {
 public:
@@ -164,6 +168,7 @@ public:
         if (menu_open()) return kMenuOpenRefusal;
         if (ending_pending()) return kEndingRefusal;
         if (ailments_patched()) return kTrapRefusal;
+        if (trap_waiting()) return kTrapWaitingRefusal;
         return nullptr;
     }
     // The file select (files.h): `disk_slots` sets the counts by slot; the entries' wrapper calls
@@ -274,6 +279,12 @@ public:
     void put_back_traps();
     std::string trap_status() const;
     size_t queued_traps() const { return traps_.size(); }
+    // A queued trap for the save loaded, or for any save (one received with none loaded): it
+    // goes off once in play (pump_traps), so an unload waits for it (unload_refusal).
+    bool trap_waiting() const {
+        return std::any_of(traps_.begin(), traps_.end(),
+                           [this](const QueuedTrap& t) { return origin_loaded(t.origin); });
+    }
     // Game thread (`die`): energy 0 and the game's death routine, once settled in one cell for a
     // second, not halted, no message up, no RETURN HOME prompt or ending on its way: "died" or
     // "refused <why>".
@@ -412,7 +423,8 @@ private:
     };
     std::deque<Drop> drops_;
     // Traps to set off (pump_traps), each with the save it was for and a received one's popup,
-    // queued as the trap goes off; lost, as queued popups are, with the helper.
+    // queued as the trap goes off. An unload waits for those of the save loaded (trap_waiting);
+    // those for another save are lost with the helper, as queued popups are.
     struct QueuedTrap {
         uint8_t item;
         std::shared_ptr<const OfflineSeed> origin;

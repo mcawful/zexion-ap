@@ -246,6 +246,8 @@ class TestClientReadsTheSlotData(ZexionTestBase):
 
         # This world's own traps: important stand-ins, labeled, each named in trap_locations.
         traps = {i: code for i, code in slot["trap_locations"]}
+        if goal == "core":  # the disks may take all the Scrap (TrapPercentage)
+            self.assertTrue(traps, "traps are on by default")
         self.assertLessEqual(set(traps), set(foreign))
         self.assertLessEqual(set(traps.values()), ids.TRAPS)
         for i in traps:
@@ -253,6 +255,7 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         # Each has a drawn look: an important item this player does not start with.
         looks = {i: code for i, code in slot["trap_looks"]}
         self.assertLessEqual(set(looks), set(traps) | set(foreign))
+        self.assertLessEqual(set(traps), set(looks), "every trap here has a look")
         self.assertLessEqual(set(looks.values()), items.LOOKS)
         self.assertFalse(set(looks.values()) & set(plan.start_items))
 

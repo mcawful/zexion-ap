@@ -333,7 +333,14 @@ class Session:
                 self.held_traps = []
                 raise
         if self.announced_read:
-            self.announced = len(received)  # direct writes show no popups
+            # Direct writes show no popups, and a trap rides on its popup: those waiting do
+            # nothing (said, so a lost trap is not a mystery).
+            waiting = [received[i] for i in self.held_traps if i < len(received)]
+            waiting += [c for c in received[self.announced :] if c in ids.TRAPS]
+            if waiting:
+                names = ", ".join(ids.TRAP_NAMES[c] for c in waiting)
+                logger.info(f"Without the mod, these traps sent to you do nothing: {names}.")
+            self.announced = len(received)
             self.held_traps = []
         granted: dict[int, int] = {}
         try:

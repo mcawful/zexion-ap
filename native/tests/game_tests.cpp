@@ -749,6 +749,25 @@ void test_zexion_item_labels() {
     std::map<int, zap::Label> bad;
     zap::parse_labels("ap_labels\nlabel 8 2 40333658", bad);  // "@36X": not an item label
     check(bad[2 * 54 + 8].item == -1 && bad[2 * 54 + 8].item_name.empty(), "@36X is text");
+    // Pickup texts the client never sends, pinned: empty after the '/' (item 36 shown as itself),
+    // a name then nothing, one cut to the popup's width, characters the font lacks dropped, and
+    // a '/' in the second line kept as text.
+    auto one = [](const std::string& text) {
+        std::map<int, zap::Label> labels;
+        zap::parse_labels("ap_labels\nlabel 8 2 " + hex(text), labels);
+        return labels[2 * 54 + 8];
+    };
+    zap::Label l = one("@36/");
+    check(l.item == 36 && l.pickup.empty() && l.item_name.empty(), "@36/: no pickup text");
+    l = one("@36 Name/");
+    check(l.item == 36 && l.item_name == "Name" && l.pickup.empty(), "@36 Name/: the name only");
+    l = one("@36/" + std::string(30, 'x'));
+    check(l.item == 36 && l.pickup == std::string(zap::kGamePopupWidth, 'x'), "cut to 24");
+    l = one("@36/Tr~a#p\xE9");
+    check(l.item == 36 && l.pickup == "Trap", "characters outside the font dropped");
+    l = one("@36/Disorient Trap\nfor A/B");
+    check(l.item == 36 && l.pickup == "Disorient Trap" && l.who == "for A/B",
+          "a '/' in the second line is its text");
 
     // "@36/Disorient Trap" for Bob: a trap disguised as the box. The look and the map's name
     // stay the box's; the pickup popup reads the trap's name alone, no icon, then whom it is for.
@@ -1849,9 +1868,13 @@ void test_received_traps() {
     g_section[0x26C] = 0x11;  // this seed's item table
     g_rando_marker = 1;
     apply(game, "apply\npopup 103 FROM DAN");
+    check(std::string(game.unload_refusal() ? game.unload_refusal() : "") ==
+              "a trap is waiting to go off",
+          "an unload is refused while a trap for the save loaded waits");
     g_section[0x26C] = 0x22;  // another seed's save
     game.pump_traps(16000);
     check(field<int16_t>(0xDC4) == 0 && game.queued_traps() == 1, "another seed's save: it waits");
+    check(game.unload_refusal() == nullptr, "one for another save does not hold an unload");
     g_section[0x26C] = 0x11;
     game.client_gone(&chosen);  // the client gone meanwhile: kept, as its popups are
     game.pump_traps(16000);

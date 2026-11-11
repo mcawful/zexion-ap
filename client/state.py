@@ -174,7 +174,9 @@ def stored_count(raw: object) -> int | None:
     The server keeps how many received items' popups have been handed over (announced_key:
     Session.announced), so items received offline still pop up and a reconnect replays none.
     Popups still queued when the game closes or the helper unloads are lost (the items are
-    given); a client closed between handing some over and storing the count shows them twice."""
+    given; a trap waiting in the save loaded holds the unload back, one for another save is lost
+    with its popup); a client closed between handing some over and storing the count shows them
+    twice."""
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
         return raw
     return None

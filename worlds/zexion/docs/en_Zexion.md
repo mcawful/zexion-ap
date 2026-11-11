@@ -57,13 +57,13 @@ Set with the Goal option.
 
 ## Which modes are there?
 
-The Mode option picks the game's own Easy, Standard or OHKO mode, with that mode's items,
-starting items and settings (with the OS Install Disks goal, OHKO's Gates Vanilla becomes
-Unlocked: "What is the goal?"), or Custom. Each seed draws its items as the game does for a new
-game: Standard starts with a random weapon (the Machine Gun, Force Blaster, Snake or Lance,
-with the other three in the item pool), and every mode draws its filler (Scrap, Area Maps,
-Energy Shields). OHKO has no Energy Tanks and gives you a second room to teleport to; the 4
-locations it can't reach are left out.
+The Mode option picks the game's own Easy, Standard or OHKO mode, with that mode's items, starting
+items and settings (with the OS Install Disks goal, OHKO's Gates Vanilla becomes Unlocked: "What
+is the goal?"), or Custom. Each seed draws its items as the game does for a new game: Standard
+starts with a random weapon (the Machine Gun, Force Blaster, Snake or Lance, with the other three
+in the item pool), and every mode draws its filler (Scrap, Area Maps, Energy Shields), and traps
+take some of the Scrap ("What do traps do?"). OHKO has no Energy Tanks and gives you a second room
+to teleport to; the 4 locations it can't reach are left out.
 
 With `mode: custom`, every setting of the game's randomizer menu is yours, named as the menu
 names it: the six amounts (Starting Energy Tanks to Item Pool Mega Bombs), each of the 27 items
@@ -291,17 +291,16 @@ filler, so excluded locations can hold them.
   controls are reversed, with swirls around your head; a flash and a sound come just before it
   wears off.
 
-A trap goes off as soon as it reaches you, as its popup shows (DISRUPTION TRAP, FROM ALICE),
-once you are in play (a second of the same kind shows its popup as it starts): it waits through
-the pause menu, other menus, a death or a reload, and through RETURN HOME WITH THE DISKS? and the
-game's ending (it comes at your next load then). Each
-trap happens at most once, including one sent while your client was closed, or before you first
-connected (it comes when you connect); if the client closes just as a trap goes off, it may come
-again, and with no mod running a trap sent to you does nothing. A second trap of the same kind
-waits for the first to end and then goes off, so each lasts its full 12 seconds. The game's
-AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change
-traps: while one runs, it is left out for that effect, so an enemy's touch of the same kind
-during a trap isn't shortened by it either.
+A trap goes off as soon as it reaches you, as its popup shows (DISRUPTION TRAP, FROM ALICE), once
+you are in play (a second of the same kind shows its popup as it starts): it waits through the
+pause menu, other menus, a death or a reload, and through RETURN HOME WITH THE DISKS? and the
+game's ending (it comes at your next load then). Each trap happens at most once, including one
+sent while your client was closed, or before you first connected (it comes when you connect); if
+the client closes just as a trap goes off, it may come again, and with no mod running a trap sent
+to you does nothing. A second trap of the same kind waits for the first to end and then goes off,
+so each lasts its full 12 seconds. The game's AILMENTS assist setting (pause, OPTIONS, ASSIST,
+where assists are allowed) doesn't change traps: while one runs, it is left out for that effect,
+so an enemy's touch of the same kind during a trap isn't shortened by it either.
 
 In a Zexion world, a trap looks like an important item: one of yours, or another Zexion
 player's, looks like one of that player's upgrades, keys or OS Install Disks that's in the seed
@@ -319,12 +318,13 @@ traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or
-while the client was closed; your own trap and other players' in your world, their look and
+while the client was disconnected; your own trap and other players' in your world, their look and
 their pickup popups; a second trap's popup waiting for it; and a trap sent before you first
 connected. All of this was checked on earlier versions of the mod; since then, how a disguise is
 picked (now also a key or an OS Install Disk), how a trap sent before you first connected is
 kept, and where a trap's popup goes among other popups have changed, and are not yet checked in
-the game.
+the game. Not checked in the game at all: a trap through a death, a reload, RETURN HOME or the
+ending, and the client restarted or closed while a trap waits or runs.
 
 ## Can I use the assist menu?
 
