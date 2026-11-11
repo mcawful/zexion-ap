@@ -312,8 +312,8 @@ where its subject is:
   the helper's counts show (`world.MAX_DISKS`; the game has no disk count). A pool's keys, items and
   Energy Tanks alone are never more than its places (4 + 27 + 40 at most, of 154). Archipelago's own
   refusal is named too: where a Zexion player's excluded locations outnumber their filler (Scrap,
-  Area Maps or Intel Chips, whose places the OS Install Disks take before Energy Shields':
-  `world.DISC_REPLACES`) and the other players' filler does not make up the difference (filler in
+  traps, Area Maps or Intel Chips, whose places the OS Install Disks take before Energy Shields':
+  `world.DISC_REPLACES`; the traps take some of the Scrap left after that, one for one) and the other players' filler does not make up the difference (filler in
   its player's `local_items`, such as Area Maps with Area Map Hints off, counted for that player
   alone; the message says how much other players' filler stays in their own worlds so, such as a
   Zexion player's Area Maps with Area Map Hints off), counted over the whole multiworld after plando

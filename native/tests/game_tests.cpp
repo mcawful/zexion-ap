@@ -1719,7 +1719,7 @@ void test_received_traps() {
     check(field<int16_t>(0xDC4) == 251 && field<int8_t>(0xDDB) == 2 &&
               field<int16_t>(0xD20) == 2 && game.trap_status() == "queued 0; last set 103",
           "the disorientation: 251 frames, the byte turned, +0xD20 2");
-    check(g_sound_log.empty(), "no sound (the wave's state has none)");
+    check(g_sound_log == "82/10/8/16 ", "the sound of the state the wave's chains to");
     // A second while it runs: 251 again, the byte not turned; +0xD20 left above 2.
     field<int16_t>(0xDC4) = 40;
     field<int16_t>(0xD20) = 9;
@@ -1744,10 +1744,12 @@ void test_received_traps() {
     apply(game, "apply\npopup 103 FROM CAROL\npopup 102 FROM CAROL");
     show_next(game);
     settle(game, 15000);
+    g_sound_log.clear();
     game.pump_traps(15000);
     check(field<int16_t>(0xDC4) == 0 && field<int8_t>(0xDDB) == 1 &&
               game.trap_status() == "queued 1; last nothing 103",
           "AILMENTS 2: the disorientation does nothing");
+    check(g_sound_log == "82/10/8/16 ", "but its chained state's sound plays, as the game's does");
     field<int16_t>(0xDC2) = 0;
     show_next(game);
     settle(game, 16000);

@@ -25,6 +25,8 @@ tells you when your version isn't supported.
 - Items sent to you pop up in the game with the sender's name.
 - Two goals: grab Zexion in the core and reach the game's ending, or hunt for OS Install Disks.
 - Intel Chips (on by default): each Area Map becomes a hint for one of your important items.
+- Traps (on by default): some Scrap becomes a Disruption Trap or a Disorient Trap, which copy
+  two enemies' touch for a few seconds ([What do traps do?](worlds/zexion/docs/en_Zexion.md#what-do-traps-do)).
 - DeathLink.
 - The game's default English and English(HD), where the mod's text and icons use the HD font
   and art; in the other languages its text is in English (the setup guide's

@@ -88,7 +88,7 @@ How the helper works: [`native/README.md`](../native/README.md).
   item it cannot hand out itself: another player's item (48 if it is progression, except another
   Zexion player's supplies, 47 and minor as the game marks this player's own:
   `world.important_elsewhere`), or, with the OS Install Disks goal, one of this world's own disks
-  (48). The helper restyles them.
+  (48), or one of this world's own traps (47). The helper restyles them.
 - **Frame call**: one call the game makes, once per frame, through the hooked import; the
   helper runs its frame function in it.
 - **B1**: the only game build supported so far (Steam build 23943567:

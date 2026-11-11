@@ -41,8 +41,10 @@ constexpr int16_t kFlashAtLeast = 2;
 constexpr int16_t kAilmentsOff = 2;
 
 // The sounds, each as the game plays it: the Phazo's contact state's (26) by the state's entry
-// step (0x43B50: volume the state's 1.0, pitch -1, then 8 and 16), and the shield's hit (50) by
-// op 4 (volume 0.7, pitch -1, then 0 and 8).
+// step (0x43B50: volume the state's 1.0, pitch -1, then 8 and 16); the shield's hit (50) by op 4
+// (volume 0.7, pitch -1, then 0 and 8); and the wave's (82), by the state 2902 chains to after
+// op 5 whatever op 5 did (2904, type 78, op 82: volume its +0x44 1.0, pitch its +0x60 -1, then 8
+// and 16, at a point on the screen rather than the object's position).
 struct Sound {
     int16_t id;
     float volume;
@@ -50,6 +52,7 @@ struct Sound {
 };
 constexpr Sound kContactSound = {26, 1.0f, 8, 16};
 constexpr Sound kShieldSound = {50, 0.7f, 0, 8};
+constexpr Sound kWaveSound = {82, 1.0f, 8, 16};
 constexpr float kPitch = -1.0f;
 
 }  // namespace trap

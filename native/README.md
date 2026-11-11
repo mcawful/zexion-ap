@@ -492,14 +492,16 @@ dealt on the next load ("DeathLink").
   own touch makes (`run_trap`; `docs/re/memory.md`, "Ailments: the script step that sets
   them"), and the game's per-frame code does the rest:
   - **Disruption Trap**, the Phazo's (its contact state 2857, then op 4): sound 26 as the state
-    plays it; then with an Energy Shield up (player `+0x103C` above 0) the shield takes it: its
-    strength down by 4, `+0xD1E` set to 5 and sound 50; otherwise `+0xDC2` becomes the larger of
+    plays it; then with an Energy Shield up (player `+0x103C` above 0) the shield takes it, in op
+    4's order: `+0xD1E` set to 5, its strength down by 4 (32-bit, not held at 0, as the game's)
+    and sound 50; otherwise `+0xDC2` becomes the larger of
     itself and 240 (a trap during one starts the 240 again). Energy weapons don't fire while it
     runs.
-  - **Disorient Trap**, the Balorb wave's (its contact state 2902, then op 5): nothing with
-    AILMENTS at 2, nor while `+0xDC4` is 251 or more; otherwise, if none is running, `+0xDDB`
-    turns by 4 (mod 8), then `+0xD20` becomes at least 2 and `+0xDC4` 251 (a trap during one
-    starts the 251 again). The controls are reversed while it runs.
+  - **Disorient Trap**, the Balorb wave's (its contact state 2902, then op 5, then the state it
+    chains to, 2904): nothing with AILMENTS at 2, nor while `+0xDC4` is 251 or more; otherwise,
+    if none is running, `+0xDDB` turns by 4 (mod 8), then `+0xD20` becomes at least 2 and
+    `+0xDC4` 251 (a trap during one starts the 251 again). Then sound 82, 2904's, whatever op 5
+    did, as the game's chain plays it. The controls are reversed while it runs.
   - **AILMENTS** is the 16-bit word at the `ailments` address the client configures (its meaning
     inferred from the assist menu's labels: `docs/re/memory.md`); the helper reads it as op 5
     does, and op 4 does not read it. At 1 the game's per-frame code makes the disruption a third
@@ -507,7 +509,8 @@ dealt on the next load ("DeathLink").
   - **Left out:** the controller rumble op 4 makes with a shield up (`0x204510` on B1, which
     calls SDL's `SDL_GameControllerRumble`: no pattern for it, and nothing else depends on it);
     the game's random number the handler draws (the two states' random part is 0, so the
-    duration is the same); and the touching object's position: both sounds play at the player's.
+    duration is the same); and where the sounds play: each at the player's position, where the
+    game plays 26 at the touching object's and 82 at a point on the screen.
 - **This world's own**, found in it: the game hands out a stand-in there, labeled with the
   trap's name ("Other players' items"), and its pickup popup shows that; the client then sends
   `trap ITEM` in an `apply` (`client/ticks.py`, `followups_tick`), which queues the trap with no
@@ -637,7 +640,7 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
 - **Labels:** `ap_labels` names map cells (this repo's (x, y); the game shows X = y, Y = x) for
   the **stand-ins**, Scrap Energy (47) and Scrap Chunk (48), which the world puts at every
   location holding another player's item (48 for progression, but not for another Zexion
-  player's supplies). HEX is the item and whom it is for, joined by a newline; or `@N` and whom
+  player's supplies), this world's own OS Install Disks (48) and its own traps (47). HEX is the item and whom it is for, joined by a newline; or `@N` and whom
   it is for (another Zexion player's item N, named from its record); or `@N NAME` (item N under
   that name: this player's own OS Install Disk, or another Zexion player's disk, Area Map or
   Intel Chip). A Zexion trap, this player's own (its name alone) or another Zexion player's (and

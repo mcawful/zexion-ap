@@ -137,7 +137,8 @@ generator logs a warning naming which, and generation may fail.
 Locations are named by their area and their X and Y as the pause screen shows them, as in
 "Guardia 22,7", so you can find them on the in-game map. Each area's name (Guardia,
 Machinus, and so on) is also a group of its locations, for options such as
-`exclude_locations`; the item groups are Keys, Weapons, Weapon Upgrades, Supplies and Scrap.
+`exclude_locations`; the item groups are Keys, Weapons, Weapon Upgrades, Supplies, Scrap and
+Traps.
 
 ## Can I add starting items?
 
@@ -273,8 +274,8 @@ an item link aren't kept this way), has no square in your world and reveals noth
 
 ## What do traps do?
 
-Traps take the place of some of your Scrap: 15% of it by default, so about 3 in an Easy or
-Standard seed (Trap Percentage, `trap_percentage`; 0 for none). Each is one of two, picked by
+Traps take the place of some of your Scrap: 15% of it by default, so 2 or 3 in an Easy,
+Standard or OHKO seed (Trap Percentage, `trap_percentage`; 0 for none). Each is one of two, picked by
 their weights (`disruption_trap_weight`, `disorient_trap_weight`). With the OS Install Disks
 goal the disks take the Scrap first, so there may be few traps or none. Traps are filler, so
 excluded locations can hold them.
@@ -283,8 +284,9 @@ excluded locations can hold them.
   don't fire and your charge stays empty; missiles and Mega Bombs still work, and your HUD
   flashes. With an Energy Shield up, the shield takes the hit instead and loses a little
   strength.
-- **Disorient Trap:** what a Balorb's wave does. For about four seconds your controls are
-  reversed, with swirls around your head; a flash and a sound come just before it wears off.
+- **Disorient Trap:** what a Balorb's wave does: its sound, then for about four seconds your
+  controls are reversed, with swirls around your head; a flash and a sound come just before it
+  wears off.
 
 A trap sent to you pops up as any item does, with who sent it (DISRUPTION TRAP, FROM ALICE). It
 starts once that popup has closed and you have stood on one map square for a second, in play:

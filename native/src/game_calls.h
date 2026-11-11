@@ -406,6 +406,7 @@ private:
     std::string trap_status_ = "none";
     // Sets off trap `item` now: "set", "shield" or "nothing" (trap_status).
     std::string run_trap(uint8_t item);
+    std::string disorient(BYTE* player, int16_t ailments);  // op 5's writes: run_trap's outcome
     void play_sound(const trap::Sound& sound);
     // Whether drops and traps wait for the ending (load_before_ending_), read every frame.
     bool held_for_ending();

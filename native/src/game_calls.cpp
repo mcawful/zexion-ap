@@ -665,10 +665,11 @@ std::string Game::run_trap(uint8_t item) {
         play_sound(trap::kContactSound);
         int32_t& shield = at<int32_t>(p, trap::kShieldStrength);
         if (shield > 0) {
-            // The shield takes it. The game's op also rumbles the controller (0x204510, through
-            // SDL's GameControllerRumble): left out.
-            shield -= trap::kDisruptionFrames / 60;
+            // The shield takes it, in op 4's order (its strength may go below 0, as there). The
+            // game's op then also rumbles the controller (0x204510, through SDL's
+            // GameControllerRumble): left out.
             at<int16_t>(p, trap::kShieldHit) = trap::kShieldHitValue;
+            shield -= trap::kDisruptionFrames / 60;
             play_sound(trap::kShieldSound);
             return "shield";
         }
@@ -676,8 +677,15 @@ std::string Game::run_trap(uint8_t item) {
         if (trap::kDisruptionFrames > timer) timer = trap::kDisruptionFrames;
         return "set";
     }
-    // Op 5: nothing with AILMENTS at 2, nor while a longer disorientation runs.
-    if (at<int16_t>(at_.ailments, 0) == trap::kAilmentsOff) return "nothing";
+    // Op 5, then the state 2902 chains to, whose sound plays whatever op 5 did.
+    const std::string outcome = disorient(p, at<int16_t>(at_.ailments, 0));
+    play_sound(trap::kWaveSound);
+    return outcome;
+}
+
+std::string Game::disorient(BYTE* p, int16_t ailments) {
+    // Nothing with AILMENTS at 2, nor while a longer disorientation runs.
+    if (ailments == trap::kAilmentsOff) return "nothing";
     int16_t& timer = at<int16_t>(p, trap::kDisorientTimer);
     if (!(trap::kDisorientFrames > timer)) return "nothing";
     if (timer <= 0) {
