@@ -1840,8 +1840,13 @@ void test_received_traps() {
     game.client_gone(&chosen);  // the client gone meanwhile: kept, as its popups are
     game.pump_traps(16000);
     check(field<int16_t>(0xDC4) == 660 && game.queued_traps() == 0, "set in its own save");
-    game.put_back_game(&chosen);
-    check(wave_jumps_are(0x75) && game.unload_blocker() == nullptr, "put back with the game");
+    game.client_gone(&chosen);
+    game.watch_all(&chosen);
+    check(wave_jumps_are(0xEB), "a client going away leaves a running trap's patch");
+    check(std::string(game.unload_refusal() ? game.unload_refusal() : "") == "a trap is running",
+          "an unload is refused while it is held, before anything is put back");
+    game.put_back_traps();
+    check(wave_jumps_are(0x75) && game.unload_blocker() == nullptr, "put back for an unload");
     g_rando_marker = 0;
 
     // A trap's popup is never a notice, and only the two traps' codes are taken.
@@ -1904,7 +1909,7 @@ void test_traps_held_for_the_ending() {
     game.pump_traps(8000);
     check(field<int16_t>(0xDC2) == 660, "set at the next load, though flag 250 stays set");
     g_flags[250] = 0;
-    game.put_back_game(&chosen);
+    game.put_back_traps();
 }
 
 void test_assist_watch() {

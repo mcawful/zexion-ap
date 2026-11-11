@@ -58,7 +58,7 @@ constexpr float kPitch = -1.0f;
 // timer counts down as at NORMAL. Two patches, one per timer (`ailments_hit_code` and
 // `ailments_wave_code`), each from its first test's load of the word to its second test's jump.
 // The bytes it checks are B1's but the loads' 32-bit displacements, which the helper checks
-// lead to the configured `ailments` instead (game_calls.cpp, ailments_reads).
+// lead to the configured `ailments` instead (trap.cpp, ailments_reads).
 constexpr size_t kHitPatchSize = 0x2B;   // 0x1CC5C4 to 0x1CC5EE
 constexpr size_t kWavePatchSize = 0x2C;  // 0x1CC62C to 0x1CC657
 struct Jumps {

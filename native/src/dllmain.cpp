@@ -541,6 +541,7 @@ std::string undo_for_unload() {
                 // The game's memory only: what the client asked for is kept, for the watches to
                 // apply again should the unload be refused (the client would not resend it).
                 g_game.put_back_game(&archipelago_chosen);
+                g_game.put_back_traps();  // none held: refused above while one is
                 g_game.hold_translated_popups();  // until a watch runs again
                 g_game.restore_feats();
                 g_game.hide_title();

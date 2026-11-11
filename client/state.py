@@ -59,6 +59,9 @@ class Connection:
     # This world's own traps in its own locations, by location index: the trap's item code
     # (set off once found: ticks.followups_tick). Empty for a seed from before the traps.
     traps: dict[int, int] = field(default_factory=dict)
+    # The upgrade each Zexion trap in this world's locations is shown as, by location index (the
+    # world's draw: client/aplabels.py, trap_label). Empty for a seed from before it.
+    trap_looks: dict[int, int] = field(default_factory=dict)
     # The server's full item list has come (the packet after Connected may be it).
     items_listed: bool = False
     awaiting_backlog: bool = True
@@ -98,6 +101,7 @@ class Connection:
                 death_link_on=bool(slot_data["death_link"]),
                 hunt=discs.from_slot_data(slot_data),
                 traps=own_traps(slot_data.get("trap_locations", [])),
+                trap_looks=trap_looks(slot_data.get("trap_looks", [])),
             )
         except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise UnsupportedSeed(
@@ -130,6 +134,17 @@ def own_traps(entries: list) -> dict[int, int]:
     for index, code in entries:  # TypeError for another form
         if code not in ids.TRAPS or not 0 <= index < ids.MAX_LOCATIONS:
             raise ValueError(f"trap_locations entry {[index, code]}")
+        out[int(index)] = int(code)
+    return out
+
+
+def trap_looks(entries: list) -> dict[int, int]:
+    """The slot data's ``trap_looks`` ([location index, item code] each) by location index;
+    ValueError for an entry this client does not know (UnsupportedSeed)."""
+    out: dict[int, int] = {}
+    for index, code in entries:  # TypeError for another form
+        if code not in ids.GAME_ITEMS or not 0 <= index < ids.MAX_LOCATIONS:
+            raise ValueError(f"trap_looks entry {[index, code]}")
         out[int(index)] = int(code)
     return out
 
@@ -186,14 +201,18 @@ def held_traps(raw: object, codes: list[int], handed: int) -> list[int]:
     return [i for i in range(min(handed, len(codes)), len(codes)) if codes[i] in ids.TRAPS]
 
 
-def announced_to_store(handed: int, raw: object, sent: int | None) -> int | None:
+def announced_to_store(
+    handed: int, raw: object, sent: int | None, waiting: bool = False
+) -> int | None:
     """The count to store on the server now (as a maximum), or None: ``handed`` when it is above
     both the server's count and what this client last stored; and, while the server has none
-    and this client has stored none, ``handed`` as it is, so the key exists. A store that fails
-    leaves ``sent`` as it was, so it is sent again on the next poll."""
+    and this client has stored none, ``handed`` as it is, so the key exists, but not while
+    traps held at the slot's first connection still wait for their popup (``waiting``:
+    held_traps), so a client restarted meanwhile holds them again. A store that fails leaves
+    ``sent`` as it was, so it is sent again on the next poll."""
     stored = stored_count(raw)
     if stored is None and sent is None:
-        return handed
+        return None if waiting else handed
     if handed > max(stored or 0, sent or 0):
         return handed
     return None

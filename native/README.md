@@ -181,7 +181,8 @@ When the pipe's client disconnects (the client exited or crashed, let the helper
 had no server connection, or `tools/helper.py` was done), the next frame call, before it serves
 any request, puts back everything the parts below set in the game's memory and drops what the
 client asked for (`Game::client_gone`: `put_back_game`, then `forget_client`, in
-`src/game_calls.cpp`). A change held by a menu no longer open is gone with it. It goes inactive
+`src/game_calls.cpp`). A change held by a menu no longer open is gone with it. A running trap's
+AILMENTS patch stays, as the trap does ("Traps"). It goes inactive
 until a client sends `config` again (the client resends every request after it attaches). The
 client's popups not shown yet stay queued and still show ("Popups"): their items are already
 given. The offline look then applies again (AP saves without the client). The helper stays
@@ -229,6 +230,10 @@ a menu open while the prompt showed, then as the ending on its way while receive
 held it, and the ending ran and sent the goal (`docs/re/memory.md`, "The mission prompt"). That
 run was before the ending's wrapper: its refusal and its put back on unload are stand-in tests
 only (`native/tests/mission_tests.cpp`, `game_tests.cpp`).
+
+It refuses (`error a trap is running; not unloading`), before putting anything back, while a
+trap's AILMENTS patch is held ("Traps"): putting it back would let AILMENTS end or shorten the
+trap. That is at most a trap's 12 s, longer with traps of one kind queued. Stand-in tests only.
 
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
@@ -514,9 +519,9 @@ dealt on the next load ("DeathLink").
     would end either at once. It patches only code that reads as B1's (but the loads'
     displacements) and whose loads lead to the configured `ailments` (`trap::ailments_reads`),
     as a trap starts (before the game's next frame) and each frame call while the timer runs,
-    and puts it back once the timer has run out, with no save loaded, and with the game ("A
-    client going away", "Unloading": an unload waits for it, `the AILMENTS tests are still the
-    helper's`). An enemy's touch of the same kind meanwhile also counts down as at NORMAL.
+    and puts it back once the timer has run out, with no save loaded, and on an unload, which
+    is refused while it is held (`a trap is running`, "Unloading"); a client going away leaves
+    it to the trap, which outlives the client. An enemy's touch of the same kind meanwhile also counts down as at NORMAL.
   - **Left out:** the game's random number the handler draws (the two states' random part is 0,
     so the duration is the same); and where the sounds play: each at the player's position,
     where the game plays 26 at the touching object's and 82 at a point on the screen.
@@ -535,7 +540,9 @@ dealt on the next load ("DeathLink").
   seed's save or a normal save: it waits). One of each kind at a time (the owner's choice): a
   trap waits while one of its kind that a trap started still runs, and starts as it runs out, so
   traps that arrive together (after a reconnect, say) each get their 12 s, one after another; an
-  enemy's own effect does not hold one (the trap restarts it, as the enemy's touch would). A
+  enemy's own effect does not hold one (the trap restarts it, as the enemy's touch would), but an
+  enemy's touch in a trap's last 240 or 251 frames extends that timer, and the next trap of its
+  kind waits for it too. A
   received trap's popup goes with it: queued as the trap goes off, ahead of the other popups, so
   one waiting for another of its kind shows its popup only as it starts (the owner's choice).
   Held through the pause and every menu (not in play), a death (energy 0) and a load. A cutscene other than the ending's is not told apart from play:
@@ -560,7 +567,9 @@ dealt on the next load ("DeathLink").
   again, as with the enemies' own.
 - `trap_status` (for live checks): `queued N; last <outcome>`, the outcome `none`, `set ITEM`,
   or `nothing ITEM` (its timer already longer).
-- **Put back:** the AILMENTS tests' patches, as above; the timers are the game's, and run out
+- **Put back:** the AILMENTS tests' patches, as above, but not when a client goes away: a running
+  trap keeps its patch, as it outlives the client, and an unload is refused while one is held
+  (`a trap is running`, before anything is put back), then puts it back (`put_back_traps`); the timers are the game's, and run out
   as the enemies' do.
 
 Stand-in tests (`tests/game_tests.cpp`: `test_received_traps`, `test_own_traps`,
@@ -695,8 +704,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   that name: this player's own OS Install Disk, or another Zexion player's disk, Area Map or
   Intel Chip). A trap looks important: the world gives it the progression stand-in (48),
   another game's labeled as its progression items are, and a Zexion trap, this player's own or
-  another Zexion player's, as `@N/NAME`: a Zexion upgrade it is disguised as, one per location
-  (`aplabels.trap_label`), so it looks like that item and the map's cursor names it so ("Other
+  another Zexion player's, as `@N/NAME`: the Zexion upgrade the world drew for it (slot data
+  `trap_looks`: one this world's player does not start with, by random numbers of the world's
+  own, `world.trap_looks`; `aplabels.trap_label`), so it looks like that item and the map's cursor names it so ("Other
   Zexion players' items, as themselves"), but its pickup popup reads NAME, the trap's, with no
   icon, then whom it is for (`Label::pickup`; "Traps"). See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values

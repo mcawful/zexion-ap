@@ -1620,9 +1620,9 @@ void Game::put_back_game(WidgetCallback callback) {
     put_back_files();
     leave_offline();
     text_cut_.restore();
-    hit_patch_.restore();  // AILMENTS applies again to what is left of a trap (trap.h)
-    wave_patch_.restore();
-    trap_hit_ = trap_wave_ = false;
+    // A running trap's AILMENTS patches stay: they are the trap's, which outlives the client, as
+    // queued popups do; an unload is refused while one is held (unload_refusal), then puts them
+    // back (put_back_traps).
     if (configured_) {
         // The translation's entries back; the popup areas emptied once free (unload waits).
         const std::optional<Loaded> now = loaded_translation(at_);
@@ -1639,6 +1639,12 @@ void Game::forget_client() {
     drop_save_look();  // with the disks, a RETURN HOME prompt asked for (set_discs)
     client_file_counts_.clear();
     apply_file_counts();
+}
+
+void Game::put_back_traps() {
+    hit_patch_.restore();  // AILMENTS applies again to what is left of a trap (trap.h)
+    wave_patch_.restore();
+    trap_hit_ = trap_wave_ = false;
 }
 
 void Game::client_gone(WidgetCallback callback) {

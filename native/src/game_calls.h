@@ -40,6 +40,8 @@ namespace zap {
 inline constexpr char kMenuOpenRefusal[] = "a menu is open";
 inline constexpr char kEndingRefusal[] =
     "the ending RETURN HOME WITH THE DISKS? started is on its way";
+// A trap's AILMENTS patch is held (trap.h): putting it back would end the trap at IMMUNE.
+inline constexpr char kTrapRefusal[] = "a trap is running";
 
 class Game {
 public:
@@ -161,6 +163,7 @@ public:
     const char* unload_refusal() const {
         if (menu_open()) return kMenuOpenRefusal;
         if (ending_pending()) return kEndingRefusal;
+        if (ailments_patched()) return kTrapRefusal;
         return nullptr;
     }
     // The file select (files.h): `disk_slots` sets the counts by slot; the entries' wrapper calls
@@ -266,6 +269,9 @@ public:
     // `trap_status` (for live checks): "queued N; last <outcome>", the outcome "none", "set
     // <item>", or "nothing <item>" (its timer already longer: as the game's op does nothing).
     bool ailments_patched() const { return hit_patch_.patched() || wave_patch_.patched(); }
+    // Game thread, unloading (dllmain.cpp, after put_back_game): the AILMENTS patches put back,
+    // which put_back_game leaves to the trap running (a client going away keeps them).
+    void put_back_traps();
     std::string trap_status() const;
     size_t queued_traps() const { return traps_.size(); }
     // Game thread (`die`): energy 0 and the game's death routine, once settled in one cell for a
@@ -414,7 +420,7 @@ private:
     };
     std::deque<QueuedTrap> traps_;
     std::string trap_status_ = "none";
-    // Sets off trap `item` now: "set", "shield" or "nothing" (trap_status).
+    // Sets off trap `item` now: "set" or "nothing" (trap_status).
     std::string run_trap(uint8_t item);
     std::string disorient(BYTE* player);  // op 5's writes: run_trap's outcome
     // Game thread: each timer's AILMENTS tests patched while a trap's runs (trap.h).

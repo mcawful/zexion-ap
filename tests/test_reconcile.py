@@ -11,7 +11,7 @@ from client import reconcile as rc
 
 
 def test_received_traps_are_never_in_the_inventory() -> None:
-    # The helper sets each off after its popup (native/README.md, "Traps"): no byte owed.
+    # The helper sets each off with its popup (native/README.md, "Traps"): no byte owed.
     owed = rc.should_own({}, [46] * 4, set(), [ids.DISRUPTION_TRAP, 17, ids.DISORIENT_TRAP])
     assert owed == Counter({17: 1})
 

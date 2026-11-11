@@ -240,7 +240,8 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   (FOR ALICE; in English(HD), Progression Item or AP Item, for Alice).
 - Another Zexion player's item looks like the item itself.
 - A trap looks important: another game's like its progression items, and a Zexion trap like a
-  Zexion upgrade ("What do traps do?").
+  Zexion upgrade. That's on purpose: you can't tell it from a real one until you pick it up
+  ("What do traps do?").
 - On the map, other players' important items and your OS Install Disks are marked as important
   items (another Zexion player's supplies, the Energy Tanks, Missile Containers, Mega Bombs and
   Missile and Bomb Boxes, stay minor, as yours do). Once you have seen an item, the cursor says
@@ -302,10 +303,11 @@ traps: while one runs, it is left out for that effect, so an enemy's touch of th
 during a trap isn't shortened by it either.
 
 In a Zexion world, a trap looks like an important item: one of yours, or another Zexion
-player's, looks like a Zexion upgrade, on the map too, and another game's trap like that
-game's progression items. Picking one up says what it is (DISORIENT TRAP, and FOR BOB if it's
-Bob's). Picking up your own sets it off at once; if you picked it up with the client closed, it goes off when you next connect with that
-save loaded. Other games' traps sent to you do nothing in Zexion.
+player's, looks like a Zexion upgrade you don't start with, on the map too, and another game's
+trap like that game's progression items. That's on purpose: you can't tell a trap from a real
+item until you pick it up, and picking it up says what it is (DISORIENT TRAP, and FOR BOB if
+it's Bob's). Picking up your own sets it off at once; if you picked it up with the client
+closed, it goes off when you next connect with that save loaded. Other games' traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or

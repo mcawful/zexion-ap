@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import random
 from collections import Counter
 from collections.abc import Iterator, Mapping
 from typing import Any, TextIO
@@ -27,6 +28,7 @@ from .items import (
     AREA_MAP,
     ASSIST_UNLOCK,
     DATA_DISC,
+    DISGUISES,
     DRAWN_AS,
     FILLER_NAME,
     GAME,
@@ -927,6 +929,9 @@ class ZexionWorld(World):
             # the game holds a stand-in there, and the client sets the trap off once it is found
             # (client/ticks.py, followups_tick). Older seeds lack it.
             "trap_locations": self.trap_locations(),
+            # The upgrade each Zexion trap in this world's locations is shown as (client/
+            # aplabels.py, trap_label). Older seeds lack it.
+            "trap_looks": self.trap_looks(),
         }
 
     def disc_locations(self) -> list[int]:
@@ -943,6 +948,26 @@ class ZexionWorld(World):
             for loc in self.multiworld.find_item_locations(NAMES[code], self.player)
             if loc.player == self.player
         )
+
+    def trap_looks(self) -> list[list[int]]:
+        """The location index and the upgrade shown for each Zexion trap (this player's own,
+        another Zexion player's or an item link's) in this world's locations: drawn from
+        DISGUISES less what this player starts with, so the disguise is no upgrade the player
+        already holds, by random numbers of its own, so the seed's other draws stay as they are
+        (with no trap, no draw)."""
+        started = {
+            code_of[item.name]
+            for item in self.multiworld.precollected_items[self.player]
+            if item.code is not None
+        }
+        choices = [code for code in DISGUISES if code not in started] or list(DISGUISES)
+        draw = random.Random(f"{self.multiworld.seed}:{self.player}:trap looks")
+        out = []
+        for i in sorted(self.kept_locations):
+            item = self.get_location(location_name(i)).item
+            if item is not None and item.game == GAME and code_of.get(item.name) in TRAPS:
+                out.append([i, draw.choice(choices)])
+        return out
 
     def hint_targets(self) -> list[list[int]]:
         """Where each of this player's progression items is, as [player, location id, item

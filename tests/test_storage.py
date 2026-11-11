@@ -128,8 +128,40 @@ def test_traps_held_at_a_slots_first_connection_still_pop_up() -> None:
     held = [17, ids.DISRUPTION_TRAP, 46, ids.DISORIENT_TRAP]
     current = ctx.seed_state.session
     asyncio.run(storage.announced_tick(ctx, conn, current, types.SimpleNamespace(codes=held)))
-    assert current.announced == 4 and stored(ctx) == [4]
+    assert current.announced == 4 and stored(ctx) == [], "stored once they have popped up"
     assert current.held_traps == [1, 3]
+
+
+def test_held_traps_wait_through_a_reconnect_and_their_count_is_not_stored() -> None:
+    # The first connection holds the trap at 1 and stores no count while it waits; a reconnect
+    # (the store not made, so none on the server) keeps it waiting.
+    conn = connection()
+    ctx = FakeContext(conn)
+    ctx.stored_data[conn.announced_key] = None
+    held = types.SimpleNamespace(codes=[17, ids.DISRUPTION_TRAP, 46])
+    current = ctx.seed_state.session
+    asyncio.run(storage.announced_tick(ctx, conn, current, held))
+    assert current.held_traps == [1] and stored(ctx) == [], "no count stored while it waits"
+    current.connected()
+    asyncio.run(storage.announced_tick(ctx, conn, current, held))
+    assert current.held_traps == [1] and current.announced == 3, "still waiting after a reconnect"
+    current.held_traps = []  # handed over (give_through_helper)
+    asyncio.run(storage.announced_tick(ctx, conn, current, held))
+    assert stored(ctx) == [3], "then the count is stored"
+
+
+def test_held_traps_survive_a_client_restart_before_they_pop_up() -> None:
+    # No count was stored for them, so a new client (a new session) reads none and holds them.
+    conn = connection()
+    ctx = FakeContext(conn)
+    ctx.stored_data[conn.announced_key] = None
+    held = types.SimpleNamespace(codes=[ids.DISORIENT_TRAP, 17])
+    asyncio.run(storage.announced_tick(ctx, conn, ctx.seed_state.session, held))
+    restarted = FakeContext(connection())
+    restarted.stored_data = dict(ctx.stored_data)
+    again = restarted.seed_state.session
+    asyncio.run(storage.announced_tick(restarted, restarted.conn, again, held))
+    assert again.held_traps == [0] and again.announced == 2
 
 
 def test_a_stored_count_holds_back_no_trap() -> None:

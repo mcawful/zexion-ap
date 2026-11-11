@@ -101,8 +101,8 @@ class TestClientCodes(unittest.TestCase):
         self.assertEqual(aplabels.PROGRESSION, ItemClassification.progression)
         self.assertEqual(aplabels.TRAP, ItemClassification.trap)
         # A trap is disguised as a Zexion upgrade held once (client/aplabels.py).
-        self.assertLessEqual(set(aplabels.DISGUISES), items.PROGRESSION - items.SUPPLIES)
-        self.assertFalse(set(aplabels.DISGUISES) & (set(items.KEY_CODES) | set(items.PROGRESSIVE)))
+        self.assertLessEqual(set(items.DISGUISES), items.PROGRESSION - items.SUPPLIES)
+        self.assertFalse(set(items.DISGUISES) & (set(items.KEY_CODES) | set(items.PROGRESSIVE)))
         # The client writes every other item's byte as 1 at most.
         self.assertEqual(reconcile.COUNTED, items.SUPPLIES | {items.SCRAP_METAL})
         self.assertEqual(reconcile.COUNTED, starting.COUNTED)  # pool_duplicates counts the same
@@ -249,12 +249,18 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         self.assertLessEqual(set(traps.values()), ids.TRAPS)
         for i in traps:
             self.assertEqual(plan.location_items[i], ids.STAND_IN_PROGRESSION)
+        # Each has a drawn look: an upgrade this player does not start with.
+        looks = {i: code for i, code in slot["trap_looks"]}
+        self.assertLessEqual(set(traps), set(looks))
+        self.assertLessEqual(set(looks.values()), set(items.DISGUISES))
+        self.assertFalse(set(looks.values()) & set(plan.start_items))
 
         if state is not None:  # all of the above together, as the client connects
             connection = state.Connection.from_slot_data(slot, 0, 1)
             self.assertEqual(connection.plan, plan)
             self.assertEqual(connection.foreign, foreign)
             self.assertEqual(connection.traps, traps)
+            self.assertEqual(connection.trap_looks, looks)
 
         hunt = discs.from_slot_data(slot)
         if goal == "core":

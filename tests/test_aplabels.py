@@ -7,15 +7,10 @@ from client import ids
 
 
 def test_a_trap_is_disguised_as_a_zexion_upgrade() -> None:
-    # One per location; this player's own with no one named, another Zexion player's for them.
-    assert al.trap_disguise(0) == al.DISGUISES[0]
-    assert al.trap_disguise(len(al.DISGUISES) + 3) == al.DISGUISES[3]
-    # Its pickup popup names the trap ("@N/NAME").
-    assert al.trap_label(3, ids.DISRUPTION_TRAP) == f"@{al.DISGUISES[3]}/Disruption Trap"
-    assert (
-        al.trap_label(3, ids.DISORIENT_TRAP, "Bob") == f"@{al.DISGUISES[3]}/Disorient Trap\nfor Bob"
-    )
-    assert ids.TRAPS.isdisjoint(al.DISGUISES)
+    # The world's drawn upgrade; its pickup popup names the trap ("@N/NAME"); this player's own
+    # with no one named, another Zexion player's for them.
+    assert al.trap_label(17, ids.DISRUPTION_TRAP) == "@17/Disruption Trap"
+    assert al.trap_label(24, ids.DISORIENT_TRAP, "Bob") == "@24/Disorient Trap\nfor Bob"
 
 
 def lines(text: str) -> list[str]:

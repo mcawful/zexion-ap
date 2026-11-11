@@ -194,13 +194,19 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
         player = ctx.player_names.get(info.player, "")
         slot = ctx.slot_info.get(info.player)
         code = info.item - ITEM_ID_BASE
-        if info.player == ctx.slot and code in ids.TRAPS:
-            text = aplabels.trap_label(i, code)  # this player's own trap, disguised
+        zexion_trap = code in ids.TRAPS and (
+            info.player == ctx.slot or (slot is not None and slot.game == ctx.game)
+        )
+        look = conn.trap_looks.get(i)
+        if zexion_trap and look is None:
+            text = aplabels.label(True, player)  # a seed from before the drawn looks
+        elif zexion_trap and info.player == ctx.slot:
+            text = aplabels.trap_label(look, code)  # this player's own trap, disguised
         elif info.player == ctx.slot and code in ids.GAME_ITEMS:
             text = aplabels.own_label(code, discs.NAME)  # this player's own OS Install Disk
             own += 1
-        elif slot is not None and slot.game == ctx.game and code in ids.TRAPS:
-            text = aplabels.trap_label(i, code, player)  # another Zexion player's, disguised
+        elif zexion_trap:
+            text = aplabels.trap_label(look, code, player)  # another Zexion player's, disguised
         elif slot is not None and slot.game == ctx.game and (look := aplabels.zexion_look(code)):
             # Another Zexion player's own item, whatever that player's settings.
             item, name = look
@@ -685,7 +691,7 @@ async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:
 async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     """The follow-up popup (an OS Install Disk's count, an Intel Chip's hint) for each of this
     world's finds in the loaded save, found with or without a client, and this world's own trap
-    set off (its label named it in the game's popup: the helper waits for that popup to close);
+    set off (its label disguises it, and the game's pickup popup names it; it goes off at once);
     the server's popped_key keeps which were done, so each is done once."""
     conn, helper, told, seed = ctx.conn, ctx.helper, ctx.told, ctx.seed_state
     if conn is None or not conn.items_listed or not step.seed_matches:

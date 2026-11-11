@@ -211,18 +211,21 @@ def test_a_secret_shuffle_seeds_offline_table_is_in_the_games_order() -> None:
 def test_traps_look_important() -> None:
     # Location 3 holds a stand-in: this player's own trap there is a Zexion upgrade, alone;
     # another Zexion player's, for them; another game's trap a progression item.
-    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]], trap_looks=[[3, 24]]))
     loc = ids.LOCATION_ID_BASE + 3
     cell = ctx.conn.plan.cells[3]
     for player, game_name, code, text in (
-        (1, "Zexion", ids.DISRUPTION_TRAP, aplabels.trap_label(3, ids.DISRUPTION_TRAP)),
-        (2, "Zexion", ids.DISORIENT_TRAP, aplabels.trap_label(3, ids.DISORIENT_TRAP, "Bob")),
+        (1, "Zexion", ids.DISRUPTION_TRAP, aplabels.trap_label(24, ids.DISRUPTION_TRAP)),
+        (2, "Zexion", ids.DISORIENT_TRAP, aplabels.trap_label(24, ids.DISORIENT_TRAP, "Bob")),
         (2, "Other", ids.DISORIENT_TRAP, aplabels.label(True, "Bob")),
     ):
         ctx.slot_info = {2: types.SimpleNamespace(game=game_name)}
         ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + code, loc, player, 0b100)}
         labels, own = ticks.foreign_labels(ctx)
         assert labels == {cell: text} and own == 0, (player, game_name)
+    ctx.conn.trap_looks = {}  # a seed from before the drawn looks: a progression item
+    ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + ids.DISRUPTION_TRAP, loc, 1, 0b100)}
+    assert ticks.foreign_labels(ctx)[0] == {cell: aplabels.label(True, "Me")}
 
 
 def test_an_own_trap_found_is_set_off_once() -> None:

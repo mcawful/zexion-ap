@@ -139,11 +139,16 @@ async def announced_tick(
     if not current.announced_read:
         if conn.hint_targets and conn.hints_key not in ctx.stored_data:
             return
-        # Counted as received() counts: Zexion items only. Held traps still pop up (and run).
-        current.held_traps = state.held_traps(raw, p.codes, current.announced)
+        # Counted as received() counts: Zexion items only. Held traps still pop up (and run):
+        # those still waiting from an earlier connection kept, with any new.
+        held = state.held_traps(raw, p.codes, current.announced)
+        current.held_traps = sorted({*current.held_traps, *held})
         current.announced = state.announced_start(raw, len(p.codes), current.announced)
         current.announced_read = True
-    count = state.announced_to_store(current.announced, raw, conn.announced_sent)
+    # No first count stored while held traps wait: a client restarted before they pop up then
+    # reads none again and holds the same traps.
+    waiting = bool(current.held_traps)
+    count = state.announced_to_store(current.announced, raw, conn.announced_sent, waiting)
     if count is None:
         return
     if await store(ctx, conn.announced_key, "max", count, 0, "Recording the item popups"):

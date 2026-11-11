@@ -10,6 +10,7 @@ from Fill import distribute_items_restrictive
 from Options import OptionError
 
 from ..items import (
+    DISGUISES,
     DISORIENT_TRAP,
     DISRUPTION_TRAP,
     NAMES,
@@ -141,6 +142,17 @@ class TestOwnTraps(unittest.TestCase):
         self.assertEqual(
             {c for _, c in world.trap_locations()} - set(TRAPS), set(), "only traps listed"
         )
+
+    def test_each_trap_has_a_look_the_player_does_not_start_with(self) -> None:
+        # Easy starts with the Power Cartridge (13), one of the disguises: never drawn there.
+        traps = block({"Disorient Trap": 30}, ["Machinus"], from_pool=False)
+        world = generate([{"mode": "easy", "plando_items": [traps]}]).worlds[1]
+        looks = dict(world.trap_looks())
+        self.assertEqual(set(looks), {i for i, _ in world.trap_locations()})
+        self.assertNotIn(13, looks.values())
+        self.assertLessEqual(set(looks.values()), set(DISGUISES))
+        self.assertGreater(len(set(looks.values())), 1, "drawn, not one for all")
+        self.assertEqual(world.trap_looks(), world.trap_looks(), "the same draw each time")
 
     def test_another_players_trap_is_a_stand_in_and_not_listed(self) -> None:
         trap = block({"Disruption Trap": 1}, ["Machinus 24,29"], world="Tester2")

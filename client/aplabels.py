@@ -92,24 +92,13 @@ ZEXION_LOOKS = {
 }
 
 
-# What a Zexion trap lying in a Zexion world looks like (the owner's choice, 2026-11-11): a Zexion
-# upgrade, held once, with its own record's icon and name (no keys or weapons), one per location
-# by its index (trap_disguise), as another Zexion player's item or this player's own is shown.
-DISGUISES = (8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 33, 34)
-
-
-def trap_disguise(location: int) -> int:
-    """The item a Zexion trap at this world's location ``location`` (its index) is shown as."""
-    return DISGUISES[location % len(DISGUISES)]
-
-
-def trap_label(location: int, code: int, player_name: str = "") -> str:
-    """The label for Zexion trap ``code`` at ``location``: the upgrade it is disguised as in the
+def trap_label(look: int, code: int, player_name: str = "") -> str:
+    """The label for Zexion trap ``code`` lying in a Zexion world (the owner's choice,
+    2026-11-11): the upgrade ``look`` the world drew for it (slot data ``trap_looks``) in the
     world and on the map ("@N"), with the trap's name in its pickup popup ("@N/NAME", in the
-    font's characters, no icon: the owner's choice), then whom it is for, or nothing more for
-    this player's own."""
+    font's characters, no icon), then whom it is for, or nothing more for this player's own."""
     name = " ".join(_font_words(ids.TRAP_NAMES[code]))
-    first = f"@{trap_disguise(location)}/{name}"
+    first = f"@{look}/{name}"
     return f"{first}\n{_for(player_name)}" if player_name else first
 
 

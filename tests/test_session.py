@@ -465,7 +465,7 @@ def test_received_scrap_pops_up_as_itself_once(with_helper) -> None:
 
 
 def test_a_received_trap_is_its_popup_alone_once(with_helper) -> None:
-    # No byte: the helper sets the trap off once its popup has closed (native/README.md,
+    # No byte: the helper sets the trap off with its popup (native/README.md,
     # "Traps"), so it rides on the popup count, as received scrap's drops do.
     session, g, helper, writes = with_helper
     traps = [ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
