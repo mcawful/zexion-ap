@@ -24,7 +24,7 @@ import enum
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from . import aplabels, deathlink, discs, game, native, save_patch, session, shields
+from . import aplabels, deathlink, discs, game, ids, native, save_patch, session, shields
 
 
 class UnsupportedSeed(ValueError):
@@ -56,6 +56,9 @@ class Connection:
     intel_chip: bool  # the seed's Area Maps are Intel Chips
     death_link_on: bool
     hunt: discs.DiscHunt | None  # the OS Install Disks goal, or None for the core goal
+    # This world's own traps in its own locations, by location index: the trap's item code
+    # (set off once found: ticks.followups_tick). Empty for a seed from before the traps.
+    traps: dict[int, int] = field(default_factory=dict)
     # The server's full item list has come (the packet after Connected may be it).
     items_listed: bool = False
     awaiting_backlog: bool = True
@@ -94,6 +97,7 @@ class Connection:
                 intel_chip=bool(slot_data["intel_chip"]),
                 death_link_on=bool(slot_data["death_link"]),
                 hunt=discs.from_slot_data(slot_data),
+                traps=own_traps(slot_data.get("trap_locations", [])),
             )
         except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise UnsupportedSeed(
@@ -117,6 +121,17 @@ class Connection:
         self.popped_key = self.key("popped")
         self.announced_key = self.key("announced")
         self.hints_key = self.key("hints")
+
+
+def own_traps(entries: list) -> dict[int, int]:
+    """The slot data's ``trap_locations`` ([location index, item code] each) by location index;
+    ValueError for one this client does not know (UnsupportedSeed)."""
+    out: dict[int, int] = {}
+    for index, code in entries:  # TypeError for another form
+        if code not in ids.TRAPS or not 0 <= index < ids.MAX_LOCATIONS:
+            raise ValueError(f"trap_locations entry {[index, code]}")
+        out[int(index)] = int(code)
+    return out
 
 
 def goal_reached(ended: bool, required: int | None, have: int) -> bool:

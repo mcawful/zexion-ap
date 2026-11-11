@@ -4,10 +4,12 @@ The world puts a stand-in at each location holding another player's item: 47 (Sc
 or 48 (Scrap Chunk) for progression (not another Zexion player's supplies, which stay minor:
 world.important_elsewhere), and with the OS Install Disks goal 48 for this player's own disks
 too. The client scouts those locations and sends the helper a label per map cell:
-"Progression Item" or "AP Item" over "for Alice", or ``@N`` for another Zexion player's item
-(its own icon and name), which the pickup popup shows (native/README.md; docs/re/memory.md,
-"Other players' items"). Labels keep only what the game's 8 x 8 font draws, 24 characters a
-line, in the case they are written in: the helper shows them in capitals but in English(HD).
+"Progression Item" or "AP Item" over "for Alice", ``@N`` for another Zexion player's item
+(its own icon and name), or a Zexion trap's name (this player's own, which the world puts a
+stand-in for too, or another Zexion player's), which the pickup popup shows (native/README.md;
+docs/re/memory.md, "Other players' items"). Labels keep only what the game's 8 x 8 font draws,
+24 characters a line, in the case they are written in: the helper shows them in capitals but in
+English(HD).
 Pure functions; client/ticks.py (labels_tick, foreign_labels) sends them.
 """
 
@@ -85,6 +87,13 @@ ZEXION_LOOKS = {
     ids.AREA_MAP: (ids.AREA_MAP, "Area Map"),
     ids.INTEL_CHIP: (ids.DRAWN_AS[ids.INTEL_CHIP], "Intel Chip"),
 }
+
+
+def trap_label(code: int, player_name: str = "") -> str:
+    """The label for a Zexion trap (ids.TRAPS): its name as text, with no icon (it has no record
+    of the game's), then whom it is for, or nothing more for this player's own."""
+    name = ids.TRAP_NAMES[code]
+    return f"{name}\n{_for(player_name)}" if player_name else name
 
 
 def zexion_look(code: int) -> tuple[int, str] | None:

@@ -208,6 +208,40 @@ def test_a_secret_shuffle_seeds_offline_table_is_in_the_games_order() -> None:
     assert lines[1] == offline.seed_text(p.table, p.start, False, False, None, None).splitlines()[1]
 
 
+def test_traps_are_labeled_by_name_but_another_games() -> None:
+    # Location 3 holds a stand-in: this player's own trap there is named alone; another Zexion
+    # player's, for them; another game's trap is an AP item, as any of its items is.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
+    loc = ids.LOCATION_ID_BASE + 3
+    cell = ctx.conn.plan.cells[3]
+    for player, game_name, code, text in (
+        (1, "Zexion", ids.DISRUPTION_TRAP, "Disruption Trap"),
+        (2, "Zexion", ids.DISORIENT_TRAP, "Disorient Trap\nfor Bob"),
+        (2, "Other", ids.DISORIENT_TRAP, aplabels.label(False, "Bob")),
+    ):
+        ctx.slot_info = {2: types.SimpleNamespace(game=game_name)}
+        ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + code, loc, player, 0b100)}
+        labels, own = ticks.foreign_labels(ctx)
+        assert labels == {cell: text} and own == 0, (player, game_name)
+
+
+def test_an_own_trap_found_is_set_off_once() -> None:
+    # Found in this world (the game's popup showed its label): set off with no popup of the
+    # client's, after that popup (the helper waits), and recorded as done, so never again.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISORIENT_TRAP]]))
+    ctx.server = None  # the record is kept for a later poll
+    ctx.helper = Homing()
+    ctx.told.client_back_sent = True
+    ctx.stored_data = {ctx.conn.popped_key: {}}
+    ctx.load.save_collected = {3}
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    run(ticks.followups_tick(ctx, no_finds(), shown))
+    assert ctx.helper.requests == ["apply\ntrap 103"]
+    assert 3 in ctx.seed_state.popped_mine
+    run(ticks.followups_tick(ctx, no_finds(), shown))
+    assert len(ctx.helper.requests) == 1, "once"
+
+
 def test_a_secret_shuffle_seeds_labels_go_on_each_locations_own_cell() -> None:
     ctx = Ctx(secret_connection())
     ctx.scout(progression=True)

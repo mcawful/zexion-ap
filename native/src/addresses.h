@@ -67,6 +67,9 @@ struct GameAddresses {
     BYTE* event_handlers = nullptr;    // the area-event handlers, by event type
     BYTE* death_fn = nullptr;
     BYTE* halt_flag = nullptr;
+    // The AILMENTS assist setting, 16-bit (trap.h). Optional: null in a config without it (an
+    // offline cache written before the traps), and a Disorient Trap then waits.
+    BYTE* ailments = nullptr;
     BYTE* assist_menu_fn = nullptr;  // ASSIST's own callback (the options menu, a save loaded)
     BYTE* object_pool = nullptr;  // the general objects, 1000 of 0x5C8 bytes
     BYTE* text_table = nullptr;   // holds the pointer to the loaded Text table

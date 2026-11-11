@@ -273,6 +273,7 @@ uintptr_t frame(void* argument) {
             }
             g_game.pump_popups();
             g_game.pump_drops(GetTickCount64());
+            g_game.pump_traps(GetTickCount64());
         } catch (...) {
             // Nothing may unwind into the game.
         }
@@ -476,6 +477,8 @@ const Request kRequests[] = {
     {"mission_black", true, [] { return g_game.mission_black(); }},
     // The received scraps' drops (game_calls.h, drop_status): for live checks.
     {"drop_status", false, [] { return g_game.drop_status(); }},
+    // The traps set off (game_calls.h, trap_status): for live checks.
+    {"trap_status", false, [] { return g_game.trap_status(); }},
     {"disk_slots", false, nullptr, &disk_slots},
     {"discs_status", false, [] { return g_game.equipment_status(); }},
     {"discs", false, nullptr, &discs},

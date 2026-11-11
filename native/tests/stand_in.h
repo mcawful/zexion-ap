@@ -518,8 +518,12 @@ inline void* g_sound_system_seen = nullptr;
 inline short g_sound = -1;
 inline float g_sound_x = 0, g_sound_y = 0, g_sound_volume = 0, g_sound_pitch = 0;
 inline short g_sound_category = 0;
-inline void sound_fn(void* system, short id, float x, float y, float volume, float pitch, short,
-              short category) {
+// Every sound played since reset_game, each "id/volume/argument/category " (volume in tenths).
+inline std::string g_sound_log;
+inline void sound_fn(void* system, short id, float x, float y, float volume, float pitch,
+                     short argument, short category) {
+    g_sound_log += std::to_string(id) + "/" + std::to_string(static_cast<int>(volume * 10 + 0.5f)) +
+                   "/" + std::to_string(argument) + "/" + std::to_string(category) + " ";
     g_sound_system_seen = system;
     g_sound = id;
     g_sound_x = x;
@@ -553,6 +557,9 @@ inline void suit_color_fn(int slot, short palette) {
 inline uint64_t rva(const void* p) {
     return reinterpret_cast<uint64_t>(p) - reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr));
 }
+
+// The AILMENTS assist setting (16-bit: trap.h).
+inline int16_t g_ailments = 0;
 
 // The death routine and the byte it returns early on.
 inline BYTE g_halt_flag = 0;
@@ -726,6 +733,7 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"event_handlers", rva(g_event_handlers)},
         {"death_fn", rva(reinterpret_cast<void*>(&death_fn))},
         {"halt_flag", rva(&g_halt_flag)},
+        {"ailments", rva(&g_ailments)},
         {"ending_unlocks", rva(g_ending + kEndingCall)},
         {"ending_join", rva(g_ending + kEndingJoin)},
         {"stats_context", rva(g_stats_context)},
@@ -770,6 +778,8 @@ inline void reset_game() {
     g_spawn_calls = 0;
     g_spawn_event = nullptr;
     g_halt_flag = 0;
+    g_ailments = 0;
+    g_sound_log.clear();
     g_deaths = 0;
     g_death_player = nullptr;
     g_death_energy = -100;

@@ -5,7 +5,16 @@ from __future__ import annotations
 import pytest
 from fakes import connection, slot_data
 
-from client import discs, game, native, session, state
+from client import discs, game, ids, native, session, state
+
+
+def test_this_worlds_own_traps_come_from_the_slot_data() -> None:
+    assert connection().traps == {}, "a seed from before the traps lists none"
+    conn = connection(trap_locations=[[3, ids.DISRUPTION_TRAP], [40, ids.DISORIENT_TRAP]])
+    assert conn.traps == {3: ids.DISRUPTION_TRAP, 40: ids.DISORIENT_TRAP}
+    for bad in ([[3, 46]], [[200, ids.DISRUPTION_TRAP]], [3], "x"):
+        with pytest.raises(state.UnsupportedSeed):
+            state.Connection.from_slot_data(slot_data(trap_locations=bad), 0, 1)
 
 
 def test_a_connection_reads_the_seed_from_its_slot_data() -> None:

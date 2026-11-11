@@ -77,6 +77,11 @@ class TestClientCodes(unittest.TestCase):
         self.assertEqual((ids.AREA_MAP, ids.INTEL_CHIP), (items.AREA_MAP, items.INTEL_CHIP))
         self.assertEqual((ids.AREA_MAP, ids.INTEL_CHIP), (49, 101))
         self.assertEqual(ids.DRAWN_AS, items.DRAWN_AS)
+        # The traps: their codes and names, which the client's labels and log use.
+        self.assertEqual(ids.TRAPS, frozenset(items.TRAPS))
+        self.assertEqual((ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP), (102, 103))
+        self.assertEqual(ids.TRAP_NAMES, {code: items.NAMES[code] for code in items.TRAPS})
+        self.assertLessEqual(ids.TRAPS, reconcile.NOT_IN_INVENTORY)
 
     def test_the_games_items(self) -> None:
         self.assertEqual(ids.GAME_ITEMS, items.GAME_ITEMS)
@@ -234,10 +239,18 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         foreign = aplabels.foreign_locations(slot["location_items"], kept)
         self.assertLessEqual(set(foreign), kept)
 
+        # This world's own traps: stand-ins, labeled as foreign, each named in trap_locations.
+        traps = {i: code for i, code in slot["trap_locations"]}
+        self.assertLessEqual(set(traps), set(foreign))
+        self.assertLessEqual(set(traps.values()), ids.TRAPS)
+        for i in traps:
+            self.assertEqual(plan.location_items[i], ids.STAND_IN)
+
         if state is not None:  # all of the above together, as the client connects
             connection = state.Connection.from_slot_data(slot, 0, 1)
             self.assertEqual(connection.plan, plan)
             self.assertEqual(connection.foreign, foreign)
+            self.assertEqual(connection.traps, traps)
 
         hunt = discs.from_slot_data(slot)
         if goal == "core":

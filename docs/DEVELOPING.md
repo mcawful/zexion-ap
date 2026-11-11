@@ -46,7 +46,8 @@ worlds/zexion/ → generation → slot data → client
   count up: any other item's byte is written as 1 at most, so a second copy (a server console's
   `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
-  items handed to the helper for their popup, the follow-up popups shown, the Intel Chip hints
+  items handed to the helper for their popup, the follow-up popups shown (and this world's own
+  traps set off), the Intel Chip hints
   made, the Energy Shields given, and this world's locations found in game, which the OS Install
   Disks count and the Area Map hints read; sent again until the server holds them). A failing
   side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
@@ -135,6 +136,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   disconnected dropping once: 2026-11-09 ("Received scrap"; what the drops were and gave not
   described).
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
+- Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch, set off
+  after the trap's popup; this world's own, found in it, after the game's popup): not run in game
+  yet; stand-in tests only ("Traps"; `docs/re/memory.md`, "Ailments: the script step that sets
+  them").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,

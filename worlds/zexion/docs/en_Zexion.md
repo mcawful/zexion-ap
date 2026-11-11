@@ -7,8 +7,8 @@ up, but lets Archipelago decide what is at each of the game's 154 item locations
 are 150, and in Custom the ones your settings and start room can reach, plus a 155th with
 Secret Shuffle. A location the seed can't reach holds Scrap, as in the game's own randomizer.
 Items found in Zexion can belong to other players, and their games can send items to
-you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, Area Maps or Intel
-Chips): exclude more locations than you have filler, and generation stops with an error that
+you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, traps, Area Maps or
+Intel Chips): exclude more locations than you have filler, and generation stops with an error that
 says so, unless the other players' filler makes up the difference (not Area Maps kept in their
 own world: "What do Area Maps and Intel Chips do?").
 
@@ -166,8 +166,8 @@ What a new game can start with:
 - keys, in order from the Alpha Key;
 - OS Install Disks, with the OS Install Disks goal: they count toward the disks you need.
 
-Anything else, such as Scrap, Area Maps, Intel Chips, Energy Shields, Mega Bombs, Bomb Boxes
-or Assist Unlock, stops generation with an error that names it.
+Anything else, such as Scrap, Area Maps, Intel Chips, Energy Shields, Mega Bombs, Bomb Boxes,
+Assist Unlock or a trap, stops generation with an error that names it.
 
 ## Can I use plando?
 
@@ -195,7 +195,7 @@ Zexion:
 
 Locations are named by area and X,Y ("Where does the game start?"). In `locations`, an area's
 name, such as Machinus, stands for its locations; in `items`, an item group (Keys, Weapons,
-Weapon Upgrades, Supplies, Scrap) for one of its items. Keep `from_pool: true`, the default: it
+Weapon Upgrades, Supplies, Scrap, Traps) for one of its items. Keep `from_pool: true`, the default: it
 moves an item from your pool rather than making a new one.
 
 Played in game: another game's item and another Zexion player's in your locations, your own OS
@@ -247,8 +247,8 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   ITEM, as every item does, with Obscure Class on; otherwise ADVANCED TECH with Obscure Majors
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
   when you pick it up.
-- Items sent to you pop up with the sender's name. An Energy Shield sent to you comes up
-  around you. Scrap sent to you drops what the game's own Scrap does, after its popup, once
+- Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
+  Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap does, after its popup, once
   you have stayed on one map square for a second. Scrap whose popup
   you saw before version 1.1.0 drops nothing, and nothing drops during the game's ending: what
   arrives then drops the next time you load the save.
@@ -270,6 +270,36 @@ item plando that puts one there isn't placed: the generator logs a warning sayin
 `force: silent`), and with `force: true` generation stops. An Area Map that still reaches you
 from elsewhere, such as one sent from the server's console or through an item link (Area Maps in
 an item link aren't kept this way), has no square in your world and reveals nothing.
+
+## What do traps do?
+
+Traps take the place of some of your Scrap: 15% of it by default, so about 3 in an Easy or
+Standard seed (Trap Percentage, `trap_percentage`; 0 for none). Each is one of two, picked by
+their weights (`disruption_trap_weight`, `disorient_trap_weight`). With the OS Install Disks
+goal the disks take the Scrap first, so there may be few traps or none. Traps are filler, so
+excluded locations can hold them.
+
+- **Disruption Trap:** what a Phazo's touch does. For about four seconds your energy weapons
+  don't fire and your charge stays empty; missiles and Mega Bombs still work, and your HUD
+  flashes. With an Energy Shield up, the shield takes the hit instead and loses a little
+  strength.
+- **Disorient Trap:** what a Balorb's wave does. For about four seconds your controls are
+  reversed, with swirls around your head; a flash and a sound come just before it wears off.
+
+A trap sent to you pops up as any item does, with who sent it (DISRUPTION TRAP, FROM ALICE). It
+starts once that popup has closed and you have stood on one map square for a second, in play:
+it waits through the pause menu, other menus, a death or a reload, and through RETURN HOME WITH
+THE DISKS? and the game's ending (it comes at your next load then). Each trap happens once,
+including one sent while your client was closed (it comes after its popup when you connect). A
+trap in your own world shows the Archipelago logo, and picking it up names it; it starts once
+that popup has closed. Another Zexion player's trap in your world shows its name and whom it is
+for. A second trap of the same kind during the first starts its four seconds again.
+
+The game's AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) changes
+them as it changes the enemies': at its second setting the Disruption Trap is a third as long and
+the Disorient Trap about a second; at its third, the Disruption Trap ends at once and the Disorient
+Trap does nothing. Other games' traps sent to you do nothing in Zexion. Traps haven't been tried
+in the game yet.
 
 ## Can I use the assist menu?
 

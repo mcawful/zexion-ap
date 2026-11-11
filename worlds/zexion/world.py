@@ -40,6 +40,7 @@ from .items import (
     SCRAP_ENERGY,
     SCRAP_METAL,
     SUPPLIES,
+    TRAPS,
     ZexionItem,
     as_inventory,
     classification,
@@ -75,10 +76,14 @@ CORE_REGION = "The Core"  # where Zexion is grabbed: data.CORE
 HOME = data.START_ROOMS[ROOM_NAMES.index("landing_pod")]
 # Filler item codes, in the order a left-out location removes them from the pool.
 FILLER_ORDER = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP)
+# What a trap takes the place of (add_traps): Scrap, which nothing reads, not an Area Map (its
+# reveal, or an Intel Chip's hint) or an Energy Shield.
+TRAP_REPLACES = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)
 # Stand-ins where the game must not hand out the item: another player's (Scrap Chunk for
-# progression, but not for another Zexion player's supplies: important_elsewhere), or this
-# world's own OS Install Disk (Scrap Chunk). This world's own Scrap Energy and Chunk are written
-# as Scrap Metal, so 47 and 48 always mean a stand-in (client/aplabels.py).
+# progression, but not for another Zexion player's supplies: important_elsewhere), this world's
+# own OS Install Disk (Scrap Chunk), or this world's own trap (Scrap Energy). This world's own
+# Scrap Energy and Chunk are written as Scrap Metal, so 47 and 48 always mean a stand-in
+# (client/aplabels.py).
 FOREIGN, FOREIGN_PROGRESSION = SCRAP_ENERGY, SCRAP_CHUNK
 # Supplies (items.SUPPLIES) are progression for the rules' counts, but minor on the map, as the
 # game marks this player's own (important_elsewhere), and not worth an Area Map's hint. The OS
@@ -747,8 +752,27 @@ class ZexionWorld(World):
         if self.options.area_map_hints:
             # Each Area Map left is a hint: an Intel Chip, which the game holds as the Area Map.
             codes = [INTEL_CHIP if c == AREA_MAP else c for c in codes]
+        codes = self.add_traps(codes)
         pool = [self.create_item(NAMES[code]) for code in codes]
         self.multiworld.itempool += pool
+
+    def add_traps(self, codes: list[int]) -> list[int]:
+        """The pool with some of its Scrap (TRAP_REPLACES) as traps: Trap Percentage of the Scrap,
+        rounded to the nearest whole trap, each drawn by the two weights. Last, after the
+        left-out locations and the disks have taken their filler, so neither runs short; and the
+        filler's count stays the same, as traps are filler to Archipelago's fill (excludable):
+        excluded locations have as many to take (stage_pre_fill). With no trap to add, the pool
+        and the seed's random draws are as before."""
+        options = self.options
+        weights = [options.disruption_trap_weight.value, options.disorient_trap_weight.value]
+        scrap = [i for i, code in enumerate(codes) if code in TRAP_REPLACES]
+        count = (len(scrap) * options.trap_percentage.value + 50) // 100
+        if not count or not any(weights):
+            return codes
+        out = list(codes)
+        for i in sorted(self.random.sample(scrap, count)):
+            out[i] = self.random.choices(TRAPS, weights)[0]
+        return out
 
     def set_rules(self) -> None:
         # This player's own Assist Unlock never goes to this player's own locations, by plando
@@ -845,8 +869,8 @@ class ZexionWorld(World):
             )
             raise OptionError(
                 f"Zexion ({world.player_name}): {n} excluded {locations}, but only {have} filler "
-                f"items (Scrap, Area Maps or Intel Chips) to put there, and the other players' "
-                f"filler does not make up the difference{why}: {fix}"
+                f"items (Scrap, traps, Area Maps or Intel Chips) to put there, and the other "
+                f"players' filler does not make up the difference{why}: {fix}"
             )
 
     def write_spoiler_header(self, spoiler_handle: TextIO) -> None:
@@ -897,12 +921,26 @@ class ZexionWorld(World):
             "discs_placed": self.options.os_install_disks.value if self.disc_hunt else 0,
             "discs_start": start_names.count(NAMES[DATA_DISC]),
             "disc_locations": self.disc_locations(),
+            # This world's own traps in its own locations, [location index, item code] each:
+            # the game holds a stand-in there, and the client sets the trap off once it is found
+            # (client/ticks.py, followups_tick). Older seeds lack it.
+            "trap_locations": self.trap_locations(),
         }
 
     def disc_locations(self) -> list[int]:
         """The location indices holding this world's own OS Install Disks."""
         found = self.multiworld.find_item_locations(NAMES[DATA_DISC], self.player)
         return sorted(loc.address - LOCATION_ID_BASE for loc in found if loc.player == self.player)
+
+    def trap_locations(self) -> list[list[int]]:
+        """The location index and item code of each of this world's own traps in its own
+        locations."""
+        out = []
+        for i in sorted(self.kept_locations):
+            item = self.get_location(location_name(i)).item
+            if item is not None and item.player == self.player and code_of.get(item.name) in TRAPS:
+                out.append([i, code_of[item.name]])
+        return out
 
     def hint_targets(self) -> list[list[int]]:
         """Where each of this player's progression items is, as [player, location id, item
@@ -958,7 +996,8 @@ class ZexionWorld(World):
         """The item code the game holds at each location: this world's own item as its game ID
         (a progressive weapon as the weapon; Scrap Energy and Chunk as Scrap Metal), FOREIGN or
         FOREIGN_PROGRESSION for another world's item and for this world's own OS Install Disk,
-        and Scrap Metal at a left-out location."""
+        FOREIGN for this world's own trap (trap_locations), and Scrap Metal at a left-out
+        location."""
         out = []
         for i in range(len(self.location_cells)):
             if i not in self.kept_locations:
@@ -971,6 +1010,9 @@ class ZexionWorld(World):
             code = code_of[item.name]
             if code == DATA_DISC:
                 out.append(FOREIGN_PROGRESSION)
+                continue
+            if code in TRAPS:
+                out.append(FOREIGN)  # minor on the map; the client labels it with its name
                 continue
             code = DRAWN_AS.get(code, code)  # an Intel Chip: the Area Map
             # Scrap Energy and Chunk, and an item that is not the game's, are handed out as Scrap

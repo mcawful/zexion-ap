@@ -301,7 +301,7 @@ class ZexionContext(CommonContext):
     def received(self) -> tuple[list[int], list[str]]:
         """The Zexion item code of each received item, and who sent it ("" for this slot's
         own), kept in step: anything that is not a Zexion item is left out of both (and said
-        once a connection)."""
+        once a connection). A trap is in both: it is given as its popup (session.py)."""
         codes, senders = [], []
         warned = self.conn.warned if self.conn is not None else set()
         for index, item in enumerate(self.items_received):
@@ -309,7 +309,7 @@ class ZexionContext(CommonContext):
             if code == ASSIST_UNLOCK:
                 continue  # not for the inventory: see assists_unlocked
             code = ids.DRAWN_AS.get(code, code)  # the Intel Chip: the game holds an Area Map
-            if code in ids.GAME_ITEMS:
+            if code in ids.GAME_ITEMS or code in ids.TRAPS:
                 codes.append(code)
                 senders.append(
                     "" if item.player == self.slot else self.player_names.get(item.player, "")

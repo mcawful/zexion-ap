@@ -32,6 +32,7 @@
 #include "title.h"
 #include "text.h"
 #include "translation.h"
+#include "trap.h"
 
 namespace zap {
 
@@ -254,6 +255,17 @@ public:
     // <item>" or "refused <why> <item>".
     std::string drop_status() const;
     size_t queued_drops() const { return drops_.size(); }
+    // Game thread, every frame: sets off each trap whose popup has shown (pump_popups queues
+    // them) or that an `apply` named with no popup (`trap`, this world's own), as the game's
+    // touch does (trap.h), one a frame, once in play in one cell for a second in the save it was
+    // for, not halted, with no message up (its popup closed), not from RETURN HOME's fade
+    // through its ending, and not in an ending that began in the load (kept for the next).
+    void pump_traps(uint64_t now_ms);
+    // `trap_status` (for live checks): "queued N; last <outcome>", the outcome "none", "set
+    // <item>" or "shield <item>" (an Energy Shield took a Disruption Trap), or "nothing <item>"
+    // (AILMENTS at 2, or a longer disorientation running: as the game's op does nothing).
+    std::string trap_status() const;
+    size_t queued_traps() const { return traps_.size(); }
     // Game thread (`die`): energy 0 and the game's death routine, once settled in one cell for a
     // second, not halted, no message up, no RETURN HOME prompt or ending on its way: "died" or
     // "refused <why>".
@@ -388,6 +400,15 @@ private:
         std::shared_ptr<const OfflineSeed> origin;
     };
     std::deque<Drop> drops_;
+    // Traps to set off (pump_traps), each with the save it was for; lost, as queued popups are,
+    // with the helper.
+    std::deque<Drop> traps_;
+    std::string trap_status_ = "none";
+    // Sets off trap `item` now: "set", "shield" or "nothing" (trap_status).
+    std::string run_trap(uint8_t item);
+    void play_sound(const trap::Sound& sound);
+    // Whether drops and traps wait for the ending (load_before_ending_), read every frame.
+    bool held_for_ending();
     // This load has been in play outside its ending (ending_flag false), or has read flag 211
     // set (the ship, or the escape skip's YES: an ending on its way), since the last frame with
     // no save loaded. While ending_flag then reads true, drops wait (pump_drops).

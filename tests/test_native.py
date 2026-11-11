@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from client import native, process, state
+from client import ids, native, process, state
 
 WINDOWS = sys.platform == "win32"
 BUILT = native.default_dll()
@@ -47,6 +47,8 @@ def test_an_apply_request_puts_each_popup_on_one_line() -> None:
     # spaces (any text the server sends) must not break a popup into another line.
     cas = [(17, 0, 1), (0, 3, 4)]
     popups = [(17, "FROM  Bob\nthe\tBold "), (0, ""), (49, " A  hint\n", True), (16, "", True)]
+    traps = native.batch_text([], [(ids.DISRUPTION_TRAP, "from Bob")], traps=[ids.DISORIENT_TRAP])
+    assert traps.splitlines() == ["apply", "popup 102 from Bob", "trap 103"]
     assert native.batch_text(cas, popups, refresh=True, intel=True).splitlines() == [
         "apply",
         "cas 17 0 1",

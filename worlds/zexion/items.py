@@ -15,6 +15,13 @@ console to lift the client's assist lock (an item rule keeps a plando'd one out 
 player's locations, where it would never be received: worlds/zexion/world.py); and Intel Chip
 (101), the Area Map as a hint (Area Map Hints), which the game holds and draws as the Area Map
 (DRAWN_AS) and the helper renames INTEL CHIP (docs/re/memory.md, "Intel Chips").
+
+Two traps are not the game's either, and never held: Disruption Trap (102), the Phazo's touch
+(energy weapons don't fire for about four seconds), and Disorient Trap (103), the Balorb's wave
+(controls reversed for about four seconds). The helper sets the game's timers for them as the
+game's own touch does (docs/re/memory.md, "The Phazo's disruption" and "The Balorb's
+disorienting wave"; native/README.md, "Traps"). They take the place of some of the pool's Scrap
+(the Trap Percentage option: world.py, ``add_traps``).
 """
 
 from __future__ import annotations
@@ -31,6 +38,8 @@ ITEM_ID_BASE = 3392510_000  # Steam app ID x 1000, to keep IDs recognizable
 
 ASSIST_UNLOCK = 100
 INTEL_CHIP = 101
+DISRUPTION_TRAP, DISORIENT_TRAP = 102, 103
+TRAPS = (DISRUPTION_TRAP, DISORIENT_TRAP)
 DRAWN_AS = {INTEL_CHIP: AREA_MAP}
 GAME_ITEMS = range(0, 51)  # the codes that are the game's own inventory bytes
 
@@ -84,6 +93,8 @@ NAMES = {
     50: "Energy Shield",
     ASSIST_UNLOCK: "Assist Unlock",
     INTEL_CHIP: "Intel Chip",
+    DISRUPTION_TRAP: "Disruption Trap",
+    DISORIENT_TRAP: "Disorient Trap",
 }
 
 # Everything the rules read, directly or through the codes derived from items
@@ -110,6 +121,7 @@ item_name_groups = {
     "Weapon Upgrades": {NAMES[code] for code in UPGRADES},
     "Supplies": {NAMES[code] for code in SUPPLIES},
     "Scrap": {NAMES[code] for code in (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)},
+    "Traps": {NAMES[code] for code in TRAPS},
 }
 
 
@@ -135,6 +147,8 @@ def classification(code: int) -> ItemClassification:
         return ItemClassification.progression
     if code in FILLER:
         return ItemClassification.filler
+    if code in TRAPS:
+        return ItemClassification.trap
     return ItemClassification.useful
 
 

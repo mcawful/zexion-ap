@@ -8,6 +8,7 @@
 
 #include "game_layout.h"  // kMapSide, record::kCount
 #include "scan.h"         // scan_line_ok
+#include "trap.h"         // trap::is_trap
 
 namespace zap {
 
@@ -110,7 +111,11 @@ std::string parse_batch(const std::string& request, Batch& out) {
             const char* kept = bare ? " .,'!?-:" : " .,'!?-";
             const size_t most = bare ? kNoticeMax : kSuffixMax;
             unsigned item = 0;
-            if (!(words >> item) || item >= record::kCount) return "bad line " + line;
+            if (!(words >> item)) return "bad line " + line;
+            // A trap's popup has no record: its name (trap.h). Never a notice.
+            if (item >= record::kCount && (bare || !trap::is_trap(static_cast<int>(item)))) {
+                return "bad line " + line;
+            }
             std::string rest;
             std::getline(words >> std::ws, rest);
             std::string text;
@@ -121,6 +126,13 @@ std::string parse_batch(const std::string& request, Batch& out) {
             while (!text.empty() && text.back() == ' ') text.pop_back();
             if (bare && text.empty()) return "bad line " + line;
             out.popups.push_back({static_cast<uint8_t>(item), std::move(text), bare, true});
+        } else if (op == "trap") {
+            unsigned item = 0;
+            std::string extra;
+            if (!(words >> item) || !trap::is_trap(static_cast<int>(item)) || (words >> extra)) {
+                return "bad line " + line;
+            }
+            out.traps.push_back(static_cast<uint8_t>(item));
         } else if (!op.empty()) {
             return "unknown line " + line;
         }

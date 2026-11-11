@@ -29,7 +29,8 @@ locations, as any world's: the client and the game then treat a plando'd item as
   none above 1). The limits are those of the starting items, for the same reasons, where they
   apply to the items found as well:
 
-  - an item the game holds once (all but the supplies, the filler and the OS Install Disks): one;
+  - an item the game holds once (all but the supplies, the filler, the traps and the OS Install
+    Disks): one;
     with Guns First on (every preset), a progressive weapon two (the weapon and its upgrade) and
     no upgrade as an item of its own. The client writes no byte above 1 (client/reconcile.py),
     so a copy past those would be a location that gives nothing; what the game does with a
@@ -64,6 +65,7 @@ from .items import (
     PROGRESSIVE,
     SCRAP_CHUNK,
     SCRAP_ENERGY,
+    TRAPS,
     UPGRADES,
     code_of,
 )
@@ -75,9 +77,10 @@ if TYPE_CHECKING:
     from .world import ZexionWorld
 
 # The items a player can hold or find any number of: the counts (supplies and Scrap Metal), the
-# other filler, the OS Install Disks (checked on their own) and Assist Unlock (never written).
+# other filler, the OS Install Disks (checked on their own), Assist Unlock (never written) and
+# the traps (never held: each sets a timer off).
 MANY = COUNTED | {SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP, ENERGY_SHIELD, INTEL_CHIP, DATA_DISC}
-MANY |= {ASSIST_UNLOCK}
+MANY |= {ASSIST_UNLOCK, *TRAPS}
 
 
 def own_items(world: ZexionWorld) -> Counter[int]:

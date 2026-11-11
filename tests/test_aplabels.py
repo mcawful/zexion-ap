@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 from client import aplabels as al
+from client import ids
+
+
+def test_a_trap_is_labeled_by_its_name() -> None:
+    # This player's own, by name alone; another Zexion player's, then whom it is for.
+    assert al.trap_label(ids.DISRUPTION_TRAP) == "Disruption Trap"
+    assert al.trap_label(ids.DISORIENT_TRAP, "Bob") == "Disorient Trap\nfor Bob"
 
 
 def lines(text: str) -> list[str]:

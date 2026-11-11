@@ -9,6 +9,13 @@ import pytest
 from client import ids
 from client import reconcile as rc
 
+
+def test_received_traps_are_never_in_the_inventory() -> None:
+    # The helper sets each off after its popup (native/README.md, "Traps"): no byte owed.
+    owed = rc.should_own({}, [46] * 4, set(), [ids.DISRUPTION_TRAP, 17, ids.DISORIENT_TRAP])
+    assert owed == Counter({17: 1})
+
+
 CELLS = [(25, 25), (29, 24), (3, 40), (50, 1)]
 TABLE = [3, 0, 46, 27]  # Machine Gun, Energy Tank, Scrap (a remote item), Alpha Key
 START = {0: 3, 1: 3, 4: 1}

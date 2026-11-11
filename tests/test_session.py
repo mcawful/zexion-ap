@@ -464,6 +464,22 @@ def test_received_scrap_pops_up_as_itself_once(with_helper) -> None:
     assert len(helper.requests) == 1 and session.announced == 3, "no popup, no drop, twice"
 
 
+def test_a_received_trap_is_its_popup_alone_once(with_helper) -> None:
+    # No byte: the helper sets the trap off once its popup has closed (native/README.md,
+    # "Traps"), so it rides on the popup count, as received scrap's drops do.
+    session, g, helper, writes = with_helper
+    traps = [ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
+    assert give(session, g, traps, senders=["Bob", "Alice"]) == {}
+    assert helper.requests[-1].splitlines() == [
+        "apply",
+        "popup 102 from Bob",
+        "popup 103 from Alice",
+    ]
+    assert session.announced == 2 and writes == []
+    session.step(g, traps, gap=0, senders=["Bob", "Alice"])
+    assert len(helper.requests) == 1, "never again"
+
+
 def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:
     # Zenith Thrusters (26) sent again from the console: its byte stays 1.
     session, g, helper, _ = with_helper

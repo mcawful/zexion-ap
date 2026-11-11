@@ -1628,6 +1628,238 @@ void test_received_death() {
     check(g_deaths == 1, "no other death");
 }
 
+// Scrap Metal's record, whose sound a trap's popup plays (it has no record of its own).
+void trap_records() {
+    scrap_records();
+    put<int16_t>(g_records + 46 * 100, 0x5A, 61);
+    put<float>(g_records + 46 * 100, 0x5C, 1.0f);
+}
+
+// A trap's popup closed and the player settled: pump_traps runs at `now`.
+void settle(zap::Game& game, uint64_t now) {
+    for (int i = 0; i < 30; ++i) game.pump_popups();  // the gap after the helper's popup
+    message_showing(0);
+    game.note_play(now - 1000);
+}
+
+// A received trap: its popup, its name with no icon over the sender, then, once that has closed
+// and the player has settled, the writes of the game's own touch (op 4 and op 5), once each.
+void test_received_traps() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    check(apply(game, "apply\npopup 102 FROM ALICE") == "applied", "a Disruption Trap's popup");
+    game.note_play(1000);
+    game.pump_traps(5000);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 0, "nothing before its popup");
+    game.pump_popups();
+    check(g_messages == 1 && g_text.find("DISRUPTION TRAP") != std::string::npos &&
+              g_text.find("FROM ALICE") != std::string::npos && g_sound == 61,
+          "its name over its sender, Scrap Metal's sound");
+    check(game.queued_traps() == 1, "queued as its popup shows");
+    message_showing(60);
+    game.pump_traps(6000);
+    check(field<int16_t>(0xDC2) == 0, "not while its popup shows");
+    message_showing(0);
+    field<uint8_t>(0x107A) = 5;  // another cell (a room change): settles again
+    game.note_play(6100);
+    game.pump_traps(6500);
+    check(field<int16_t>(0xDC2) == 0, "not before the player has settled");
+    g_halt_flag = 1;
+    game.pump_traps(7200);
+    check(field<int16_t>(0xDC2) == 0, "not while halted");
+    g_halt_flag = 0;
+    g_sound_log.clear();
+    game.pump_traps(7200);
+    check(field<int16_t>(0xDC2) == 240 && game.trap_status() == "queued 0; last set 102",
+          "the disruption: 240 frames");
+    check(g_sound_log == "26/10/8/16 ", "the Phazo's contact sound, as the state plays it");
+    game.pump_traps(8000);
+    check(g_sound_log == "26/10/8/16 ", "once");
+
+    // A second while one runs: the larger of the two, as the Phazo's touch (a restart).
+    field<int16_t>(0xDC2) = 100;
+    apply(game, "apply\npopup 102 FROM BOB");
+    show_next(game);
+    settle(game, 9000);
+    game.pump_traps(9000);
+    check(field<int16_t>(0xDC2) == 240, "a second starts the 240 again");
+    field<int16_t>(0xDC2) = 300;  // longer than a Phazo's (not the game's, but the rule)
+    apply(game, "apply\npopup 102 FROM BOB");
+    show_next(game);
+    settle(game, 10000);
+    game.pump_traps(10000);
+    check(field<int16_t>(0xDC2) == 300, "a longer one is left as it is");
+
+    // An Energy Shield up takes it: the strength down by 4, +0xD1E 5, the shield's sound.
+    field<int16_t>(0xDC2) = 0;
+    field<int32_t>(0x103C) = 80;
+    g_sound_log.clear();
+    apply(game, "apply\npopup 102 FROM BOB");
+    show_next(game);
+    g_sound_log.clear();
+    settle(game, 11000);
+    game.pump_traps(11000);
+    check(field<int32_t>(0x103C) == 76 && field<int16_t>(0xD1E) == 5 &&
+              field<int16_t>(0xDC2) == 0 && game.trap_status() == "queued 0; last shield 102",
+          "a shield up takes the disruption");
+    check(g_sound_log == "26/10/8/16 50/7/0/8 ", "the contact sound, then the shield's");
+    field<int32_t>(0x103C) = 0;
+
+    // The disorientation, as op 5: +0xDDB turned by 4 (mod 8) when none runs, +0xD20 at least 2.
+    field<int8_t>(0xDDB) = 6;
+    field<int16_t>(0xD20) = 0;
+    g_sound_log.clear();
+    apply(game, "apply\npopup 103 FROM CAROL");
+    show_next(game);
+    check(g_text.find("DISORIENT TRAP") != std::string::npos, "its name");
+    g_sound_log.clear();
+    settle(game, 12000);
+    game.pump_traps(12000);
+    check(field<int16_t>(0xDC4) == 251 && field<int8_t>(0xDDB) == 2 &&
+              field<int16_t>(0xD20) == 2 && game.trap_status() == "queued 0; last set 103",
+          "the disorientation: 251 frames, the byte turned, +0xD20 2");
+    check(g_sound_log.empty(), "no sound (the wave's state has none)");
+    // A second while it runs: 251 again, the byte not turned; +0xD20 left above 2.
+    field<int16_t>(0xDC4) = 40;
+    field<int16_t>(0xD20) = 9;
+    apply(game, "apply\npopup 103 FROM CAROL");
+    show_next(game);
+    settle(game, 13000);
+    game.pump_traps(13000);
+    check(field<int16_t>(0xDC4) == 251 && field<int8_t>(0xDDB) == 2 && field<int16_t>(0xD20) == 9,
+          "a second while it runs: 251 again, the byte as it was");
+    // A negative byte: C's % keeps the sign, as the game's code does.
+    field<int16_t>(0xDC4) = 0;
+    field<int8_t>(0xDDB) = -7;
+    apply(game, "apply\npopup 103 FROM CAROL");
+    show_next(game);
+    settle(game, 14000);
+    game.pump_traps(14000);
+    check(field<int8_t>(0xDDB) == -3, "(-7 + 4) % 8 is -3");
+    // AILMENTS at 2: the wave does nothing; the disruption is set (the game ends it next frame).
+    field<int16_t>(0xDC4) = 0;
+    field<int8_t>(0xDDB) = 1;
+    g_ailments = 2;
+    apply(game, "apply\npopup 103 FROM CAROL\npopup 102 FROM CAROL");
+    show_next(game);
+    settle(game, 15000);
+    game.pump_traps(15000);
+    check(field<int16_t>(0xDC4) == 0 && field<int8_t>(0xDDB) == 1 &&
+              game.trap_status() == "queued 1; last nothing 103",
+          "AILMENTS 2: the disorientation does nothing");
+    field<int16_t>(0xDC2) = 0;
+    show_next(game);
+    settle(game, 16000);
+    game.pump_traps(16000);
+    check(field<int16_t>(0xDC2) == 240, "the disruption is set as op 4 sets it");
+    g_ailments = 1;
+    field<int16_t>(0xDC4) = 0;
+    apply(game, "apply\npopup 103 FROM CAROL");
+    show_next(game);
+    settle(game, 17000);
+    game.pump_traps(17000);
+    check(field<int16_t>(0xDC4) == 251, "AILMENTS 1: op 5 sets 251 (the game's frame code cuts it)");
+    g_ailments = 0;
+
+    // Dead, in a menu, or in another save than its popup's: it waits.
+    field<int16_t>(0xDC2) = 0;
+    field<int16_t>(0xDC4) = 0;
+    apply(game, "apply\npopup 102 FROM DAN");
+    show_next(game);
+    settle(game, 18000);
+    field<int16_t>(0xCEA) = 0;
+    game.note_play(18000);
+    game.pump_traps(20000);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1, "not while dead");
+    field<int16_t>(0xCEA) = 48;
+    g_menu = 2;
+    game.note_play(20000);
+    game.pump_traps(22000);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1, "not in a menu (the pause)");
+    g_menu = 0;
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x11;  // this seed's item table
+    g_rando_marker = 1;
+    apply(game, "apply\npopup 103 FROM DAN");
+    show_next(game);
+    g_section[0x26C] = 0x22;  // another seed's save
+    settle(game, 23000);
+    game.pump_traps(23000);
+    check(field<int16_t>(0xDC2) == 240 && field<int16_t>(0xDC4) == 0 && game.queued_traps() == 1,
+          "the one for any save set; the one for this seed's save waits in another");
+    g_section[0x26C] = 0x11;
+    game.client_gone(&chosen);  // the client gone meanwhile: kept, as its popups are
+    game.pump_traps(23000);
+    check(field<int16_t>(0xDC4) == 251 && game.queued_traps() == 0, "set in its own save");
+    g_rando_marker = 0;
+
+    // A trap's popup is never a notice, and only the two traps' codes are taken.
+    check(apply(game, "apply\nnotice 102 HELLO").rfind("parse: bad line", 0) == 0, "no notice");
+    check(apply(game, "apply\npopup 104 FROM X").rfind("parse: bad line", 0) == 0, "not 104");
+    check(apply(game, "apply\ntrap 46").rfind("parse: bad line", 0) == 0, "no trap 46");
+    reset_events();
+}
+
+// This world's own trap, found in it: no popup of the helper's (the game's own showed its label),
+// set off once that has closed, as a received one is.
+void test_own_traps() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    check(apply(game, "apply\ntrap 103") == "applied", "applied");
+    check(game.queued_traps() == 1 && game.queued_popups() == 0, "queued, with no popup");
+    message_showing(60);  // the game's pickup popup
+    game.note_play(1000);
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 0, "not while the game's popup shows");
+    message_showing(0);
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 251 && game.queued_traps() == 0, "then set, once");
+}
+
+// A config with no AILMENTS (an offline cache written before the traps): a Disorient Trap waits
+// for a client's config; a Disruption Trap, which does not read it, is set.
+void test_traps_without_ailments() {
+    HMODULE self = GetModuleHandleW(nullptr);
+    auto older = stand_in_config();
+    older.erase("ailments");
+    reset_game();
+    zap::Game game;
+    check(game.configure(self, older, false).empty(), "configures without it");
+    trap_records();
+    apply(game, "apply\ntrap 103\ntrap 102");
+    game.note_play(1000);
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 0 && game.queued_traps() == 2, "the disorientation waits");
+    check(configure(game).empty(), "a client's config");
+    game.pump_traps(3000);
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 251 && field<int16_t>(0xDC2) == 240, "then both are set");
+}
+
+// Traps held through the game's ending, which reads as play, as drops are, and through RETURN
+// HOME's fade.
+void test_traps_held_for_the_ending() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    g_flags[250] = 0;
+    game.note_play(1000);
+    game.pump_traps(1000);  // the load's first frame in play: flag 250 clear
+    apply(game, "apply\ntrap 102");
+    g_flags[250] = 1;  // the ending began in this load
+    game.pump_traps(5000);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1, "held through the ending");
+    g_save_loaded = 0xFF;  // MISSION COMPLETE, then the title
+    game.pump_traps(6000);
+    g_save_loaded = 3;  // the save loaded again, past its ending
+    game.note_play(7000);
+    game.pump_traps(8000);
+    check(field<int16_t>(0xDC2) == 240, "set at the next load, though flag 250 stays set");
+    g_flags[250] = 0;
+}
+
 void test_assist_watch() {
     zap::Game game;
     check(configure(game).empty(), "configures");
@@ -2632,6 +2864,10 @@ int main() {
     test_received_scrap_drops();
     test_received_scrap_drops_held();
     test_received_death();
+    test_received_traps();
+    test_own_traps();
+    test_traps_without_ailments();
+    test_traps_held_for_the_ending();
     test_assist_watch();
     test_newgame_watch();
     test_randomizer_by_seed();

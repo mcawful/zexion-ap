@@ -33,6 +33,7 @@ from ..items import (
     SCRAP_CHUNK,
     SCRAP_ENERGY,
     SCRAP_METAL,
+    TRAPS,
     UPGRADES,
     ZexionItem,
     code_of,
@@ -682,8 +683,8 @@ class TestTheStartIsOpened(ZexionTestBase):
         # Exclude 8 of the locations the opened start reaches: it opens on until 20 that are
         # not excluded are reached, since excluded locations take no progression. On seed 5
         # (Easy, Landing Pod) the opened start reaches exactly 20, so counting the excluded ones
-        # would stop it at 12 that are not.
-        self.options = {"mode": "easy"}
+        # would stop it at 12 that are not. No traps: they change the seed's draws.
+        self.options = {"mode": "easy", "trap_percentage": 0}
         self.world_setup(5)
         order = fill_recording(self.multiworld)
         self.assertEqual(len(self.reached_with(order)), START_REACH)
@@ -768,11 +769,17 @@ class TestSlotDataForTheClient(ZexionTestBase):
         distribute_items_restrictive(self.multiworld)
         items = self.world.fill_slot_data()["location_items"]
         self.assertEqual(len(items), len(data.LOCATIONS))
+        traps = 0
         for i, code in enumerate(items):
             placed = self.multiworld.get_location(location_name(i), self.player).item
             own = DRAWN_AS.get(code_of[placed.name], code_of[placed.name])  # Intel Chip: 49
+            if own in TRAPS:
+                self.assertEqual(code, FOREIGN, "this world's own trap: a stand-in")
+                traps += 1
+                continue
             self.assertEqual(code, SCRAP_METAL if own in (SCRAP_ENERGY, SCRAP_CHUNK) else own)
-        self.assertNotIn(FOREIGN, items, "47 only for another player's item")
+        self.assertGreater(traps, 0, "the default seed has traps")
+        self.assertEqual(items.count(FOREIGN), traps, "47 only for another player's item or a trap")
         self.assertNotIn(FOREIGN_PROGRESSION, items, "48 only for another player's item")
 
     def test_another_worlds_item_is_scrap_energy_or_for_progression_scrap_chunk(self) -> None:
@@ -1043,7 +1050,7 @@ class TestExcludedLocationsNeedFiller(ZexionTestBase):
         ZexionWorld.stage_pre_fill(self.multiworld)
         distribute_items_restrictive(self.multiworld)
         kinds = {location.item.classification for location in excluded}
-        self.assertEqual(kinds, {ItemClassification.filler})
+        self.assertLessEqual(kinds, {ItemClassification.filler, ItemClassification.trap})
 
     def test_one_more_is_refused_with_the_options_named(self) -> None:
         n = self.filler + 1
@@ -1254,7 +1261,8 @@ class TestDiscHuntOHKO(ZexionTestBase):
 
 
 class TestDiscHuntEasy(ZexionTestBase):
-    options = disks("easy", 10, 10)
+    # No traps: they take the Scrap the disks leave, any of its kinds (test_traps.py).
+    options = {**disks("easy", 10, 10), "trap_percentage": 0}
 
     def test_ten_discs_take_scrap_only(self) -> None:
         assert_disks_took_in_order(self, 10)
