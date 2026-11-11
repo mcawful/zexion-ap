@@ -662,11 +662,13 @@ void Game::pump_traps(uint64_t now_ms) {
     if (next == traps_.end()) return;
     const uint8_t item = next->item;
     const std::string outcome = run_trap(item);
-    // Its popup next, ahead of the others queued, but after any notices at the head (a disk's
-    // count or a chip's hint whose popup has just shown: kept together).
+    // Its popup next: before the first popup of this save that is no notice, so after a disk's
+    // count or a chip's hint whose popup has just shown (kept together), and past popups waiting
+    // for another save.
     if (next->popup) {
-        auto at = std::find_if(popups_.begin(), popups_.end(),
-                               [](const Popup& queued) { return !queued.bare; });
+        auto at = std::find_if(popups_.begin(), popups_.end(), [this](const Popup& queued) {
+            return !queued.bare && showable(queued);
+        });
         popups_.insert(at, std::move(*next->popup));
     }
     traps_.erase(next);

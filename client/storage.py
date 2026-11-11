@@ -1,7 +1,8 @@
 """The client's records in the server's data storage, and the Area Map hints kept there.
 
 Each key is per team and slot (client/state.py, ``Connection.key``): how many received items
-have had their popup (``announced_tick``), this world's locations found in game
+have had their popup and the traps held at the slot's first connection still to pop up
+(``announced_tick``), this world's locations found in game
 (``own_found``, ``store_found``), the follow-up popups shown (``popped``) and the entry each
 Area Map used for its hint (``hints_tick``). Every key is open to any client in the room, so
 what is read from one is checked for form. client/zexion_client.py's game loop calls these.
@@ -145,16 +146,22 @@ async def announced_tick(
         if conn.hint_targets and conn.hints_key not in ctx.stored_data:
             return
         # Counted as received() counts: Zexion items only. Held traps still pop up (and run):
-        # those the server's record still lists, those this session still holds, and new ones.
+        # those this session still holds, new ones, and, on the session's first read only (a
+        # restarted client), those the server's record lists: a reconnect keeps the session's
+        # own, so a record its emptying store never reached does not hand a trap over twice.
         held = state.held_traps(raw, p.codes, current.announced)
-        waiting = state.stored_held(held_raw, p.codes)
+        waiting = [] if current.held_read else state.stored_held(held_raw, p.codes)
+        current.held_read = True
         current.held_traps = sorted({*current.held_traps, *waiting, *held})
+        # What the server holds counts as stored: written again only when this session's list
+        # changes from it (so a second client of the slot never writes its old list back).
+        conn.held_sent = state.stored_held(held_raw, p.codes)
         current.announced = state.announced_start(raw, len(p.codes), current.announced)
         current.announced_read = True
     # The waiting held traps' record, replaced while it differs from the session's (emptied once
     # they are handed over), before the count, so a restart never finds the count without them.
     held_now = list(current.held_traps)
-    if held_now != state.stored_held(held_raw, p.codes) and held_now != conn.held_sent:
+    if held_now != conn.held_sent:
         if not await store(ctx, conn.held_key, "replace", held_now, [], "Recording the traps"):
             return  # sent again on the next poll, the count with it
         conn.held_sent = held_now

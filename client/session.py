@@ -170,6 +170,10 @@ class Session:
         # of old popups, but each still gets its popup, and so its effect, once, through the
         # helper (give_through_helper); dropped with direct writes, as received traps are.
         self.held_traps: list[int] = []
+        # Whether this session has taken the server's record of the waiting held traps: only its
+        # first read does (a client restarted keeps them); later reads keep the session's own,
+        # which a lost emptying store would otherwise bring back (storage.announced_tick).
+        self.held_read = False
         # The ending: the goal as the previous poll of this load read it (None: not read yet),
         # and whether received items wait because the ending began during this load (its
         # cutscenes read as play). Both cleared when no save of this seed is loaded, and kept

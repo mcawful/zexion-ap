@@ -179,6 +179,52 @@ def test_held_traps_and_later_popups_survive_a_client_restart() -> None:
     assert again.held_traps == [0] and again.announced == 2, "the trap waits, the 46 pops up"
 
 
+def handed_then_reconnect(store_reaches: bool) -> tuple[FakeContext, object]:
+    """A held trap stored, handed over, the emptying store lost (or made), then a reconnect."""
+    conn = connection()
+    ctx = FakeContext(conn)
+    ctx.stored_data[conn.announced_key] = ctx.stored_data[conn.held_key] = None
+    current = ctx.seed_state.session
+    codes = types.SimpleNamespace(codes=[17, ids.DISRUPTION_TRAP, 46])
+    asyncio.run(storage.announced_tick(ctx, conn, current, codes))
+    held_and_count(ctx)
+    current.held_traps = []  # handed over (give_through_helper)
+    asyncio.run(storage.announced_tick(ctx, conn, current, codes))
+    if store_reaches:
+        held_and_count(ctx)
+    else:
+        ctx.sent.clear()  # sent into a closed or half-open link: the server keeps [1]
+    current.connected()
+    asyncio.run(storage.announced_tick(ctx, conn, current, codes))
+    return ctx, current
+
+
+def test_a_reconnect_after_the_hand_over_never_hands_a_trap_over_twice() -> None:
+    for reaches in (False, True):
+        ctx, current = handed_then_reconnect(reaches)
+        assert current.held_traps == [], reaches
+    ctx, current = handed_then_reconnect(False)
+    assert stored(ctx) == [[]], "the stale record emptied on the reconnect"
+
+
+def test_a_second_client_never_writes_its_old_held_list_back() -> None:
+    # A and B, one slot: both read [1]; A hands it over and empties the record; B, still
+    # holding it, writes nothing while its own list does not change.
+    conn = connection()
+    a = FakeContext(conn)
+    a.stored_data[conn.announced_key] = a.stored_data[conn.held_key] = None
+    codes = types.SimpleNamespace(codes=[17, ids.DISRUPTION_TRAP])
+    asyncio.run(storage.announced_tick(a, conn, a.seed_state.session, codes))
+    held_and_count(a)
+    b = FakeContext(connection())
+    b.stored_data = dict(a.stored_data)
+    asyncio.run(storage.announced_tick(b, b.conn, b.seed_state.session, codes))
+    assert b.seed_state.session.held_traps == [1] and b.sent == []
+    b.stored_data[conn.held_key] = []  # A's emptying, by SetReply
+    asyncio.run(storage.announced_tick(b, b.conn, b.seed_state.session, codes))
+    assert b.sent == [], "B's old list not written back"
+
+
 def test_a_failed_record_of_the_held_traps_stores_no_count() -> None:
     # Sent again on the next poll, the count with it: a restart never finds one without the other.
     conn = connection()
@@ -188,7 +234,7 @@ def test_a_failed_record_of_the_held_traps_stores_no_count() -> None:
     current = ctx.seed_state.session
     codes = types.SimpleNamespace(codes=[ids.DISORIENT_TRAP])
     asyncio.run(storage.announced_tick(ctx, conn, current, codes))
-    assert ctx.sent == [] and conn.held_sent is None and conn.announced_sent is None
+    assert ctx.sent == [] and conn.held_sent == [] and conn.announced_sent is None
     ctx.fail = False
     asyncio.run(storage.announced_tick(ctx, conn, current, codes))
     assert stored(ctx) == [[0], 1]

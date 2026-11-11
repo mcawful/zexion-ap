@@ -544,11 +544,12 @@ dealt on the next load ("DeathLink").
   traps that arrive together (after a reconnect, say) each get their 12 s, one after another; an
   enemy's own effect does not hold one (the trap restarts it, as the enemy's touch would), but an
   enemy's touch in a trap's last 240 or 251 frames extends that timer, and the next trap of its
-  kind waits for it too. A
-  received trap's popup goes with it: queued as the trap goes off, ahead of the other popups, so
-  one waiting for another of its kind shows its popup only as it starts (the owner's choice).
-  Held through the pause and every menu (not in play), a death (energy 0) and a load. A cutscene other than the ending's is not told apart from play:
-  none was measured (`docs/re/memory.md`, "Telling play from menus, the title screen and death").
+  kind waits for it too. A received trap's popup goes with it: queued as the trap goes off,
+  before the first popup of the save loaded that is no notice (so after a disk's count or a
+  chip's hint whose popup has just shown, and past popups waiting for another save), so one
+  waiting for another of its kind shows its popup only as it starts (the owner's choice). Held
+  through the pause and every menu (not in play), a death (energy 0) and a load. A cutscene
+  other than the ending's is not told apart from play: none was measured (`docs/re/memory.md`, "Telling play from menus, the title screen and death").
   Without the AILMENTS keys (an offline cache written before the traps, configuring a helper that
   a client has not configured since), a trap runs with AILMENTS as the game applies it.
 - **Once:** a received trap rides on its popup's `apply`: the client hands each received item's
@@ -568,8 +569,12 @@ dealt on the next load ("DeathLink").
   recorded in the client's follow-ups (the server's data storage) once the helper took it, or
   once its reply was lost (it may have been queued), so it is not sent again. As with a received
   scrap's drop, a trap can run twice where the client stops after the helper took it and before
-  the server stored its record (the popup count, or the follow-ups): the client closed or the
-  connection lost at that moment. A trap whose effect a reload or a death ends early is not given
+  the server stored its record (the popup count, the held traps' record, or the follow-ups): the
+  client closed at that moment, or, for the popup count or the follow-ups, the connection lost
+  then. A reconnect keeps the session's own list of held traps, not the server's record, so an
+  emptying store the connection lost does not hand a held trap over again (it writes the record
+  again instead), and a second client of the slot writes the record only when its own list
+  changes. A trap whose effect a reload or a death ends early is not given
   again, as with the enemies' own.
 - `trap_status` (for live checks): `queued N; last <outcome>`, the outcome `none`, `set ITEM`,
   or `nothing ITEM` (its timer already longer).
@@ -608,7 +613,10 @@ when the owner started the save; this world's own trap disguised as Zenith Thrus
 Zexion player's as the Jump Booster, each pickup popup naming the trap (FOR BOB for Bob's); two
 Disruption Traps at once, each popup showing as its trap went off; and the refused unload above.
 **Not run in game:** a trap through a death, a reload, the ending or RETURN HOME; a client
-restarted, or going away, while a trap from before the first connection waits or a trap runs.
+restarted, or going away, while a trap from before the first connection waits or a trap runs;
+and what changed since 5f66f1b (5bb478d and after): the held traps' record (the first count
+stored at once again), a trap's popup placed after a notice, the look drawn from the owner's
+upgrades in the seed and its fallback.
 
 ### The assist menu
 
@@ -719,8 +727,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   or the seed leaves out, none twice in a world until they run out, `world.trap_looks`;
   `aplabels.trap_label`), so it looks like that item and the map's cursor names it so ("Other
   Zexion players' items, as themselves"), but its pickup popup reads NAME, the trap's, with no
-  icon, then whom it is for (`Label::pickup`; "Traps"). With no upgrade to draw (every one
-  started, in Custom mode), it is labeled as a progression item instead. See `client/aplabels.py`.
+  icon, then whom it is for (`Label::pickup`; "Traps"). With none in the seed to draw (every one
+  started, in Custom mode or by `start_inventory_from_pool`), any of the 16, which the owner may
+  then hold. See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of

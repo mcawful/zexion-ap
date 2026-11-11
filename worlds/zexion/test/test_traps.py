@@ -179,8 +179,8 @@ class TestOwnTraps(unittest.TestCase):
         self.assertFalse(looks & ({code_of[n] for n in excluded} | {code_of["Phaser"]}))
         self.assertLessEqual(looks, self.placed_upgrades(multiworld, 1))
 
-    def test_with_every_upgrade_started_a_trap_has_no_look(self) -> None:
-        # Nothing to draw: no entry, and the client shows the trap as a progression item.
+    def test_with_every_upgrade_started_a_trap_still_looks_like_an_upgrade(self) -> None:
+        # None in the seed to draw: any of DISGUISES, so its pickup still names the trap.
         names = [n for n, code in code_of.items() if code in DISGUISES]
         options = {
             "mode": "custom",
@@ -191,7 +191,9 @@ class TestOwnTraps(unittest.TestCase):
         distribute_items_restrictive(multiworld)
         world = multiworld.worlds[1]
         self.assertTrue(world.trap_locations())
-        self.assertEqual(world.trap_looks(), [])
+        looks = dict(world.trap_looks())
+        self.assertEqual(set(looks), {i for i, _ in world.trap_locations()})
+        self.assertLessEqual(set(looks.values()), set(DISGUISES))
 
     def test_another_players_trap_looks_like_one_of_their_upgrades(self) -> None:
         # Bob (Easy) starts with the Power Cartridge; Alpha (Custom) starts with the Phaser.

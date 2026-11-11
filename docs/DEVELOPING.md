@@ -46,8 +46,8 @@ worlds/zexion/ → generation → slot data → client
   count up: any other item's byte is written as 1 at most, so a second copy (a server console's
   `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
-  items handed to the helper for their popup, the follow-up popups shown (and this world's own
-  traps set off), the Intel Chip hints
+  items handed to the helper for their popup, the traps held at the slot's first connection still
+  to pop up, the follow-up popups shown (and this world's own traps set off), the Intel Chip hints
   made, the Energy Shields given, and this world's locations found in game, which the OS Install
   Disks count and the Area Map hints read; sent again until the server holds them). A failing
   side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
@@ -147,8 +147,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   (81dd8cc, `lab/ap/live60`); the pickup popup naming the trap, a queued trap's popup waiting
   for it, the drawn disguises, a trap held at a slot's first connection and `/reload_mod`
   refused during a trap: 2026-11-11 (5f66f1b, `lab/ap/live61`). Not run in game: one held
-  through a death, a reload, the ending or RETURN HOME, and a client restarted or going away
-  while a trap waits or runs.
+  through a death, a reload, the ending or RETURN HOME, a client restarted or going away while a
+  trap waits or runs, and what changed since 5f66f1b (the held traps' record, a trap's popup
+  placed after a notice, the look drawn from the owner's upgrades in the seed).
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,

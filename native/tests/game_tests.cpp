@@ -1874,6 +1874,25 @@ void test_a_trap_popup_keeps_a_notice_with_its_popup() {
     check(g_text.find("DISRUPTION TRAP") != std::string::npos, "then the trap's popup");
     show_next(game);
     check(g_text.find("FROM DAN") != std::string::npos, "then the rest");
+
+    // A popup waiting for another save at the head: still after this save's notice.
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x11;
+    g_rando_marker = 1;
+    apply(game, "apply\npopup 46 FROM ERIN");  // for the 0x11 save
+    g_section[0x26C] = 0x22;                     // another save loaded
+    apply(game, "apply\npopup 46 FROM BOB\nnotice 46 COUNT 2 OF 3\npopup 46 FROM DAN");
+    show_next(game);
+    check(g_text.find("FROM BOB") != std::string::npos, "this save's first popup");
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+    apply(game, "apply\npopup 102 FROM ALICE");
+    game.pump_traps(6000);
+    show_next(game);
+    check(g_text.find("COUNT 2 OF 3") != std::string::npos, "its notice next, past ERIN's");
+    show_next(game);
+    check(g_text.find("DISRUPTION TRAP") != std::string::npos, "then the trap's popup");
+    g_rando_marker = 0;
     game.put_back_traps();
 }
 

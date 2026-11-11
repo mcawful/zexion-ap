@@ -955,10 +955,11 @@ class ZexionWorld(World):
         owner's own upgrades (DISGUISES) that lies in some location of the seed, so none the
         owner starts with or the seed leaves out (Custom mode's excluded), and none twice in this
         world until the owner's run out; an item link's group with none takes this player's.
-        Where none is left to draw, the trap has no entry, and the client shows it as a
-        progression item. Drawn once (kept), from the world's own random numbers at the end of
-        generation (fill_slot_data, after the hints' shuffle), so no other draw moves and the
-        looks are not worked out from the seed's number alone; with no trap, no draw."""
+        With none at all (every upgrade started), any of DISGUISES, so the trap still looks like
+        an upgrade and its pickup names it, though the owner may hold that one. Drawn once
+        (kept), from the world's own random numbers at the end of generation (fill_slot_data,
+        after the hints' shuffle), so no other draw moves and the looks are not worked out from
+        the seed's number alone; with no trap, no draw."""
         if self._trap_looks is not None:
             return self._trap_looks
         placed: dict[int, set[int]] = {}
@@ -969,13 +970,12 @@ class ZexionWorld(World):
                 placed.setdefault(item.player, set()).add(code)
         decks: dict[int, list[int]] = {}
 
-        def deal(owner: int) -> int | None:
+        def deal(owner: int) -> int:
             if not decks.get(owner):
                 options = sorted(placed.get(owner) or ())
                 if not options and owner not in self.multiworld.player_ids:
                     options = sorted(placed.get(self.player) or ())  # an item link's group
-                if not options:
-                    return None
+                options = options or list(DISGUISES)
                 self.random.shuffle(options)
                 decks[owner] = options
             return decks[owner].pop()
@@ -984,9 +984,7 @@ class ZexionWorld(World):
         for i in sorted(self.kept_locations):
             item = self.get_location(location_name(i)).item
             if item is not None and item.game == GAME and code_of.get(item.name) in TRAPS:
-                look = deal(item.player)
-                if look is not None:
-                    out.append([i, look])
+                out.append([i, deal(item.player)])
         self._trap_looks = out
         return out
 

@@ -308,16 +308,17 @@ player's, looks like one of that player's upgrades that's in the seed (not one t
 on the map too, and another game's trap like that game's progression items. That's on purpose:
 you can't tell a trap from a real item until you pick it up. Picking up a Zexion trap says what
 it is (DISORIENT TRAP, and FOR BOB if it's Bob's); another game's trap still says PROGRESSION
-ITEM. If there's no upgrade to disguise it as (in Custom mode, with every one started), a Zexion
-trap looks like a progression item too. Picking up your own sets it off at once; if you picked it
+ITEM. If none of its owner's upgrades is in the seed (they start with all of them), a Zexion trap
+looks like any upgrade, maybe one they already have. Picking up your own sets it off at once; if you picked it
 up with the client closed, it goes off when you next connect with that save loaded. Other games'
 traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or
-while the client was closed (on an earlier build); your own trap and other players' in your
-world, their look and their pickup popups; a second trap's popup waiting for it; and a trap
-sent before you first connected.
+while the client was closed; your own trap and other players' in your world, their look and
+their pickup popups; a second trap's popup waiting for it; and a trap sent before you first
+connected. Some of these on an earlier build: how a disguise is picked and how a trap sent
+before you first connected is kept have changed since, and are not yet checked in the game.
 
 ## Can I use the assist menu?
 
