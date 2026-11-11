@@ -36,6 +36,7 @@ from .items import (
     ITEM_ID_BASE,
     KEY_CODES,
     KEYS,
+    LOOKS,
     NAMES,
     SCRAP,
     SCRAP_CHUNK,
@@ -950,13 +951,15 @@ class ZexionWorld(World):
         )
 
     def trap_looks(self) -> list[list[int]]:
-        """The location index and the upgrade shown for each Zexion trap (this player's own,
-        another Zexion player's or an item link's) in this world's locations: one of the trap's
-        owner's own upgrades (DISGUISES) that lies in some location of the seed, so none the
-        owner starts with or the seed leaves out (Custom mode's excluded), and none twice in this
-        world until the owner's run out; an item link's group with none takes this player's.
-        With none at all (every upgrade started), any of DISGUISES, so the trap still looks like
-        an upgrade and its pickup names it, though the owner may hold that one. Drawn once
+        """The location index and the item shown for each Zexion trap (this player's own, another
+        Zexion player's or an item link's) in this world's locations: one of the trap's owner's
+        own important items (LOOKS: an upgrade, a key or an OS Install Disk, the disks counting as
+        one) that lies in some location of the seed, so none the owner starts with or the seed
+        leaves out (Custom mode's excluded), and none twice in this world until the owner's run
+        out; an item link's group with none takes this player's. With none at all (the owner
+        starts with, or Custom mode leaves out, every upgrade, and has no key or disk placed),
+        any of DISGUISES (the upgrades), so the trap still looks like an item and its pickup
+        names it, though the owner may hold that one, or it may not be in the seed. Drawn once
         (kept), from the world's own random numbers at the end of generation (fill_slot_data,
         after the hints' shuffle), so no other draw moves and the looks are not worked out from
         the seed's number alone; with no trap, no draw."""
@@ -966,7 +969,7 @@ class ZexionWorld(World):
         for location in self.multiworld.get_filled_locations():
             item = location.item
             code = code_of.get(item.name) if item.game == GAME else None
-            if code in DISGUISES:
+            if code in LOOKS:
                 placed.setdefault(item.player, set()).add(code)
         decks: dict[int, list[int]] = {}
 

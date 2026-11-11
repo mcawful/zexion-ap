@@ -28,8 +28,9 @@ AP_ITEM = "AP Item"
 PROGRESSION_ITEM = "Progression Item"
 # A scouted item's flags: the progression and trap bits (Archipelago's ItemClassification's,
 # checked against it in worlds/zexion/test/test_client_agrees.py), kept here so the client's
-# modules other than zexion_client.py import without Archipelago. A trap is shown as a
-# progression item (the owner's choice, 2026-11-11).
+# modules other than zexion_client.py import without Archipelago. Another game's trap is shown as
+# a progression item (the owner's choice, 2026-11-11); a Zexion trap as an item of its owner's
+# (trap_label).
 PROGRESSION = 0b00001
 TRAP = 0b00100
 
@@ -94,11 +95,14 @@ ZEXION_LOOKS = {
 
 def trap_label(look: int, code: int, player_name: str = "") -> str:
     """The label for Zexion trap ``code`` lying in a Zexion world (the owner's choice,
-    2026-11-11): the upgrade ``look`` the world drew for it (slot data ``trap_looks``) in the
-    world and on the map ("@N"), with the trap's name in its pickup popup ("@N/NAME", in the
-    font's characters, no icon), then whom it is for, or nothing more for this player's own."""
+    2026-11-11): the item ``look`` the world drew for it (slot data ``trap_looks``: an upgrade, a
+    key or an OS Install Disk) in the world and on the map ("@N", or "@N NAME" where the game's
+    name for it is not the one shown, zexion_look), with the trap's name in its pickup popup
+    ("/NAME" after it, in the font's characters, no icon), then whom it is for, or nothing more
+    for this player's own."""
     name = " ".join(_font_words(ids.TRAP_NAMES[code]))
-    first = f"@{look}/{name}"
+    item, shown = zexion_look(look) or (look, "")
+    first = f"{own_label(item, shown)}/{name}"
     return f"{first}\n{_for(player_name)}" if player_name else first
 
 

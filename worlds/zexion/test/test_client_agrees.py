@@ -252,7 +252,7 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         # Each has a drawn look: an upgrade this player does not start with.
         looks = {i: code for i, code in slot["trap_looks"]}
         self.assertLessEqual(set(looks), set(traps) | set(foreign))
-        self.assertLessEqual(set(looks.values()), set(items.DISGUISES))
+        self.assertLessEqual(set(looks.values()), items.LOOKS)
         self.assertFalse(set(looks.values()) & set(plan.start_items))
 
         if state is not None:  # all of the above together, as the client connects

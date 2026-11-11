@@ -162,7 +162,10 @@ async def announced_tick(
     # they are handed over), before the count, so a restart never finds the count without them.
     held_now = list(current.held_traps)
     if held_now != conn.held_sent:
-        if not await store(ctx, conn.held_key, "replace", held_now, [], "Recording the traps"):
+        # The slot's first record ("default": made only if the server has none yet), so a
+        # second client's first, late, never lands over another's emptied one; then "replace".
+        op = "default" if held_raw is None else "replace"
+        if not await store(ctx, conn.held_key, op, held_now, held_now, "Recording the traps"):
             return  # sent again on the next poll, the count with it
         conn.held_sent = held_now
     count = state.announced_to_store(current.announced, raw, conn.announced_sent)

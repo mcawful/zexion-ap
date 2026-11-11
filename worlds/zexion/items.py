@@ -111,10 +111,12 @@ SCRAP = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)  # the game's filler; the traps
 FILLER = {*SCRAP, AREA_MAP, INTEL_CHIP}
 DATA_DISC = 44  # the OS Install Disk (the game's Data Disc): progression, never balanced
 
-# What a Zexion trap lying in a Zexion world is shown as (the owner's choice, 2026-11-11): a Zexion
-# upgrade held once (no keys or weapons), with its own record's icon and name, drawn per trap
-# (world.py, trap_looks) from the trap's owner's that lie in the seed's locations.
+# What a Zexion trap lying in a Zexion world is shown as (the owner's choices, 2026-11-11): one of
+# the trap's owner's important items that lie in the seed's locations (LOOKS: an upgrade held
+# once, a key or an OS Install Disk), drawn per trap (world.py, trap_looks); with none, any of
+# the upgrades (DISGUISES).
 DISGUISES = (8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 33, 34)
+LOOKS = frozenset({*DISGUISES, *KEY_CODES, DATA_DISC})
 
 KEYS = tuple(NAMES[code] for code in KEY_CODES)
 FILLER_NAME = NAMES[SCRAP_METAL]

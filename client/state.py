@@ -66,7 +66,8 @@ class Connection:
     items_listed: bool = False
     awaiting_backlog: bool = True
     # Received items' popups (announced_tick): the count last stored, and the waiting held traps
-    # last stored (None: not yet).
+    # last stored, or read from the server's record at the connection's first read (None: not
+    # yet).
     announced_sent: int | None = None
     held_sent: list[int] | None = None
     found_sent_at: float = 0.0  # when the locations found were last stored (store_found)

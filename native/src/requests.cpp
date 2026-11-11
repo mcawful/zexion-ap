@@ -282,10 +282,18 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
             while (i < raw.size() && i < 4 && std::isdigit(raw[i])) n = n * 10 + (raw[i++] - '0');
             size_t end = i;
             std::string item_name, pickup;
-            if (i > 1 && i < raw.size() && (raw[i] == ' ' || raw[i] == '/')) {
-                std::string& text = raw[i] == ' ' ? item_name : pickup;
+            // "@N NAME", "@N/PICKUP" or "@N NAME/PICKUP" (a trap disguised as a disk, whose NAME
+            // replaces the record's): NAME ends at the first '/', which the client never sends
+            // in one.
+            if (i > 1 && i < raw.size() && raw[i] == ' ') {
+                for (end = i + 1; end < raw.size() && raw[end] != '\n' && raw[end] != '/'; ++end) {
+                    keep_font_char(item_name, raw[end], kFontPunctuation);
+                }
+                i = end;
+            }
+            if (i > 1 && i < raw.size() && raw[i] == '/') {
                 for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
-                    keep_font_char(text, raw[end], kFontPunctuation);
+                    keep_font_char(pickup, raw[end], kFontPunctuation);
                 }
                 if (pickup.size() > static_cast<size_t>(kGamePopupWidth)) {
                     pickup.resize(kGamePopupWidth);

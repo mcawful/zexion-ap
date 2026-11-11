@@ -528,7 +528,7 @@ dealt on the next load ("DeathLink").
     so the duration is the same); and where the sounds play: each at the player's position,
     where the game plays 26 at the touching object's and 82 at a point on the screen.
 - **This world's own**, found in it: the game hands out an important stand-in there, labeled as
-  a Zexion upgrade, whose pickup popup names the trap (`@N/NAME`: "Other players' items";
+  one of its owner's items, whose pickup popup names the trap (`@N/NAME`: "Other players' items";
   `client/aplabels.py`, `trap_label`); the client then sends `trap ITEM` in an `apply` (`client/ticks.py`,
   `followups_tick`), which queues the trap with no popup of the helper's, to go off at once as a
   received one does. One found with no client (the offline look shows its label) is sent when a
@@ -568,14 +568,15 @@ dealt on the next load ("DeathLink").
   closing, loses the traps not run yet, as it does the popups). This world's own, found in it, is
   recorded in the client's follow-ups (the server's data storage) once the helper took it, or
   once its reply was lost (it may have been queued), so it is not sent again. As with a received
-  scrap's drop, a trap can run twice where the client stops after the helper took it and before
-  the server stored its record (the popup count, the held traps' record, or the follow-ups): the
-  client closed at that moment, or, for the popup count or the follow-ups, the connection lost
-  then. A reconnect keeps the session's own list of held traps, not the server's record, so an
-  emptying store the connection lost does not hand a held trap over again (it writes the record
-  again instead), and a second client of the slot writes the record only when its own list
-  changes. A trap whose effect a reload or a death ends early is not given
-  again, as with the enemies' own.
+  scrap's drop, a trap can run twice where the helper took it and the client closed before the
+  server stored its record (the popup count, the held traps' record, or the follow-ups): at that
+  moment, or after the connection dropped then and before a reconnect. A reconnect keeps the
+  session's own list of held traps, not the server's record, so an emptying store the connection
+  lost does not hand a held trap over again (it writes the record again instead), and a second
+  client of the slot writes the record only when its own list changes. A client's first record
+  of them is made only where the server has none (the `default` operation), so a second client's
+  first, arriving late, never lands over the other's emptied one. A trap whose effect a reload or
+  a death ends early is not given again, as with the enemies' own.
 - `trap_status` (for live checks): `queued N; last <outcome>`, the outcome `none`, `set ITEM`,
   or `nothing ITEM` (its timer already longer).
 - **Put back:** the AILMENTS tests' patches, as above, but not when a client goes away: a running
@@ -615,8 +616,9 @@ Disruption Traps at once, each popup showing as its trap went off; and the refus
 **Not run in game:** a trap through a death, a reload, the ending or RETURN HOME; a client
 restarted, or going away, while a trap from before the first connection waits or a trap runs;
 and what changed since 5f66f1b (5bb478d and after): the held traps' record (the first count
-stored at once again), a trap's popup placed after a notice, the look drawn from the owner's
-upgrades in the seed and its fallback.
+stored at once again, the first record made only where the server has none), a trap's popup
+placed after a notice, the look drawn from the owner's upgrades, keys and OS Install Disks in
+the seed (`@N NAME/PICKUP` for a disk), and its fallback.
 
 ### The assist menu
 
@@ -722,14 +724,17 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   that name: this player's own OS Install Disk, or another Zexion player's disk, Area Map or
   Intel Chip). A trap looks important: the world gives it the progression stand-in (48),
   another game's labeled as its progression items are, and a Zexion trap, this player's own or
-  another Zexion player's, as `@N/NAME`: the Zexion upgrade the world drew for it (slot data
-  `trap_looks`: one of the trap's owner's upgrades that lies in the seed, so none they start with
-  or the seed leaves out, none twice in a world until they run out, `world.trap_looks`;
-  `aplabels.trap_label`), so it looks like that item and the map's cursor names it so ("Other
-  Zexion players' items, as themselves"), but its pickup popup reads NAME, the trap's, with no
-  icon, then whom it is for (`Label::pickup`; "Traps"). With none in the seed to draw (every one
-  started, in Custom mode or by `start_inventory_from_pool`), any of the 16, which the owner may
-  then hold. See `client/aplabels.py`.
+  another Zexion player's, as `@N/PICKUP` (`@N NAME/PICKUP` for a disk, under its name): the
+  Zexion item the world drew for it (slot data `trap_looks`: one of the trap's owner's upgrades,
+  keys and OS Install Disks that lies in the seed, so none they start with or the seed leaves
+  out, none twice in a world until they run out, `world.trap_looks`; `aplabels.trap_label`), so
+  it looks like that item and the map's cursor names it so ("Other Zexion players' items, as
+  themselves"), but its pickup popup reads PICKUP, the trap's name, with no icon, then whom it is
+  for (`Label::pickup`; "Traps"). With none of those in the seed to draw (every upgrade started
+  or left out, in Custom mode or by `start_inventory_from_pool`, and no key or disk placed), any
+  of the 16 upgrades, which the owner may then hold, or which may not be in the seed. A trap shown
+  as a disk is never counted as one: the client counts disks from those received and the slot's
+  own disk locations (`client/discs.py`), which never hold a trap. See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of

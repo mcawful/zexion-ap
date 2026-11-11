@@ -199,7 +199,9 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
         )
         look = conn.trap_looks.get(i)
         if zexion_trap and look is None:
-            text = aplabels.label(True, player)  # a seed made before the world drew looks
+            # A seed made before the world drew looks (only development builds of the traps' PR:
+            # 1.1.0 has no traps).
+            text = aplabels.label(True, player)
         elif zexion_trap and info.player == ctx.slot:
             text = aplabels.trap_label(look, code)  # this player's own trap, disguised
         elif info.player == ctx.slot and code in ids.GAME_ITEMS:

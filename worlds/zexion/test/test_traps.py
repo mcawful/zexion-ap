@@ -10,9 +10,12 @@ from Fill import distribute_items_restrictive
 from Options import OptionError
 
 from ..items import (
+    DATA_DISC,
     DISGUISES,
     DISORIENT_TRAP,
     DISRUPTION_TRAP,
+    KEY_CODES,
+    LOOKS,
     NAMES,
     SCRAP,
     TRAPS,
@@ -143,11 +146,12 @@ class TestOwnTraps(unittest.TestCase):
             {c for _, c in world.trap_locations()} - set(TRAPS), set(), "only traps listed"
         )
 
-    def placed_upgrades(self, multiworld, player: int) -> set[int]:
+    def placed_looks(self, multiworld, player: int) -> set[int]:
+        """The player's important items (LOOKS) that lie in the seed's locations."""
         return {
             code_of[loc.item.name]
             for loc in multiworld.get_filled_locations()
-            if loc.item.player == player and code_of.get(loc.item.name) in DISGUISES
+            if loc.item.player == player and code_of.get(loc.item.name) in LOOKS
         }
 
     def test_each_trap_looks_like_one_of_its_owners_upgrades_in_the_seed(self) -> None:
@@ -157,7 +161,8 @@ class TestOwnTraps(unittest.TestCase):
         distribute_items_restrictive(multiworld)
         world = multiworld.worlds[1]
         looks = [code for _, code in world.trap_looks()]
-        pool = self.placed_upgrades(multiworld, 1)
+        pool = self.placed_looks(multiworld, 1)
+        self.assertTrue(pool & set(KEY_CODES), "the keys are among them (the core goal)")
         self.assertEqual(len(looks), len(world.trap_locations()))
         self.assertNotIn(13, looks)
         self.assertLessEqual(set(looks), pool)
@@ -177,10 +182,32 @@ class TestOwnTraps(unittest.TestCase):
         looks = {code for _, code in multiworld.worlds[1].trap_looks()}
         self.assertTrue(looks)
         self.assertFalse(looks & ({code_of[n] for n in excluded} | {code_of["Phaser"]}))
-        self.assertLessEqual(looks, self.placed_upgrades(multiworld, 1))
+        self.assertLessEqual(looks, self.placed_looks(multiworld, 1))
 
-    def test_with_every_upgrade_started_a_trap_still_looks_like_an_upgrade(self) -> None:
-        # None in the seed to draw: any of DISGUISES, so its pickup still names the trap.
+    def test_a_disk_can_be_a_look_with_the_disks_goal(self) -> None:
+        options = {
+            "mode": "standard",
+            "goal": "os_install_disks",
+            "os_install_disks": 4,
+            "os_install_disks_required": 4,
+            "trap_percentage": 100,
+        }
+        found = set()
+        for seed in range(1, 6):
+            multiworld = generate([options], seed=seed)
+            distribute_items_restrictive(multiworld)
+            looks = [code for _, code in multiworld.worlds[1].trap_looks()]
+            self.assertLessEqual(set(looks), self.placed_looks(multiworld, 1))
+            self.assertFalse(set(looks) & set(KEY_CODES), "no keys with the disks goal")
+            world = multiworld.worlds[1]
+            traps = {i for i, _ in world.trap_locations()}
+            self.assertFalse(traps & set(world.disc_locations()), "a trap never counts as a disk")
+            found |= set(looks)
+        self.assertIn(DATA_DISC, found, "the disks drawn too")
+
+    def test_with_every_upgrade_started_the_keys_are_drawn(self) -> None:
+        # Every upgrade started (Custom): the owner's keys are still placed (the core goal), so
+        # they are what is drawn. With nothing of the owner's placed: the next test.
         names = [n for n, code in code_of.items() if code in DISGUISES]
         options = {
             "mode": "custom",
@@ -193,7 +220,28 @@ class TestOwnTraps(unittest.TestCase):
         self.assertTrue(world.trap_locations())
         looks = dict(world.trap_looks())
         self.assertEqual(set(looks), {i for i, _ in world.trap_locations()})
-        self.assertLessEqual(set(looks.values()), set(DISGUISES))
+        self.assertLessEqual(set(looks.values()), self.placed_looks(multiworld, 1))
+        self.assertTrue(set(looks.values()) <= set(KEY_CODES), "only the keys are left to draw")
+
+    def test_with_nothing_of_the_owners_placed_any_upgrade(self) -> None:
+        # Every upgrade started and the keys too (Start Keys 4): nothing of the owner's to draw,
+        # so any of DISGUISES, and the pickup still names the trap.
+        names = [n for n, code in code_of.items() if code in DISGUISES]
+        options = {
+            "mode": "custom",
+            "trap_percentage": 100,
+            "start_keys": 4,
+            "custom_items": dict.fromkeys(names, "start"),
+        }
+        multiworld = generate([options])
+        distribute_items_restrictive(multiworld)
+        world = multiworld.worlds[1]
+        self.assertFalse(self.placed_looks(multiworld, 1), "nothing of the owner's placed")
+        looks = [code for _, code in world.trap_looks()]
+        self.assertEqual(len(looks), len(world.trap_locations()))
+        self.assertLessEqual(set(looks), set(DISGUISES))
+        first = looks[: len(DISGUISES)]
+        self.assertEqual(len(first), len(set(first)), "no repeat until they run out")
 
     def test_another_players_trap_looks_like_one_of_their_upgrades(self) -> None:
         # Bob (Easy) starts with the Power Cartridge; Alpha (Custom) starts with the Phaser.
@@ -206,7 +254,7 @@ class TestOwnTraps(unittest.TestCase):
         distribute_items_restrictive(multiworld)
         looks = dict(multiworld.worlds[1].trap_looks())
         look = looks[index_of("Machinus 24,29")]
-        self.assertIn(look, self.placed_upgrades(multiworld, 2), "one of Bob's in the seed")
+        self.assertIn(look, self.placed_looks(multiworld, 2), "one of Bob's in the seed")
         self.assertNotEqual(look, 13)
 
     def test_another_players_trap_is_a_stand_in_and_not_listed(self) -> None:

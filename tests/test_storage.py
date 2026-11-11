@@ -124,8 +124,14 @@ def held_and_count(ctx: FakeContext) -> None:
     """The server takes what the client stored: the held traps' record and the count."""
     conn = ctx.conn
     for m in ctx.sent:
-        if m["cmd"] == "Set":
-            ctx.stored_data[m["key"]] = m["operations"][0]["value"]
+        if m["cmd"] != "Set":
+            continue
+        op, value = m["operations"][0]["operation"], m["operations"][0]["value"]
+        if op == "default":  # the server keeps what it has; the default only for a new key
+            if ctx.stored_data.get(m["key"]) is None:
+                ctx.stored_data[m["key"]] = m["default"]
+        else:
+            ctx.stored_data[m["key"]] = value
     ctx.sent.clear()
     assert conn.held_key in ctx.stored_data and conn.announced_key in ctx.stored_data
 
@@ -223,6 +229,26 @@ def test_a_second_client_never_writes_its_old_held_list_back() -> None:
     b.stored_data[conn.held_key] = []  # A's emptying, by SetReply
     asyncio.run(storage.announced_tick(b, b.conn, b.seed_state.session, codes))
     assert b.sent == [], "B's old list not written back"
+
+
+def test_a_second_clients_late_first_record_never_lands_over_an_emptied_one() -> None:
+    # A and B, one slot, both read nothing; A stores [1], hands the trap over and stores [];
+    # B's first [1] comes after: made only for a new key, so the server keeps [].
+    conn = connection()
+    a, b = FakeContext(conn), FakeContext(connection())
+    for ctx in (a, b):
+        ctx.stored_data[conn.announced_key] = ctx.stored_data[conn.held_key] = None
+    codes = types.SimpleNamespace(codes=[17, ids.DISRUPTION_TRAP])
+    asyncio.run(storage.announced_tick(b, b.conn, b.seed_state.session, codes))  # B's, in flight
+    asyncio.run(storage.announced_tick(a, conn, a.seed_state.session, codes))
+    held_and_count(a)
+    a.seed_state.session.held_traps = []
+    asyncio.run(storage.announced_tick(a, conn, a.seed_state.session, codes))
+    held_and_count(a)
+    assert a.stored_data[conn.held_key] == []
+    a.sent = b.sent  # B's first record reaches the server now
+    held_and_count(a)
+    assert a.stored_data[conn.held_key] == [], "B's late first record changed nothing"
 
 
 def test_a_failed_record_of_the_held_traps_stores_no_count() -> None:

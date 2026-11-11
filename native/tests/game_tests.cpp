@@ -764,6 +764,22 @@ void test_zexion_item_labels() {
     check(record_name(47) == "DISORIENT TRAP" "   FOR BOB",
           "the pickup names the trap, no icon, whom it is for centered under it");
     check(zap::map_name(shown) == "MISSILE BOX", "the map's cursor keeps the disguise");
+
+    // "@44 OS Install Disk/Disruption Trap": a trap disguised as a disk, under the disk's name.
+    std::map<int, zap::Label> as_disk;
+    check(zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@44 OS Install Disk/Disruption Trap"),
+                            as_disk)
+                  .empty() &&
+              as_disk[2 * 54 + 8].item == 44 &&
+              as_disk[2 * 54 + 8].item_name == "OS Install Disk" &&
+              as_disk[2 * 54 + 8].pickup == "Disruption Trap",
+          "a disguise under a name of the client's, and the trap's pickup text");
+    game.set_labels(as_disk);
+    game.watch_ap_items();
+    const zap::Label& trap_as_disk = game.labels().at(2 * 54 + 8);
+    check(record_name(47) == "DISRUPTION TRAP", "the pickup names the trap");
+    check(trap_as_disk.glyph == 0xFB && zap::map_name(trap_as_disk) == "OS INSTALL DISK",
+          "the look, the disk's glyph; the map's cursor, the name the client gave");
     game.restore_ap_items();
 }
 
