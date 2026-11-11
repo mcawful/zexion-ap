@@ -524,7 +524,8 @@ dealt on the next load ("DeathLink").
   than the ending's is not told apart from play: none was measured (`docs/re/memory.md`,
   "Telling play from menus, the title screen and death"). Without the `ailments` address (an
   offline cache written before the traps, configuring a helper that a client has not configured
-  since), a Disorient Trap waits for a client's config; a Disruption Trap does not read it.
+  since), a Disorient Trap waits for a client's config; a Disruption Trap does not read it, and
+  goes ahead of a waiting one.
 - **Once:** as a received scrap's drop, a received trap rides on its popup: the client hands
   each received item's popup over once (its count in the server's data storage), and the helper
   queues the trap as it shows the popup and forgets it once run. So one received while
@@ -532,8 +533,14 @@ dealt on the next load ("DeathLink").
   helper (no popup) never runs; the queue outlives the client ("A client going away") but not
   the helper (an unload, or the game closing, loses the traps not run yet, as it does the
   popups). This world's own, found in it, is recorded in the client's follow-ups (the server's
-  data storage), so it is sent once. A trap whose effect a reload or a death ends early is not
-  given again, as with the enemies' own.
+  data storage) once the helper took it, or once its reply was lost (it may have been queued),
+  so it is not sent again. As with a received scrap's drop, a trap can run twice where the
+  client stops after the helper took it and before the server stored its record (the popup
+  count, or the follow-ups): the client closed or the connection lost at that moment. A trap
+  whose effect a reload or a death ends early is not given again, as with the enemies' own.
+  Not looked at: a Disruption Trap breaking an Energy Shield the client has just spawned and
+  not seen up yet, which the client would then spawn again ("Received Energy Shields"); whether
+  4 can break a fresh shield is not known.
 - `trap_status` (for live checks): `queued N; last <outcome>`, the outcome `none`, `set ITEM`,
   `shield ITEM` (an Energy Shield took a Disruption Trap) or `nothing ITEM` (AILMENTS at 2, or a
   longer disorientation running).

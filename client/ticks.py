@@ -719,7 +719,15 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
         ]
     popups += [(ids.AREA_MAP, hint_note(ctx, used[f"l{i}"]), True) for i in maps]
     own_traps = [conn.traps[i] for i in traps]
-    reply = await asyncio.to_thread(helper.apply, native.batch_text([], popups, traps=own_traps))
+    try:
+        reply = await asyncio.to_thread(
+            helper.apply, native.batch_text([], popups, traps=own_traps)
+        )
+    except native.ReplyLost:
+        # The helper may have queued them (its queue outlives this client): none sent again, so a
+        # trap is set off at most once, as Session.give counts a lost batch's popups.
+        ctx.seed_state.popped_mine |= set(disks) | set(maps) | set(traps)
+        raise
     if reply != "applied":
         return  # not shown: tried again
     if own_traps:

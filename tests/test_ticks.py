@@ -242,6 +242,28 @@ def test_an_own_trap_found_is_set_off_once() -> None:
     assert len(ctx.helper.requests) == 1, "once"
 
 
+def test_an_own_trap_whose_reply_was_lost_is_not_sent_again() -> None:
+    # The helper may have queued it: sending it again could set it off twice.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
+    ctx.server = None
+    ctx.helper = Homing()
+    ctx.told.client_back_sent = True
+    ctx.stored_data = {ctx.conn.popped_key: {}}
+    ctx.load.save_collected = {3}
+
+    def lost(text: str) -> str:
+        ctx.helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    ctx.helper.apply = lost
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    with pytest.raises(native.ReplyLost):
+        run(ticks.followups_tick(ctx, no_finds(), shown))
+    assert 3 in ctx.seed_state.popped_mine
+    run(ticks.followups_tick(ctx, no_finds(), shown))
+    assert len(ctx.helper.requests) == 1, "not sent again"
+
+
 def test_a_secret_shuffle_seeds_labels_go_on_each_locations_own_cell() -> None:
     ctx = Ctx(secret_connection())
     ctx.scout(progression=True)

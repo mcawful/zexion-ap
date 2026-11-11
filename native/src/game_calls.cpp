@@ -633,11 +633,12 @@ void Game::pump_traps(uint64_t now_ms) {
     if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) return;
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     if (*at_.halt_flag != 0 || popup_busy()) return;
-    auto next = std::find_if(traps_.begin(), traps_.end(),
-                             [this](const Drop& t) { return origin_loaded(t.origin); });
+    // A Disorient Trap waits for a client's config with `ailments`; the traps after it do not.
+    auto next = std::find_if(traps_.begin(), traps_.end(), [this](const Drop& t) {
+        return origin_loaded(t.origin) && (t.item != trap::kDisorient || at_.ailments != nullptr);
+    });
     if (next == traps_.end()) return;
     const uint8_t item = next->item;
-    if (item == trap::kDisorient && at_.ailments == nullptr) return;  // a client's config first
     const std::string outcome = run_trap(item);
     traps_.erase(next);
     trap_status_ = outcome + " " + std::to_string(item);

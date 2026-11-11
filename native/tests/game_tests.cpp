@@ -1833,11 +1833,11 @@ void test_traps_without_ailments() {
     apply(game, "apply\ntrap 103\ntrap 102");
     game.note_play(1000);
     game.pump_traps(3000);
-    check(field<int16_t>(0xDC4) == 0 && game.queued_traps() == 2, "the disorientation waits");
+    check(field<int16_t>(0xDC4) == 0 && field<int16_t>(0xDC2) == 240 && game.queued_traps() == 1,
+          "the disorientation waits; the disruption behind it does not");
     check(configure(game).empty(), "a client's config");
     game.pump_traps(3000);
-    game.pump_traps(3000);
-    check(field<int16_t>(0xDC4) == 251 && field<int16_t>(0xDC2) == 240, "then both are set");
+    check(field<int16_t>(0xDC4) == 251 && game.queued_traps() == 0, "then it is set");
 }
 
 // Traps held through the game's ending, which reads as play, as drops are, and through RETURN
