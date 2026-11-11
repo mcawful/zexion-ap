@@ -498,7 +498,8 @@ dealt on the next load ("DeathLink").
   past a shield (the owner's choices), and the game's per-frame code does the rest:
   - **Disruption Trap**, the Phazo's (its contact state 2857, then op 4's timer): sound 26 as
     the state plays it; then `+0xDC2` becomes 660 (about 12 s at the 55 frames a second
-    measured; the Phazo's 240 is about 4.3 s) unless it is already longer. An Energy Shield up
+    measured; the Phazo's 240 is about 4.3 s) unless it is already longer (a Phazo's touch during
+    a trap's, at most 240, leaves it). An Energy Shield up
     does not stop it (op 4's shield branch, the shield taking it, is left out). Energy weapons
     don't fire while it runs.
   - **Disorient Trap**, the Balorb wave's (its contact state 2902, then op 5, then the state it
@@ -531,7 +532,10 @@ dealt on the next load ("DeathLink").
   load, whose reset would undo it) with the game's halt byte clear, not from RETURN HOME WITH THE
   DISKS?'s fade through the ending it started, and not in the game's own ending, held as
   received scrap's drops are ("Received scrap", "When"), in the save its `apply` was for (another
-  seed's save or a normal save: it waits). Held through the pause and every menu (not in play), a
+  seed's save or a normal save: it waits). One of each kind at a time (the owner's choice): a
+  trap waits while one of its kind that a trap started still runs, and starts as it runs out, so
+  traps that arrive together (after a reconnect, say) each get their 12 s, one after another; an
+  enemy's own effect does not hold one (the trap restarts it, as the enemy's touch would). Held through the pause and every menu (not in play), a
   death (energy 0) and a load. A cutscene other than the ending's is not told apart from play:
   none was measured (`docs/re/memory.md`, "Telling play from menus, the title screen and death").
   Without the AILMENTS keys (an offline cache written before the traps, configuring a helper that

@@ -371,7 +371,7 @@ std::string Game::apply(const Batch& batch) {
         if (trap_popup(popup) && popup.counted) traps_.push_back({popup.item, popup.origin});
         popups_.push_back(std::move(popup));
     }
-    // This world's own traps, found in it: set off after the game's popup (pump_traps).
+    // This world's own traps, found in it: set off at once too (pump_traps).
     for (uint8_t item : batch.traps) traps_.push_back({item, origin});
     return "applied";
 }
@@ -640,8 +640,12 @@ void Game::pump_traps(uint64_t now_ms) {
     if (!in_play() || in_play_since_ms_ == 0 || now_ms - in_play_since_ms_ < kTrapSettledMs) return;
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     if (*at_.halt_flag != 0) return;
-    auto next = std::find_if(traps_.begin(), traps_.end(),
-                             [this](const Drop& t) { return origin_loaded(t.origin); });
+    // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a
+    // trap started still runs, and starts as it ends; an enemy's own effect does not hold it.
+    auto next = std::find_if(traps_.begin(), traps_.end(), [this](const Drop& t) {
+        const bool running = t.item == trap::kDisruption ? trap_hit_ : trap_wave_;
+        return origin_loaded(t.origin) && !running;
+    });
     if (next == traps_.end()) return;
     const uint8_t item = next->item;
     const std::string outcome = run_trap(item);

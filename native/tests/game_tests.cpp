@@ -1698,6 +1698,34 @@ void test_received_traps() {
     field<int16_t>(0xDC2) = 0;
     game.watch_all(&chosen);
 
+    // Several of one kind at once (a reconnect's): one at a time, each starting as the last runs
+    // out; one of the other kind does not wait for them.
+    apply(game, "apply\npopup 102 FROM BOB\npopup 102 FROM BOB\npopup 103 FROM BOB");
+    game.pump_traps(8000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 2, "the first set");
+    field<int16_t>(0xDC2) = 300;  // counting down
+    game.watch_all(&chosen);
+    game.pump_traps(8000);
+    check(field<int16_t>(0xDC2) == 300 && field<int16_t>(0xDC4) == 660 &&
+              game.queued_traps() == 1,
+          "the second waits for it; the other kind goes ahead");
+    field<int16_t>(0xDC2) = 0;  // run out
+    game.watch_all(&chosen);
+    game.pump_traps(8000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0 && hit_jumps_are(0xEB),
+          "then the second, its full 660, patched again");
+    field<int16_t>(0xDC2) = 0;
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);
+    // An enemy's own effect running does not hold a trap: it restarts it, as the touch would.
+    field<int16_t>(0xDC2) = 100;
+    apply(game, "apply\npopup 102 FROM BOB");
+    game.pump_traps(8000);
+    check(field<int16_t>(0xDC2) == 660, "over an enemy's effect: at once");
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+    for (int i = 0; i < 200; ++i) game.pump_popups();
+
     // The disorientation, as op 5 but longer and whatever AILMENTS reads.
     for (int16_t ailments : {int16_t{0}, int16_t{1}, int16_t{2}}) {
         g_ailments = ailments;
@@ -1716,15 +1744,18 @@ void test_received_traps() {
         game.pump_popups();
     }
     g_ailments = 0;
-    // A second while it runs: 660 again, the byte not turned; +0xD20 left above 2.
+    // Over an enemy's wave running: 660, the byte not turned; +0xD20 left above 2.
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);  // the trap's ended
     field<int16_t>(0xDC4) = 40;
     field<int16_t>(0xD20) = 9;
     apply(game, "apply\npopup 103 FROM CAROL");
     game.pump_traps(10000);
     check(field<int16_t>(0xDC4) == 660 && field<int8_t>(0xDDB) == 2 && field<int16_t>(0xD20) == 9,
-          "a second while it runs: 660 again, the byte as it was");
+          "over an enemy's wave: 660, the byte as it was");
     // A negative byte: C's % keeps the sign, as the game's code does.
     field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);
     field<int8_t>(0xDDB) = -7;
     apply(game, "apply\npopup 103 FROM CAROL");
     game.pump_traps(11000);

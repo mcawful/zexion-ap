@@ -296,8 +296,8 @@ through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next
 trap happens at most once, including one sent while your client was closed, or before you first
 connected (it comes when you connect); if the client closes just as a trap goes off, it may come
 again, and with no mod running a trap sent to you does nothing. A second trap of the same kind
-during the first starts its 12 seconds again. The game's AILMENTS assist setting (pause, OPTIONS,
-ASSIST, where assists are allowed) doesn't change traps: while one runs, it is left out for that
+waits for the first to end and then goes off, so each lasts its full 12 seconds. The game's
+AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change traps: while one runs, it is left out for that
 effect, so an enemy's touch of the same kind during a trap isn't shortened by it either.
 
 In a Zexion world, a trap looks like an important item: one of yours, or another Zexion

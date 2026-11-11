@@ -142,8 +142,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   shield, one held through the pause, one received while disconnected (once), this world's own
   and another Zexion player's in this world, AILMENTS REDUCED and IMMUNE ("Traps";
   `docs/re/memory.md`, "Ailments: the script step that sets them"). Not run in game: the
-  design since (at once, about 12 s, past a shield, AILMENTS's tests patched while one runs,
-  disguised as a Zexion upgrade), one held through a death, a reload, the ending or RETURN
+  design since (at once, about 12 s, one of each kind at a time, past a shield, AILMENTS's
+  tests patched while one runs, disguised as a Zexion upgrade), one held through a death, a reload, the ending or RETURN
   HOME, and the traps held at a slot's first connection.
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").

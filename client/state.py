@@ -179,8 +179,8 @@ def announced_start(raw: object, held: int, handed: int) -> int:
 def held_traps(raw: object, codes: list[int], handed: int) -> list[int]:
     """The indices of the traps among ``codes`` (the received items) that announced_start counts
     as handed over with no popup: those past what the session handed over itself (``handed``),
-    where the server has no count stored (a slot's first connection). A trap runs only after its
-    popup (native/README.md, "Traps"), so these still get theirs (Session.held_traps)."""
+    where the server has no count stored (a slot's first connection). A trap rides on its popup
+    (native/README.md, "Traps"), so these still get theirs (Session.held_traps)."""
     if stored_count(raw) is not None:
         return []
     return [i for i in range(min(handed, len(codes)), len(codes)) if codes[i] in ids.TRAPS]

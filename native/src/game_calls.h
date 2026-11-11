@@ -259,8 +259,9 @@ public:
     // after watch_all): sets off each trap an `apply` took (a received one's popup, or
     // `trap` for this world's own), as the game's touch does (trap.h), one a frame, at once once
     // in play for a moment in the save it was for, not halted, not from RETURN HOME's fade
-    // through its ending, and not in an ending that began in the load (kept for the next); and
-    // keeps AILMENTS's tests patched while a trap's timer runs.
+    // through its ending, and not in an ending that began in the load (kept for the next), one of
+    // each kind at a time (the next waits for the last to run out); and keeps AILMENTS's tests
+    // patched while a trap's timer runs.
     void pump_traps(uint64_t now_ms);
     // `trap_status` (for live checks): "queued N; last <outcome>", the outcome "none", "set
     // <item>", or "nothing <item>" (its timer already longer: as the game's op does nothing).
