@@ -255,15 +255,16 @@ public:
     // <item>" or "refused <why> <item>".
     std::string drop_status() const;
     size_t queued_drops() const { return drops_.size(); }
-    // Game thread, every frame: sets off each trap whose popup has shown (pump_popups queues
-    // them) or that an `apply` named with no popup (`trap`, this world's own), as the game's
-    // touch does (trap.h), one a frame, once in play in one cell for a second in the save it was
-    // for, not halted, with no message up (its popup closed), not from RETURN HOME's fade
-    // through its ending, and not in an ending that began in the load (kept for the next).
+    // Game thread, every frame, and not while an unload runs (dllmain.cpp: with the watches,
+    // after watch_all): sets off each trap an `apply` took (a received one's popup, or
+    // `trap` for this world's own), as the game's touch does (trap.h), one a frame, at once once
+    // in play for a moment in the save it was for, not halted, not from RETURN HOME's fade
+    // through its ending, and not in an ending that began in the load (kept for the next); and
+    // keeps AILMENTS's tests patched while a trap's timer runs.
     void pump_traps(uint64_t now_ms);
     // `trap_status` (for live checks): "queued N; last <outcome>", the outcome "none", "set
-    // <item>" or "shield <item>" (an Energy Shield took a Disruption Trap), or "nothing <item>"
-    // (AILMENTS at 2, or a longer disorientation running: as the game's op does nothing).
+    // <item>", or "nothing <item>" (its timer already longer: as the game's op does nothing).
+    bool ailments_patched() const { return hit_patch_.patched() || wave_patch_.patched(); }
     std::string trap_status() const;
     size_t queued_traps() const { return traps_.size(); }
     // Game thread (`die`): energy 0 and the game's death routine, once settled in one cell for a
@@ -287,6 +288,9 @@ public:
         if (feats_.ending_patched()) return "the ending's patch is still the helper's";
         if (seen_marker_.patched()) return "the map's on-screen marker is still the helper's";
         if (text_cut_.patched()) return "the text window's cut is still the helper's";
+        if (hit_patch_.patched() || wave_patch_.patched()) {
+            return "the AILMENTS tests are still the helper's";
+        }
         if (popup_areas_.in_use()) return "a popup still shows the helper's translated text";
         // Entry 70 still pointing into the run: put back by the unload's frame, so only an unload
         // no frame came for is refused (the next helper would take it for the game's).
@@ -406,7 +410,13 @@ private:
     std::string trap_status_ = "none";
     // Sets off trap `item` now: "set", "shield" or "nothing" (trap_status).
     std::string run_trap(uint8_t item);
-    std::string disorient(BYTE* player, int16_t ailments);  // op 5's writes: run_trap's outcome
+    std::string disorient(BYTE* player);  // op 5's writes: run_trap's outcome
+    // Game thread: each timer's AILMENTS tests patched while a trap's runs (trap.h).
+    void watch_trap_patches();
+    trap::HitPatch hit_patch_;
+    trap::WavePatch wave_patch_;
+    bool trap_hit_ = false, trap_wave_ = false;  // a trap started the timer, and it runs
+    uint64_t in_play_since_ms_ = 0;               // in play since (any cell), for a trap
     void play_sound(const trap::Sound& sound);
     // Whether drops and traps wait for the ending (load_before_ending_), read every frame.
     bool held_for_ending();

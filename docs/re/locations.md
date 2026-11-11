@@ -155,7 +155,8 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   stand-in where another world's item is: Scrap Energy (47), or Scrap Chunk (48) for a
   progression item (not another Zexion player's supplies, which stay 47, minor on the map as the
   game marks this player's own: `world.important_elsewhere`) and for this world's own OS
-  Install Disk, which the game must not hand out, and Scrap Energy for this world's own trap
+  Install Disk, which the game must not hand out, and for this world's own trap and any trap of
+  another world's (a trap looks important: the owner's choice, 2026-11-11)
   (`client/ids.py`'s `STAND_IN` and `STAND_IN_PROGRESSION`; the helper shows them as Archipelago items,
   `memory.md`, "Other players' items"), and Scrap Metal (46) where the location was left out.
   `trap_locations` lists this world's own traps in its own locations (index and item code), which
@@ -394,7 +395,8 @@ where its subject is:
   left out and the disks have taken theirs (`ZexionWorld.add_traps`), never an Area Map or an
   Energy Shield, and no rule reads them or the Scrap, so the logic is unchanged. Each copies an
   enemy's touch the game already has (`memory.md`, "The Phazo's disruption", "The Balorb's
-  disorienting wave"), kept by the owner's decision, 2026-11-11.
+  disorienting wave"), longer, past a shield and AILMENTS, and looking important (a Zexion trap
+  as a Zexion upgrade), kept by the owner's decisions, 2026-11-11.
 - **The ASSIST lock** (`allow_assists`, off by default) is a protection the game does not have
   (the game's randomizer menu has no assist setting: `randocells.md`, "The randomizer menu's
   settings"), kept by the owner's decision, 2026-10-27.

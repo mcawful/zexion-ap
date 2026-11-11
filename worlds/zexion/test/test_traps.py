@@ -19,7 +19,7 @@ from ..items import (
     code_of,
 )
 from ..options import TrapPercentage
-from ..world import FOREIGN, ZexionWorld
+from ..world import FOREIGN_PROGRESSION, ZexionWorld
 from .test_plando import block, generate, index_of
 
 
@@ -136,7 +136,7 @@ class TestOwnTraps(unittest.TestCase):
         }
         world = generate([options]).worlds[1]
         i = index_of("Kresezoa 25,25")
-        self.assertEqual(world.location_items()[i], FOREIGN)
+        self.assertEqual(world.location_items()[i], FOREIGN_PROGRESSION)
         self.assertIn([i, DISORIENT_TRAP], world.trap_locations())
         self.assertEqual(
             {c for _, c in world.trap_locations()} - set(TRAPS), set(), "only traps listed"
@@ -146,7 +146,7 @@ class TestOwnTraps(unittest.TestCase):
         trap = block({"Disruption Trap": 1}, ["Machinus 24,29"], world="Tester2")
         multiworld = generate([{"mode": "easy", "plando_items": [trap]}, {"mode": "easy"}])
         beta = multiworld.worlds[2]
-        self.assertEqual(beta.location_items()[index_of("Machinus 24,29")], FOREIGN)
+        self.assertEqual(beta.location_items()[index_of("Machinus 24,29")], FOREIGN_PROGRESSION)
         self.assertNotIn(index_of("Machinus 24,29"), {i for i, _ in beta.trap_locations()})
 
 

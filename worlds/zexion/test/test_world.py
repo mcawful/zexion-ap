@@ -774,13 +774,15 @@ class TestSlotDataForTheClient(ZexionTestBase):
             placed = self.multiworld.get_location(location_name(i), self.player).item
             own = DRAWN_AS.get(code_of[placed.name], code_of[placed.name])  # Intel Chip: 49
             if own in TRAPS:
-                self.assertEqual(code, FOREIGN, "this world's own trap: a stand-in")
+                self.assertEqual(code, FOREIGN_PROGRESSION, "this world's own trap: important")
                 traps += 1
                 continue
             self.assertEqual(code, SCRAP_METAL if own in (SCRAP_ENERGY, SCRAP_CHUNK) else own)
         self.assertGreater(traps, 0, "the default seed has traps")
-        self.assertEqual(items.count(FOREIGN), traps, "47 only for another player's item or a trap")
-        self.assertNotIn(FOREIGN_PROGRESSION, items, "48 only for another player's item")
+        self.assertNotIn(FOREIGN, items, "47 only for another player's item")
+        self.assertEqual(
+            items.count(FOREIGN_PROGRESSION), traps, "48 only for another player's item or a trap"
+        )
 
     def test_another_worlds_item_is_scrap_energy_or_for_progression_scrap_chunk(self) -> None:
         kinds = [
@@ -796,7 +798,8 @@ class TestSlotDataForTheClient(ZexionTestBase):
         items = self.world.fill_slot_data()["location_items"]
         self.assertEqual(
             items[: len(kinds)],
-            [FOREIGN_PROGRESSION, FOREIGN, FOREIGN, FOREIGN, FOREIGN_PROGRESSION],
+            # Another game's trap looks important too (the owner's choice).
+            [FOREIGN_PROGRESSION, FOREIGN, FOREIGN, FOREIGN_PROGRESSION, FOREIGN_PROGRESSION],
         )
 
     def test_another_zexion_players_supplies_are_minor_like_this_players_own(self) -> None:

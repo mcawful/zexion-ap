@@ -413,8 +413,18 @@ TARGETS = (
     )),
     Target("ailments", "the AILMENTS assist setting (16-bit): at 2 the Balorb's wave does nothing, and the per-frame code shortens or ends both ailments (Traps)", {"B1": 0x3E2DC4}, (
         rip("66 44 39 25 ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? 69 05 ?? ?? ?? ?? 6D 4E C6 41", 4, 8),
-        rip("0F B7 0D ?? ?? ?? ?? 66 83 F9 02 75 09 66 89 B3 C4 0D 00 00", 3, 7),
-        rip("0F B7 0D ?? ?? ?? ?? 66 41 3B CC 75 16 8D 42 FD", 3, 7),
+        rip("0F B7 0D ?? ?? ?? ?? 66 83 F9 02 ?? 09 66 89 B3 C4 0D 00 00", 3, 7),
+        rip("0F B7 0D ?? ?? ?? ?? 66 41 3B CC ?? 16 8D 42 FD 66 89 83 C2 0D 00 00", 3, 7),
+    )),
+    Target("ailments_hit_code", "the per-frame code's two tests of AILMENTS for the disruption's timer (43 bytes); the helper makes their jne's jmp's while a trap's runs (Traps)", {"B1": 0x1CC5C4}, (
+        at("0F B7 0D ?? ?? ?? ?? 66 41 3B CC ?? 16 8D 42 FD 66 89 83 C2 0D 00 00 0F B7 C7 0F B7 0D ?? ?? ?? ?? EB 02 8B C5 66 83 F9 02 ?? 09 66 89 B3 C2 0D 00 00"),
+        at("0F B7 93 C2 0D 00 00 8D 42 FF 66 89 83 C2 0D 00 00 0F B7 0D", 0x11),
+        rip("0F B7 83 C4 0D 00 00 66 85 C0 0F 8E ?? ?? ?? ?? 66 FF C8 66 89 83 C4 0D 00 00", 12, 16, -0x159),
+    )),
+    Target("ailments_wave_code", "the per-frame code's two tests of AILMENTS for the disorientation's timer (44 bytes); the helper makes their jne's jmp's while a trap's runs (Traps)", {"B1": 0x1CC62C}, (
+        at("0F B7 0D ?? ?? ?? ?? 66 41 3B CC ?? 19 66 41 3B C7 7E 13 66 44 89 BB C4 0D 00 00 41 0F B7 C7 0F B7 0D ?? ?? ?? ?? 66 83 F9 02 ?? 09 66 89 B3 C4 0D 00 00"),
+        at("0F B7 83 C4 0D 00 00 66 85 C0 0F 8E ?? ?? ?? ?? 66 FF C8 66 89 83 C4 0D 00 00 0F B7 0D", 0x1A),
+        rip("0F B7 83 C4 0D 00 00 66 85 C0 0F 8E ?? ?? ?? ?? 66 FF C8 66 89 83 C4 0D 00 00", 12, 16, -0xF1),
     )),
     Target("ending_unlocks", "the ending's first Steam call, where its achievement, database entries and Feats begin; the helper jumps from here to ending_join in AP saves", {"B1": 0x94A7E}, (
         at("4C 8B DC 57 48 83 EC 50 48 83 3D ?? ?? ?? ?? 00 48 8B 05 ?? ?? ?? ?? 49 89 5B 10 48 8B 1D ?? ?? ?? ?? C6 80 20 01 00 00 00 0F 85 ?? ?? ?? ?? 49 89 6B 18 48 8D 0D ?? ?? ?? ?? 49 89 73 20 4D 89 63 F0 4D 89 6B E8 4D 89 73 E0 4D 89 7B D8", 0x4E),

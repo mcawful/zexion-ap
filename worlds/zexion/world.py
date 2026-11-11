@@ -79,7 +79,7 @@ HOME = data.START_ROOMS[ROOM_NAMES.index("landing_pod")]
 FILLER_ORDER = (*SCRAP, AREA_MAP)
 # Stand-ins where the game must not hand out the item: another player's (Scrap Chunk for
 # progression, but not for another Zexion player's supplies: important_elsewhere), this world's
-# own OS Install Disk (Scrap Chunk), or this world's own trap (Scrap Energy). This world's own
+# own OS Install Disk or trap (Scrap Chunk). This world's own
 # Scrap Energy and Chunk are written as Scrap Metal, so 47 and 48 always mean a stand-in
 # (client/aplabels.py).
 FOREIGN, FOREIGN_PROGRESSION = SCRAP_ENERGY, SCRAP_CHUNK
@@ -110,7 +110,10 @@ START_REACH = 20
 def important_elsewhere(item: Item | None) -> bool:
     """Whether another player's item gets the important stand-in, its map square raised: a
     progression item, but not a Zexion supply, which the game marks minor like this player's
-    own (an Energy Tank, a Missile Container)."""
+    own (an Energy Tank, a Missile Container); and a trap, any game's, which looks important
+    (the owner's choice, 2026-11-11; client/aplabels.py)."""
+    if item is not None and item.trap:
+        return True
     if item is None or not item.advancement:
         return False
     return not (item.game == ZexionItem.game and code_of.get(item.name) in SUPPLIES)
@@ -995,8 +998,8 @@ class ZexionWorld(World):
         """The item code the game holds at each location: this world's own item as its game ID
         (a progressive weapon as the weapon; Scrap Energy and Chunk as Scrap Metal), FOREIGN or
         FOREIGN_PROGRESSION for another world's item and for this world's own OS Install Disk,
-        FOREIGN for this world's own trap (trap_locations), and Scrap Metal at a left-out
-        location."""
+        FOREIGN_PROGRESSION for this world's own trap too (trap_locations), and Scrap Metal at a
+        left-out location."""
         out = []
         for i in range(len(self.location_cells)):
             if i not in self.kept_locations:
@@ -1011,7 +1014,7 @@ class ZexionWorld(World):
                 out.append(FOREIGN_PROGRESSION)
                 continue
             if code in TRAPS:
-                out.append(FOREIGN)  # minor on the map; the client labels it with its name
+                out.append(FOREIGN_PROGRESSION)  # important, as the client disguises it
                 continue
             code = DRAWN_AS.get(code, code)  # an Intel Chip: the Area Map
             # Scrap Energy and Chunk, and an item that is not the game's, are handed out as Scrap

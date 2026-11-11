@@ -99,6 +99,10 @@ class TestClientCodes(unittest.TestCase):
         self.assertEqual(newgame.START_KEY_OPTIONS, custom.START_KEYS)
         # A scouted item's progression flag, which the client keeps without Archipelago.
         self.assertEqual(aplabels.PROGRESSION, ItemClassification.progression)
+        self.assertEqual(aplabels.TRAP, ItemClassification.trap)
+        # A trap is disguised as a Zexion upgrade held once (client/aplabels.py).
+        self.assertLessEqual(set(aplabels.DISGUISES), items.PROGRESSION - items.SUPPLIES)
+        self.assertFalse(set(aplabels.DISGUISES) & (set(items.KEY_CODES) | set(items.PROGRESSIVE)))
         # The client writes every other item's byte as 1 at most.
         self.assertEqual(reconcile.COUNTED, items.SUPPLIES | {items.SCRAP_METAL})
         self.assertEqual(reconcile.COUNTED, starting.COUNTED)  # pool_duplicates counts the same
@@ -239,12 +243,12 @@ class TestClientReadsTheSlotData(ZexionTestBase):
         foreign = aplabels.foreign_locations(slot["location_items"], kept)
         self.assertLessEqual(set(foreign), kept)
 
-        # This world's own traps: stand-ins, labeled as foreign, each named in trap_locations.
+        # This world's own traps: important stand-ins, labeled, each named in trap_locations.
         traps = {i: code for i, code in slot["trap_locations"]}
         self.assertLessEqual(set(traps), set(foreign))
         self.assertLessEqual(set(traps.values()), ids.TRAPS)
         for i in traps:
-            self.assertEqual(plan.location_items[i], ids.STAND_IN)
+            self.assertEqual(plan.location_items[i], ids.STAND_IN_PROGRESSION)
 
         if state is not None:  # all of the above together, as the client connects
             connection = state.Connection.from_slot_data(slot, 0, 1)

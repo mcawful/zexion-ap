@@ -6,10 +6,13 @@ from client import aplabels as al
 from client import ids
 
 
-def test_a_trap_is_labeled_by_its_name() -> None:
-    # This player's own, by name alone; another Zexion player's, then whom it is for.
-    assert al.trap_label(ids.DISRUPTION_TRAP) == "Disruption Trap"
-    assert al.trap_label(ids.DISORIENT_TRAP, "Bob") == "Disorient Trap\nfor Bob"
+def test_a_trap_is_disguised_as_a_zexion_upgrade() -> None:
+    # One per location; this player's own with no one named, another Zexion player's for them.
+    assert al.trap_disguise(0) == al.DISGUISES[0]
+    assert al.trap_disguise(len(al.DISGUISES) + 3) == al.DISGUISES[3]
+    assert al.trap_label(3) == f"@{al.DISGUISES[3]}"
+    assert al.trap_label(3, "Bob") == f"@{al.DISGUISES[3]}\nfor Bob"
+    assert ids.TRAPS.isdisjoint(al.DISGUISES)
 
 
 def lines(text: str) -> list[str]:

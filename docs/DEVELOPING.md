@@ -85,10 +85,10 @@ How the helper works: [`native/README.md`](../native/README.md).
 - **The helper**: `zexion_ap.dll`, built from `native/`. **The proxy**: `version.dll`, built
   from `native/proxy/`. Players call the two together "the mod".
 - **Stand-in**: the Scrap Energy (47) or Scrap Chunk (48) the game holds at a location whose
-  item it cannot hand out itself: another player's item (48 if it is progression, except another
-  Zexion player's supplies, 47 and minor as the game marks this player's own:
+  item it cannot hand out itself: another player's item (48 if it is progression or a trap,
+  except another Zexion player's supplies, 47 and minor as the game marks this player's own:
   `world.important_elsewhere`), or, with the OS Install Disks goal, one of this world's own disks
-  (48), or one of this world's own traps (47). The helper restyles them.
+  (48), or one of this world's own traps (48). The helper restyles them.
 - **Frame call**: one call the game makes, once per frame, through the hooked import; the
   helper runs its frame function in it.
 - **B1**: the only game build supported so far (Steam build 23943567:
@@ -136,13 +136,15 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   disconnected dropping once: 2026-11-09 ("Received scrap"; what the drops were and gave not
   described).
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
-- Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch, set off
-  after the trap's popup; this world's own, found in it, after the game's popup): 2026-11-11
-  (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one held through the
-  pause, one received while disconnected (once), this world's own and another Zexion player's
-  in this world, AILMENTS reduced and immune ("Traps"; `docs/re/memory.md`, "Ailments: the
-  script step that sets them"). Not run in game: one held through a death, a reload, the
-  ending or RETURN HOME, and the traps held at a slot's first connection (since 57381bf).
+- Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their
+  first design (after the trap's popup, the enemies' durations, a shield and AILMENTS applying)
+  run in game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a
+  shield, one held through the pause, one received while disconnected (once), this world's own
+  and another Zexion player's in this world, AILMENTS REDUCED and IMMUNE ("Traps";
+  `docs/re/memory.md`, "Ailments: the script step that sets them"). Not run in game: the
+  design since (at once, about 12 s, past a shield, AILMENTS's tests patched while one runs,
+  disguised as a Zexion upgrade), one held through a death, a reload, the ending or RETURN
+  HOME, and the traps held at a slot's first connection.
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,

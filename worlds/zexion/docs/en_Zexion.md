@@ -239,6 +239,8 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   if the item is important. Picking it up says PROGRESSION ITEM or AP ITEM, and whom it is for
   (FOR ALICE; in English(HD), Progression Item or AP Item, for Alice).
 - Another Zexion player's item looks like the item itself.
+- A trap looks important: another game's like its progression items, and a Zexion trap like a
+  Zexion upgrade ("What do traps do?").
 - On the map, other players' important items and your OS Install Disks are marked as important
   items (another Zexion player's supplies, the Energy Tanks, Missile Containers, Mega Bombs and
   Missile and Bomb Boxes, stay minor, as yours do). Once you have seen an item, the cursor says
@@ -275,37 +277,40 @@ an item link aren't kept this way), has no square in your world and reveals noth
 
 ## What do traps do?
 
-Traps take the place of some of your Scrap: 15% of it by default, so usually 2 or 3 (1 to 4) in an Easy,
-Standard or OHKO seed (Trap Percentage, `trap_percentage`; 0 for none). Each is one of two, picked by
-their weights (`disruption_trap_weight`, `disorient_trap_weight`). With the OS Install Disks
-goal the disks take the Scrap first, so there may be few traps or none. Traps are filler, so
-excluded locations can hold them.
+Traps take the place of some of your Scrap: 15% of it by default, so usually 2 or 3 (1 to 4) in
+an Easy, Standard or OHKO seed (Trap Percentage, `trap_percentage`; 0 for none). Each is one of
+two, picked by their weights (`disruption_trap_weight`, `disorient_trap_weight`). With the OS
+Install Disks goal the disks take the Scrap first, so there may be few traps or none. Traps are
+filler, so excluded locations can hold them.
 
-- **Disruption Trap:** what a Phazo's touch does. For about four seconds your energy weapons
-  don't fire and your charge stays empty; missiles and Mega Bombs still work, and your HUD
-  flashes. With an Energy Shield up, the shield takes the hit instead and loses a little
-  strength.
-- **Disorient Trap:** what a Balorb's wave does: its sound, then for about four seconds your
+- **Disruption Trap:** what a Phazo's touch does, for about 12 seconds (a Phazo's lasts about 4):
+  your energy weapons don't fire and your charge stays empty; missiles and Mega Bombs still
+  work, and your HUD flashes. An Energy Shield doesn't stop it.
+- **Disorient Trap:** what a Balorb's wave does, for about 12 seconds: its sound, then your
   controls are reversed, with swirls around your head; a flash and a sound come just before it
   wears off.
 
-A trap sent to you pops up as any item does, with who sent it (DISRUPTION TRAP, FROM ALICE). It
-starts once that popup has closed and you have stood on one map square for a second, in play:
-it waits through the pause menu, other menus, a death or a reload, and through RETURN HOME WITH
-THE DISKS? and the game's ending (it comes at your next load then). Each trap happens at most
-once, including one sent while your client was closed, or before you first connected (it comes
-after its popup when you connect); if the client closes just as a trap goes off, it may come
-again, and with no mod running a trap sent to you does nothing. A trap in your own world shows
-the Archipelago logo, and picking it up names it; it starts once that popup has closed, or, if
-you picked it up with the client closed, when you next connect with that save loaded. Another Zexion player's trap in your world shows its name and whom it is
-for. A second trap of the same kind during the first starts its four seconds again.
+A trap goes off as soon as it reaches you, as its popup shows (DISRUPTION TRAP, FROM ALICE),
+once you are in play: it waits through the pause menu, other menus, a death or a reload, and
+through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load then). Each
+trap happens at most once, including one sent while your client was closed, or before you first
+connected (it comes when you connect); if the client closes just as a trap goes off, it may come
+again, and with no mod running a trap sent to you does nothing. A second trap of the same kind
+during the first starts its 12 seconds again. The game's AILMENTS assist setting (pause, OPTIONS,
+ASSIST, where assists are allowed) doesn't change traps: while one runs, it is left out for that
+effect, so an enemy's touch of the same kind during a trap isn't shortened by it either.
 
-The game's AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) changes
-them as it changes the enemies': at its second setting the Disruption Trap is a third as long and
-the Disorient Trap about a second; at its third, the Disruption Trap ends at once and the Disorient
-Trap does nothing. Other games' traps sent to you do nothing in Zexion. Checked in the game: both
-traps sent to you, a shield taking a Disruption Trap, one sent while paused or while the client
-was closed, your own trap and another player's in your world, and AILMENTS's two settings.
+In a Zexion world, a trap looks like an important item: one of yours, or another Zexion
+player's, looks like a Zexion upgrade (its icon and name, and whom it is for if it isn't yours),
+and another game's trap like that game's progression items. Picking up your own sets it off at
+once; if you picked it up with the client closed, it goes off when you next connect with that
+save loaded. Other games' traps sent to you do nothing in Zexion.
+
+Checked in the game on an earlier build (each trap after its popup, about four seconds, a shield
+taking a Disruption Trap, AILMENTS shortening and cancelling them, your own shown by its name):
+both traps sent to you, one sent while paused or while the client was closed, your own trap and
+another player's in your world. Not yet checked in the game: traps as they are now (at once,
+longer, past a shield and AILMENTS, and their look).
 
 ## Can I use the assist menu?
 

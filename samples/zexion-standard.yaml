@@ -232,11 +232,12 @@ Zexion:
     # the disks take theirs first, so a disks seed may have few or none. 0: no traps. Which trap
     # each one is: the two weights below.
     # 
-    # A trap does what the enemy it copies does on touch, for about four seconds: the Disruption
-    # Trap is the Phazo's (your energy weapons don't fire; missiles and Mega Bombs do; an Energy
-    # Shield up takes the hit instead), the Disorient Trap the Balorb's wave (your controls are
-    # reversed). The game's AILMENTS assist setting shortens or cancels them as it does the
-    # enemies'. A trap sent to you starts once its popup has closed and you are in play.
+    # A trap does what the enemy it copies does on touch, for about 12 seconds (the enemies' last
+    # about 4): the Disruption Trap is the Phazo's (your energy weapons don't fire; missiles and
+    # Mega Bombs do; an Energy Shield doesn't stop it), the Disorient Trap the Balorb's wave (your
+    # controls are reversed). The game's AILMENTS assist setting doesn't change traps. A trap
+    # goes off as it reaches you, with its popup, once you are in play. In a Zexion world a trap
+    # looks like a Zexion upgrade.
     #
     # You can define additional values between the minimum and maximum values.
     # Minimum value is 0
@@ -249,7 +250,7 @@ Zexion:
 
   disruption_trap_weight:
     # How likely each trap is to be a Disruption Trap (the Phazo's touch: your energy weapons
-    # don't fire for about four seconds), against the Disorient Trap's weight. 0: none.
+    # don't fire for about 12 seconds), against the Disorient Trap's weight. 0: none.
     #
     # You can define additional values between the minimum and maximum values.
     # Minimum value is 0
@@ -262,7 +263,7 @@ Zexion:
 
   disorient_trap_weight:
     # How likely each trap is to be a Disorient Trap (the Balorb's wave: your controls are
-    # reversed for about four seconds), against the Disruption Trap's weight. 0: none. With both
+    # reversed for about 12 seconds), against the Disruption Trap's weight. 0: none. With both
     # weights 0 there are no traps.
     #
     # You can define additional values between the minimum and maximum values.

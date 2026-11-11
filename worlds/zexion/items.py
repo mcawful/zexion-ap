@@ -17,11 +17,11 @@ player's locations, where it would never be received: worlds/zexion/world.py); a
 (DRAWN_AS) and the helper renames INTEL CHIP (docs/re/memory.md, "Intel Chips").
 
 Two traps are not the game's either, and never held: Disruption Trap (102), the Phazo's touch
-(energy weapons don't fire for about four seconds), and Disorient Trap (103), the Balorb's wave
-(controls reversed for about four seconds). The helper sets the game's timers for them as the
-game's own touch does (docs/re/memory.md, "The Phazo's disruption" and "The Balorb's
-disorienting wave"; native/README.md, "Traps"). They take the place of some of the pool's Scrap
-(the Trap Percentage option: world.py, ``add_traps``).
+(energy weapons don't fire), and Disorient Trap (103), the Balorb's wave (controls reversed),
+each for about 12 seconds. The helper sets the game's timers for them as the game's own touch
+does, but longer, past an Energy Shield and with AILMENTS left out (docs/re/memory.md, "The
+Phazo's disruption" and "The Balorb's disorienting wave"; native/README.md, "Traps"). They take
+the place of some of the pool's Scrap (the Trap Percentage option: world.py, ``add_traps``).
 """
 
 from __future__ import annotations

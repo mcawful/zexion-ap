@@ -22,7 +22,15 @@ CHECK_BYTES = 16  # of each function, for the helper's check (native/src/offline
 MAX_FILE = 48 * 1024  # the helper's kMaxFile: the pipe takes no message much over 64 KB
 # Code the helper itself patches while it runs: its bytes are not the game's to check.
 NOT_CHECKED = frozenset(
-    {"keys_branch", "popup_width_code", "ending_unlocks", "seen_marker_code", "text_cut_code"}
+    {
+        "keys_branch",
+        "popup_width_code",
+        "ending_unlocks",
+        "seen_marker_code",
+        "text_cut_code",
+        "ailments_hit_code",
+        "ailments_wave_code",
+    }
 )
 
 

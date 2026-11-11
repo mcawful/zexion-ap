@@ -208,16 +208,16 @@ def test_a_secret_shuffle_seeds_offline_table_is_in_the_games_order() -> None:
     assert lines[1] == offline.seed_text(p.table, p.start, False, False, None, None).splitlines()[1]
 
 
-def test_traps_are_labeled_by_name_but_another_games() -> None:
-    # Location 3 holds a stand-in: this player's own trap there is named alone; another Zexion
-    # player's, for them; another game's trap is an AP item, as any of its items is.
+def test_traps_look_important() -> None:
+    # Location 3 holds a stand-in: this player's own trap there is a Zexion upgrade, alone;
+    # another Zexion player's, for them; another game's trap a progression item.
     ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
     loc = ids.LOCATION_ID_BASE + 3
     cell = ctx.conn.plan.cells[3]
     for player, game_name, code, text in (
-        (1, "Zexion", ids.DISRUPTION_TRAP, "Disruption Trap"),
-        (2, "Zexion", ids.DISORIENT_TRAP, "Disorient Trap\nfor Bob"),
-        (2, "Other", ids.DISORIENT_TRAP, aplabels.label(False, "Bob")),
+        (1, "Zexion", ids.DISRUPTION_TRAP, aplabels.trap_label(3)),
+        (2, "Zexion", ids.DISORIENT_TRAP, aplabels.trap_label(3, "Bob")),
+        (2, "Other", ids.DISORIENT_TRAP, aplabels.label(True, "Bob")),
     ):
         ctx.slot_info = {2: types.SimpleNamespace(game=game_name)}
         ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + code, loc, player, 0b100)}
