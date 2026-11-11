@@ -741,9 +741,10 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   of the 16 upgrades, which the owner may then hold, or which may not be in the seed. A trap shown
   as a disk is never counted as one: the client counts disks from those received and the slot's
   own disk locations (`client/discs.py`), which never hold a trap. A trap shown as one of this
-  player's own keys has no key marker on the map, which a real one in this world has once the
-  scanner has set flag 39 (`docs/re/memory.md`, "Keys, the gates and the key markers"): a tell
-  the owner accepted; by the code, not run in game. See `client/aplabels.py`.
+  player's own keys has no key marker on the map, which a real one in this world has once flag
+  39 is set, by the scanner or from the start by a map revealed in full (flag 291, Hints
+  Revealed; `docs/re/memory.md`, "Keys, the gates and the key markers" and "The scanner"): a
+  tell the owner accepted; by the code, not run in game. See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of

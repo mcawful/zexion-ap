@@ -311,11 +311,11 @@ a Zexion trap says what it is (DISORIENT TRAP, and FOR BOB if it's Bob's), and o
 like an OS Install Disk never counts as a disk; another game's trap still says PROGRESSION ITEM.
 If none of those is in the seed (its owner starts with, or leaves out, every upgrade, and has no
 key or disk in the seed), a Zexion trap looks like any upgrade: maybe one they already have, or
-one not in the seed. Once the scanner has shown your keys on the map, a trap that looks like one
-of your keys has no key marker there (not yet checked in the game). Picking up your own sets it
-off at once; if you picked it up with the client
-closed, it goes off when you next connect with that save loaded. Other games' traps sent to you
-do nothing in Zexion.
+one not in the seed. Once the scanner, or a map revealed in full (Hints Revealed, in Custom
+mode), has shown your keys on the map, a trap that looks like one of your keys has no key marker
+there (not yet checked in the game). Picking up your own sets it off at once; if you picked it
+up with the client closed, it goes off when you next connect with that save loaded. Other games'
+traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or
