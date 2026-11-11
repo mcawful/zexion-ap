@@ -66,6 +66,9 @@ struct Label {
     // "@N NAME": item N's icon, but this name for it (this player's own OS Install Disk, which
     // the game's record calls DATA DISC).
     std::string item_name;
+    // "@N/TEXT": item N's look and name (in the world, on the map's cursor), but the pickup popup
+    // reads TEXT alone, with no icon, then whom it is for (a Zexion trap disguised as item N).
+    std::string pickup;
     bool pending() const { return item >= 0 && first.empty(); }
     std::string first_text() const;
     // The stand-in's name in the 8 x 8 font, set by lay_out: the first line (glyph first) and

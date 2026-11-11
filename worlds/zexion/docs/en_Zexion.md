@@ -291,26 +291,27 @@ filler, so excluded locations can hold them.
   wears off.
 
 A trap goes off as soon as it reaches you, as its popup shows (DISRUPTION TRAP, FROM ALICE),
-once you are in play: it waits through the pause menu, other menus, a death or a reload, and
+once you are in play (a second of the same kind shows its popup as it starts): it waits through the pause menu, other menus, a death or a reload, and
 through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load then). Each
 trap happens at most once, including one sent while your client was closed, or before you first
 connected (it comes when you connect); if the client closes just as a trap goes off, it may come
 again, and with no mod running a trap sent to you does nothing. A second trap of the same kind
 waits for the first to end and then goes off, so each lasts its full 12 seconds. The game's
-AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change traps: while one runs, it is left out for that
-effect, so an enemy's touch of the same kind during a trap isn't shortened by it either.
+AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change
+traps: while one runs, it is left out for that effect, so an enemy's touch of the same kind
+during a trap isn't shortened by it either.
 
 In a Zexion world, a trap looks like an important item: one of yours, or another Zexion
-player's, looks like a Zexion upgrade (its icon and name, and whom it is for if it isn't yours),
-and another game's trap like that game's progression items. Picking up your own sets it off at
-once; if you picked it up with the client closed, it goes off when you next connect with that
+player's, looks like a Zexion upgrade, on the map too, and another game's trap like that
+game's progression items. Picking one up says what it is (DISORIENT TRAP, and FOR BOB if it's
+Bob's). Picking up your own sets it off at once; if you picked it up with the client closed, it goes off when you next connect with that
 save loaded. Other games' traps sent to you do nothing in Zexion.
 
-Checked in the game on an earlier build (each trap after its popup, about four seconds, a shield
-taking a Disruption Trap, AILMENTS shortening and cancelling them, your own shown by its name):
-both traps sent to you, one sent while paused or while the client was closed, your own trap and
-another player's in your world. Not yet checked in the game: traps as they are now (at once,
-longer, past a shield and AILMENTS, and their look).
+Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
+row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or
+while the client was closed (on an earlier build); your own trap and other players' in your
+world, and their look. Not yet checked in the game: the pickup popup naming a trap, and a second
+trap's popup waiting for it.
 
 ## Can I use the assist menu?
 

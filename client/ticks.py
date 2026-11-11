@@ -195,12 +195,12 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
         slot = ctx.slot_info.get(info.player)
         code = info.item - ITEM_ID_BASE
         if info.player == ctx.slot and code in ids.TRAPS:
-            text = aplabels.trap_label(i)  # this player's own trap, disguised
+            text = aplabels.trap_label(i, code)  # this player's own trap, disguised
         elif info.player == ctx.slot and code in ids.GAME_ITEMS:
             text = aplabels.own_label(code, discs.NAME)  # this player's own OS Install Disk
             own += 1
         elif slot is not None and slot.game == ctx.game and code in ids.TRAPS:
-            text = aplabels.trap_label(i, player)  # another Zexion player's trap, disguised
+            text = aplabels.trap_label(i, code, player)  # another Zexion player's, disguised
         elif slot is not None and slot.game == ctx.game and (look := aplabels.zexion_look(code)):
             # Another Zexion player's own item, whatever that player's settings.
             item, name = look

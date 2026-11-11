@@ -405,9 +405,14 @@ private:
         std::shared_ptr<const OfflineSeed> origin;
     };
     std::deque<Drop> drops_;
-    // Traps to set off (pump_traps), each with the save it was for; lost, as queued popups are,
-    // with the helper.
-    std::deque<Drop> traps_;
+    // Traps to set off (pump_traps), each with the save it was for and a received one's popup,
+    // queued as the trap goes off; lost, as queued popups are, with the helper.
+    struct QueuedTrap {
+        uint8_t item;
+        std::shared_ptr<const OfflineSeed> origin;
+        std::optional<Popup> popup;
+    };
+    std::deque<QueuedTrap> traps_;
     std::string trap_status_ = "none";
     // Sets off trap `item` now: "set", "shield" or "nothing" (trap_status).
     std::string run_trap(uint8_t item);

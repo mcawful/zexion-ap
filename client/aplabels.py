@@ -6,11 +6,11 @@ minor: world.important_elsewhere), and 48 for this player's own traps and, with 
 Disks goal, disks too. The client scouts those locations and sends the helper a label per map cell:
 "Progression Item" or "AP Item" over "for Alice", ``@N`` for another Zexion player's item
 (its own icon and name), which the pickup popup shows (native/README.md; docs/re/memory.md,
-"Other players' items"). A trap looks important: another game's as a progression item, a
-Zexion trap (this player's own, which the world puts a stand-in for too, or another Zexion
-player's) as a Zexion upgrade (``trap_label``). Labels keep only what the game's 8 x 8 font draws,
-24 characters a line, in the case they are written in: the helper shows them in capitals but in
-English(HD).
+"Other players' items"). A trap looks important: another game's as a progression item, a Zexion
+trap (this player's own, which the world puts a stand-in for too, or another Zexion player's) as
+a Zexion upgrade, its pickup popup naming the trap (``trap_label``). Labels keep only what the
+game's 8 x 8 font draws, 24 characters a line, in the case they are written in: the helper shows
+them in capitals but in English(HD).
 Pure functions; client/ticks.py (labels_tick, foreign_labels) sends them.
 """
 
@@ -103,11 +103,14 @@ def trap_disguise(location: int) -> int:
     return DISGUISES[location % len(DISGUISES)]
 
 
-def trap_label(location: int, player_name: str = "") -> str:
-    """The label for a Zexion trap at ``location``: the upgrade it is disguised as (its icon and
-    the game's name, "@N"), then whom it is for, or nothing more for this player's own."""
-    item = trap_disguise(location)
-    return zexion_label(item, player_name) if player_name else own_label(item)
+def trap_label(location: int, code: int, player_name: str = "") -> str:
+    """The label for Zexion trap ``code`` at ``location``: the upgrade it is disguised as in the
+    world and on the map ("@N"), with the trap's name in its pickup popup ("@N/NAME", in the
+    font's characters, no icon: the owner's choice), then whom it is for, or nothing more for
+    this player's own."""
+    name = " ".join(_font_words(ids.TRAP_NAMES[code]))
+    first = f"@{trap_disguise(location)}/{name}"
+    return f"{first}\n{_for(player_name)}" if player_name else first
 
 
 def zexion_look(code: int) -> tuple[int, str] | None:

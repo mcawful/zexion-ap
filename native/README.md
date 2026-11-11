@@ -521,8 +521,8 @@ dealt on the next load ("DeathLink").
     so the duration is the same); and where the sounds play: each at the player's position,
     where the game plays 26 at the touching object's and 82 at a point on the screen.
 - **This world's own**, found in it: the game hands out an important stand-in there, labeled as
-  a Zexion upgrade ("Other players' items"; `client/aplabels.py`, `trap_label`), and its pickup
-  popup shows that; the client then sends `trap ITEM` in an `apply` (`client/ticks.py`,
+  a Zexion upgrade, whose pickup popup names the trap (`@N/NAME`: "Other players' items";
+  `client/aplabels.py`, `trap_label`); the client then sends `trap ITEM` in an `apply` (`client/ticks.py`,
   `followups_tick`), which queues the trap with no popup of the helper's, to go off at once as a
   received one does. One found with no client (the offline look shows its label) is sent when a
   client next connects with that save loaded (the follow-ups take this world's finds made without
@@ -535,8 +535,10 @@ dealt on the next load ("DeathLink").
   seed's save or a normal save: it waits). One of each kind at a time (the owner's choice): a
   trap waits while one of its kind that a trap started still runs, and starts as it runs out, so
   traps that arrive together (after a reconnect, say) each get their 12 s, one after another; an
-  enemy's own effect does not hold one (the trap restarts it, as the enemy's touch would). Held through the pause and every menu (not in play), a
-  death (energy 0) and a load. A cutscene other than the ending's is not told apart from play:
+  enemy's own effect does not hold one (the trap restarts it, as the enemy's touch would). A
+  received trap's popup goes with it: queued as the trap goes off, ahead of the other popups, so
+  one waiting for another of its kind shows its popup only as it starts (the owner's choice).
+  Held through the pause and every menu (not in play), a death (energy 0) and a load. A cutscene other than the ending's is not told apart from play:
   none was measured (`docs/re/memory.md`, "Telling play from menus, the title screen and death").
   Without the AILMENTS keys (an offline cache written before the traps, configuring a helper that
   a client has not configured since), a trap runs with AILMENTS as the game applies it.
@@ -573,8 +575,19 @@ set off after it ("popup then trap"); one sent while the client was disconnected
 reconnect, not again after a second; this world's own Disruption Trap after its pickup popup,
 then labeled by its name; another Zexion player's Disorient Trap in this world, nothing to the
 player; a Disorient Trap with AILMENTS REDUCED ("about a second") and IMMUNE ("got the sound but
-no effect"). The owner then asked for the design above. **Not run in game:** traps as they are
-now (at once, 660 frames, past a shield, the AILMENTS patches, the disguised look), a trap
+no effect"). The owner then asked for the design above. **Run in game as it is now** but for
+the pickup text and the popup waiting with its trap (2026-11-11, B1, `zexion_ap.dll`
+`a5647085…` built from 81dd8cc, the seed `lab/ap/live60` with a Bumper Stickers player, slot 7,
+the owner's reports; `lab/ingame-138-traps-recheck.md` in the traps worktree): this world's own
+Disruption Trap, its important marker and disguised look, going off at once for about 12 s; a
+received one with its popup, at once, about 12 s; two Disorient Traps at once, one after the
+other; a Disruption Trap past a shield, whose strength read 80 after (a full one); a Disorient
+Trap with AILMENTS IMMUNE and a Disruption Trap with REDUCED, each its full length, the
+disruption's patch read in memory 2 s in (both `jne`s `EB`, the other timer's untouched) and put
+back after; another game's trap as PROGRESSION ITEM FOR BUB and another Zexion player's
+disguised, nothing to the player; and the three AILMENTS targets resolved live. The owner then
+asked for the pickup popup to name the trap (it named the disguise) and for a queued trap's
+popup to wait for it: both since, stand-in tests only. **Not run in game:** those two, a trap
 through a death, a reload, the ending or RETURN HOME, and the traps held at a slot's first
 connection.
 
@@ -682,9 +695,10 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   that name: this player's own OS Install Disk, or another Zexion player's disk, Area Map or
   Intel Chip). A trap looks important: the world gives it the progression stand-in (48),
   another game's labeled as its progression items are, and a Zexion trap, this player's own or
-  another Zexion player's, as `@N` of a Zexion upgrade it is disguised as, one per location
-  (`aplabels.trap_label`), so it looks like that item ("Other Zexion players' items, as
-  themselves"; "Traps"). See `client/aplabels.py`.
+  another Zexion player's, as `@N/NAME`: a Zexion upgrade it is disguised as, one per location
+  (`aplabels.trap_label`), so it looks like that item and the map's cursor names it so ("Other
+  Zexion players' items, as themselves"), but its pickup popup reads NAME, the trap's, with no
+  icon, then whom it is for (`Label::pickup`; "Traps"). See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of

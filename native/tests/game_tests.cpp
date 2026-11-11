@@ -749,6 +749,21 @@ void test_zexion_item_labels() {
     std::map<int, zap::Label> bad;
     zap::parse_labels("ap_labels\nlabel 8 2 40333658", bad);  // "@36X": not an item label
     check(bad[2 * 54 + 8].item == -1 && bad[2 * 54 + 8].item_name.empty(), "@36X is text");
+
+    // "@36/Disorient Trap" for Bob: a trap disguised as the box. The look and the map's name
+    // stay the box's; the pickup popup reads the trap's name alone, no icon, then whom it is for.
+    std::map<int, zap::Label> trap;
+    check(zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@36/Disorient Trap\nfor Bob"), trap)
+                  .empty() &&
+              trap[2 * 54 + 8].item == 36 && trap[2 * 54 + 8].pickup == "Disorient Trap" &&
+              trap[2 * 54 + 8].item_name.empty() && trap[2 * 54 + 8].who == "for Bob",
+          "a disguised trap's label: the item, its pickup text, whom it is for");
+    game.set_labels(trap);
+    game.watch_ap_items();
+    const zap::Label& shown = game.labels().at(2 * 54 + 8);
+    check(record_name(47) == "DISORIENT TRAP" "   FOR BOB",
+          "the pickup names the trap, no icon, whom it is for centered under it");
+    check(zap::map_name(shown) == "MISSILE BOX", "the map's cursor keeps the disguise");
     game.restore_ap_items();
 }
 
@@ -1700,20 +1715,29 @@ void test_received_traps() {
 
     // Several of one kind at once (a reconnect's): one at a time, each starting as the last runs
     // out; one of the other kind does not wait for them.
+    for (int i = 0; i < 200; ++i) game.pump_popups();
+    const int shown_before = g_messages;
     apply(game, "apply\npopup 102 FROM BOB\npopup 102 FROM BOB\npopup 103 FROM BOB");
+    check(game.queued_popups() == 0, "their popups go with the traps");
     game.pump_traps(8000);
-    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 2, "the first set");
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 2 &&
+              game.queued_popups() == 1,
+          "the first set, its popup queued, the waiting ones' not");
+    for (int i = 0; i < 200; ++i) game.pump_popups();
+    check(g_messages == shown_before + 1, "the first's popup shown");
     field<int16_t>(0xDC2) = 300;  // counting down
     game.watch_all(&chosen);
     game.pump_traps(8000);
     check(field<int16_t>(0xDC2) == 300 && field<int16_t>(0xDC4) == 660 &&
-              game.queued_traps() == 1,
-          "the second waits for it; the other kind goes ahead");
+              game.queued_traps() == 1 && game.queued_popups() == 1,
+          "the second waits for it, its popup too; the other kind goes ahead, with its popup");
+    for (int i = 0; i < 200; ++i) game.pump_popups();
     field<int16_t>(0xDC2) = 0;  // run out
     game.watch_all(&chosen);
     game.pump_traps(8000);
-    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0 && hit_jumps_are(0xEB),
-          "then the second, its full 660, patched again");
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0 && hit_jumps_are(0xEB) &&
+              game.queued_popups() == 1,
+          "then the second, its full 660, patched again, its popup now");
     field<int16_t>(0xDC2) = 0;
     field<int16_t>(0xDC4) = 0;
     game.watch_all(&chosen);

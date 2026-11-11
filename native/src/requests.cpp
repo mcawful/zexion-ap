@@ -271,7 +271,8 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
         // Up to two lines (the item, then whom it is for), each kept to the font's characters
         // and to its line: the first after the logo glyph. A first line "@N" names item N of
         // another Zexion player, made from its record later (Game::set_labels); "@N NAME" gives
-        // it this name instead of the record's (this player's own OS Install Disk).
+        // it this name instead of the record's (this player's own OS Install Disk); "@N/TEXT"
+        // keeps its look and name but has the pickup popup read TEXT (a disguised trap).
         std::vector<std::string> parts{std::string()};
         Label label;
         size_t from = 0;
@@ -280,15 +281,20 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
             size_t i = 1;
             while (i < raw.size() && i < 4 && std::isdigit(raw[i])) n = n * 10 + (raw[i++] - '0');
             size_t end = i;
-            std::string item_name;
-            if (i > 1 && i < raw.size() && raw[i] == ' ') {
+            std::string item_name, pickup;
+            if (i > 1 && i < raw.size() && (raw[i] == ' ' || raw[i] == '/')) {
+                std::string& text = raw[i] == ' ' ? item_name : pickup;
                 for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
-                    keep_font_char(item_name, raw[end], kFontPunctuation);
+                    keep_font_char(text, raw[end], kFontPunctuation);
+                }
+                if (pickup.size() > static_cast<size_t>(kGamePopupWidth)) {
+                    pickup.resize(kGamePopupWidth);
                 }
             }
             if (i > 1 && n < record::kCount && (end == raw.size() || raw[end] == '\n')) {
                 label.item = n;
                 label.item_name = std::move(item_name);
+                label.pickup = std::move(pickup);
                 from = end;
             }
         }

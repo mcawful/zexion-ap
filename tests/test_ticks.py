@@ -215,8 +215,8 @@ def test_traps_look_important() -> None:
     loc = ids.LOCATION_ID_BASE + 3
     cell = ctx.conn.plan.cells[3]
     for player, game_name, code, text in (
-        (1, "Zexion", ids.DISRUPTION_TRAP, aplabels.trap_label(3)),
-        (2, "Zexion", ids.DISORIENT_TRAP, aplabels.trap_label(3, "Bob")),
+        (1, "Zexion", ids.DISRUPTION_TRAP, aplabels.trap_label(3, ids.DISRUPTION_TRAP)),
+        (2, "Zexion", ids.DISORIENT_TRAP, aplabels.trap_label(3, ids.DISORIENT_TRAP, "Bob")),
         (2, "Other", ids.DISORIENT_TRAP, aplabels.label(True, "Bob")),
     ):
         ctx.slot_info = {2: types.SimpleNamespace(game=game_name)}

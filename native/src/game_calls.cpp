@@ -367,12 +367,18 @@ std::string Game::apply(const Batch& batch) {
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
         popup.intel = batch.intel && !popup.bare && popup.item == kAreaMapItem;
-        // A received trap: set off now (pump_traps, this frame), not after its popup.
-        if (trap_popup(popup) && popup.counted) traps_.push_back({popup.item, popup.origin});
+        // A received trap: set off now (pump_traps, this frame), its popup with it: one waiting
+        // for another of its kind keeps its popup until it goes off (the owner's choice).
+        if (trap_popup(popup) && popup.counted) {
+            const uint8_t item = popup.item;
+            std::shared_ptr<const OfflineSeed> from = popup.origin;
+            traps_.push_back({item, std::move(from), std::move(popup)});
+            continue;
+        }
         popups_.push_back(std::move(popup));
     }
     // This world's own traps, found in it: set off at once too (pump_traps).
-    for (uint8_t item : batch.traps) traps_.push_back({item, origin});
+    for (uint8_t item : batch.traps) traps_.push_back({item, origin, std::nullopt});
     return "applied";
 }
 
@@ -502,6 +508,13 @@ std::wstring Game::translated_name(int item, bool own, const std::optional<Loade
 std::wstring Game::hd_label_text(const Label& label, bool first_line, bool icon) const {
     // Another Zexion player's item with no name of the client's: the translation's (ItemNames),
     // the game's own, not a label the helper wrote over a stand-in's (as hd_popup_text).
+    // A disguised trap's pickup popup: its own text alone, no icon (the map's cursor, the first
+    // line, keeps the disguise).
+    if (!first_line && !label.pickup.empty()) {
+        std::wstring out = hd_case(at_, label.pickup);
+        if (!label.who.empty()) out += L'\n' + hd_case(at_, label.who);
+        return out;
+    }
     std::wstring first;
     if (label.item >= 0 && label.item_name.empty()) {
         first = translated_name(label.item, true, loaded_translation(at_));
@@ -642,13 +655,15 @@ void Game::pump_traps(uint64_t now_ms) {
     if (*at_.halt_flag != 0) return;
     // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a
     // trap started still runs, and starts as it ends; an enemy's own effect does not hold it.
-    auto next = std::find_if(traps_.begin(), traps_.end(), [this](const Drop& t) {
+    auto next = std::find_if(traps_.begin(), traps_.end(), [this](const QueuedTrap& t) {
         const bool running = t.item == trap::kDisruption ? trap_hit_ : trap_wave_;
         return origin_loaded(t.origin) && !running;
     });
     if (next == traps_.end()) return;
     const uint8_t item = next->item;
     const std::string outcome = run_trap(item);
+    // Its popup next, ahead of the others queued (shown as soon as the game's last has ended).
+    if (next->popup) popups_.push_front(std::move(*next->popup));
     traps_.erase(next);
     trap_status_ = outcome + " " + std::to_string(item);
     watch_trap_patches();  // before the game's next frame: AILMENTS left out from its first
