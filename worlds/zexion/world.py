@@ -36,6 +36,7 @@ from .items import (
     KEY_CODES,
     KEYS,
     NAMES,
+    SCRAP,
     SCRAP_CHUNK,
     SCRAP_ENERGY,
     SCRAP_METAL,
@@ -75,10 +76,7 @@ CORE_REGION = "The Core"  # where Zexion is grabbed: data.CORE
 # a save at its save point, whichever room the seed starts in (client/discs.py, HOME).
 HOME = data.START_ROOMS[ROOM_NAMES.index("landing_pod")]
 # Filler item codes, in the order a left-out location removes them from the pool.
-FILLER_ORDER = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP)
-# What a trap takes the place of (add_traps): Scrap, which nothing reads, not an Area Map (its
-# reveal, or an Intel Chip's hint) or an Energy Shield.
-TRAP_REPLACES = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)
+FILLER_ORDER = (*SCRAP, AREA_MAP)
 # Stand-ins where the game must not hand out the item: another player's (Scrap Chunk for
 # progression, but not for another Zexion player's supplies: important_elsewhere), this world's
 # own OS Install Disk (Scrap Chunk), or this world's own trap (Scrap Energy). This world's own
@@ -757,7 +755,8 @@ class ZexionWorld(World):
         self.multiworld.itempool += pool
 
     def add_traps(self, codes: list[int]) -> list[int]:
-        """The pool with some of its Scrap (TRAP_REPLACES) as traps: Trap Percentage of the Scrap,
+        """The pool with some of its Scrap (items.SCRAP: nothing reads it, unlike an Area Map's
+        reveal or hint, or an Energy Shield) as traps: Trap Percentage of the Scrap,
         rounded to the nearest whole trap, each drawn by the two weights. Last, after the
         left-out locations and the disks have taken their filler, so neither runs short; and the
         filler's count stays the same, as traps are filler to Archipelago's fill (excludable):
@@ -765,7 +764,7 @@ class ZexionWorld(World):
         and the seed's random draws are as before."""
         options = self.options
         weights = [options.disruption_trap_weight.value, options.disorient_trap_weight.value]
-        scrap = [i for i, code in enumerate(codes) if code in TRAP_REPLACES]
+        scrap = [i for i, code in enumerate(codes) if code in SCRAP]
         count = (len(scrap) * options.trap_percentage.value + 50) // 100
         if not count or not any(weights):
             return codes
@@ -935,12 +934,12 @@ class ZexionWorld(World):
     def trap_locations(self) -> list[list[int]]:
         """The location index and item code of each of this world's own traps in its own
         locations."""
-        out = []
-        for i in sorted(self.kept_locations):
-            item = self.get_location(location_name(i)).item
-            if item is not None and item.player == self.player and code_of.get(item.name) in TRAPS:
-                out.append([i, code_of[item.name]])
-        return out
+        return sorted(
+            [loc.address - LOCATION_ID_BASE, code]
+            for code in TRAPS
+            for loc in self.multiworld.find_item_locations(NAMES[code], self.player)
+            if loc.player == self.player
+        )
 
     def hint_targets(self) -> list[list[int]]:
         """Where each of this player's progression items is, as [player, location id, item

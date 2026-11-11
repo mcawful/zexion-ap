@@ -8,6 +8,13 @@ from fakes import connection, slot_data
 from client import discs, game, ids, native, session, state
 
 
+def test_the_traps_held_at_a_first_connection() -> None:
+    codes = [17, ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
+    assert state.held_traps(None, codes, 0) == [1, 2]
+    assert state.held_traps(None, codes, 2) == [2], "not those the session handed over itself"
+    assert state.held_traps(1, codes, 0) == [], "a stored count: they pop up as new items"
+
+
 def test_this_worlds_own_traps_come_from_the_slot_data() -> None:
     assert connection().traps == {}, "a seed from before the traps lists none"
     conn = connection(trap_locations=[[3, ids.DISRUPTION_TRAP], [40, ids.DISORIENT_TRAP]])

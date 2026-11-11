@@ -1167,7 +1167,8 @@ def assert_disks_took_in_order(test: ZexionTestBase, placed: int) -> None:
 
 
 class TestDiscHuntStandard(ZexionTestBase):
-    options = disks()
+    # No traps: they take the Scrap the disks leave, any of its kinds (test_traps.py).
+    options = {**disks(), "trap_percentage": 0}
 
     def test_the_keys_are_gone_and_the_discs_are_in(self) -> None:
         pool = pool_names(self)

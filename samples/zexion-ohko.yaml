@@ -227,7 +227,7 @@ Zexion:
   trap_percentage:
     # Percentage of the item pool's Scrap (Scrap Metal, Scrap Energy and Scrap Chunk, its
     # filler) that becomes traps, rounded to the nearest whole trap. Easy, Standard and OHKO seeds
-    # have 2 or 3 traps at 15. Only the Scrap left after everything else takes its
+    # usually have 2 or 3 traps at 15 (1 to 4). Only the Scrap left after everything else takes its
     # share becomes traps: the locations the seed leaves out and, with the OS Install Disks goal,
     # the disks take theirs first, so a disks seed may have few or none. 0: no traps. Which trap
     # each one is: the two weights below.

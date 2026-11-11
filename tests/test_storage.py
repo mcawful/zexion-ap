@@ -119,6 +119,29 @@ def test_the_popup_count_waits_for_the_items_to_be_listed() -> None:
     assert current.announced_read and current.announced == 2 and stored(ctx) == [2]
 
 
+def test_traps_held_at_a_slots_first_connection_still_pop_up() -> None:
+    # No count stored: everything held counts as handed over (no flood of old popups), but the
+    # traps among it are kept for their popup, which sets them off (Session.held_traps).
+    conn = connection()
+    ctx = FakeContext(conn)
+    ctx.stored_data[conn.announced_key] = None
+    held = [17, ids.DISRUPTION_TRAP, 46, ids.DISORIENT_TRAP]
+    current = ctx.seed_state.session
+    asyncio.run(storage.announced_tick(ctx, conn, current, types.SimpleNamespace(codes=held)))
+    assert current.announced == 4 and stored(ctx) == [4]
+    assert current.held_traps == [1, 3]
+
+
+def test_a_stored_count_holds_back_no_trap() -> None:
+    conn = connection()
+    ctx = FakeContext(conn)
+    ctx.stored_data[conn.announced_key] = 1
+    codes = [ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
+    current = ctx.seed_state.session
+    asyncio.run(storage.announced_tick(ctx, conn, current, types.SimpleNamespace(codes=codes)))
+    assert current.announced == 1 and current.held_traps == [], "the second pops up as new"
+
+
 def test_a_reconnect_reads_the_count_again_never_below_the_sessions_own() -> None:
     # The session handed 3 over before the connection dropped; the last count stored was 1.
     conn = connection()

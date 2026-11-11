@@ -480,6 +480,19 @@ def test_a_received_trap_is_its_popup_alone_once(with_helper) -> None:
     assert len(helper.requests) == 1, "never again"
 
 
+def test_traps_held_at_the_first_connection_pop_up_once_before_the_rest(with_helper) -> None:
+    # announced_tick counted all three as handed over (no stored count), keeping the trap.
+    session, g, helper, _ = with_helper
+    received, senders = [17, ids.DISORIENT_TRAP, 22], ["Bob", "Alice", "Dan"]
+    session.announced, session.held_traps = 3, [1]
+    session.step(g, received, gap=0, senders=senders)
+    session.step(g, received, gap=0, senders=senders)
+    assert helper.popups() == ["popup 103 from Alice"], "the trap alone, no flood of old popups"
+    assert session.held_traps == [] and session.announced == 3
+    session.step(g, received, gap=0, senders=senders)
+    assert len(helper.requests) == 1, "once"
+
+
 def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:
     # Zenith Thrusters (26) sent again from the console: its byte stays 1.
     session, g, helper, _ = with_helper

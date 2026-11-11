@@ -165,6 +165,11 @@ class Session:
         # has, nothing goes through the helper, and direct writes leave the count as it is.
         self.announced = 0
         self.announced_read = False
+        # The traps among the items a slot held at its first connection (no count stored on the
+        # server: state.held_traps), by index: counted as handed over with the rest, so no flood
+        # of old popups, but each still gets its popup, and so its effect, once, through the
+        # helper (give_through_helper); dropped with direct writes, as received traps are.
+        self.held_traps: list[int] = []
         # The ending: the goal as the previous poll of this load read it (None: not read yet),
         # and whether received items wait because the ending began during this load (its
         # cutscenes read as play). Both cleared when no save of this seed is loaded, and kept
@@ -321,9 +326,11 @@ class Session:
             except native.ReplyLost:
                 # The batch may have been applied and its popups shown: none shown again.
                 self.announced = len(received)
+                self.held_traps = []
                 raise
         if self.announced_read:
             self.announced = len(received)  # direct writes show no popups
+            self.held_traps = []
         granted: dict[int, int] = {}
         try:
             for item, value in result.inventory.items():
@@ -358,7 +365,15 @@ class Session:
         senders: list[str] | None,
         followups: dict[int, str] | None = None,
     ) -> dict[int, int]:
-        popups: list[tuple[int, str] | tuple[int, str, bool]] = []
+        # The traps held at the slot's first connection first: they came before the rest.
+        popups: list[tuple[int, str] | tuple[int, str, bool]] = [
+            (
+                received[i],
+                f"from {senders[i]}" if senders and i < len(senders) and senders[i] else "",
+            )
+            for i in self.held_traps
+            if i < len(received)
+        ]
         start = self.announced
         # With Guns First, a progressive weapon received while its weapon is owned arrives as
         # the upgrade, so its popup names the upgrade; an upgrade received as itself (sent from
@@ -389,4 +404,5 @@ class Session:
             logger.info(f"Not given this time: {reply}")
             return {}
         self.announced = len(received)
+        self.held_traps = []
         return dict(owed)

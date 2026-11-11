@@ -137,9 +137,12 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   described).
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
 - Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch, set off
-  after the trap's popup; this world's own, found in it, after the game's popup): not run in game
-  yet; stand-in tests only ("Traps"; `docs/re/memory.md`, "Ailments: the script step that sets
-  them").
+  after the trap's popup; this world's own, found in it, after the game's popup): 2026-11-11
+  (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one held through the
+  pause, one received while disconnected (once), this world's own and another Zexion player's
+  in this world, AILMENTS reduced and immune ("Traps"; `docs/re/memory.md`, "Ailments: the
+  script step that sets them"). Not run in game: one held through a death, a reload, the
+  ending or RETURN HOME, and the traps held at a slot's first connection (since 57381bf).
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,

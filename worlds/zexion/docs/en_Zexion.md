@@ -251,7 +251,8 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
   Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap does, after its popup, once
   you have stayed on one map square for a second. Scrap whose popup
-  you saw before version 1.1.0 drops nothing, and nothing drops during the game's ending: what
+  you saw before version 1.1.0, or that reached you before your first connection to the seed
+  (it gets no popup), drops nothing, and nothing drops during the game's ending: what
   arrives then drops the next time you load the save.
 
 ## What do Area Maps and Intel Chips do?
@@ -274,7 +275,7 @@ an item link aren't kept this way), has no square in your world and reveals noth
 
 ## What do traps do?
 
-Traps take the place of some of your Scrap: 15% of it by default, so 2 or 3 in an Easy,
+Traps take the place of some of your Scrap: 15% of it by default, so usually 2 or 3 (1 to 4) in an Easy,
 Standard or OHKO seed (Trap Percentage, `trap_percentage`; 0 for none). Each is one of two, picked by
 their weights (`disruption_trap_weight`, `disorient_trap_weight`). With the OS Install Disks
 goal the disks take the Scrap first, so there may be few traps or none. Traps are filler, so
@@ -291,17 +292,20 @@ excluded locations can hold them.
 A trap sent to you pops up as any item does, with who sent it (DISRUPTION TRAP, FROM ALICE). It
 starts once that popup has closed and you have stood on one map square for a second, in play:
 it waits through the pause menu, other menus, a death or a reload, and through RETURN HOME WITH
-THE DISKS? and the game's ending (it comes at your next load then). Each trap happens once,
-including one sent while your client was closed (it comes after its popup when you connect). A
-trap in your own world shows the Archipelago logo, and picking it up names it; it starts once
-that popup has closed. Another Zexion player's trap in your world shows its name and whom it is
+THE DISKS? and the game's ending (it comes at your next load then). Each trap happens at most
+once, including one sent while your client was closed, or before you first connected (it comes
+after its popup when you connect); if the client closes just as a trap goes off, it may come
+again, and with no mod running a trap sent to you does nothing. A trap in your own world shows
+the Archipelago logo, and picking it up names it; it starts once that popup has closed, or, if
+you picked it up with the client closed, when you next connect with that save loaded. Another Zexion player's trap in your world shows its name and whom it is
 for. A second trap of the same kind during the first starts its four seconds again.
 
 The game's AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) changes
 them as it changes the enemies': at its second setting the Disruption Trap is a third as long and
 the Disorient Trap about a second; at its third, the Disruption Trap ends at once and the Disorient
-Trap does nothing. Other games' traps sent to you do nothing in Zexion. Traps haven't been tried
-in the game yet.
+Trap does nothing. Other games' traps sent to you do nothing in Zexion. Checked in the game: both
+traps sent to you, a shield taking a Disruption Trap, one sent while paused or while the client
+was closed, your own trap and another player's in your world, and AILMENTS's two settings.
 
 ## Can I use the assist menu?
 

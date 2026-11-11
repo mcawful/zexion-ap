@@ -107,7 +107,8 @@ PROGRESSION |= {27, 28, 29, 30, 33, 34, 36, 37} | UPGRADES
 SUPPLIES = {0, 1, 2, 36, 37}
 # Intel Chips are filler like the Area Maps they replace, so excluded locations still have
 # filler.
-FILLER = {SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP, INTEL_CHIP}
+SCRAP = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)  # the game's filler; the traps take its places
+FILLER = {*SCRAP, AREA_MAP, INTEL_CHIP}
 DATA_DISC = 44  # the OS Install Disk (the game's Data Disc): progression, never balanced
 
 KEYS = tuple(NAMES[code] for code in KEY_CODES)
@@ -120,7 +121,7 @@ item_name_groups = {
     "Weapons": {NAMES[code] for code in PROGRESSIVE},
     "Weapon Upgrades": {NAMES[code] for code in UPGRADES},
     "Supplies": {NAMES[code] for code in SUPPLIES},
-    "Scrap": {NAMES[code] for code in (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)},
+    "Scrap": {NAMES[code] for code in SCRAP},
     "Traps": {NAMES[code] for code in TRAPS},
 }
 

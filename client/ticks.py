@@ -718,22 +718,23 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
             (ids.DATA_DISC, discs.note(first + k, told_count), True) for k in range(len(disks))
         ]
     popups += [(ids.AREA_MAP, hint_note(ctx, used[f"l{i}"]), True) for i in maps]
-    own_traps = [conn.traps[i] for i in traps]
+    found_traps = [conn.traps[i] for i in traps]
     try:
         reply = await asyncio.to_thread(
-            helper.apply, native.batch_text([], popups, traps=own_traps)
+            helper.apply, native.batch_text([], popups, traps=found_traps)
         )
     except native.ReplyLost:
-        # The helper may have queued them (its queue outlives this client): none sent again, so a
-        # trap is set off at most once, as Session.give counts a lost batch's popups.
-        ctx.seed_state.popped_mine |= set(disks) | set(maps) | set(traps)
+        # The helper may have queued the traps (its queue outlives this client): not sent again,
+        # so each is set off at most once, as Session.give counts a lost batch's popups. A disk's
+        # count or a hint is sent again (at worst shown twice).
+        ctx.seed_state.popped_mine |= set(traps)
         raise
     if reply != "applied":
         return  # not shown: tried again
-    if own_traps:
-        detail(f"Found in this world: {', '.join(ids.TRAP_NAMES[c] for c in own_traps)}.")
+    if found_traps:
+        detail(f"Found in this world: {', '.join(ids.TRAP_NAMES[c] for c in found_traps)}.")
     # This client's record holds them until the server has them.
-    ctx.seed_state.popped_mine |= set(disks) | set(maps) | set(traps)
+    ctx.seed_state.popped_mine |= {*disks, *maps, *traps}
     await store_popped(ctx, conn)
 
 

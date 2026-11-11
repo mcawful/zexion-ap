@@ -142,7 +142,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 `client/native.py`). The whole configuration is refused unless:
 
 - every name is there, from a client's `config` or from the offline cache a client wrote ("AP
-  saves without the client"), which holds them all, but `text_cut_code` (below). A cache lacking
+  saves without the client"), which holds them all, but `text_cut_code` and `ailments` (below). A cache lacking
   one is refused (`read_error=cache:_missing_NAME`) until a client has run once and rewritten it.
   A release that adds a key decides for that key alone: accept that, with everything the helper
   does without a client off until the player's first client run after updating (the offline look
@@ -444,7 +444,9 @@ and was read as up.
   (its count in the server's data storage: "Grants"); the helper queues the drop as it shows
   the popup and forgets it once run. So a scrap received while disconnected, or out of play,
   drops after its popup at the next load; one whose popup was handed over before 1.1.0, or
-  that was written directly with no helper, never drops; one whose popup the client hands over
+  that was written directly with no helper, or that the slot held at its first connection (the
+  client counts those handed over with no popup: `client/state.py`, `announced_start`), never
+  drops; one whose popup the client hands over
   again drops again (the client stopped after `apply` took the popups and before the server
   stored their count: the popup then shows twice too); and the queue outlives the client
   ("A client going away") but not the helper: an unload, or the game closing, loses the drops
@@ -503,7 +505,7 @@ dealt on the next load ("DeathLink").
     `+0xDC4` 251 (a trap during one starts the 251 again). Then sound 82, 2904's, whatever op 5
     did, as the game's chain plays it. The controls are reversed while it runs.
   - **AILMENTS** is the 16-bit word at the `ailments` address the client configures (its meaning
-    inferred from the assist menu's labels: `docs/re/memory.md`); the helper reads it as op 5
+    measured live: 1 at the menu's REDUCED, 2 at IMMUNE: `docs/re/memory.md`); the helper reads it as op 5
     does, and op 4 does not read it. At 1 the game's per-frame code makes the disruption a third
     as long and cuts the disorientation to 60 frames; at 2 it ends the disruption the next frame.
   - **Left out:** the controller rumble op 4 makes with a shield up (`0x204510` on B1, which
@@ -514,7 +516,10 @@ dealt on the next load ("DeathLink").
 - **This world's own**, found in it: the game hands out a stand-in there, labeled with the
   trap's name ("Other players' items"), and its pickup popup shows that; the client then sends
   `trap ITEM` in an `apply` (`client/ticks.py`, `followups_tick`), which queues the trap with no
-  popup of the helper's, to run as a received one does once the game's popup has closed.
+  popup of the helper's, to run as a received one does once the game's popup has closed. One
+  found with no client (the offline look shows its label) is sent when a client next connects
+  with that save loaded (the follow-ups take this world's finds made without a client too), so
+  it starts then, wherever the player is.
 - **When:** one a frame call (`pump_traps`), once the player has been in play in one cell for a
   second, the game's halt byte clear and no message showing (the trap's own popup, or the game's,
   closed), not from RETURN HOME WITH THE DISKS?'s fade through the ending it started, and not in
@@ -530,9 +535,13 @@ dealt on the next load ("DeathLink").
   each received item's popup over once (its count in the server's data storage), and the helper
   queues the trap as it shows the popup and forgets it once run. So one received while
   disconnected, or out of play, runs once after its popup at the next load; one written with no
-  helper (no popup) never runs; the queue outlives the client ("A client going away") but not
-  the helper (an unload, or the game closing, loses the traps not run yet, as it does the
-  popups). This world's own, found in it, is recorded in the client's follow-ups (the server's
+  helper (no popup) never runs. At a slot's first connection (no count stored yet), every item
+  already received counts as handed over with no popup, so as not to flood the player with old
+  ones, but the traps among them still get their popup, and so run, once
+  (`client/state.py`, `held_traps`; `Session.held_traps`): unlike received scrap's drops, which
+  those first items do not get ("Received scrap"). The queue outlives the client ("A client
+  going away") but not the helper (an unload, or the game closing, loses the traps not run yet,
+  as it does the popups). This world's own, found in it, is recorded in the client's follow-ups (the server's
   data storage) once the helper took it, or once its reply was lost (it may have been queued),
   so it is not sent again. As with a received scrap's drop, a trap can run twice where the
   client stops after the helper took it and before the server stored its record (the popup
@@ -547,7 +556,18 @@ dealt on the next load ("DeathLink").
 - **Put back:** nothing to put back: the timers are the game's, and run out as the enemies' do.
 
 Stand-in tests (`tests/game_tests.cpp`: `test_received_traps`, `test_own_traps`,
-`test_traps_without_ailments`, `test_traps_held_for_the_ending`). Not run in game yet.
+`test_traps_without_ailments`, `test_traps_held_for_the_ending`). Working in game 2026-11-11, B1, `zexion_ap.dll` `8fb38a28…` built from PR #138's 57381bf, the seed `lab/ap/live59`, slot 7, the owner's reports, the
+record in the traps worktree's `lab/ingame-138-traps-checks.md`): a received Disruption Trap and
+Disorient Trap, each after its popup ("that all worked as expected"); a Disruption Trap with an
+Energy Shield up ("the shield kept the trap from working"), no shield spawned again; one sent in
+the pause menu, set off after it ("popup then trap"); one sent while the client was disconnected,
+once after the reconnect, not again after a second; this world's own Disruption Trap after its
+pickup popup; another Zexion player's Disorient Trap in this world, nothing to the player; a
+Disorient Trap with AILMENTS reduced ("about a second") and immune ("got the sound but no
+effect"). The owner asked for a trap, received or this world's own, to start as its popup shows
+rather than after it closes: not changed yet. Not run in game: a trap through a death, a reload,
+the ending or RETURN HOME; the traps held at a slot's first connection; check 6's weapons not
+described.
 
 ### The assist menu
 
@@ -1050,7 +1070,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   CONNECTED. are also for their client: one not shown when it goes away is withdrawn. A
   not-connected warning withdrawn before it showed is given again when the save is next dressed
   with no client.
-- **Waits for the client:** received items, hints, the goal and RETURN HOME WITH THE DISKS?.
+- **Waits for the client:** received items, hints, the goal and RETURN HOME WITH THE DISKS?,
+  and this world's own traps picked up meanwhile (each starts when a client next connects with
+  that save loaded: "Traps").
   What was picked up is on the save's map, and the client sends those checks when it next
   connects with the save loaded.
 

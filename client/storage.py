@@ -139,7 +139,8 @@ async def announced_tick(
     if not current.announced_read:
         if conn.hint_targets and conn.hints_key not in ctx.stored_data:
             return
-        # Counted as received() counts: Zexion items only.
+        # Counted as received() counts: Zexion items only. Held traps still pop up (and run).
+        current.held_traps = state.held_traps(raw, p.codes, current.announced)
         current.announced = state.announced_start(raw, len(p.codes), current.announced)
         current.announced_read = True
     count = state.announced_to_store(current.announced, raw, conn.announced_sent)

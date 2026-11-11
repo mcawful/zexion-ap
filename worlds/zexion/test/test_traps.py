@@ -13,9 +13,7 @@ from ..items import (
     DISORIENT_TRAP,
     DISRUPTION_TRAP,
     NAMES,
-    SCRAP_CHUNK,
-    SCRAP_ENERGY,
-    SCRAP_METAL,
+    SCRAP,
     TRAPS,
     classification,
     code_of,
@@ -23,8 +21,6 @@ from ..items import (
 from ..options import TrapPercentage
 from ..world import FOREIGN, ZexionWorld
 from .test_plando import block, generate, index_of
-
-SCRAP = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)
 
 
 def pool_of(multiworld, player: int = 1) -> Counter[int]:
@@ -79,15 +75,21 @@ class TestTheTrapsInThePool(unittest.TestCase):
         self.assertGreater(every[DISORIENT_TRAP], 0)
 
     def test_traps_take_scrap_left_after_the_disks(self) -> None:
-        # The disks take the Scrap first: with 30, a Standard seed has little or none left, and
-        # every disk is placed all the same.
-        options = {"mode": "standard", "goal": "os_install_disks", "trap_percentage": 100}
+        # The disks take the Scrap first: at 100% the traps are exactly the Scrap the same seed
+        # has left without traps (none with 30 disks), and every disk is placed all the same.
+        options = {"mode": "standard", "goal": "os_install_disks"}
         for placed in (16, 30):
-            with self.subTest(placed=placed):
-                pool = pool_of(generate([{**options, "os_install_disks": placed}]))
-                self.assertEqual(pool[code_of["OS Install Disk"]], placed)
-                self.assertEqual(sum(pool[c] for c in SCRAP), 0)
-                self.assertGreaterEqual(traps_of(pool), 0)
+            for seed in range(1, 6):
+                with self.subTest(placed=placed, seed=seed):
+                    disks = {**options, "os_install_disks": placed}
+                    none = pool_of(generate([{**disks, "trap_percentage": 0}], seed=seed))
+                    every = pool_of(generate([{**disks, "trap_percentage": 100}], seed=seed))
+                    left = sum(none[c] for c in SCRAP)
+                    self.assertEqual(every[code_of["OS Install Disk"]], placed)
+                    self.assertEqual(sum(every[c] for c in SCRAP), 0)
+                    self.assertEqual(traps_of(every), left)
+                    if placed == 30:
+                        self.assertEqual(left, 0)
 
     def test_traps_are_trap_items(self) -> None:
         for code in TRAPS:

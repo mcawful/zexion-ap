@@ -242,6 +242,31 @@ def test_an_own_trap_found_is_set_off_once() -> None:
     assert len(ctx.helper.requests) == 1, "once"
 
 
+def test_a_lost_reply_sends_a_disks_count_again_but_not_a_trap() -> None:
+    # The disk at 12 and an own trap at 3 found together: the reply lost, the count is sent again
+    # (shown twice at worst, as before the traps), the trap not (set off at most once).
+    ctx = homing_ctx()
+    ctx.conn.traps = {3: ids.DISRUPTION_TRAP}
+    ctx.server = None
+    ctx.load.save_collected = {3, 12}
+
+    def lost(text: str) -> str:
+        ctx.helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    p = types.SimpleNamespace(codes=[ids.DATA_DISC] * 3, found=[12])
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    ctx.helper.apply = lost
+    with pytest.raises(native.ReplyLost):
+        run(ticks.followups_tick(ctx, p, shown))
+    assert ctx.helper.requests[0].splitlines()[-1] == "trap 102"
+    del ctx.helper.apply  # the class's: applied
+    run(ticks.followups_tick(ctx, p, shown))
+    again = ctx.helper.requests[1].splitlines()
+    assert again[0] == "apply" and again[1].startswith("notice 44 ") and "trap 102" not in again
+    assert {3, 12} <= ctx.seed_state.popped_mine
+
+
 def test_an_own_trap_whose_reply_was_lost_is_not_sent_again() -> None:
     # The helper may have queued it: sending it again could set it off twice.
     ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
