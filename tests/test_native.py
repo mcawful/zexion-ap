@@ -451,6 +451,7 @@ def test_a_mod_of_another_version_that_wont_unload_says_they_dont_match(
     with pytest.raises(native.ModMismatch, match="version 0.29.0, this client") as caught:
         native.attach(game, built)
     assert "restart Zexion" in str(caught.value) and game.loads == 0
+    assert "(a menu is open)" in str(caught.value), "the refusal's reason, for the player"
 
 
 def test_a_mod_that_doesnt_know_the_games_build_is_another_build(tmp_path, monkeypatch) -> None:

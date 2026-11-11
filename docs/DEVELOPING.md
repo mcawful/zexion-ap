@@ -136,21 +136,22 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   disconnected dropping once: 2026-11-09 ("Received scrap"; what the drops were and gave not
   described).
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
-- Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their
-  first design (after the trap's popup, the enemies' durations, a shield and AILMENTS applying)
-  run in game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a
-  shield, one held through the pause, one received while disconnected (once), this world's own
-  and another Zexion player's in this world, AILMENTS REDUCED and IMMUNE ("Traps";
-  `docs/re/memory.md`, "Ailments: the script step that sets them"). The design since (at once,
-  about 12 s, one of each kind at a time, past a shield, AILMENTS's tests patched while one
-  runs, disguised (then as a Zexion upgrade), another game's trap as a progression item):
-  2026-11-11 (81dd8cc, `lab/ap/live60`); the pickup popup naming the trap, a queued trap's popup
-  waiting for it, the drawn disguises, a trap held at a slot's first connection and `/reload_mod`
-  refused during a trap: 2026-11-11 (5f66f1b, `lab/ap/live61`). Not run in game: one held
-  through a death, a reload, the ending or RETURN HOME, a client restarted or going away while a
-  trap waits or runs, and what changed since 5f66f1b (the held traps' record, a trap's popup
-  placed after a notice, the look drawn from the owner's upgrades, keys and OS Install Disks in
-  the seed, and its fallback).
+- Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their first
+  design (after the trap's popup, the enemies' durations, a shield and AILMENTS applying) run in
+  game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one
+  held through the pause, one received while disconnected (once), this world's own and another
+  Zexion player's in this world, AILMENTS REDUCED and IMMUNE ("Traps"; `docs/re/memory.md`,
+  "Ailments: the script step that sets them"). The design since (at once, about 12 s, one of each
+  kind at a time, past a shield, AILMENTS's tests patched while one runs, disguised (then as a
+  Zexion upgrade), another game's trap as a progression item): 2026-11-11 (81dd8cc,
+  `lab/ap/live60`); the pickup popup naming the trap, a queued trap's popup waiting for it, the
+  drawn disguises, a trap held at a slot's first connection and `/reload_mod` refused during a
+  trap: 2026-11-11 (5f66f1b, `lab/ap/live61`). Not run in game: one held through a death, a reload
+  (and that the load's reset comes within the quarter second a trap waits in play,
+  `kTrapSettledMs`), the ending or RETURN HOME, an unload refused while a trap waits, a client
+  restarted or going away while a trap waits or runs, and what changed since 5f66f1b (the held
+  traps' record, a trap's popup placed after a notice, the look drawn from the owner's upgrades,
+  keys and OS Install Disks in the seed, and its fallback).
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
@@ -263,8 +264,8 @@ version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). Beyond tha
   else the menu holds (`client/newgame.py`; `native/README.md`, "New games"; working in game,
   2026-10-27). From the Launcher: `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items meanwhile
-  (popups still queued are lost; items are not, nor traps waiting in the save loaded, which it
-  waits for; one waiting for another save is lost); with a menu or the map open, while the ending
+  (popups still queued are lost; items are not, nor traps waiting in the save loaded, for which it
+  refuses; one waiting for another save is lost); with a menu or the map open, while the ending
   RETURN HOME WITH THE DISKS? started is on its way, or while a trap runs or waits to go off, it
   refuses and says why, and the mod stays loaded. If the mod does not come back (no frame, the
   game in the background, say), items wait for it as after any lost helper. While the client is

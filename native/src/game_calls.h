@@ -309,6 +309,9 @@ public:
         if (hit_patch_.patched() || wave_patch_.patched()) {
             return "the AILMENTS tests are still the helper's";
         }
+        // Also for an unload no frame came for (unload_refusal is asked in a frame): published
+        // each frame, and false after the unload frame's put-back, as nothing queues one then.
+        if (trap_waiting()) return kTrapWaitingRefusal;
         if (popup_areas_.in_use()) return "a popup still shows the helper's translated text";
         // Entry 70 still pointing into the run: put back by the unload's frame, so only an unload
         // no frame came for is refused (the next helper would take it for the game's).

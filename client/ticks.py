@@ -52,7 +52,8 @@ DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received d
 
 async def attach_helper(ctx: ZexionContext) -> bool:
     """Load and configure the native helper in the attached game, or carry on without it.
-    Returns whether trying again soon may attach it: not for a mod that doesn't match."""
+    Returns whether trying again soon may attach it: not for a mod that doesn't match, but for
+    one of another version that didn't unload to make way (native.NotUnloaded)."""
     dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
     notes: list[str] = []
     try:
@@ -71,7 +72,9 @@ async def attach_helper(ctx: ZexionContext) -> bool:
         if ctx.said("helper detail", str(exc)):
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
-        return not mismatch
+        # One that didn't unload (a menu open, a trap waiting or running) may on a later try:
+        # worth waiting for, as for a helper lost.
+        return not mismatch or isinstance(exc, native.NotUnloaded)
     ctx.said.clear("helper", "helper detail")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything

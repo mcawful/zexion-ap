@@ -1871,10 +1871,14 @@ void test_received_traps() {
     check(std::string(game.unload_refusal() ? game.unload_refusal() : "") ==
               "a trap is waiting to go off",
           "an unload is refused while a trap for the save loaded waits");
+    check(std::string(game.unload_blocker() ? game.unload_blocker() : "") ==
+              "a trap is waiting to go off",
+          "and one no frame came for, by the blocker published each frame");
     g_section[0x26C] = 0x22;  // another seed's save
     game.pump_traps(16000);
     check(field<int16_t>(0xDC4) == 0 && game.queued_traps() == 1, "another seed's save: it waits");
-    check(game.unload_refusal() == nullptr, "one for another save does not hold an unload");
+    check(game.unload_refusal() == nullptr && game.unload_blocker() == nullptr,
+          "one for another save does not hold an unload");
     g_section[0x26C] = 0x11;
     game.client_gone(&chosen);  // the client gone meanwhile: kept, as its popups are
     game.pump_traps(16000);

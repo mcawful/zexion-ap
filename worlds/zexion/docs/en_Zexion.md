@@ -324,7 +324,8 @@ connected. All of this was checked on earlier versions of the mod; since then, h
 picked (now also a key or an OS Install Disk), how a trap sent before you first connected is
 kept, and where a trap's popup goes among other popups have changed, and are not yet checked in
 the game. Not checked in the game at all: a trap through a death, a reload, RETURN HOME or the
-ending, and the client restarted or closed while a trap waits or runs.
+ending; the client restarted or closed while a trap waits or runs; and the mod refusing to reload
+while a trap waits to go off.
 
 ## Can I use the assist menu?
 

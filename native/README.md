@@ -233,15 +233,16 @@ only (`native/tests/mission_tests.cpp`, `game_tests.cpp`).
 It refuses (`error a trap is running; not unloading`), before putting anything back, while a
 trap's AILMENTS patch is held ("Traps"): putting it back would let AILMENTS end or shorten the
 trap. That is at most a trap's 12 s, longer with traps of one kind queued. It refuses too (`error
-a trap is waiting to go off; not unloading`) while a trap for the save loaded, or for any save
-(one received with none loaded), waits to go off: the unload would drop it, and the client counts
-it handed over. That is a quarter of a second of play, longer while the game is halted, a menu is
-open, or RETURN HOME or the ending holds it. A trap waiting for another save is lost with the
-helper, as its popup is (stand-in tests: `tests/apply_test.cpp` over the pipe,
-`tests/game_tests.cpp`; not run in game). Working in game 2026-11-11, B1, `zexion_ap.dll`
-`9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8, the owner's reports;
-`lab/ingame-138-traps-check3.md` in the traps worktree: `/reload_mod` during a Disruption Trap was
-refused with the client's "can't be reloaded right now (a trap is running)", and the trap ran on.
+a trap is waiting to go off; not unloading`, ending in "(no frame came)" when none came) while a
+trap for the save loaded, or for any save (one received with none loaded), waits to go off: the
+unload would drop it, and the client counts it handed over. That is a quarter of a second of play,
+longer while the game is halted, a menu is open, or RETURN HOME or the ending holds it. A trap
+waiting for another save is lost with the helper, as its popup is (stand-in tests:
+`tests/apply_test.cpp` over the pipe, `tests/game_tests.cpp`; not run in game). Working in game
+2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8,
+the owner's reports; `lab/ingame-138-traps-check3.md` in the traps worktree: `/reload_mod` during
+a Disruption Trap was refused with the client's "can't be reloaded right now (a trap is running)",
+and the trap ran on.
 
 If no frame came, it goes by what the last frame call found: the reason then ends in "(no frame
 came)", and with nothing found it unloads, leaving the rest as each part's notes below say. A
@@ -632,11 +633,10 @@ at once, each popup showing as its trap went off; and the refused unload above. 
 game:** a trap through a death, a reload (and that the load's reset comes within the quarter
 second a trap waits in play, `kTrapSettledMs`: `docs/re/memory.md` has the reset only at "that
 moment"), the ending or RETURN HOME; an unload refused while a trap waits; a client restarted, or
-going away, while a trap from before the first connection waits or a trap runs; and what changed
-since 5f66f1b (5bb478d and after): the held traps' record (the first count stored at once again,
-the first record made only where the server has none), a trap's popup placed after a notice, the
-look drawn from the owner's upgrades, keys and OS Install Disks in the seed (`@N NAME/PICKUP` for
-a disk), and its fallback.
+going away, while a trap waits or runs; and what changed since 5f66f1b (5bb478d and after): the
+held traps' record (the first count stored at once again, the first record made only where the
+server has none), a trap's popup placed after a notice, the look drawn from the owner's upgrades,
+keys and OS Install Disks in the seed (`@N NAME/PICKUP` for a disk), and its fallback.
 
 ### The assist menu
 

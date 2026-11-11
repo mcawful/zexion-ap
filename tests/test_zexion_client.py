@@ -420,10 +420,14 @@ def test_a_mismatch_a_rebuild_can_fix_is_tried_again_without_holding_the_step(
 def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
     monkeypatch, tmp_path
 ) -> None:
-    # A menu open, say: a later try may unload it and load the game folder's copy.
+    # A menu open or a trap waiting, say: a later try may unload it and load the game folder's
+    # copy, so the step waits for it a while, as for a helper lost, then goes on.
     ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll", native.NotUnloaded)
     asyncio.run(zc.poll(ctx))
-    assert len(order) == 2 and order[1] != "step, retry at inf"
+    assert order == ["attach"], "no step gives items without their popups meanwhile"
+    ctx.helper_back_by = 1.0  # long past: given up
+    asyncio.run(zc.poll(ctx))
+    assert len(order) == 3 and order[2] != "step, retry at inf"
 
 
 async def nothing(*args) -> None:
