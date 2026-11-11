@@ -558,7 +558,11 @@ dealt on the next load ("DeathLink").
   slot's first connection (no count stored yet), every item already received counts as handed
   over with no popup, so as not to flood the player with old ones, but the traps among them still
   get their popup, and so run, once (`client/state.py`, `held_traps`; `Session.held_traps`):
-  unlike received scrap's drops, which those first items do not get ("Received scrap"). The
+  unlike received scrap's drops, which those first items do not get ("Received scrap"). Those
+  still waiting are kept in their own record in the server's data storage (`held_key`, stored
+  before the count and emptied once they are handed over), so a reconnect or a client restarted
+  before the player is in play keeps them, while the count, stored at once, still pops up what
+  comes meanwhile. The
   queue outlives the client ("A client going away") but not the helper (an unload, or the game
   closing, loses the traps not run yet, as it does the popups). This world's own, found in it, is
   recorded in the client's follow-ups (the server's data storage) once the helper took it, or
@@ -711,10 +715,12 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   Intel Chip). A trap looks important: the world gives it the progression stand-in (48),
   another game's labeled as its progression items are, and a Zexion trap, this player's own or
   another Zexion player's, as `@N/NAME`: the Zexion upgrade the world drew for it (slot data
-  `trap_looks`: one this world's player does not start with, by random numbers of the world's
-  own, `world.trap_looks`; `aplabels.trap_label`), so it looks like that item and the map's cursor names it so ("Other
+  `trap_looks`: one of the trap's owner's upgrades that lies in the seed, so none they start with
+  or the seed leaves out, none twice in a world until they run out, `world.trap_looks`;
+  `aplabels.trap_label`), so it looks like that item and the map's cursor names it so ("Other
   Zexion players' items, as themselves"), but its pickup popup reads NAME, the trap's, with no
-  icon, then whom it is for (`Label::pickup`; "Traps"). See `client/aplabels.py`.
+  icon, then whom it is for (`Label::pickup`; "Traps"). With no upgrade to draw (every one
+  started, in Custom mode), it is labeled as a progression item instead. See `client/aplabels.py`.
 - **Records:** every frame call (`src/apitem.cpp`) checks both records against the game's values
   and, while a save is loaded and no menu is open, restyles them: in-world frames empty in the
   game's art, no refill drop, and each named after the label for the cell of a live stand-in of

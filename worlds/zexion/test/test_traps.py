@@ -143,16 +143,69 @@ class TestOwnTraps(unittest.TestCase):
             {c for _, c in world.trap_locations()} - set(TRAPS), set(), "only traps listed"
         )
 
-    def test_each_trap_has_a_look_the_player_does_not_start_with(self) -> None:
-        # Easy starts with the Power Cartridge (13), one of the disguises: never drawn there.
-        traps = block({"Disorient Trap": 30}, ["Machinus"], from_pool=False)
-        world = generate([{"mode": "easy", "plando_items": [traps]}]).worlds[1]
-        looks = dict(world.trap_looks())
-        self.assertEqual(set(looks), {i for i, _ in world.trap_locations()})
-        self.assertNotIn(13, looks.values())
-        self.assertLessEqual(set(looks.values()), set(DISGUISES))
-        self.assertGreater(len(set(looks.values())), 1, "drawn, not one for all")
-        self.assertEqual(world.trap_looks(), world.trap_looks(), "the same draw each time")
+    def placed_upgrades(self, multiworld, player: int) -> set[int]:
+        return {
+            code_of[loc.item.name]
+            for loc in multiworld.get_filled_locations()
+            if loc.item.player == player and code_of.get(loc.item.name) in DISGUISES
+        }
+
+    def test_each_trap_looks_like_one_of_its_owners_upgrades_in_the_seed(self) -> None:
+        # Easy starts with the Power Cartridge (13), one of the disguises: never drawn there;
+        # every look lies in the seed, none twice until they run out.
+        multiworld = generate([{"mode": "easy", "trap_percentage": 100}])
+        distribute_items_restrictive(multiworld)
+        world = multiworld.worlds[1]
+        looks = [code for _, code in world.trap_looks()]
+        pool = self.placed_upgrades(multiworld, 1)
+        self.assertEqual(len(looks), len(world.trap_locations()))
+        self.assertNotIn(13, looks)
+        self.assertLessEqual(set(looks), pool)
+        first = looks[: len(pool)]
+        self.assertEqual(len(first), len(set(first)), "no repeat until they run out")
+        self.assertEqual(world.trap_looks(), world.trap_looks(), "drawn once")
+
+    def test_custom_modes_excluded_and_started_upgrades_are_never_a_look(self) -> None:
+        excluded = ["Magnus Armor", "Power Chip", "G-Diffuser", "Power Core", "X-Missile"]
+        options = {
+            "mode": "custom",
+            "trap_percentage": 100,
+            "custom_items": {**dict.fromkeys(excluded, "excluded"), "Phaser": "start"},
+        }
+        multiworld = generate([options])
+        distribute_items_restrictive(multiworld)
+        looks = {code for _, code in multiworld.worlds[1].trap_looks()}
+        self.assertTrue(looks)
+        self.assertFalse(looks & ({code_of[n] for n in excluded} | {code_of["Phaser"]}))
+        self.assertLessEqual(looks, self.placed_upgrades(multiworld, 1))
+
+    def test_with_every_upgrade_started_a_trap_has_no_look(self) -> None:
+        # Nothing to draw: no entry, and the client shows the trap as a progression item.
+        names = [n for n, code in code_of.items() if code in DISGUISES]
+        options = {
+            "mode": "custom",
+            "trap_percentage": 100,
+            "custom_items": dict.fromkeys(names, "start"),
+        }
+        multiworld = generate([options])
+        distribute_items_restrictive(multiworld)
+        world = multiworld.worlds[1]
+        self.assertTrue(world.trap_locations())
+        self.assertEqual(world.trap_looks(), [])
+
+    def test_another_players_trap_looks_like_one_of_their_upgrades(self) -> None:
+        # Bob (Easy) starts with the Power Cartridge; Alpha (Custom) starts with the Phaser.
+        trap = block({"Disorient Trap": 1}, ["Machinus 24,29"], world="Tester1")
+        options = [
+            {"mode": "custom", "custom_items": {"Phaser": "start"}},
+            {"mode": "easy", "plando_items": [trap]},
+        ]
+        multiworld = generate(options)
+        distribute_items_restrictive(multiworld)
+        looks = dict(multiworld.worlds[1].trap_looks())
+        look = looks[index_of("Machinus 24,29")]
+        self.assertIn(look, self.placed_upgrades(multiworld, 2), "one of Bob's in the seed")
+        self.assertNotEqual(look, 13)
 
     def test_another_players_trap_is_a_stand_in_and_not_listed(self) -> None:
         trap = block({"Disruption Trap": 1}, ["Machinus 24,29"], world="Tester2")

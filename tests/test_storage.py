@@ -110,6 +110,7 @@ def test_the_popup_count_waits_for_the_items_to_be_listed() -> None:
     conn.items_listed = False
     ctx = FakeContext(conn)
     ctx.stored_data[conn.announced_key] = None  # read: none stored
+    ctx.stored_data[conn.held_key] = []
     p = types.SimpleNamespace(codes=[16, 17], found=[])
     current = ctx.seed_state.session
     asyncio.run(storage.announced_tick(ctx, conn, current, p))
@@ -119,55 +120,85 @@ def test_the_popup_count_waits_for_the_items_to_be_listed() -> None:
     assert current.announced_read and current.announced == 2 and stored(ctx) == [2]
 
 
+def held_and_count(ctx: FakeContext) -> None:
+    """The server takes what the client stored: the held traps' record and the count."""
+    conn = ctx.conn
+    for m in ctx.sent:
+        if m["cmd"] == "Set":
+            ctx.stored_data[m["key"]] = m["operations"][0]["value"]
+    ctx.sent.clear()
+    assert conn.held_key in ctx.stored_data and conn.announced_key in ctx.stored_data
+
+
 def test_traps_held_at_a_slots_first_connection_still_pop_up() -> None:
     # No count stored: everything held counts as handed over (no flood of old popups), but the
-    # traps among it are kept for their popup, which sets them off (Session.held_traps).
+    # traps among it are kept for their popup, which sets them off (Session.held_traps); their
+    # record goes to the server before the count, which is stored at once.
     conn = connection()
     ctx = FakeContext(conn)
-    ctx.stored_data[conn.announced_key] = None
+    ctx.stored_data[conn.announced_key] = ctx.stored_data[conn.held_key] = None
     held = [17, ids.DISRUPTION_TRAP, 46, ids.DISORIENT_TRAP]
     current = ctx.seed_state.session
     asyncio.run(storage.announced_tick(ctx, conn, current, types.SimpleNamespace(codes=held)))
-    assert current.announced == 4 and stored(ctx) == [], "stored once they have popped up"
-    assert current.held_traps == [1, 3]
+    assert current.announced == 4 and current.held_traps == [1, 3]
+    assert stored(ctx) == [[1, 3], 4], "the waiting traps, then the count"
 
 
-def test_held_traps_wait_through_a_reconnect_and_their_count_is_not_stored() -> None:
-    # The first connection holds the trap at 1 and stores no count while it waits; a reconnect
-    # (the store not made, so none on the server) keeps it waiting.
+def test_held_traps_and_later_popups_survive_a_reconnect() -> None:
+    # The first connection holds the trap at 1; two items come before the player is in play;
+    # a reconnect keeps the trap waiting and still pops the two up (the count stayed 3).
     conn = connection()
     ctx = FakeContext(conn)
-    ctx.stored_data[conn.announced_key] = None
-    held = types.SimpleNamespace(codes=[17, ids.DISRUPTION_TRAP, 46])
+    ctx.stored_data[conn.announced_key] = ctx.stored_data[conn.held_key] = None
     current = ctx.seed_state.session
-    asyncio.run(storage.announced_tick(ctx, conn, current, held))
-    assert current.held_traps == [1] and stored(ctx) == [], "no count stored while it waits"
+    first = types.SimpleNamespace(codes=[17, ids.DISRUPTION_TRAP, 46])
+    asyncio.run(storage.announced_tick(ctx, conn, current, first))
+    held_and_count(ctx)
     current.connected()
-    asyncio.run(storage.announced_tick(ctx, conn, current, held))
-    assert current.held_traps == [1] and current.announced == 3, "still waiting after a reconnect"
-    current.held_traps = []  # handed over (give_through_helper)
-    asyncio.run(storage.announced_tick(ctx, conn, current, held))
-    assert stored(ctx) == [3], "then the count is stored"
+    later = types.SimpleNamespace(codes=[17, ids.DISRUPTION_TRAP, 46, 46, 18])
+    asyncio.run(storage.announced_tick(ctx, conn, current, later))
+    assert current.held_traps == [1] and current.announced == 3, "both kept"
+    assert ctx.sent == [], "nothing to store again"
+    current.held_traps, current.announced = [], 5  # handed over (give_through_helper)
+    asyncio.run(storage.announced_tick(ctx, conn, current, later))
+    assert stored(ctx) == [[], 5], "the record emptied, then the count"
 
 
-def test_held_traps_survive_a_client_restart_before_they_pop_up() -> None:
-    # No count was stored for them, so a new client (a new session) reads none and holds them.
+def test_held_traps_and_later_popups_survive_a_client_restart() -> None:
     conn = connection()
     ctx = FakeContext(conn)
-    ctx.stored_data[conn.announced_key] = None
-    held = types.SimpleNamespace(codes=[ids.DISORIENT_TRAP, 17])
-    asyncio.run(storage.announced_tick(ctx, conn, ctx.seed_state.session, held))
+    ctx.stored_data[conn.announced_key] = ctx.stored_data[conn.held_key] = None
+    first = types.SimpleNamespace(codes=[ids.DISORIENT_TRAP, 17])
+    asyncio.run(storage.announced_tick(ctx, conn, ctx.seed_state.session, first))
+    held_and_count(ctx)
     restarted = FakeContext(connection())
     restarted.stored_data = dict(ctx.stored_data)
     again = restarted.seed_state.session
-    asyncio.run(storage.announced_tick(restarted, restarted.conn, again, held))
-    assert again.held_traps == [0] and again.announced == 2
+    later = types.SimpleNamespace(codes=[ids.DISORIENT_TRAP, 17, 46])
+    asyncio.run(storage.announced_tick(restarted, restarted.conn, again, later))
+    assert again.held_traps == [0] and again.announced == 2, "the trap waits, the 46 pops up"
+
+
+def test_a_failed_record_of_the_held_traps_stores_no_count() -> None:
+    # Sent again on the next poll, the count with it: a restart never finds one without the other.
+    conn = connection()
+    ctx = FakeContext(conn)
+    ctx.stored_data[conn.announced_key] = ctx.stored_data[conn.held_key] = None
+    ctx.fail = True
+    current = ctx.seed_state.session
+    codes = types.SimpleNamespace(codes=[ids.DISORIENT_TRAP])
+    asyncio.run(storage.announced_tick(ctx, conn, current, codes))
+    assert ctx.sent == [] and conn.held_sent is None and conn.announced_sent is None
+    ctx.fail = False
+    asyncio.run(storage.announced_tick(ctx, conn, current, codes))
+    assert stored(ctx) == [[0], 1]
 
 
 def test_a_stored_count_holds_back_no_trap() -> None:
     conn = connection()
     ctx = FakeContext(conn)
     ctx.stored_data[conn.announced_key] = 1
+    ctx.stored_data[conn.held_key] = []
     codes = [ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
     current = ctx.seed_state.session
     asyncio.run(storage.announced_tick(ctx, conn, current, types.SimpleNamespace(codes=codes)))
@@ -181,6 +212,7 @@ def test_a_reconnect_reads_the_count_again_never_below_the_sessions_own() -> Non
     current = ctx.seed_state.session
     current.announced, current.announced_read = 3, False  # zexion_client's connected
     ctx.stored_data[conn.announced_key] = 1
+    ctx.stored_data[conn.held_key] = []
     p = types.SimpleNamespace(codes=[16, 17, 18, 19], found=[])
     asyncio.run(storage.announced_tick(ctx, conn, current, p))
     assert current.announced_read and current.announced == 3 and stored(ctx) == [3]
@@ -195,6 +227,7 @@ def test_a_connection_that_has_ended_neither_reads_nor_stores_the_count() -> Non
     current.announced = 3
     ctx.conn = connection()
     ctx.stored_data[old.announced_key] = 1
+    ctx.stored_data[old.held_key] = []
     p = types.SimpleNamespace(codes=[16, 17, 18], found=[])
     asyncio.run(storage.announced_tick(ctx, old, current, p))
     assert not current.announced_read and ctx.sent == []
@@ -220,6 +253,7 @@ def test_the_popup_count_is_not_read_before_the_hints() -> None:
     ctx, conn, p = chip_seed()
     current = ctx.seed_state.session
     ctx.stored_data[conn.announced_key] = 0
+    ctx.stored_data[conn.held_key] = []
     asyncio.run(storage.announced_tick(ctx, conn, current, p))
     assert not current.announced_read, "not before the hints are read"
     ctx.stored_data[conn.hints_key] = None  # read: the server has none stored
@@ -235,6 +269,7 @@ def test_without_area_map_hints_the_popup_count_needs_no_hints_read() -> None:
     current = ctx.seed_state.session
     current.announced_read = False
     ctx.stored_data[conn.announced_key] = 1
+    ctx.stored_data[conn.held_key] = []
     asyncio.run(storage.announced_tick(ctx, conn, current, types.SimpleNamespace(codes=[16, 17])))
     assert current.announced_read and current.announced == 1
 

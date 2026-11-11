@@ -196,8 +196,8 @@ Zexion:
 
 Locations are named by area and X,Y ("Where does the game start?"). In `locations`, an area's
 name, such as Machinus, stands for its locations; in `items`, an item group (Keys, Weapons,
-Weapon Upgrades, Supplies, Scrap, Traps) for one of its items. Keep `from_pool: true`, the default: it
-moves an item from your pool rather than making a new one.
+Weapon Upgrades, Supplies, Scrap, Traps) for one of its items. Keep `from_pool: true`, the
+default: it moves an item from your pool rather than making a new one.
 
 Played in game: another game's item and another Zexion player's in your locations, your own OS
 Install Disk and Intel Chip in your own, a Progressive Snake at Kresezoa 25,25, and your disks
@@ -240,8 +240,8 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   (FOR ALICE; in English(HD), Progression Item or AP Item, for Alice).
 - Another Zexion player's item looks like the item itself.
 - A trap looks important: another game's like its progression items, and a Zexion trap like a
-  Zexion upgrade. That's on purpose: you can't tell it from a real one until you pick it up
-  ("What do traps do?").
+  Zexion upgrade that's in the seed. That's on purpose: you can't tell it from a real one until
+  you pick it up ("What do traps do?").
 - On the map, other players' important items and your OS Install Disks are marked as important
   items (another Zexion player's supplies, the Energy Tanks, Missile Containers, Mega Bombs and
   Missile and Bomb Boxes, stay minor, as yours do). Once you have seen an item, the cursor says
@@ -252,11 +252,11 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
   when you pick it up.
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
-  Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap does, after its popup, once
-  you have stayed on one map square for a second. Scrap whose popup
-  you saw before version 1.1.0, or that reached you before your first connection to the seed
-  (it gets no popup), drops nothing, and nothing drops during the game's ending: what
-  arrives then drops the next time you load the save.
+  Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
+  does, after its popup, once you have stayed on one map square for a second. Scrap whose popup
+  you saw before version 1.1.0, or that reached you before your first connection to the seed (it
+  gets no popup), drops nothing, and nothing drops during the game's ending: what arrives then
+  drops the next time you load the save.
 
 ## What do Area Maps and Intel Chips do?
 
@@ -292,8 +292,9 @@ filler, so excluded locations can hold them.
   wears off.
 
 A trap goes off as soon as it reaches you, as its popup shows (DISRUPTION TRAP, FROM ALICE),
-once you are in play (a second of the same kind shows its popup as it starts): it waits through the pause menu, other menus, a death or a reload, and
-through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load then). Each
+once you are in play (a second of the same kind shows its popup as it starts): it waits through
+the pause menu, other menus, a death or a reload, and through RETURN HOME WITH THE DISKS? and the
+game's ending (it comes at your next load then). Each
 trap happens at most once, including one sent while your client was closed, or before you first
 connected (it comes when you connect); if the client closes just as a trap goes off, it may come
 again, and with no mod running a trap sent to you does nothing. A second trap of the same kind
@@ -303,11 +304,14 @@ traps: while one runs, it is left out for that effect, so an enemy's touch of th
 during a trap isn't shortened by it either.
 
 In a Zexion world, a trap looks like an important item: one of yours, or another Zexion
-player's, looks like a Zexion upgrade you don't start with, on the map too, and another game's
-trap like that game's progression items. That's on purpose: you can't tell a trap from a real
-item until you pick it up, and picking it up says what it is (DISORIENT TRAP, and FOR BOB if
-it's Bob's). Picking up your own sets it off at once; if you picked it up with the client
-closed, it goes off when you next connect with that save loaded. Other games' traps sent to you do nothing in Zexion.
+player's, looks like one of that player's upgrades that's in the seed (not one they start with),
+on the map too, and another game's trap like that game's progression items. That's on purpose:
+you can't tell a trap from a real item until you pick it up. Picking up a Zexion trap says what
+it is (DISORIENT TRAP, and FOR BOB if it's Bob's); another game's trap still says PROGRESSION
+ITEM. If there's no upgrade to disguise it as (in Custom mode, with every one started), a Zexion
+trap looks like a progression item too. Picking up your own sets it off at once; if you picked it
+up with the client closed, it goes off when you next connect with that save loaded. Other games'
+traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or

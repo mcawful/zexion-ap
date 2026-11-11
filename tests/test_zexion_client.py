@@ -700,7 +700,7 @@ def test_the_popup_count_and_the_hints_are_asked_for_in_one_get(hints, monkeypat
     ctx.seed_name = "A"
     ctx.connected(slot_data(hints=hints, intel_chip=bool(hints)))
     conn = ctx.conn
-    keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key]
+    keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key, conn.held_key]
     assert ctx.gets == [keys + ([conn.hints_key] if hints else [])]
     # The replies, then a drop: reset_server_state keeps stored_data and what is subscribed.
     ctx.stored_data = {key: 3 for key in keys} | {conn.hints_key: {}}
@@ -708,5 +708,7 @@ def test_the_popup_count_and_the_hints_are_asked_for_in_one_get(hints, monkeypat
     ctx.connected(slot_data(hints=hints, intel_chip=bool(hints)))
     conn = ctx.conn
     assert conn.announced_key not in ctx.stored_data, "the last connection's count not read"
+    assert conn.held_key not in ctx.stored_data, "nor its waiting traps"
     assert conn.hints_key not in ctx.stored_data
-    assert ctx.gets == [[conn.announced_key] + ([conn.hints_key] if hints else [])]
+    reread = [conn.announced_key, conn.held_key]
+    assert ctx.gets == [reread + ([conn.hints_key] if hints else [])]

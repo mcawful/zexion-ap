@@ -251,7 +251,7 @@ class TestClientReadsTheSlotData(ZexionTestBase):
             self.assertEqual(plan.location_items[i], ids.STAND_IN_PROGRESSION)
         # Each has a drawn look: an upgrade this player does not start with.
         looks = {i: code for i, code in slot["trap_looks"]}
-        self.assertLessEqual(set(traps), set(looks))
+        self.assertLessEqual(set(looks), set(traps) | set(foreign))
         self.assertLessEqual(set(looks.values()), set(items.DISGUISES))
         self.assertFalse(set(looks.values()) & set(plan.start_items))
 

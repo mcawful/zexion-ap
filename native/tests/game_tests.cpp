@@ -1856,6 +1856,27 @@ void test_received_traps() {
     reset_events();
 }
 
+// A trap going off while a disk's popup has shown and its count waits: the count first, so the
+// two stay together, then the trap's popup, ahead of the rest.
+void test_a_trap_popup_keeps_a_notice_with_its_popup() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    apply(game, "apply\npopup 46 FROM BOB\nnotice 46 COUNT 1 OF 3\npopup 46 FROM DAN");
+    show_next(game);
+    check(g_text.find("FROM BOB") != std::string::npos, "the first popup shown");
+    apply(game, "apply\npopup 102 FROM ALICE");
+    game.pump_traps(5000);
+    show_next(game);
+    check(g_text.find("COUNT 1 OF 3") != std::string::npos, "its notice next");
+    show_next(game);
+    check(g_text.find("DISRUPTION TRAP") != std::string::npos, "then the trap's popup");
+    show_next(game);
+    check(g_text.find("FROM DAN") != std::string::npos, "then the rest");
+    game.put_back_traps();
+}
+
 // This world's own trap, found in it: no popup of the helper's, set off at once, even while the
 // game's pickup popup shows.
 void test_own_traps() {
@@ -2918,6 +2939,7 @@ int main() {
     test_received_death();
     test_received_traps();
     test_own_traps();
+    test_a_trap_popup_keeps_a_notice_with_its_popup();
     test_traps_without_ailments();
     test_traps_held_for_the_ending();
     test_assist_watch();

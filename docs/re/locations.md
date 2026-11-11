@@ -161,9 +161,10 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   `memory.md`, "Other players' items"), and Scrap Metal (46) where the location was left out.
   `trap_locations` lists this world's own traps in its own locations (index and item code), which
   the client sets off once found (`native/README.md`, "Traps"); `trap_looks` the Zexion upgrade
-  each Zexion trap in this world's locations is shown as (any Zexion player's), drawn from those
-  this player does not start with; a seed from before the traps lacks them, and the client reads
-  none.
+  each Zexion trap in this world's locations is shown as (any Zexion player's), drawn from the
+  trap's owner's upgrades that lie in the seed's locations, none twice until they run out (none:
+  no entry, and the client shows a progression item); a seed from before the traps lacks them,
+  and the client reads none.
   `start_items`: inventory bytes for everything the player starts with, the mode's items and
   any `start_inventory` or `start_inventory_from_pool` (with Guns First, a second copy of a
   progressive weapon as its upgrade; without it, each upgrade as itself). The world

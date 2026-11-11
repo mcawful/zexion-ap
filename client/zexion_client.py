@@ -194,13 +194,13 @@ class ZexionContext(CommonContext):
         # look at the load (what the helper holds for the save stays). Both asked for again in
         # one Get, so one reply brings them: the popup count is never read without the hints,
         # whose notices go with the popups.
-        reread = [conn.announced_key, conn.hints_key]
+        reread = [conn.announced_key, conn.held_key, conn.hints_key]
         for key in reread:
             self.stored_data.pop(key, None)
             self.stored_data_notification_keys.discard(key)
         # Kept by the server across clients: shields given, locations found, follow-ups shown,
         # item popups handed over, and the Area Map hints.
-        keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key]
+        keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key, conn.held_key]
         self.set_notify(*keys, *([conn.hints_key] if conn.hint_targets else []))
         self.load.seed_loaded = False
         self.load.return_home = discs.ReturnHome()

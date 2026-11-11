@@ -113,7 +113,7 @@ DATA_DISC = 44  # the OS Install Disk (the game's Data Disc): progression, never
 
 # What a Zexion trap lying in a Zexion world is shown as (the owner's choice, 2026-11-11): a Zexion
 # upgrade held once (no keys or weapons), with its own record's icon and name, drawn per trap
-# (world.py, trap_looks) from those its world's player does not start with.
+# (world.py, trap_looks) from the trap's owner's that lie in the seed's locations.
 DISGUISES = (8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 33, 34)
 
 KEYS = tuple(NAMES[code] for code in KEY_CODES)

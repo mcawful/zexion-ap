@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import random
 from collections import Counter
 from collections.abc import Iterator, Mapping
 from typing import Any, TextIO
@@ -171,6 +170,7 @@ class ZexionWorld(World):
     pool_codes: list[int]  # the seed's item pool, one code per location, before create_items
     logic_settings: logic.Settings  # not World.settings, the host.yaml settings
     made_items: Counter[int]  # this player's items before plando, by item code (plando.py)
+    _trap_looks: list[list[int]] | None = None  # trap_looks's draw, once made
 
     def generate_early(self) -> None:
         self.mode_name = self.options.mode.current_key
@@ -951,22 +951,43 @@ class ZexionWorld(World):
 
     def trap_looks(self) -> list[list[int]]:
         """The location index and the upgrade shown for each Zexion trap (this player's own,
-        another Zexion player's or an item link's) in this world's locations: drawn from
-        DISGUISES less what this player starts with, so the disguise is no upgrade the player
-        already holds, by random numbers of its own, so the seed's other draws stay as they are
-        (with no trap, no draw)."""
-        started = {
-            code_of[item.name]
-            for item in self.multiworld.precollected_items[self.player]
-            if item.code is not None
-        }
-        choices = [code for code in DISGUISES if code not in started] or list(DISGUISES)
-        draw = random.Random(f"{self.multiworld.seed}:{self.player}:trap looks")
+        another Zexion player's or an item link's) in this world's locations: one of the trap's
+        owner's own upgrades (DISGUISES) that lies in some location of the seed, so none the
+        owner starts with or the seed leaves out (Custom mode's excluded), and none twice in this
+        world until the owner's run out; an item link's group with none takes this player's.
+        Where none is left to draw, the trap has no entry, and the client shows it as a
+        progression item. Drawn once (kept), from the world's own random numbers at the end of
+        generation (fill_slot_data, after the hints' shuffle), so no other draw moves and the
+        looks are not worked out from the seed's number alone; with no trap, no draw."""
+        if self._trap_looks is not None:
+            return self._trap_looks
+        placed: dict[int, set[int]] = {}
+        for location in self.multiworld.get_filled_locations():
+            item = location.item
+            code = code_of.get(item.name) if item.game == GAME else None
+            if code in DISGUISES:
+                placed.setdefault(item.player, set()).add(code)
+        decks: dict[int, list[int]] = {}
+
+        def deal(owner: int) -> int | None:
+            if not decks.get(owner):
+                options = sorted(placed.get(owner) or ())
+                if not options and owner not in self.multiworld.player_ids:
+                    options = sorted(placed.get(self.player) or ())  # an item link's group
+                if not options:
+                    return None
+                self.random.shuffle(options)
+                decks[owner] = options
+            return decks[owner].pop()
+
         out = []
         for i in sorted(self.kept_locations):
             item = self.get_location(location_name(i)).item
             if item is not None and item.game == GAME and code_of.get(item.name) in TRAPS:
-                out.append([i, draw.choice(choices)])
+                look = deal(item.player)
+                if look is not None:
+                    out.append([i, look])
+        self._trap_looks = out
         return out
 
     def hint_targets(self) -> list[list[int]]:

@@ -662,8 +662,13 @@ void Game::pump_traps(uint64_t now_ms) {
     if (next == traps_.end()) return;
     const uint8_t item = next->item;
     const std::string outcome = run_trap(item);
-    // Its popup next, ahead of the others queued (shown as soon as the game's last has ended).
-    if (next->popup) popups_.push_front(std::move(*next->popup));
+    // Its popup next, ahead of the others queued, but after any notices at the head (a disk's
+    // count or a chip's hint whose popup has just shown: kept together).
+    if (next->popup) {
+        auto at = std::find_if(popups_.begin(), popups_.end(),
+                               [](const Popup& queued) { return !queued.bare; });
+        popups_.insert(at, std::move(*next->popup));
+    }
     traps_.erase(next);
     trap_status_ = outcome + " " + std::to_string(item);
     watch_trap_patches();  // before the game's next frame: AILMENTS left out from its first

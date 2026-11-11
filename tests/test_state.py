@@ -8,10 +8,11 @@ from fakes import connection, slot_data
 from client import discs, game, ids, native, session, state
 
 
-def test_no_first_count_is_stored_while_held_traps_wait() -> None:
-    assert state.announced_to_store(3, None, None, waiting=True) is None
-    assert state.announced_to_store(3, None, None) == 3
-    assert state.announced_to_store(3, 1, None, waiting=True) == 3, "a stored count goes on"
+def test_the_waiting_held_traps_record_is_read_for_traps_only() -> None:
+    codes = [17, ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
+    assert state.stored_held([2, 1, 1], codes) == [1, 2]
+    assert state.stored_held([0, 9, True, "1", -1], codes) == [], "only traps, in range"
+    assert state.stored_held(None, codes) == [] and state.stored_held({"1": 1}, codes) == []
 
 
 def test_the_traps_held_at_a_first_connection() -> None:

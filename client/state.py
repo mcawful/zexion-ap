@@ -65,8 +65,10 @@ class Connection:
     # The server's full item list has come (the packet after Connected may be it).
     items_listed: bool = False
     awaiting_backlog: bool = True
-    # Received items' popups (announced_tick): the count last stored.
+    # Received items' popups (announced_tick): the count last stored, and the waiting held traps
+    # last stored (None: not yet).
     announced_sent: int | None = None
+    held_sent: list[int] | None = None
     found_sent_at: float = 0.0  # when the locations found were last stored (store_found)
     # The stored hints' CreateHints sent again (hints_tick); cleared when a send of new ones
     # fails, so all are created again.
@@ -124,6 +126,9 @@ class Connection:
         self.found_key = self.key("found")
         self.popped_key = self.key("popped")
         self.announced_key = self.key("announced")
+        # The traps held at the slot's first connection still to pop up (held_traps), so a
+        # reconnect or a restarted client keeps them.
+        self.held_key = self.key("held")
         self.hints_key = self.key("hints")
 
 
@@ -201,18 +206,29 @@ def held_traps(raw: object, codes: list[int], handed: int) -> list[int]:
     return [i for i in range(min(handed, len(codes)), len(codes)) if codes[i] in ids.TRAPS]
 
 
-def announced_to_store(
-    handed: int, raw: object, sent: int | None, waiting: bool = False
-) -> int | None:
+def stored_held(raw: object, codes: list[int]) -> list[int]:
+    """The waiting held traps the server's record (``held_key``) lists: indices into ``codes``
+    (the received items) that are traps. The key is open to any client in the room: anything
+    else is skipped."""
+    if not isinstance(raw, list):
+        return []
+    out = {
+        i
+        for i in raw
+        if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(codes)
+        if codes[i] in ids.TRAPS
+    }
+    return sorted(out)
+
+
+def announced_to_store(handed: int, raw: object, sent: int | None) -> int | None:
     """The count to store on the server now (as a maximum), or None: ``handed`` when it is above
     both the server's count and what this client last stored; and, while the server has none
-    and this client has stored none, ``handed`` as it is, so the key exists, but not while
-    traps held at the slot's first connection still wait for their popup (``waiting``:
-    held_traps), so a client restarted meanwhile holds them again. A store that fails leaves
-    ``sent`` as it was, so it is sent again on the next poll."""
+    and this client has stored none, ``handed`` as it is, so the key exists. A store that fails
+    leaves ``sent`` as it was, so it is sent again on the next poll."""
     stored = stored_count(raw)
     if stored is None and sent is None:
-        return None if waiting else handed
+        return handed
     if handed > max(stored or 0, sent or 0):
         return handed
     return None
