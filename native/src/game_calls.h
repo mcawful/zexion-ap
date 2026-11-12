@@ -83,7 +83,8 @@ public:
     std::string apply(const Batch& batch);
 
     // Game thread, every frame: shows the next queued popup, with its sound, once the game's
-    // last popup has ended. A popup the game could not take stays queued.
+    // last popup has ended. A popup the game could not take stays queued. A received trap's
+    // popup is pump_traps's to show, as its trap goes off: the queue waits for it in its turn.
     void pump_popups();
 
     size_t queued_popups() const { return popups_.size(); }
@@ -264,12 +265,12 @@ public:
     std::string drop_status() const;
     size_t queued_drops() const { return drops_.size(); }
     // Game thread, every frame, and not while an unload runs (dllmain.cpp: with the watches,
-    // after watch_all): sets off each trap an `apply` took (a received one's popup, or
-    // `trap` for this world's own), as the game's touch does (trap.h), one a frame, at once once
-    // in play for a moment in the save it was for, not halted, not from RETURN HOME's fade
-    // through its ending, and not in an ending that began in the load (kept for the next), one of
-    // each kind at a time (the next waits for the last to run out); and keeps AILMENTS's tests
-    // patched while a trap's timer runs.
+    // after watch_all): sets off each trap an `apply` took, as the game's touch does (trap.h),
+    // one a frame, once in play for a moment in the save it was for, not halted, not from RETURN
+    // HOME's fade through its ending, and not in an ending that began in the load (kept for the
+    // next), one of each kind at a time (the next waits for the last to run out): `trap` (this
+    // world's own) at once; a received one's popup as its turn in the queue comes, shown here,
+    // the trap going off as it is drawn. Keeps AILMENTS's tests patched while a trap's timer runs.
     void pump_traps(uint64_t now_ms);
     // `trap_status` (for live checks): "queued N; last <outcome>", the outcome "none", "set
     // <item>", or "nothing <item>" (its timer already longer: as the game's op does nothing).
@@ -278,12 +279,19 @@ public:
     // which put_back_game leaves to the trap running (a client going away keeps them).
     void put_back_traps();
     std::string trap_status() const;
-    size_t queued_traps() const { return traps_.size(); }
+    // The traps not set off yet: this world's own (traps_) and the received ones' popups queued.
+    size_t queued_traps() const {
+        return traps_.size() + static_cast<size_t>(std::count_if(
+                                   popups_.begin(), popups_.end(), &Game::received_trap));
+    }
     // A queued trap for the save loaded, or for any save (one received with none loaded): it
     // goes off once in play (pump_traps), so an unload waits for it (unload_refusal).
     bool trap_waiting() const {
         return std::any_of(traps_.begin(), traps_.end(),
-                           [this](const QueuedTrap& t) { return origin_loaded(t.origin); });
+                           [this](const QueuedTrap& t) { return origin_loaded(t.origin); }) ||
+               std::any_of(popups_.begin(), popups_.end(), [this](const Popup& p) {
+                   return received_trap(p) && showable(p);
+               });
     }
     // Game thread (`die`): energy 0 and the game's death routine, once settled in one cell for a
     // second, not halted, no message up, no RETURN HOME prompt or ending on its way: "died" or
@@ -375,6 +383,20 @@ private:
     int32_t popup_frames_left() const;
     // Whether a queued popup may show in the save loaded now (Popup::origin).
     bool showable(const Popup& popup) const;
+    // A received trap's popup (a client's `popup 102` or `103`): its trap goes off as it shows.
+    static bool received_trap(const Popup& popup);
+    // A received trap's popup whose trap cannot go off for a while: one of its kind a trap
+    // started still runs, or the game's ending holds it. The popups behind it go first meanwhile;
+    // it shows when its trap starts.
+    bool trap_parked(const Popup& popup) const;
+    // The next popup to show now, or popups_.end(): in play, the gap since the helper's last
+    // passed, no message of the game's up, no RETURN HOME on its way; the first queued for this
+    // save (or for any) that is not a parked trap's.
+    std::deque<Popup>::iterator next_popup();
+    // Shows `next` (from next_popup) with its sound and takes it off the queue: whether the game
+    // drew it. Not drawn (no message slot free, a translation's entry not free yet), it stays;
+    // one whose record is not loaded is dropped, but a trap's, which waits with its trap.
+    bool show_popup(std::deque<Popup>::iterator next);
     // A save loaded with flag 250 set and 211 clear, the client's goal: the ending begun, in
     // this load or before (a save past its ending reads so throughout).
     bool ending_flag() const;
@@ -418,6 +440,7 @@ private:
     std::map<int, int> client_file_counts_, offline_file_counts_;
     void apply_file_counts();
     std::deque<Popup> popups_;
+    uint32_t batches_ = 0;  // the last `apply`'s number (Popup::batch)
     // Received scraps whose popup has shown, their drop not spawned yet (pump_drops), each with
     // its popup's save; lost, as queued popups are, with the helper.
     struct Drop {
@@ -425,13 +448,12 @@ private:
         std::shared_ptr<const OfflineSeed> origin;
     };
     std::deque<Drop> drops_;
-    // Traps to set off (pump_traps), each with the save it was for and a received one's popup,
-    // queued as the trap goes off. An unload waits for those of the save loaded (trap_waiting);
-    // those for another save are lost with the helper, as queued popups are.
+    // This world's own traps to set off (pump_traps), each with the save it was for; a received
+    // one waits as its popup in popups_. An unload waits for those of the save loaded
+    // (trap_waiting); those for another save are lost with the helper, as queued popups are.
     struct QueuedTrap {
         uint8_t item;
         std::shared_ptr<const OfflineSeed> origin;
-        std::optional<Popup> popup;
     };
     std::deque<QueuedTrap> traps_;
     std::string trap_status_ = "none";
@@ -447,6 +469,12 @@ private:
     void play_sound(const trap::Sound& sound);
     // Whether drops and traps wait for the ending (load_before_ending_), read every frame.
     bool held_for_ending();
+    // held_for_ending's answer as its last call left load_before_ending_ (trap_parked).
+    bool ending_held() const { return ending_flag() && load_before_ending_; }
+    // Whether a trap of `item`'s kind that a trap started still runs (one of each at a time).
+    bool trap_running(uint8_t item) const {
+        return item == trap::kDisruption ? trap_hit_ : trap_wave_;
+    }
     // This load has been in play outside its ending (ending_flag false), or has read flag 211
     // set (the ship, or the escape skip's YES: an ending on its way), since the last frame with
     // no save loaded. While ending_flag then reads true, drops wait (pump_drops).

@@ -146,17 +146,22 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   another game's trap as a progression item): 2026-11-11 (81dd8cc, `lab/ap/live60`); the pickup
   popup naming the trap, a queued trap's popup waiting for it, the drawn disguises, a trap held at a
   slot's first connection and `/reload_mod` refused during a trap: 2026-11-11 (5f66f1b,
-  `lab/ap/live61`); as it is now (`develop` e500ab9, `lab/ap/live62` and `live63`,
+  `lab/ap/live61`); on `develop` e500ab9 (`lab/ap/live62` and `live63`,
   `lab/ingame-138-develop-checks.md`): a trap held at a slot's first connection through a client
   restart before play, the looks drawn from the owner's upgrades, keys and OS Install Disks and the
   fallback, a key-look trap with no key marker (with Hints Revealed), one received while dead, and
-  the client closed while a trap waits (behind one of its kind) or runs: 2026-11-11. Not working in
-  game: a trap received in the pause before RELOAD FROM CHECKPOINT, which went off in the reload's
-  teleport and was reset (`kTrapSettledMs` does not cover that load), and a disk's popup coming
-  after a trap's received with it (the order the owner wants changed). Not run in game: the ending
-  or RETURN HOME, a key-look trap after the scanner, an unload refused while a trap waits, a trap's
-  popup placed after a notice, a connection's first held-traps record beside another client's (the
-  `default` operation), and the restart doubles ("Traps").
+  the client closed while a trap waits (behind one of its kind) or runs: 2026-11-11. On e500ab9 a
+  disk's popup came after a trap's received with it (check 2 failed); as it is now, a received
+  trap's popup taking its turn in the queue, the trap going off as it shows, after a disk's popup
+  and count sent before it: 2026-11-11 (932411b, `lab/ap/live62`,
+  `lab/ingame-popup-order-checks.md`), and ARCHIPELAGO CLIENT CONNECTED. before the items received
+  while the client was away, the same run ("AP saves without the client"); a popup's follow-ups kept
+  ahead of a trap it passed, added after that run: stand-in tests only. Not working in game: a trap
+  received in the pause before RELOAD FROM CHECKPOINT, which went off in the reload's teleport and
+  was reset (`kTrapSettledMs` does not cover that load). Not run in game: the ending or RETURN HOME,
+  a key-look trap after the scanner, an unload refused while a trap waits, a trap's popup passed by
+  others while it waits for one of its kind, a connection's first held-traps record beside another
+  client's (the `default` operation), and the restart doubles ("Traps").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
@@ -272,12 +277,13 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
   else the menu holds (`client/newgame.py`; `native/README.md`, "New games"; working in game,
   2026-10-27). From the Launcher: `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items meanwhile
-  (popups still queued are lost; items are not, nor traps waiting in the save loaded, for which it
-  refuses; one waiting for another save is lost); with a menu or the map open, while the ending
-  RETURN HOME WITH THE DISKS? started is on its way, or while a trap runs or waits to go off, it
-  refuses and says why, and the mod stays loaded. If the mod does not come back (no frame, the
-  game in the background, say), items wait for it as after any lost helper. While the client is
-  not connected and has let the helper go (the client, above), it says so and does nothing.
+  (popups still queued are lost; items are not, nor traps waiting in the save loaded, or received
+  with none loaded, for which it refuses; one waiting for a save not loaded is lost); with a menu or
+  the map open, while the ending RETURN HOME WITH THE DISKS? started is on its way, or while a trap
+  runs or waits to go off, it refuses and says why, and the mod stays loaded. If the mod does not
+  come back (no frame, the game in the background, say), items wait for it as after any lost helper.
+  While the client is not connected and has let the helper go (the client, above), it says so and
+  does nothing.
 - While this seed's save is loaded, the client asks the helper whether its Feats and
   achievements guard is on ([`native/README.md`](../native/README.md), "Feats and achievements
   in AP saves"). If the helper says it could not do all of it (`feats=on:<why>` in its

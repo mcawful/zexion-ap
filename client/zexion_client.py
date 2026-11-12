@@ -535,6 +535,9 @@ async def poll(ctx: ZexionContext) -> None:
     # A save past its ending playing it again: held before this poll's step gives anything.
     await side_tick(ctx, "the ending again", lambda: replay_tick(ctx))
     await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
+    if ctx.helper is not None:
+        # CLIENT CONNECTED before the popups this poll's step hands over.
+        await side_tick(ctx, "client-back notice", lambda: client_back_tick(ctx))
     try:
         followups: dict[int, str] = {}
         try:
@@ -615,6 +618,7 @@ async def poll(ctx: ZexionContext) -> None:
         if not load.seed_loaded:
             logger.info(state.save_loaded(step.save_stamp))  # again after a reconnect
         load.seed_loaded = True
+        load.in_play = step.state == game.IN_PLAY
         seed.discs_told = step.scanned
         load.save_collected = set(step.checked)
         if conn.lock_assists and ctx.assists_unlocked():
@@ -663,8 +667,7 @@ async def poll(ctx: ZexionContext) -> None:
     if new:
         p.found = own_found(ctx)  # counted from now on, in this poll too
     for name, tick in (
-        ("client-back notice", lambda: client_back_tick(ctx, step)),  # CLIENT CONNECTED first
-        ("follow-up popups", lambda: followups_tick(ctx, p, step)),
+        ("follow-up popups", lambda: followups_tick(ctx, p, step)),  # after CLIENT CONNECTED
         ("Landing Pod's RETURN HOME", lambda: mission_tick(ctx, p, step)),
         ("Feats guard check", lambda: feats_tick(ctx, step)),
     ):

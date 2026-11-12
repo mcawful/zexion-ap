@@ -266,10 +266,12 @@ uintptr_t frame(void* argument) {
                     guarded([] {
                         g_game.watch_newgame();
                         g_game.watch_all(&archipelago_chosen);
-                        // Traps patch the game's code as they start (trap.h): never while an
-                        // unload runs (they wait, and are lost with the helper, as popups are).
-                        g_game.pump_traps(GetTickCount64());
                     });
+                    // Traps patch the game's code as they start (trap.h): never while an unload
+                    // runs (they wait, and are lost with the helper, as popups are). Guarded on
+                    // its own: a received trap's popup is shown here, and the popups behind it
+                    // wait for it, so a watch that throws must not keep it from running.
+                    guarded([] { g_game.pump_traps(GetTickCount64()); });
                 }
                 publish_blocker();
                 ReleaseSRWLockExclusive(&g_menu_lock);

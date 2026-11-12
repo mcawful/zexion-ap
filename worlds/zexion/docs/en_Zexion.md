@@ -292,19 +292,21 @@ filler, so excluded locations can hold them.
   controls are reversed, with swirls around your head; a flash and a sound come just before it
   wears off.
 
-A trap goes off as soon as it reaches you, as its popup shows (DISRUPTION TRAP, FROM ALICE), once
-you are in play (a second of the same kind shows its popup as it starts), and its popup comes before
-others still waiting, such as an OS Install Disk's sent at the same time. It waits through the pause
-menu, other menus, a death or a load, and through RETURN HOME WITH THE DISKS? and the game's ending
-(it comes at your next load then). One that reaches you in the pause menu just before RELOAD FROM
-CHECKPOINT goes off during the reload's teleport, and the reload ends it at once. Each trap happens
-at most once, including one sent while your client was closed, or before you first connected (it
-comes when you connect); if the client closes just as a trap goes off, it may come again, and with
-no mod running a trap sent to you does nothing. A second trap of the same kind waits for the first
-to end and then goes off, so each lasts its full 12 seconds. The game's AILMENTS assist setting
-(pause, OPTIONS, ASSIST, where assists are allowed) doesn't change traps: while one runs, it is left
-out for that effect, so an enemy's touch of the same kind during a trap isn't shortened by it
-either.
+A trap goes off as its popup shows (DISRUPTION TRAP, FROM ALICE), once you are in play. Its popup
+takes its turn after the popups that came before it, such as an OS Install Disk's and its count, so
+the trap comes after them (a second of the same kind shows its popup as it starts, and the popups
+after it don't wait for it meanwhile). It waits through the pause menu, other menus, a death or a
+load, and through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load
+then). One that reaches you in the pause menu just before RELOAD FROM CHECKPOINT goes off during
+the reload's teleport, and the reload ends it at once. Each trap happens at most once, including
+one sent while your client was closed, or before you first connected (it comes when you connect);
+if the client closes just as a trap goes off, it may come again; a trap still waiting for its popup
+is lost if the game closes, or if the mod is reloaded while it waits for a save that isn't loaded;
+and with no mod running a trap sent to you does nothing. A second trap of the same kind waits for
+the first to end and then goes off, so each lasts its full 12 seconds. The game's AILMENTS assist
+setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change traps: while one runs,
+it is left out for that effect, so an enemy's touch of the same kind during a trap isn't shortened
+by it either.
 
 In a Zexion world, a trap looks like an important item: one of yours, or another Zexion player's,
 looks like one of that player's upgrades, keys or OS Install Disks that's in the seed (not one they
@@ -323,12 +325,13 @@ save loaded. Other games' traps sent to you do nothing in Zexion.
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused, while
 dead or while the client was disconnected; one sent before you first connected, with the client
-restarted before you played; your own trap and other players' in your world, their look (an upgrade,
-a key or an OS Install Disk) and their pickup popups, and a disk-look trap not counting; with Hints
-Revealed, a key-look trap having no key marker; a second trap's popup waiting for it; and the client
-closed while a trap waits or runs. Not checked in the game: a trap through RETURN HOME or the
-ending, a key-look trap after the scanner has shown your keys, and the mod refusing to reload while
-a trap waits to go off.
+restarted before you played; your own trap and other players' in your world, their look (an
+upgrade, a key or an OS Install Disk) and their pickup popups, and a disk-look trap not counting;
+with Hints Revealed, a key-look trap having no key marker; a second trap's popup waiting for it;
+the client closed while a trap waits or runs; and a trap sent just after an OS Install Disk, coming
+after the disk's popup and count. Not checked in the game: a trap through RETURN HOME or the
+ending, a key-look trap after the scanner has shown your keys, other popups showing first while a
+trap waits for one of its kind to end, and the mod refusing to reload while a trap waits to go off.
 
 ## Can I use the assist menu?
 

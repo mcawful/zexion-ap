@@ -36,6 +36,8 @@ struct Popup {
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.
     std::shared_ptr<const OfflineSeed> origin;
+    // The `apply` that queued it (Game::apply numbers them from 1); 0: one of the helper's own.
+    uint32_t batch = 0;
 };
 
 struct Batch {
