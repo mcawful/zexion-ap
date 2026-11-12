@@ -577,21 +577,21 @@ dealt on the next load ("DeathLink").
   keeps its trap waiting with it. While its trap waits for a moment (a quarter second into play, the
   halt byte) the popups behind it wait too, as behind any popup; while it waits for one of its kind,
   or through the game's ending, they go first, and its popup shows only as its trap starts (nor does
-  it hold RETURN HOME's fade). A popup that goes ahead of such a trap's keeps its follow-ups (a
-  disk's count, a chip's hint) right behind it, so a trap whose kind runs out while that popup shows
-  comes after them (since the review of 1ead60c, stand-in tests only:
-  `test_a_popups_notices_stay_ahead_of_a_trap_it_passed`). With no record for Scrap Metal (records
-  not loaded) it waits, never dropped as other popups are. That the game draws every message its
-  routine takes is not traced, and a popup a load cuts short has already set its trap off (the
-  load's reset then ends it: see the frame of a load above). Held through the pause and every menu
-  (not in play), a death (energy 0) and a load. But not through RELOAD FROM CHECKPOINT's teleport:
-  after its menu closes the game plays a teleport in the player's room for about a second that reads
-  as play, so a trap received in the pause goes off during it and the load at its end resets the
-  timer (in game 2026-11-11: 0.39 s of a Disruption Trap's 660 frames; `docs/re/memory.md`, "Telling
-  play from menus, the title screen and death"). A cutscene other than the ending's is not told
-  apart from play either: none was measured. Without the AILMENTS keys (an offline cache written
-  before the traps, configuring a helper that a client has not configured since), a trap runs with
-  AILMENTS as the game applies it.
+  it hold RETURN HOME's fade). A popup that goes ahead of such a trap's keeps its own follow-ups (a
+  disk's count, a chip's hint: the notices of its own `apply`; another `apply`'s stay put) right
+  behind it, so a trap whose kind runs out while that popup shows comes after them (since the review
+  of 1ead60c, stand-in tests only: `test_a_popups_notices_stay_ahead_of_a_trap_it_passed`). With no
+  record for Scrap Metal (records not loaded) it waits, never dropped as other popups are. That the
+  game draws every message its routine takes is not traced, and a popup a load cuts short has
+  already set its trap off (the load's reset then ends it: see the frame of a load above). Held
+  through the pause and every menu (not in play), a death (energy 0) and a load. But not through
+  RELOAD FROM CHECKPOINT's teleport: after its menu closes the game plays a teleport in the player's
+  room for about a second that reads as play, so a trap received in the pause goes off during it and
+  the load at its end resets the timer (in game 2026-11-11: 0.39 s of a Disruption Trap's 660
+  frames; `docs/re/memory.md`, "Telling play from menus, the title screen and death"). A cutscene
+  other than the ending's is not told apart from play either: none was measured. Without the
+  AILMENTS keys (an offline cache written before the traps, configuring a helper that a client has
+  not configured since), a trap runs with AILMENTS as the game applies it.
 - **Once:** a received trap rides on its popup: the client hands each received item's popup over
   once (its count in the server's data storage), and the helper queues the popup as the `apply`
   takes it and runs the trap once, in the frame it shows the popup and takes it off the queue. So
@@ -685,8 +685,8 @@ shows; stand-in tests `test_a_trap_popup_takes_its_turn` and
 `lab/ap/live62`, slot 5, a new save, the owner's report; `lab/ingame-popup-order-checks.md`):
 paused, an OS Install Disk then a Disorient Trap sent; on unpausing the disk's popup and its count
 came first, then the trap's popup with the trap ("those came in the right order"). That run was on
-932411b; keeping a popup's follow-ups ahead of a trap it passed ("When") was added after it, in the
-fixes from the review of 1ead60c, and has stand-in tests only. **Not run in game:** an unload
+932411b; keeping a popup's own follow-ups ahead of a trap it passed ("When") was added after it, in
+the fixes from the review of 1ead60c, and has stand-in tests only. **Not run in game:** an unload
 refused while a trap waits (the client hands a trap over only in play, and a menu's refusal comes
 first: tried with one received in the pause, refused for the menu, the trap then going off at full
 length); a trap through the ending or RETURN HOME; a key-look trap's missing marker after the
@@ -1203,29 +1203,27 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   drop, and an armed new game kept at the title during a drop. The file select shows each such
   save's count, from its map in the game's copy of the slot, and the AP logo ("AP saves on the
   file select").
-- **Put back:** leaving the save undresses it: no save loaded, or in play reading as no known
-  seed. With a menu up, a save in play since its load that reads as no known seed is held as it
-  is until play, so the lock never lifts in the options menu for one read (none such is known;
-  stand-in tests, `tests/offline_tests.cpp`). A client's `config` takes the offline look off
-  first and withdraws the notices not yet shown (the not-connected warning, and the last
-  client's other-seed notice and CLIENT CONNECTED.); the client then asks `client_back`, which
-  pops up ARCHIPELAGO CLIENT CONNECTED. once if that save was dressed. It asks once a poll has
-  found the save in play, at the start of the next poll, before that poll gives anything
-  (`client/ticks.py`, `client_back_tick`), so the notice comes before the popups of the items
-  received while the client was away, and the follow-ups of the finds made meanwhile come after
-  it (`followups_tick`). Before 704bd25 it came after those items' popups, which the same poll
-  handed over first (stand-in tests, `tests/test_zexion_client.py`). Working in game 2026-11-11
-  (B1, `zexion_ap.dll` `a8939f69…` built from 932411b, `lab/ap/live62`, slot 5, the owner's
-  report; `lab/ingame-popup-order-checks.md`): the client closed in play, a Missile Container, a
-  Scrap Metal and an Energy Tank sent, the client started again: CLIENT CONNECTED first, then the
-  three in the order sent ("I got them in the order sent", "client connected was first"). Popups the
-  helper queued before the client went, still waiting, show before it (by the queue's order; not
-  run in game). Each notice is for the
-  load it was queued in: one not shown when the save is left (no save loaded) is withdrawn, not
-  shown in the next save, and the next load is told again. The other-seed notice and CLIENT
-  CONNECTED. are also for their client: one not shown when it goes away is withdrawn. A
-  not-connected warning withdrawn before it showed is given again when the save is next dressed
-  with no client.
+- **Put back:** leaving the save undresses it: no save loaded, or in play reading as no known seed.
+  With a menu up, a save in play since its load that reads as no known seed is held as it is until
+  play, so the lock never lifts in the options menu for one read (none such is known; stand-in
+  tests, `tests/offline_tests.cpp`). A client's `config` takes the offline look off first and
+  withdraws the notices not yet shown (the not-connected warning, and the last client's other-seed
+  notice and CLIENT CONNECTED.); the client then asks `client_back`, which pops up ARCHIPELAGO
+  CLIENT CONNECTED. once if that save was dressed. It asks once a poll has found the save in play,
+  at the start of the next poll, before that poll gives anything (`client/ticks.py`,
+  `client_back_tick`), so the notice comes before the popups of the items received while the client
+  was away, and the follow-ups of the finds made meanwhile come after it (`followups_tick`). Before
+  704bd25 it came after those items' popups, which the same poll handed over first (stand-in tests,
+  `tests/test_zexion_client.py`). Working in game 2026-11-11 (B1, `zexion_ap.dll` `a8939f69…` built
+  from 932411b, `lab/ap/live62`, slot 5, the owner's report; `lab/ingame-popup-order-checks.md`):
+  the client closed in play, a Missile Container, a Scrap Metal and an Energy Tank sent, the client
+  started again: CLIENT CONNECTED first, then the three in the order sent ("I got them in the order
+  sent", "client connected was first"). Popups the helper queued before the client went, still
+  waiting, show before it (by the queue's order; not run in game). Each notice is for the load it
+  was queued in: one not shown when the save is left (no save loaded) is withdrawn, not shown in the
+  next save, and the next load is told again. The other-seed notice and CLIENT CONNECTED. are also
+  for their client: one not shown when it goes away is withdrawn. A not-connected warning withdrawn
+  before it showed is given again when the save is next dressed with no client.
 - **Waits for the client:** received items, hints, the goal and RETURN HOME WITH THE DISKS?,
   and this world's own traps picked up meanwhile (each starts when a client next connects with
   that save loaded: "Traps").

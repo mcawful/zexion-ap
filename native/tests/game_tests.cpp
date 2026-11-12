@@ -2036,6 +2036,31 @@ void test_a_popups_notices_stay_ahead_of_a_trap_it_passed() {
     }
 }
 
+// Only the shown popup's own notices go ahead of the trap it passed: a notice of a later `apply`
+// right behind it in the queue (another find's count, say, or one for another save) stays
+// behind the trap.
+void test_a_later_batchs_notice_stays_behind_a_trap_passed() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    apply(game, "apply\npopup 102 FROM ALICE");
+    next_frames(game, 5000);
+    check(field<int16_t>(0xDC2) == 660, "the first trap set");
+    apply(game, "apply\npopup 102 FROM BOB\npopup 46 FROM DAN");
+    check(apply(game, "apply\nnotice 44 DISK 4 OF 9") == "applied", "a later batch's notice");
+    next_frames(game, 5000);
+    check(g_text.find("FROM DAN") != std::string::npos, "the popup behind the waiting trap shown");
+    field<int16_t>(0xDC2) = 0;  // the first runs out while it shows
+    game.watch_all(&chosen);
+    next_frames(game, 5000);
+    check(g_text.find("DISRUPTION TRAP") != std::string::npos && field<int16_t>(0xDC2) == 660,
+          "the trap next, in its turn");
+    next_frames(game, 5000);
+    check(g_text.find("DISK 4 OF 9") != std::string::npos, "then the later batch's notice");
+    game.put_back_traps();
+}
+
 // A received trap's popup with no record to show it by (Scrap Metal's, records not loaded) waits
 // with its trap, never dropped as other popups are.
 void test_a_trap_popup_with_no_record_waits() {
@@ -3168,6 +3193,7 @@ int main() {
     test_a_trap_popup_takes_its_turn();
     test_a_popups_notices_stay_ahead_of_a_trap_it_passed();
     test_a_trap_popup_with_no_record_waits();
+    test_a_later_batchs_notice_stays_behind_a_trap_passed();
     test_traps_without_ailments();
     test_traps_held_for_the_ending();
     test_assist_watch();

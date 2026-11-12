@@ -301,9 +301,9 @@ then). One that reaches you in the pause menu just before RELOAD FROM CHECKPOINT
 the reload's teleport, and the reload ends it at once. Each trap happens at most once, including
 one sent while your client was closed, or before you first connected (it comes when you connect);
 if the client closes just as a trap goes off, it may come again; a trap still waiting for its popup
-is lost if the game closes, or if the mod is reloaded while it waits for a save you've left; and
-with no mod running a trap sent to you does nothing. A second trap of the same kind waits for the
-first to end and then goes off, so each lasts its full 12 seconds. The game's AILMENTS assist
+is lost if the game closes, or if the mod is reloaded while it waits for a save that isn't loaded;
+and with no mod running a trap sent to you does nothing. A second trap of the same kind waits for
+the first to end and then goes off, so each lasts its full 12 seconds. The game's AILMENTS assist
 setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change traps: while one runs,
 it is left out for that effect, so an enemy's touch of the same kind during a trap isn't shortened
 by it either.

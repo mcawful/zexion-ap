@@ -440,6 +440,7 @@ private:
     std::map<int, int> client_file_counts_, offline_file_counts_;
     void apply_file_counts();
     std::deque<Popup> popups_;
+    uint32_t batches_ = 0;  // the last `apply`'s number (Popup::batch)
     // Received scraps whose popup has shown, their drop not spawned yet (pump_drops), each with
     // its popup's save; lost, as queued popups are, with the helper.
     struct Drop {

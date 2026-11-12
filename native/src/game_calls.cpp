@@ -366,8 +366,10 @@ std::string Game::apply(const Batch& batch) {
     }
     // A received trap's popup takes its turn with the rest, and its trap goes off as it shows
     // (pump_traps; the owner's choice).
+    if (++batches_ == 0) batches_ = 1;  // 0 is the helper's own notices'
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
+        popup.batch = batches_;
         popup.intel = batch.intel && !popup.bare && popup.item == kAreaMapItem;
         popups_.push_back(std::move(popup));
     }
@@ -486,19 +488,21 @@ bool Game::show_popup(std::deque<Popup>::iterator next) {
     own_disk_ = disk_popup(popup);
     // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops).
     if (has_drop(popup)) drops_.push_back({popup.item, popup.origin});
-    // Its follow-ups (a disk's count, a chip's hint: the client's notices queued right after it)
-    // go ahead of the parked traps' popups it passed, so a trap whose kind runs out meanwhile
-    // never comes between them. Any popup for this save ahead of it is a parked trap's
-    // (next_popup).
-    const auto at = next - popups_.begin();
+    // Its follow-ups (a disk's count, a chip's hint: the client's notices queued right after it
+    // in its own `apply`) go ahead of the parked traps' popups it passed, so a trap whose kind
+    // runs out meanwhile never comes between them. Any popup for this save ahead of it is a
+    // parked trap's (next_popup). Notices of another `apply` stay where they are.
+    const auto index = next - popups_.begin();
     const bool bare = popup.bare;
+    const uint32_t batch = popup.batch;
     auto ahead = std::find_if(popups_.begin(), next, [this](const Popup& p) { return showable(p); });
     const auto to = ahead - popups_.begin();
-    popups_.erase(popups_.begin() + at);
-    if (!bare && to < at) {
-        auto first = popups_.begin() + at;
-        auto last = std::find_if(first, popups_.end(),
-                                 [](const Popup& p) { return !(p.bare && p.counted); });
+    popups_.erase(popups_.begin() + index);
+    if (!bare && to < index) {
+        auto first = popups_.begin() + index;
+        auto last = std::find_if(first, popups_.end(), [batch](const Popup& p) {
+            return !(p.bare && p.counted && p.batch == batch);
+        });
         std::rotate(popups_.begin() + to, first, last);
     }
     frames_since_popup_ = 0;
