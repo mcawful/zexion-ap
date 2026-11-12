@@ -151,8 +151,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   `kTrapSettledMs`), the ending or RETURN HOME, an unload refused while a trap waits, a client
   restarted or going away while a trap waits or runs, what changed since 5f66f1b (the held
   traps' record, the look drawn from the owner's upgrades, keys and OS Install Disks in the
-  seed, and its fallback), and a received trap's popup taking its turn in the queue, the trap
-  going off as it shows (since 704bd25).
+  seed, and its fallback). A received trap's popup taking its turn in the queue, the trap going
+  off as it shows (since 704bd25), behind a received disk's popup and count: 2026-11-11 (932411b,
+  `lab/ap/live62`); ARCHIPELAGO CLIENT CONNECTED. before the items received while the client was
+  away, the same run ("AP saves without the client").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,

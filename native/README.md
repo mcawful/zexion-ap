@@ -664,8 +664,13 @@ server has none), the look drawn from the owner's upgrades, keys and OS Install 
 seed (`@N NAME/PICKUP` for a disk), and its fallback. A received trap's popup in its turn, the
 trap going off as it shows (since 704bd25; before, it was set off ahead of the popups waiting,
 its popup first: a disk's and its count after it): stand-in tests
-(`test_a_trap_popup_takes_its_turn`, `test_a_parked_trap_popup_does_not_hold_the_mission`);
-not run in game yet.
+(`test_a_trap_popup_takes_its_turn`, `test_a_parked_trap_popup_does_not_hold_the_mission`).
+**Working in game** 2026-11-11 (B1, `zexion_ap.dll` `a8939f69…` built from 932411b, the seed
+`lab/ap/live62`, slot 5, the owner's report; `lab/ingame-popup-order-checks.md` in the main
+checkout): paused, an OS Install Disk then a Disorient Trap sent; on unpausing the disk's popup
+and its count came first, then the trap's popup with the trap ("those came in the right
+order"). Not run in game: a trap's popup passed while it waits for one of its kind, one held
+through the game's ending, and RETURN HOME not held by one.
 
 ### The assist menu
 
@@ -1183,7 +1188,10 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   (`client/ticks.py`, `client_back_tick`), so the notice comes before the popups of the items
   received while the client was away, and the follow-ups of the finds made meanwhile come after
   it (`followups_tick`). Before 704bd25 it came after those items' popups, which the same poll
-  handed over first (stand-in tests, `tests/test_zexion_client.py`; not run in game). Popups the
+  handed over first (stand-in tests, `tests/test_zexion_client.py`). Working in game 2026-11-11
+  (B1, `zexion_ap.dll` `a8939f69…` built from 932411b, `lab/ap/live62`, slot 5, the owner's
+  report): the client closed in play, a Missile Container, a Scrap Metal and an Energy Tank sent,
+  the client started again: CLIENT CONNECTED first, then the three in the order sent. Popups the
   helper queued before the client went, still waiting, show before it. Each notice is for the
   load it was queued in: one not shown when the save is left (no save loaded) is withdrawn, not
   shown in the next save, and the next load is told again. The other-seed notice and CLIENT

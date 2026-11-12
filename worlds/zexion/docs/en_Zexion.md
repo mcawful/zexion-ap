@@ -322,13 +322,13 @@ traps sent to you do nothing in Zexion.
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or while
 the client was disconnected; your own trap and other players' in your world, their look and their
-pickup popups; a second trap's popup waiting for it; and a trap sent before you first connected.
-All of this was checked on earlier versions of the mod; since then, how a disguise is picked (now
-also a key or an OS Install Disk), how a trap sent before you first connected is kept, and where a
-trap's popup goes among other popups (once ahead of them; now in its turn, the trap with it) have
-changed, and are not yet checked in the game. Not checked in the game at all: a trap through a
-death, a reload, RETURN HOME or the ending; the client restarted or closed while a trap waits or
-runs; and the mod refusing to reload while a trap waits to go off.
+pickup popups; a second trap's popup waiting for it; a trap sent before you first connected; and a
+trap sent just after an OS Install Disk, coming after the disk's popup and count. All but the last
+were checked on earlier versions of the mod; since then, how a disguise is picked (now also a key
+or an OS Install Disk) and how a trap sent before you first connected is kept have changed, and are
+not yet checked in the game. Not checked in the game at all: a trap through a death, a reload,
+RETURN HOME or the ending; the client restarted or closed while a trap waits or runs; and the mod
+refusing to reload while a trap waits to go off.
 
 ## Can I use the assist menu?
 
