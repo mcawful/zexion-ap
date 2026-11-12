@@ -57,8 +57,8 @@ async def attach_helper(ctx: ZexionContext) -> bool:
     version that didn't unload to make way (native.NotUnloaded). Not held for the rest of
     native.ModFixable: a helper the player must fix (missing, not matching) or, only with a
     developer's own build (native/build, ZEXION_DLL), the game folder's copy of another version
-    loaded by the proxy meanwhile, replaced on the next try; nor for one turned off
-    (native.ModDisabled)."""
+    loaded by the proxy meanwhile, replaced with the client's build on a later attach once it
+    unloads; nor for one turned off (native.ModDisabled)."""
     dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
     notes: list[str] = []
     try:
