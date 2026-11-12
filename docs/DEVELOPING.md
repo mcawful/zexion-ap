@@ -152,7 +152,7 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   restarted or going away while a trap waits or runs, what changed since 5f66f1b (the held
   traps' record, the look drawn from the owner's upgrades, keys and OS Install Disks in the
   seed, and its fallback), and a received trap's popup taking its turn in the queue, the trap
-  going off as it shows (since 2026-11-12).
+  going off as it shows (since 704bd25).
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,

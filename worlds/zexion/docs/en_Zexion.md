@@ -298,8 +298,9 @@ popups after it don't wait for it meanwhile): it waits through the
 pause menu, other menus, a death or a reload, and through RETURN HOME WITH THE DISKS? and the
 game's ending (it comes at your next load then). Each trap happens at most once, including one
 sent while your client was closed, or before you first connected (it comes when you connect); if
-the client closes just as a trap goes off, it may come again, and with no mod running a trap sent
-to you does nothing. A second trap of the same kind waits for the first to end and then goes off,
+the client closes just as a trap goes off, it may come again; if the game closes, or the mod is
+reloaded at the title, while a trap still waits for its popup, it is lost; and with no mod
+running a trap sent to you does nothing. A second trap of the same kind waits for the first to end and then goes off,
 so each lasts its full 12 seconds. The game's AILMENTS assist setting (pause, OPTIONS, ASSIST,
 where assists are allowed) doesn't change traps: while one runs, it is left out for that effect,
 so an enemy's touch of the same kind during a trap isn't shortened by it either.
@@ -319,15 +320,15 @@ up with the client closed, it goes off when you next connect with that save load
 traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
-row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or
-while the client was disconnected; your own trap and other players' in your world, their look and
-their pickup popups; a second trap's popup waiting for it; and a trap sent before you first
-connected. All of this was checked on earlier versions of the mod; since then, how a disguise is
-picked (now also a key or an OS Install Disk), how a trap sent before you first connected is
-kept, and where a trap's popup goes among other popups (now in its turn, the trap with it) have
-changed, and are not yet checked in the game. Not checked in the game at all: a trap through a death, a reload, RETURN HOME or the
-ending; the client restarted or closed while a trap waits or runs; and the mod refusing to reload
-while a trap waits to go off.
+row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or while
+the client was disconnected; your own trap and other players' in your world, their look and their
+pickup popups; a second trap's popup waiting for it; and a trap sent before you first connected.
+All of this was checked on earlier versions of the mod; since then, how a disguise is picked (now
+also a key or an OS Install Disk), how a trap sent before you first connected is kept, and where a
+trap's popup goes among other popups (once ahead of them; now in its turn, the trap with it) have
+changed, and are not yet checked in the game. Not checked in the game at all: a trap through a
+death, a reload, RETURN HOME or the ending; the client restarted or closed while a trap waits or
+runs; and the mod refusing to reload while a trap waits to go off.
 
 ## Can I use the assist menu?
 
