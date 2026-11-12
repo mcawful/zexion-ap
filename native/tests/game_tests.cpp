@@ -2004,6 +2004,58 @@ void test_a_trap_popup_takes_its_turn() {
     game.put_back_traps();
 }
 
+// A popup that goes ahead of a parked trap's keeps its follow-ups (a disk's count, a chip's hint)
+// right behind it, though the trap's kind runs out while it shows.
+void test_a_popups_notices_stay_ahead_of_a_trap_it_passed() {
+    for (const char* batch :
+         {"apply\npopup 102 FROM BOB\npopup 44 FROM DAN\nnotice 44 DISK 1 OF 3",
+          "apply\nintel\npopup 102 FROM BOB\npopup 49 FROM DAN\nnotice 49 HINT: SLIDE MOD"}) {
+        zap::Game game;
+        ready(game);
+        trap_records();
+        in_play_since(game, 5000);
+        apply(game, "apply\npopup 102 FROM ALICE");
+        next_frames(game, 5000);
+        check(field<int16_t>(0xDC2) == 660, "the first trap set");
+        check(apply(game, batch) == "applied", "applied");
+        next_frames(game, 5000);
+        check(g_text.find("FROM DAN") != std::string::npos && game.queued_traps() == 1,
+              "the second waits for it, the popup behind it shown");
+        field<int16_t>(0xDC2) = 0;  // the first runs out while that popup shows
+        game.watch_all(&chosen);
+        next_frames(game, 5000);
+        check(g_text.find("DISK 1 OF 3") != std::string::npos ||
+                  g_text.find("SLIDE MOD") != std::string::npos,
+              "its follow-up next, not the trap");
+        check(field<int16_t>(0xDC2) == 0, "the trap not set yet");
+        next_frames(game, 5000);
+        check(g_text.find("DISRUPTION TRAP") != std::string::npos &&
+                  field<int16_t>(0xDC2) == 660,
+              "then the trap, set as its popup shows");
+        game.put_back_traps();
+    }
+}
+
+// A received trap's popup with no record to show it by (Scrap Metal's, records not loaded) waits
+// with its trap, never dropped as other popups are.
+void test_a_trap_popup_with_no_record_waits() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    apply(game, "apply\npopup 102 FROM ALICE");
+    check(game.trap_status() == "queued 1; last none", "trap_status counts a received one");
+    g_records_ptr = nullptr;
+    next_frames(game, 5000);
+    check(game.queued_popups() == 1 && game.queued_traps() == 1 && field<int16_t>(0xDC2) == 0,
+          "kept, its trap not set");
+    g_records_ptr = g_records;
+    next_frames(game, 5000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_popups() == 0,
+          "shown and set once the records are there");
+    game.put_back_traps();
+}
+
 // This world's own trap, found in it: no popup of the helper's, set off at once, even while the
 // game's pickup popup shows.
 void test_own_traps() {
@@ -3114,6 +3166,8 @@ int main() {
     test_received_traps();
     test_own_traps();
     test_a_trap_popup_takes_its_turn();
+    test_a_popups_notices_stay_ahead_of_a_trap_it_passed();
+    test_a_trap_popup_with_no_record_waits();
     test_traps_without_ailments();
     test_traps_held_for_the_ending();
     test_assist_watch();

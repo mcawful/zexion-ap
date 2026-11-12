@@ -486,7 +486,21 @@ bool Game::show_popup(std::deque<Popup>::iterator next) {
     own_disk_ = disk_popup(popup);
     // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops).
     if (has_drop(popup)) drops_.push_back({popup.item, popup.origin});
-    popups_.erase(next);
+    // Its follow-ups (a disk's count, a chip's hint: the client's notices queued right after it)
+    // go ahead of the parked traps' popups it passed, so a trap whose kind runs out meanwhile
+    // never comes between them. Any popup for this save ahead of it is a parked trap's
+    // (next_popup).
+    const auto at = next - popups_.begin();
+    const bool bare = popup.bare;
+    auto ahead = std::find_if(popups_.begin(), next, [this](const Popup& p) { return showable(p); });
+    const auto to = ahead - popups_.begin();
+    popups_.erase(popups_.begin() + at);
+    if (!bare && to < at) {
+        auto first = popups_.begin() + at;
+        auto last = std::find_if(first, popups_.end(),
+                                 [](const Popup& p) { return !(p.bare && p.counted); });
+        std::rotate(popups_.begin() + to, first, last);
+    }
     frames_since_popup_ = 0;
     // The game's last message now, with a new sequence: kept only if this call changed it
     // (docs/re/memory.md, "Game functions the helper calls").
@@ -710,7 +724,7 @@ void Game::watch_trap_patches() {
 }
 
 std::string Game::trap_status() const {
-    return "queued " + std::to_string(traps_.size()) + "; last " + trap_status_;
+    return "queued " + std::to_string(queued_traps()) + "; last " + trap_status_;
 }
 
 void Game::play_sound(const trap::Sound& sound) {

@@ -16,7 +16,7 @@ from unittest import mock
 import pytest
 from fakes import connection, seed_state, slot_data
 
-from client import game, ids, native, session, state, ticks
+from client import game, ids, native, patterns, session, state, ticks
 
 
 class CommonContext:
@@ -341,21 +341,33 @@ class Back(Helper):
         return {}
 
 
+class OnB1(Showing):
+    """A running B1 game (newgame_tick reads its build) whose state() is ``shown``."""
+
+    build = patterns.KNOWN_BUILDS[0]
+
+
 @pytest.mark.parametrize(
     ("states", "expected"),
     [
         # A reconnect in play: the first look gives nothing (two polls must agree), the second
         # gives what was received meanwhile, after CLIENT CONNECTED is asked for.
-        ([game.IN_PLAY, game.IN_PLAY], ["step", "client_back", "step"]),
-        # Paused at the reconnect: asked once the poll before found it in play.
-        ([game.MENU, game.IN_PLAY, game.IN_PLAY], ["step", "step", "client_back", "step"]),
+        pytest.param([game.IN_PLAY, game.IN_PLAY], ["step", "client_back", "step"], id="in play"),
+        # Paused at the reconnect: asked once the poll before found it in play. The code before
+        # the fix asked in the same order here (the first poll in play gives nothing); this case
+        # guards against a change that would ask from a poll in a menu, or late.
+        pytest.param(
+            [game.MENU, game.IN_PLAY, game.IN_PLAY],
+            ["step", "step", "client_back", "step"],
+            id="paused, a regression guard",
+        ),
     ],
 )
 def test_client_connected_is_asked_for_before_the_step_that_gives(
     monkeypatch, states, expected
 ) -> None:
     conn = connection()
-    ctx = context(conn, Showing(game.IN_PLAY))
+    ctx = context(conn, OnB1(game.IN_PLAY))
     order: list[str] = []
     ctx.helper, ctx.told = Back(order), state.HelperState()
     looks = iter(states)
