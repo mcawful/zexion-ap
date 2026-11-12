@@ -174,7 +174,9 @@ std::string in_capitals(std::string text) {
 std::string Label::first_text() const { return first.empty() ? std::string(kApItemName) : first; }
 
 void Label::lay_out() {
-    std::vector<std::string> shown{static_cast<char>(glyph) + in_capitals(first_text())};
+    std::vector<std::string> shown{pickup.empty()
+                                       ? static_cast<char>(glyph) + in_capitals(first_text())
+                                       : in_capitals(pickup)};
     if (!who.empty()) shown.push_back(in_capitals(who));
     size_t widest = 0;
     for (const std::string& part : shown) widest = (std::max)(widest, part.size());

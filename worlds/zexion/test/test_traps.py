@@ -1,0 +1,312 @@
+"""The traps: how many the pool holds and which, what they take the place of, and how a trap in
+this world's own locations reaches the client (world.py, ``add_traps``, ``location_items``,
+``trap_locations``)."""
+
+import contextlib
+import unittest
+from collections import Counter
+from unittest import mock
+
+from BaseClasses import CollectionState, ItemClassification, LocationProgressType
+from Fill import distribute_items_restrictive
+from Options import OptionError
+
+from ..items import (
+    DATA_DISC,
+    DISGUISES,
+    DISORIENT_TRAP,
+    DISRUPTION_TRAP,
+    KEY_CODES,
+    LOOKS,
+    NAMES,
+    SCRAP,
+    TRAPS,
+    classification,
+    code_of,
+)
+from ..options import TrapPercentage
+from ..world import FOREIGN_PROGRESSION, ZexionWorld
+from .test_plando import block, generate, index_of
+
+
+def pool_of(multiworld, player: int = 1) -> Counter[int]:
+    return Counter(code_of[i.name] for i in multiworld.itempool if i.player == player)
+
+
+def traps_of(pool: Counter[int]) -> int:
+    return sum(pool[c] for c in TRAPS)
+
+
+class TestTheTrapsInThePool(unittest.TestCase):
+    def test_a_share_of_the_scrap_becomes_traps(self) -> None:
+        # The same seed with no traps and with the default 15: the traps take the Scrap's place,
+        # rounded to the nearest whole trap, and nothing else changes.
+        for mode in ("easy", "standard", "ohko"):
+            with self.subTest(mode=mode):
+                none = pool_of(generate([{"mode": mode, "trap_percentage": 0}]))
+                some = pool_of(generate([{"mode": mode}]))
+                scrap = sum(none[c] for c in SCRAP)
+                expected = (scrap * TrapPercentage.default + 50) // 100
+                self.assertEqual(traps_of(none), 0)
+                self.assertGreater(expected, 0)
+                self.assertEqual(traps_of(some), expected)
+                self.assertEqual(sum(some[c] for c in SCRAP), scrap - expected)
+                others = {c: n for c, n in none.items() if c not in SCRAP}
+                self.assertEqual(
+                    {c: n for c, n in some.items() if c not in (*SCRAP, *TRAPS)}, others
+                )
+
+    def test_no_traps_leaves_the_seed_as_it_was(self) -> None:
+        # No trap to add: no random draw either, so the placement is the one before the traps.
+        def placed(options):
+            multiworld = generate([options])
+            distribute_items_restrictive(multiworld)
+            return [(loc.name, loc.item.name) for loc in multiworld.get_filled_locations()]
+
+        a = placed({"mode": "easy", "trap_percentage": 0})
+        b = placed({"mode": "easy", "disruption_trap_weight": 0, "disorient_trap_weight": 0})
+        self.assertEqual(a, b)
+        self.assertFalse({name for _, name in a} & {NAMES[c] for c in TRAPS})
+
+    def test_no_traps_draws_nothing_the_seed_before_them_did_not(self) -> None:
+        # trap_percentage 0 against the traps' code bypassed (the seed before the traps): the
+        # same placement and the same random state after the slot data, so no draw moved.
+        def run(options: dict, bypass: bool):
+            with contextlib.ExitStack() as stack:
+                if bypass:
+                    stack.enter_context(
+                        mock.patch.object(ZexionWorld, "add_traps", lambda self, codes: codes)
+                    )
+                    stack.enter_context(mock.patch.object(ZexionWorld, "trap_looks", lambda s: []))
+                multiworld = generate([{**options, "trap_percentage": 0}])
+                distribute_items_restrictive(multiworld)
+                world = multiworld.worlds[1]
+                world.fill_slot_data()
+                placed = [(loc.name, loc.item.name) for loc in multiworld.get_filled_locations()]
+                return placed, world.random.getstate()
+
+        disks = {"mode": "standard", "goal": "os_install_disks"}
+        for options in ({"mode": "easy"}, disks):
+            with self.subTest(**options):
+                self.assertEqual(run(options, False), run(options, True))
+
+    def test_the_weights_pick_the_traps(self) -> None:
+        only = pool_of(generate([{"mode": "standard", "disorient_trap_weight": 0}]))
+        self.assertGreater(only[DISRUPTION_TRAP], 0)
+        self.assertEqual(only[DISORIENT_TRAP], 0)
+        only = pool_of(generate([{"mode": "standard", "disruption_trap_weight": 0}]))
+        self.assertGreater(only[DISORIENT_TRAP], 0)
+        self.assertEqual(only[DISRUPTION_TRAP], 0)
+        every = pool_of(generate([{"mode": "standard", "trap_percentage": 100}]))
+        self.assertEqual(sum(every[c] for c in SCRAP), 0)
+        self.assertGreater(every[DISRUPTION_TRAP], 0)
+        self.assertGreater(every[DISORIENT_TRAP], 0)
+
+    def test_traps_take_scrap_left_after_the_disks(self) -> None:
+        # The disks take the Scrap first: at 100% the traps are exactly the Scrap the same seed
+        # has left without traps (none with 30 disks), and every disk is placed all the same.
+        options = {"mode": "standard", "goal": "os_install_disks"}
+        for placed in (16, 30):
+            for seed in range(1, 6):
+                with self.subTest(placed=placed, seed=seed):
+                    disks = {**options, "os_install_disks": placed}
+                    none = pool_of(generate([{**disks, "trap_percentage": 0}], seed=seed))
+                    every = pool_of(generate([{**disks, "trap_percentage": 100}], seed=seed))
+                    left = sum(none[c] for c in SCRAP)
+                    self.assertEqual(every[code_of["OS Install Disk"]], placed)
+                    self.assertEqual(sum(every[c] for c in SCRAP), 0)
+                    self.assertEqual(traps_of(every), left)
+                    if placed == 30:
+                        self.assertEqual(left, 0)
+
+    def test_traps_are_trap_items(self) -> None:
+        for code in TRAPS:
+            self.assertEqual(classification(code), ItemClassification.trap)
+        world_item = generate([{"mode": "easy"}]).worlds[1].create_item("Disruption Trap")
+        self.assertTrue(world_item.trap)
+        self.assertFalse(world_item.advancement or world_item.useful)
+
+    def test_every_seed_with_traps_is_beatable(self) -> None:
+        for seed in range(1, 6):
+            for mode in ("easy", "standard", "ohko"):
+                with self.subTest(seed=seed, mode=mode):
+                    multiworld = generate([{"mode": mode, "trap_percentage": 100}], seed=seed)
+                    distribute_items_restrictive(multiworld)
+                    self.assertTrue(multiworld.can_beat_game(CollectionState(multiworld)))
+
+
+class TestTrapsInExcludedLocations(unittest.TestCase):
+    def test_traps_count_as_filler_for_excluded_locations(self) -> None:
+        # As many excluded locations as the seed has filler, traps among it: the fill puts only
+        # filler and traps there, and the world does not refuse it (stage_pre_fill).
+        world = generate([{"mode": "standard", "trap_percentage": 0}]).worlds[1]
+        filler = sum(world.pool_codes.count(c) for c in (*SCRAP, 49))
+        names = sorted(world.location_name_to_id)[:filler]
+        options = {"mode": "standard", "trap_percentage": 50, "exclude_locations": names}
+        multiworld = generate([options])
+        ZexionWorld.stage_pre_fill(multiworld)
+        distribute_items_restrictive(multiworld)
+        kinds = {
+            loc.item.classification
+            for loc in multiworld.get_locations(1)
+            if loc.progress_type == LocationProgressType.EXCLUDED
+        }
+        self.assertLessEqual(kinds, {ItemClassification.filler, ItemClassification.trap})
+
+
+class TestOwnTraps(unittest.TestCase):
+    def test_an_own_trap_is_a_stand_in_the_client_hears_of(self) -> None:
+        # Plando'd into this world's own location: the game holds a minor stand-in there, and
+        # the slot data names the trap for the client to set off once it is found.
+        options = {
+            "mode": "easy",
+            "plando_items": [block({"Disorient Trap": 1}, ["Kresezoa 25,25"])],
+        }
+        world = generate([options]).worlds[1]
+        i = index_of("Kresezoa 25,25")
+        self.assertEqual(world.location_items()[i], FOREIGN_PROGRESSION)
+        self.assertIn([i, DISORIENT_TRAP], world.trap_locations())
+        self.assertEqual(
+            {c for _, c in world.trap_locations()} - set(TRAPS), set(), "only traps listed"
+        )
+
+    def placed_looks(self, multiworld, player: int) -> set[int]:
+        """The player's important items (LOOKS) that lie in the seed's locations."""
+        return {
+            code_of[loc.item.name]
+            for loc in multiworld.get_filled_locations()
+            if loc.item.player == player and code_of.get(loc.item.name) in LOOKS
+        }
+
+    def test_each_trap_looks_like_one_of_its_owners_important_items_in_the_seed(self) -> None:
+        # Easy starts with the Power Cartridge (13), one of the disguises: never drawn there;
+        # every look lies in the seed, none twice until they run out.
+        multiworld = generate([{"mode": "easy", "trap_percentage": 100}])
+        distribute_items_restrictive(multiworld)
+        world = multiworld.worlds[1]
+        looks = [code for _, code in world.trap_looks()]
+        pool = self.placed_looks(multiworld, 1)
+        self.assertTrue(pool & set(KEY_CODES), "the keys are among them (the core goal)")
+        self.assertEqual(len(looks), len(world.trap_locations()))
+        self.assertNotIn(13, looks)
+        self.assertLessEqual(set(looks), pool)
+        first = looks[: len(pool)]
+        self.assertEqual(len(first), len(set(first)), "no repeat until they run out")
+        self.assertGreaterEqual(len(looks), len(pool), "more traps than looks here")
+        self.assertEqual(set(first), pool, "every look dealt before any repeats")
+        self.assertTrue(set(looks) & set(KEY_CODES), "a key drawn")
+        self.assertEqual(world.trap_looks(), world.trap_looks(), "drawn once")
+
+    def test_the_same_seed_draws_the_same_looks(self) -> None:
+        looks = []
+        for _ in range(2):
+            multiworld = generate([{"mode": "standard", "trap_percentage": 100}], seed=7)
+            distribute_items_restrictive(multiworld)
+            looks.append(multiworld.worlds[1].trap_looks())
+        self.assertTrue(looks[0])
+        self.assertEqual(looks[0], looks[1])
+
+    def test_custom_modes_excluded_and_started_upgrades_are_never_a_look(self) -> None:
+        excluded = ["Magnus Armor", "Power Chip", "G-Diffuser", "Power Core", "X-Missile"]
+        options = {
+            "mode": "custom",
+            "trap_percentage": 100,
+            "custom_items": {**dict.fromkeys(excluded, "excluded"), "Phaser": "start"},
+        }
+        multiworld = generate([options])
+        distribute_items_restrictive(multiworld)
+        looks = {code for _, code in multiworld.worlds[1].trap_looks()}
+        self.assertTrue(looks)
+        self.assertFalse(looks & ({code_of[n] for n in excluded} | {code_of["Phaser"]}))
+        self.assertLessEqual(looks, self.placed_looks(multiworld, 1))
+
+    def test_a_disk_can_be_a_look_with_the_disks_goal(self) -> None:
+        options = {
+            "mode": "standard",
+            "goal": "os_install_disks",
+            "os_install_disks": 4,
+            "os_install_disks_required": 4,
+            "trap_percentage": 100,
+        }
+        found = set()
+        for seed in range(1, 6):
+            multiworld = generate([options], seed=seed)
+            distribute_items_restrictive(multiworld)
+            looks = [code for _, code in multiworld.worlds[1].trap_looks()]
+            self.assertLessEqual(set(looks), self.placed_looks(multiworld, 1))
+            self.assertFalse(set(looks) & set(KEY_CODES), "no keys with the disks goal")
+            found |= set(looks)
+        self.assertIn(DATA_DISC, found, "the disks drawn too")
+
+    def test_with_every_upgrade_started_the_keys_are_drawn(self) -> None:
+        # Every upgrade started (Custom): the owner's keys are still placed (the core goal), so
+        # they are what is drawn. With nothing of the owner's placed: the next test.
+        names = [n for n, code in code_of.items() if code in DISGUISES]
+        options = {
+            "mode": "custom",
+            "trap_percentage": 100,
+            "custom_items": dict.fromkeys(names, "start"),
+        }
+        multiworld = generate([options])
+        distribute_items_restrictive(multiworld)
+        world = multiworld.worlds[1]
+        self.assertTrue(world.trap_locations())
+        looks = dict(world.trap_looks())
+        self.assertEqual(set(looks), {i for i, _ in world.trap_locations()})
+        self.assertLessEqual(set(looks.values()), self.placed_looks(multiworld, 1))
+        self.assertTrue(set(looks.values()) <= set(KEY_CODES), "only the keys are left to draw")
+
+    def test_with_nothing_of_the_owners_placed_any_upgrade(self) -> None:
+        # Every upgrade started and the keys too (Start Keys 4): nothing of the owner's to draw,
+        # so any of DISGUISES, and the pickup still names the trap.
+        names = [n for n, code in code_of.items() if code in DISGUISES]
+        options = {
+            "mode": "custom",
+            "trap_percentage": 100,
+            "start_keys": 4,
+            "custom_items": dict.fromkeys(names, "start"),
+        }
+        multiworld = generate([options])
+        distribute_items_restrictive(multiworld)
+        world = multiworld.worlds[1]
+        self.assertFalse(self.placed_looks(multiworld, 1), "nothing of the owner's placed")
+        self.assertTrue(world.trap_locations())
+        looks = [code for _, code in world.trap_looks()]
+        self.assertEqual(len(looks), len(world.trap_locations()))
+        self.assertLessEqual(set(looks), set(DISGUISES))
+        first = looks[: len(DISGUISES)]
+        self.assertEqual(len(first), len(set(first)), "no repeat until they run out")
+
+    def test_another_players_trap_looks_like_one_of_their_important_items(self) -> None:
+        # Bob (Easy) starts with the Power Cartridge; Alpha (Custom) starts with the Phaser.
+        trap = block({"Disorient Trap": 1}, ["Machinus 24,29"], world="Tester1")
+        options = [
+            {"mode": "custom", "custom_items": {"Phaser": "start"}},
+            {"mode": "easy", "plando_items": [trap]},
+        ]
+        multiworld = generate(options)
+        distribute_items_restrictive(multiworld)
+        looks = dict(multiworld.worlds[1].trap_looks())
+        look = looks[index_of("Machinus 24,29")]
+        self.assertIn(look, self.placed_looks(multiworld, 2), "one of Bob's in the seed")
+        self.assertNotEqual(look, 13)
+
+    def test_another_players_trap_is_a_stand_in_and_not_listed(self) -> None:
+        trap = block({"Disruption Trap": 1}, ["Machinus 24,29"], world="Tester2")
+        multiworld = generate([{"mode": "easy", "plando_items": [trap]}, {"mode": "easy"}])
+        beta = multiworld.worlds[2]
+        self.assertEqual(beta.location_items()[index_of("Machinus 24,29")], FOREIGN_PROGRESSION)
+        self.assertNotIn(index_of("Machinus 24,29"), {i for i, _ in beta.trap_locations()})
+
+
+class TestTrapsAreNeverHeld(unittest.TestCase):
+    def test_plando_may_make_any_number(self) -> None:
+        # Never held: plando past the pool's is not refused (plando.MANY).
+        trap = block({"Disruption Trap": 5}, ["Machinus"], from_pool=False)
+        generate([{"mode": "easy", "trap_percentage": 0, "plando_items": [trap]}])
+
+    def test_a_starting_trap_is_refused(self) -> None:
+        for option in ("start_inventory", "start_inventory_from_pool"):
+            with self.subTest(option=option), self.assertRaises(OptionError) as caught:
+                generate([{"mode": "easy", option: {"Disorient Trap": 1}}])
+            self.assertIn("a starting trap is never received", str(caught.exception))

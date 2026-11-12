@@ -139,6 +139,9 @@ class ZexionContext(CommonContext):
         # the items owed get their popups.
         self.helper_lost = False
         self.helper_back_by = 0.0  # when a failing attach after it stops holding back the step
+        # A helper of another version refused to unload (native.NotUnloaded): not asked again
+        # before then, as each try has it put things back (attach_helper).
+        self.attach_again_at = 0.0
         # The last step in play that had a helper found it failing, or waited for one lost just
         # before it (poll): one failing again is not attached again before the next step.
         self.step_failed = False
@@ -194,13 +197,13 @@ class ZexionContext(CommonContext):
         # look at the load (what the helper holds for the save stays). Both asked for again in
         # one Get, so one reply brings them: the popup count is never read without the hints,
         # whose notices go with the popups.
-        reread = [conn.announced_key, conn.hints_key]
+        reread = [conn.announced_key, conn.held_key, conn.hints_key]
         for key in reread:
             self.stored_data.pop(key, None)
             self.stored_data_notification_keys.discard(key)
         # Kept by the server across clients: shields given, locations found, follow-ups shown,
         # item popups handed over, and the Area Map hints.
-        keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key]
+        keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key, conn.held_key]
         self.set_notify(*keys, *([conn.hints_key] if conn.hint_targets else []))
         self.load.seed_loaded = False
         self.load.return_home = discs.ReturnHome()
@@ -301,7 +304,7 @@ class ZexionContext(CommonContext):
     def received(self) -> tuple[list[int], list[str]]:
         """The Zexion item code of each received item, and who sent it ("" for this slot's
         own), kept in step: anything that is not a Zexion item is left out of both (and said
-        once a connection)."""
+        once a connection). A trap is in both: it is given as its popup (session.py)."""
         codes, senders = [], []
         warned = self.conn.warned if self.conn is not None else set()
         for index, item in enumerate(self.items_received):
@@ -309,7 +312,7 @@ class ZexionContext(CommonContext):
             if code == ASSIST_UNLOCK:
                 continue  # not for the inventory: see assists_unlocked
             code = ids.DRAWN_AS.get(code, code)  # the Intel Chip: the game holds an Area Map
-            if code in ids.GAME_ITEMS:
+            if code in ids.GAME_ITEMS or code in ids.TRAPS:
                 codes.append(code)
                 senders.append(
                     "" if item.player == self.slot else self.player_names.get(item.player, "")
@@ -401,6 +404,7 @@ def game_closed(ctx: ZexionContext, seed: state.SeedState) -> None:
     ctx.drop_helper()
     # The next game's is attached with it.
     ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
+    ctx.attach_again_at = 0.0
     ctx.step_failed = False
     # The next game's failures are news, and its language is told again.
     ctx.said.clear("read", "read detail", "mismatch", "language")
@@ -459,9 +463,12 @@ async def poll(ctx: ZexionContext) -> None:
         (logger.info if unloaded else logger.warning)(line)
         if unloaded:
             ctx.drop_helper()
-            # Nothing else this pass, so no item is written directly (no popup) meanwhile.
             await asyncio.sleep(RELOAD_SECONDS)
             await attach_helper(ctx)
+            # An attach that failed (no frame while the game is in the background, say) holds
+            # the step back as a lost helper does (tried again below), rather than write the
+            # items owed with no popup and drop the traps waiting.
+            ctx.helper_lost = ctx.helper is None
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("item labels", lambda: labels_tick(ctx)),
@@ -475,6 +482,9 @@ async def poll(ctx: ZexionContext) -> None:
             break  # none, or it failed in the tick before
         await side_tick(ctx, name, tick)
     if ctx.conn is None or not ctx.slot:
+        # A hold cut short by the disconnect starts over at the next connection, with its own
+        # HELPER_RETRY_SECONDS (else a reconnect after them would step at once without it).
+        ctx.helper_back_by = 0.0
         await away_tick(ctx)
         await leave_helper_tick(ctx)
         return
@@ -493,7 +503,11 @@ async def poll(ctx: ZexionContext) -> None:
             return
         ctx.said.clear("game")
         logger.info("Attached to Zexion.")
-        await attach_helper(ctx)
+        # One that failed but may attach on a later try (an old helper refusing to unload, no
+        # frame yet): held for as after a lost helper, so this poll's step writes nothing with
+        # no popup and drops no waiting trap.
+        if await attach_helper(ctx) and ctx.helper is None:
+            ctx.helper_lost = True
     elif ctx.helper is None and (ctx.helper_left or ctx.helper_lost):
         # Let go while no connection stepped (leave_helper_tick), or lost in a side tick:
         # attached again before any step, as a step with no helper writes the items owed with
@@ -504,7 +518,10 @@ async def poll(ctx: ZexionContext) -> None:
         now = time.monotonic()
         if ctx.helper_back_by == 0.0:
             ctx.helper_back_by = now + HELPER_RETRY_SECONDS
-        waiting = await attach_helper(ctx) and now < ctx.helper_back_by
+        if now < ctx.attach_again_at:  # refused to unload just now: asked again in a while
+            waiting = now < ctx.helper_back_by
+        else:
+            waiting = await attach_helper(ctx) and now < ctx.helper_back_by
         if ctx.helper is None and waiting and game_alive(ctx):
             await asyncio.sleep(BACK_RETRY_SECONDS)
             return

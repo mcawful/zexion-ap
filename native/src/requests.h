@@ -21,6 +21,7 @@ struct Cas {
 };
 
 struct Popup {
+    // The item's record (0..50), or a trap's code (trap.h: a `popup` only, no record).
     uint8_t item;
     // A popup's suffix or a notice's text, filtered to the font (parse_batch), in the case it was
     // sent or written in (in capitals where it is drawn: text.h, in_capitals).
@@ -42,6 +43,8 @@ struct Batch {
     bool refresh = false;
     bool intel = false;  // its Area Maps are Intel Chips
     std::vector<Popup> popups;
+    // Traps set off with no popup of their own (`trap ITEM`: this world's own, found in it).
+    std::vector<uint8_t> traps;
 };
 
 // Bytes at an offset into the loaded randomizer section (kSectionSize bytes at rando_blob).

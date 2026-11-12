@@ -3,6 +3,17 @@
 from __future__ import annotations
 
 from client import aplabels as al
+from client import ids
+
+
+def test_a_trap_is_disguised_as_a_zexion_upgrade() -> None:
+    # The world's drawn upgrade; its pickup popup names the trap ("@N/NAME"); this player's own
+    # with no one named, another Zexion player's for them.
+    assert al.trap_label(17, ids.DISRUPTION_TRAP) == "@17/Disruption Trap"
+    assert al.trap_label(24, ids.DISORIENT_TRAP, "Bob") == "@24/Disorient Trap\nfor Bob"
+    # A disk under its name (the record's is DATA DISC), a key under the record's.
+    assert al.trap_label(44, ids.DISRUPTION_TRAP) == "@44 OS Install Disk/Disruption Trap"
+    assert al.trap_label(27, ids.DISRUPTION_TRAP, "Bob") == "@27/Disruption Trap\nfor Bob"
 
 
 def lines(text: str) -> list[str]:

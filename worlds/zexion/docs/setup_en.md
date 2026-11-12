@@ -134,11 +134,11 @@ play as normal.
   a seed still play with the client, but items arrive without popups, you can't start a
   new game of a seed, and they can earn Feats and Steam achievements. Delete the file to turn
   the mod back on.
-- **Remove it:** close Zexion and delete `zexion_ap.dll` and `version.dll` from its folder.
-  Your saves of a seed still load, as plain randomizer games (other players' items and OS
-  Install Disks look like Scrap), and they can earn Feats and Steam achievements again. To
-  play a seed again, install the mod again. The mod's small files for playing without the
-  client stay in `%LOCALAPPDATA%\ZexionAP`; you can delete that folder.
+- **Remove it:** close Zexion and delete `zexion_ap.dll` and `version.dll` from its folder. Your
+  saves of a seed still load, as plain randomizer games (other players' items, OS Install Disks
+  and traps look like Scrap, and a trap sent to you does nothing), and they can earn Feats and
+  Steam achievements again. To play a seed again, install the mod again. The mod's small files for
+  playing without the client stay in `%LOCALAPPDATA%\ZexionAP`; you can delete that folder.
 
 ## Troubleshooting
 
@@ -149,7 +149,7 @@ play as normal.
 | The client says the Zexion mod and the client don't match. | The mod's two files and `zexion.apworld` are from different releases; the client's message names both versions. Close Zexion and copy `zexion_ap.dll` and `version.dll` from the release of your `zexion.apworld` into its folder. If the message says the mod is the newer one, you can instead install that release's `zexion.apworld`. |
 | The client says the mod isn't installed. | Close Zexion and copy this release's `zexion_ap.dll` and `version.dll` into its folder again. |
 | The client says the mod didn't start. | Restart Zexion. If it keeps happening, copy the two files again as in the row above. |
-| The mod misbehaves: popups, labels or menus look wrong while the client is connected. | Type `/reload_mod` in the client. It reloads the mod in a few seconds; popups still waiting are lost, items are not. For those seconds Steam achievements are not stopped in an Archipelago save, so stand still and pick nothing up. If it says it can't now, close any menu or the map and try again. |
+| The mod misbehaves: popups, labels or menus look wrong while the client is connected. | Type `/reload_mod` in the client. It reloads the mod in a few seconds; popups still waiting are lost, and so are traps waiting for another save; items are not. For those seconds Steam achievements are not stopped in an Archipelago save, so stand still and pick nothing up. If it says it can't now, close any menu or the map, or let a trap end, and try again. |
 | The client says the mod is turned off. | Delete `zexion_ap.disabled` from Zexion's folder. |
 | There is no ARCHIPELAGO choice. | Connect the client first, and pick an empty save slot. If the client says something about the mod, see the rows above. If the client is connected and the game still offers RANDOMIZER, start the seed from RANDOMIZER (next row): the client's line on how to play says so too. |
 | The client says to start the seed from RANDOMIZER. | In an empty save slot, choose RANDOMIZER, enter the 16-character seed the client's message gives, and choose START GAME. The menu's other settings don't matter: the game gets your seed's own. If the game says it couldn't generate a winnable seed and asks whether to play anyway, choose YES. When the client also offers ARCHIPELAGO, it shows the seed on a line of its own: you can try clicking that line in the client to copy it, then the menu's Paste; if that doesn't work, type the 16 characters. |

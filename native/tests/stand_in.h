@@ -518,8 +518,12 @@ inline void* g_sound_system_seen = nullptr;
 inline short g_sound = -1;
 inline float g_sound_x = 0, g_sound_y = 0, g_sound_volume = 0, g_sound_pitch = 0;
 inline short g_sound_category = 0;
-inline void sound_fn(void* system, short id, float x, float y, float volume, float pitch, short,
-              short category) {
+// Every sound played since reset_game, each "id/volume/argument/category " (volume in tenths).
+inline std::string g_sound_log;
+inline void sound_fn(void* system, short id, float x, float y, float volume, float pitch,
+                     short argument, short category) {
+    g_sound_log += std::to_string(id) + "/" + std::to_string(static_cast<int>(volume * 10 + 0.5f)) +
+                   "/" + std::to_string(argument) + "/" + std::to_string(category) + " ";
     g_sound_system_seen = system;
     g_sound = id;
     g_sound_x = x;
@@ -552,6 +556,34 @@ inline void suit_color_fn(int slot, short palette) {
 
 inline uint64_t rva(const void* p) {
     return reinterpret_cast<uint64_t>(p) - reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr));
+}
+
+// The AILMENTS assist setting (16-bit: trap.h), and the per-frame code's tests of it for each
+// timer, as B1 has them, each load's displacement leading to it (build_ailments_code).
+inline int16_t g_ailments = 0;
+__declspec(allocate(".zapcode")) inline unsigned char g_ailments_hit_code[0x2B] = {};
+__declspec(allocate(".zapcode")) inline unsigned char g_ailments_wave_code[0x2C] = {};
+// The tests' code written, its loads reading `word`; with `traced` false, a byte not as B1 has it.
+inline void build_ailments_code(const void* word = &g_ailments, bool traced = true) {
+    unsigned char hit[0x2B] = {
+        0x0F, 0xB7, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x66, 0x41, 0x3B, 0xCC, 0x75, 0x16, 0x8D, 0x42,
+        0xFD, 0x66, 0x89, 0x83, 0xC2, 0x0D, 0x00, 0x00, 0x0F, 0xB7, 0xC7, 0x0F, 0xB7, 0x0D, 0x00,
+        0x00, 0x00, 0x00, 0xEB, 0x02, 0x8B, 0xC5, 0x66, 0x83, 0xF9, 0x02, 0x75, 0x09};
+    unsigned char wave[0x2C] = {
+        0x0F, 0xB7, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x66, 0x41, 0x3B, 0xCC, 0x75, 0x19, 0x66, 0x41,
+        0x3B, 0xC7, 0x7E, 0x13, 0x66, 0x44, 0x89, 0xBB, 0xC4, 0x0D, 0x00, 0x00, 0x41, 0x0F, 0xB7,
+        0xC7, 0x0F, 0xB7, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x66, 0x83, 0xF9, 0x02, 0x75, 0x09};
+    auto aim = [word](unsigned char* site, unsigned char* code, size_t load) {
+        auto d = static_cast<int32_t>(static_cast<const BYTE*>(word) - (site + load + 7));
+        std::memcpy(code + load + 3, &d, sizeof(d));
+    };
+    aim(g_ailments_hit_code, hit, 0x00);
+    aim(g_ailments_hit_code, hit, 0x1A);
+    aim(g_ailments_wave_code, wave, 0x00);
+    aim(g_ailments_wave_code, wave, 0x1F);
+    if (!traced) wave[0x0C] = 0x18;
+    write_code(g_ailments_hit_code, hit, sizeof(hit));
+    write_code(g_ailments_wave_code, wave, sizeof(wave));
 }
 
 // The death routine and the byte it returns early on.
@@ -726,6 +758,9 @@ inline std::map<std::string, uint64_t> stand_in_config() {
         {"event_handlers", rva(g_event_handlers)},
         {"death_fn", rva(reinterpret_cast<void*>(&death_fn))},
         {"halt_flag", rva(&g_halt_flag)},
+        {"ailments", rva(&g_ailments)},
+        {"ailments_hit_code", rva(g_ailments_hit_code)},
+        {"ailments_wave_code", rva(g_ailments_wave_code)},
         {"ending_unlocks", rva(g_ending + kEndingCall)},
         {"ending_join", rva(g_ending + kEndingJoin)},
         {"stats_context", rva(g_stats_context)},
@@ -770,6 +805,9 @@ inline void reset_game() {
     g_spawn_calls = 0;
     g_spawn_event = nullptr;
     g_halt_flag = 0;
+    g_ailments = 0;
+    build_ailments_code();
+    g_sound_log.clear();
     g_deaths = 0;
     g_death_player = nullptr;
     g_death_energy = -100;

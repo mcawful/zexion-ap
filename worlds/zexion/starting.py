@@ -22,9 +22,9 @@ limits:
   game's bomb amount, but the game's use of that amount is from disassembly only (docs/re/
   memory.md, "Starting a new game");
 - no Scrap, Area Map or Energy Shield (no way into a new game; the shield is a pickup's spawn);
-- no Intel Chip or Assist Unlock: the client acts on them only as received (a hint, the assist
-  lock lifted), and a starting one is never received (the Enable Assist Options option lifts
-  the lock);
+- no Intel Chip, Assist Unlock or trap: the client acts on them only as received (a hint, the
+  assist lock lifted, a trap set off), and a starting one is never received (the Enable Assist
+  Options option lifts the lock);
 - an OS Install Disk only with the OS Install Disks goal, which counts it (slot data
   "discs_start"); with the placed ones, 99 at most, which world.py checks (``MAX_DISKS``: the
   most the helper's disk counts show).
@@ -53,6 +53,7 @@ from .items import (
     PROGRESSIVE,
     SCRAP_METAL,
     SUPPLIES,
+    TRAPS,
     UPGRADES,
 )
 from .logic import ENERGY_TANK, MISSILE_BOX, MISSILE_CONTAINER
@@ -75,6 +76,7 @@ NEVER = {
         "a starting Assist Unlock is never received; use Enable Assist Options (allow_assists) "
         "instead"
     ),
+    **dict.fromkeys(TRAPS, "a starting trap is never received, so it would do nothing"),
 }
 
 

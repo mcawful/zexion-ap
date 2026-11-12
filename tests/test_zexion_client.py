@@ -16,7 +16,7 @@ from unittest import mock
 import pytest
 from fakes import connection, seed_state, slot_data
 
-from client import game, native, session, state, ticks
+from client import game, ids, native, session, state, ticks
 
 
 class CommonContext:
@@ -420,10 +420,80 @@ def test_a_mismatch_a_rebuild_can_fix_is_tried_again_without_holding_the_step(
 def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
     monkeypatch, tmp_path
 ) -> None:
-    # A menu open, say: a later try may unload it and load the game folder's copy.
+    # A menu open or a trap waiting, say: a later try may unload it and load the game folder's
+    # copy, so the step waits for it a while, as for a helper lost, then goes on. It is asked
+    # again only every few seconds: each try has it put back what a client going away does.
     ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll", native.NotUnloaded)
     asyncio.run(zc.poll(ctx))
-    assert len(order) == 2 and order[1] != "step, retry at inf"
+    assert order == ["attach"], "no step gives items without their popups meanwhile"
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach"], "held, and not asked again at once"
+    ctx.attach_again_at, ctx.helper_back_by = 0.0, 1.0  # both long past: given up
+    asyncio.run(zc.poll(ctx))
+    assert len(order) == 3 and order[2] != "step, retry at inf"
+
+
+@pytest.mark.parametrize(
+    ("error", "message", "own_build", "held"),
+    [
+        # An old helper (loaded by an earlier build) that didn't unload for the client's build.
+        (native.NotUnloaded, "the mod loaded in Zexion is 0.29.0 (a menu is open)", True, True),
+        (native.ReplyLost, "no reply", False, True),  # no frame yet
+        # The Launcher's client, with no helper installed: nothing to wait for.
+        (native.ModFixable, "it isn't installed", False, False),
+        # Turned off by zexion_ap.disabled, which turns off the game folder's copy only.
+        (native.ModDisabled, "The mod is turned off", False, False),
+        # A developer's own build, and the proxy loaded the folder's 0.29.0 copy meanwhile.
+        (native.ModMismatch, "the mod in Zexion's folder (0.29.0) loaded meanwhile", True, False),
+    ],
+)
+def test_a_first_attach_holds_back_the_step_only_for_a_helper_that_may_still_come(
+    monkeypatch, error, message, own_build, held
+) -> None:
+    # The client started with the game running: an old helper refusing to unload (or no
+    # frame yet) gives no step that writes items with no popup or drops a waiting trap; a mod
+    # missing, not matching or turned off gives the step at once, as with no helper.
+    ctx = context(connection(), None)
+    order: list[str] = []
+    monkeypatch.setattr(zc.game.Game, "attach", staticmethod(lambda: Running(game.IN_PLAY)))
+
+    def attach(*args) -> None:
+        order.append("attach")
+        raise error(message)
+
+    def step(g, received, helper=None, give=True, **kwargs):
+        order.append(f"step, {'gives' if give else 'waits'}")
+        return session.Step(state=game.IN_PLAY)
+
+    monkeypatch.setattr(native, "attach", attach)
+    dll = types.SimpleNamespace(is_file=lambda: own_build)  # native/build or ZEXION_DLL
+    monkeypatch.setattr(native, "default_dll", lambda: dll)
+    monkeypatch.setattr(zc, "BACK_RETRY_SECONDS", 0.0)
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    for name in ("newgame_tick", "labels_tick", "toggle_tick", "discs_helper_tick"):
+        monkeypatch.setattr(zc, name, nothing)
+    for name in ("slots_tick", "language_tick", "replay_tick", "offline_tick"):
+        monkeypatch.setattr(zc, name, nothing)
+    asyncio.run(zc.poll(ctx))
+    if not held:
+        assert order == ["attach", "step, gives"] and not ctx.helper_lost
+        return
+    assert order == ["attach", "step, waits"] and ctx.helper_lost
+    ctx.attach_again_at = 0.0
+    asyncio.run(zc.poll(ctx))
+    assert order[-1] == "attach", "then held while it is tried again"
+
+
+def test_a_disconnect_during_the_hold_lets_the_next_connection_hold_afresh(monkeypatch) -> None:
+    ctx, order = failing_reattach(monkeypatch)
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach"] and ctx.helper_back_by > 0
+    ctx.slot = None  # dropped mid-hold
+    asyncio.run(zc.poll(ctx))
+    assert ctx.helper_back_by == 0.0, "the bound starts over"
+    ctx.slot = 1
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach", "attach"], "held again, not stepped at once without the helper"
 
 
 async def nothing(*args) -> None:
@@ -542,6 +612,30 @@ def test_a_helper_lost_just_before_the_step_holds_its_grants_once(monkeypatch, f
     asyncio.run(zc.poll(ctx))
     after = "helper, gives" if fails == 1 else "none, gives"
     assert order == ["none, waits", "attach", after]
+
+
+def test_received_items_keep_the_traps_with_their_senders() -> None:
+    # A trap is no game item, but it is given as its popup (session.py): kept in step.
+    ctx = context(connection(), None)
+    ctx.slot, ctx.player_names = 1, {1: "Me", 2: "Bob"}
+    ctx.items_received = [
+        types.SimpleNamespace(item=ids.ITEM_ID_BASE + code, player=player)
+        for code, player in ((17, 2), (ids.DISRUPTION_TRAP, 2), (ids.DISORIENT_TRAP, 1))
+    ]
+    assert ctx.received() == ([17, ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP], ["Bob", "Bob", ""])
+
+
+def test_a_failed_reattach_after_reload_mod_holds_back_the_step(monkeypatch) -> None:
+    # /reload_mod unloaded the helper and the attach after it failed: the step gives nothing
+    # (no item written with no popup, no trap dropped) while the attach is tried again.
+    ctx, order = lost_helper(monkeypatch, attaches=False)
+    monkeypatch.setattr(zc, "offline_tick", nothing)
+    monkeypatch.setattr(zc, "RELOAD_SECONDS", 0.0)
+    ctx.reload_mod_pending = True
+    ctx.helper.unload = lambda: "bye"
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach", "attach"], "no step: the helper is waited for"
+    assert ctx.helper is None and ctx.helper_lost
 
 
 def test_a_disconnect_undresses_the_save_for_the_next_connection() -> None:
@@ -700,7 +794,7 @@ def test_the_popup_count_and_the_hints_are_asked_for_in_one_get(hints, monkeypat
     ctx.seed_name = "A"
     ctx.connected(slot_data(hints=hints, intel_chip=bool(hints)))
     conn = ctx.conn
-    keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key]
+    keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key, conn.held_key]
     assert ctx.gets == [keys + ([conn.hints_key] if hints else [])]
     # The replies, then a drop: reset_server_state keeps stored_data and what is subscribed.
     ctx.stored_data = {key: 3 for key in keys} | {conn.hints_key: {}}
@@ -708,5 +802,7 @@ def test_the_popup_count_and_the_hints_are_asked_for_in_one_get(hints, monkeypat
     ctx.connected(slot_data(hints=hints, intel_chip=bool(hints)))
     conn = ctx.conn
     assert conn.announced_key not in ctx.stored_data, "the last connection's count not read"
+    assert conn.held_key not in ctx.stored_data, "nor its waiting traps"
     assert conn.hints_key not in ctx.stored_data
-    assert ctx.gets == [[conn.announced_key] + ([conn.hints_key] if hints else [])]
+    reread = [conn.announced_key, conn.held_key]
+    assert ctx.gets == [reread + ([conn.hints_key] if hints else [])]

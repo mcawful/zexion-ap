@@ -132,6 +132,25 @@ int wmain(int argc, wchar_t** argv) {
     check(slot != nullptr && zap::swap_slot(slot, other, g_next.load()), "the other hook gone");
     Sleep(50);  // no call left in chained_tick
 
+    // A trap for this save holds an unload while it waits (halted here) and while it runs, so
+    // undo_for_unload never drops it nor puts its AILMENTS patch back under it.
+    stand_in::g_halt_flag = 1;
+    reply = zap_test::ask(pipe, "apply\ntrap 102");
+    check(reply == "applied", "a trap queued", reply);
+    reply = zap_test::ask(pipe, "unload");
+    check(reply == "error a trap is waiting to go off; not unloading", "refused while it waits",
+          reply);
+    stand_in::g_halt_flag = 0;
+    for (int i = 0; i < 400 && stand_in::field<int16_t>(0xDC2) != 660; ++i) Sleep(5);
+    check(stand_in::field<int16_t>(0xDC2) == 660, "it goes off once play goes on");
+    reply = zap_test::ask(pipe, "unload");
+    check(reply == "error a trap is running; not unloading", "refused while it runs", reply);
+    stand_in::field<int16_t>(0xDC2) = 0;  // run out: the next frame puts the patch back
+    for (int i = 0; i < 200 && reply != "queued 0; last set 102"; ++i) {
+        reply = zap_test::ask(pipe, "trap_status");
+    }
+    check(reply == "queued 0; last set 102", "the trap ran once", reply);
+
     // The client of another seed puts seed B's file (a seed it started earlier in its run).
     reply = zap_test::ask(pipe, "other_save");
     check(reply == "unknown", "no file for seed B: unknown", reply);

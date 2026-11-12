@@ -1,8 +1,8 @@
 """The numbers the client's modules share: the item and location codes the world uses
 (worlds/zexion/items.py and locations.py, which must agree), and the game's own sizes.
 
-Item codes are the game's item IDs (``ItemNames.txt``), except ASSIST_UNLOCK and INTEL_CHIP,
-which are the world's own. No Archipelago imports.
+Item codes are the game's item IDs (``ItemNames.txt``), except ASSIST_UNLOCK, INTEL_CHIP and
+the TRAPS, which are the world's own. No Archipelago imports.
 """
 
 from __future__ import annotations
@@ -36,6 +36,12 @@ ENERGY_SHIELD = 50
 ASSIST_UNLOCK = 100
 INTEL_CHIP = 101
 DRAWN_AS = {INTEL_CHIP: AREA_MAP}
+# The traps: never held; the helper sets the game's timer for each with its popup
+# (native/README.md, "Traps"), or, found in this world, with the game's own popup
+# (client/ticks.py, followups_tick). Named here for the client's log.
+DISRUPTION_TRAP, DISORIENT_TRAP = 102, 103
+TRAP_NAMES = {DISRUPTION_TRAP: "Disruption Trap", DISORIENT_TRAP: "Disorient Trap"}
+TRAPS = frozenset(TRAP_NAMES)
 
 LOCATIONS = 154  # the randomizer's locations (RandoCells; docs/re/randocells.md)
 # With Secret Shuffle (setting t37) the game's list holds a 155th, at list position 134 in grid

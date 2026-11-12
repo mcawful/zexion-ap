@@ -1,7 +1,8 @@
 """The client's records in the server's data storage, and the Area Map hints kept there.
 
 Each key is per team and slot (client/state.py, ``Connection.key``): how many received items
-have had their popup (``announced_tick``), this world's locations found in game
+have had their popup and the traps held at the slot's first connection still to pop up
+(``announced_tick``), this world's locations found in game
 (``own_found``, ``store_found``), the follow-up popups shown (``popped``) and the entry each
 Area Map used for its hint (``hints_tick``). Every key is open to any client in the room, so
 what is read from one is checked for form. client/zexion_client.py's game loop calls these.
@@ -128,20 +129,49 @@ async def announced_tick(
     per connection, the session (``current``, ``conn``'s seed's) takes the server's count of
     those handed over, once it has been read (a slot with none stored counts every item it
     holds, and stores that at once, so the key exists); and the count is stored again as items
-    are handed over (the larger one wins, for two clients of a slot). With Area Map hints, not
-    before the hints are read too (in the same reply: zexion_client's connected), so an Intel
-    Chip is never handed over without its hint."""
+    are handed over (the larger one wins, for two clients of a slot). The traps among the items
+    a slot holds at its first connection still pop up (Session.held_traps): those still waiting
+    are kept in their own record (``held_key``), so a reconnect or a restarted client keeps them
+    while the count stays stored. With Area Map hints, not before the hints are read too (in the
+    same reply: zexion_client's connected), so an Intel Chip is never handed over without its
+    hint."""
     if conn is not ctx.conn:
         return  # a poll of a connection that has ended: the next one reads and stores its own
-    if conn.announced_key not in ctx.stored_data or not conn.items_listed:
+    keys = (conn.announced_key, conn.held_key)
+    if any(key not in ctx.stored_data for key in keys) or not conn.items_listed:
         return
     raw = ctx.stored_data.get(conn.announced_key)
+    held_raw = ctx.stored_data.get(conn.held_key)
     if not current.announced_read:
         if conn.hint_targets and conn.hints_key not in ctx.stored_data:
             return
-        # Counted as received() counts: Zexion items only.
+        # Counted as received() counts: Zexion items only. Held traps still pop up (and run):
+        # those this session still holds, new ones, and, on the session's first read only (a
+        # restarted client), those the server's record lists: a reconnect keeps the session's
+        # own, so a record its emptying store never reached does not hand a trap over twice.
+        held = state.held_traps(raw, p.codes, current.announced)
+        waiting = [] if current.held_read else state.stored_held(held_raw, p.codes)
+        current.held_read = True
+        current.held_traps = sorted({*current.held_traps, *waiting, *held})
+        # What the server holds counts as stored: written again only when this session's list
+        # changes from it (so a second client of the slot never writes its old list back).
+        conn.held_sent = state.stored_held(held_raw, p.codes)
         current.announced = state.announced_start(raw, len(p.codes), current.announced)
         current.announced_read = True
+    # The waiting held traps' record, replaced while it differs from the session's (emptied once
+    # they are handed over), before the count, so a restart never finds the count without them.
+    held_now = list(current.held_traps)
+    if held_now != conn.held_sent:
+        # The slot's first record ("default": made only if the server has none yet), so a
+        # second client's first, late, never lands over another's emptied one; then "replace",
+        # once this connection has stored it (its reply may not be here yet: an emptying store
+        # sent as "default" before it came would leave the first record standing).
+        first = held_raw is None and not conn.held_stored
+        op = "default" if first else "replace"
+        if not await store(ctx, conn.held_key, op, held_now, held_now, "Recording the traps"):
+            return  # sent again on the next poll, the count with it
+        conn.held_sent = held_now
+        conn.held_stored = True
     count = state.announced_to_store(current.announced, raw, conn.announced_sent)
     if count is None:
         return

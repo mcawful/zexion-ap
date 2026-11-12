@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import logging
 import struct
 
 import pytest
@@ -426,6 +427,23 @@ def test_a_lost_reply_counts_its_popups_as_handed_over(with_helper) -> None:
     assert session.announced == 1, "the helper may have shown it: not shown again"
 
 
+def test_a_lost_reply_counts_the_held_traps_handed_over(with_helper) -> None:
+    # The helper may have queued them: not sent again (each trap goes off at most once).
+    session, g, helper, _ = with_helper
+
+    def apply(text: str) -> str:
+        helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    helper.apply = apply
+    received, senders = [17, ids.DISORIENT_TRAP], ["Bob", "Alice"]
+    session.announced, session.held_traps = 2, [1]
+    session.step(g, received, gap=0, senders=senders)
+    step = session.step(g, received, gap=0, senders=senders)
+    assert isinstance(step.helper_error, native.ReplyLost)
+    assert helper.popups() == ["popup 103 from Alice"] and session.held_traps == []
+
+
 def test_a_helper_that_doesnt_match_is_kept_for_the_poll_to_say(with_helper) -> None:
     session, g, helper, writes = with_helper
     mismatch = native.ModMismatch("both are version 0, but from different builds")
@@ -462,6 +480,35 @@ def test_received_scrap_pops_up_as_itself_once(with_helper) -> None:
     ]
     session.step(g, scrap, gap=0, senders=["Bob"] * 3)
     assert len(helper.requests) == 1 and session.announced == 3, "no popup, no drop, twice"
+
+
+def test_a_received_trap_is_its_popup_alone_once(with_helper) -> None:
+    # No byte: the helper sets the trap off with its popup (native/README.md,
+    # "Traps"), so it rides on the popup count, as received scrap's drops do.
+    session, g, helper, writes = with_helper
+    traps = [ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
+    assert give(session, g, traps, senders=["Bob", "Alice"]) == {}
+    assert helper.requests[-1].splitlines() == [
+        "apply",
+        "popup 102 from Bob",
+        "popup 103 from Alice",
+    ]
+    assert session.announced == 2 and writes == []
+    session.step(g, traps, gap=0, senders=["Bob", "Alice"])
+    assert len(helper.requests) == 1, "never again"
+
+
+def test_traps_held_at_the_first_connection_pop_up_once_before_the_rest(with_helper) -> None:
+    # announced_tick counted all three as handed over (no stored count), keeping the trap.
+    session, g, helper, _ = with_helper
+    received, senders = [17, ids.DISORIENT_TRAP, 22], ["Bob", "Alice", "Dan"]
+    session.announced, session.held_traps = 3, [1]
+    session.step(g, received, gap=0, senders=senders)
+    session.step(g, received, gap=0, senders=senders)
+    assert helper.popups() == ["popup 103 from Alice"], "the trap alone, no flood of old popups"
+    assert session.held_traps == [] and session.announced == 3
+    session.step(g, received, gap=0, senders=senders)
+    assert len(helper.requests) == 1, "once"
 
 
 def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:
@@ -595,6 +642,18 @@ def test_direct_writes_count_as_handed_over_without_a_replay(setup) -> None:
     session.announced_read = True
     give(session, g, [17, 22])
     assert g.inv[22] == 1 and session.announced == 2
+
+
+def test_direct_writes_drop_the_waiting_traps_and_say_so(setup, caplog) -> None:
+    # No helper: a trap rides on its popup, so those held and new ones do nothing, once.
+    session, g = setup
+    session.announced_read = True
+    received = [ids.DISORIENT_TRAP, 17, ids.DISRUPTION_TRAP]
+    session.announced, session.held_traps = 2, [0]
+    with caplog.at_level(logging.INFO, logger="Zexion"):
+        give(session, g, received)
+    assert session.held_traps == [] and session.announced == 3 and g.inv[17] == 1
+    assert "do nothing: Disorient Trap, Disruption Trap." in caplog.text
 
 
 def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:

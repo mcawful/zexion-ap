@@ -155,9 +155,16 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   stand-in where another world's item is: Scrap Energy (47), or Scrap Chunk (48) for a
   progression item (not another Zexion player's supplies, which stay 47, minor on the map as the
   game marks this player's own: `world.important_elsewhere`) and for this world's own OS
-  Install Disk, which the game must not hand out
+  Install Disk, which the game must not hand out, and for this world's own trap and any trap of
+  another world's (a trap looks important: the owner's choice, 2026-11-11)
   (`client/ids.py`'s `STAND_IN` and `STAND_IN_PROGRESSION`; the helper shows them as Archipelago items,
   `memory.md`, "Other players' items"), and Scrap Metal (46) where the location was left out.
+  `trap_locations` lists this world's own traps in its own locations (index and item code), which
+  the client sets off once found (`native/README.md`, "Traps"); `trap_looks` the Zexion item
+  each Zexion trap in this world's locations is shown as (any Zexion player's), drawn from the
+  trap's owner's upgrades, keys and OS Install Disks that lie in the seed's locations
+  (`items.LOOKS`), none twice until they run out (with none in the seed, any of the 16
+  upgrades); a seed from before the traps lacks them, and the client reads none.
   `start_items`: inventory bytes for everything the player starts with, the mode's items and
   any `start_inventory` or `start_inventory_from_pool` (with Guns First, a second copy of a
   progressive weapon as its upgrade; without it, each upgrade as itself). The world
@@ -303,19 +310,20 @@ where its subject is:
 - **Refused at generation, not clamped** (`custom.problems`): a state the game's menu cannot hold;
   one it allows whose pool can be longer than its places for some coin flip or box draw
   (`custom.most_entries`), which the game would cut at random, keys and items among them
-  (`randocells.md`, "The pool", step 7); Abridged Finale with the OS Install Disks goal (decided by
-  the owner, 2026-10-27); starting Mega Bombs, until the client can give them
+  (`randocells.md`, "The pool", step 7); Abridged Finale with the OS Install Disks goal (decided
+  by the owner, 2026-10-27); starting Mega Bombs, until the client can give them
   (`worlds/zexion/starting.py`); and more than 99 OS Install Disks, placed and starting, the most
-  the helper's counts show (`world.MAX_DISKS`; the game has no disk count). A pool's keys, items and
-  Energy Tanks alone are never more than its places (4 + 27 + 40 at most, of 154). Archipelago's own
-  refusal is named too: where a Zexion player's excluded locations outnumber their filler (Scrap,
-  Area Maps or Intel Chips, whose places the OS Install Disks take before Energy Shields':
-  `world.DISC_REPLACES`) and the other players' filler does not make up the difference (filler in
-  its player's `local_items`, such as Area Maps with Area Map Hints off, counted for that player
+  the helper's counts show (`world.MAX_DISKS`; the game has no disk count). A pool's keys, items
+  and Energy Tanks alone are never more than its places (4 + 27 + 40 at most, of 154).
+  Archipelago's own refusal is named too: where a Zexion player's excluded locations outnumber
+  their filler (Scrap, traps, Area Maps or Intel Chips, whose places the OS Install Disks take
+  before Energy Shields': `world.DISC_REPLACES`; the traps take some of the Scrap left after that,
+  one for one) and the other players' filler does not make up the difference (filler in its
+  player's `local_items`, such as Area Maps with Area Map Hints off, counted for that player
   alone; the message says how much other players' filler stays in their own worlds so, such as a
-  Zexion player's Area Maps with Area Map Hints off), counted over the whole multiworld after plando
-  and every world's `pre_fill`, the seed is refused with the options to change, in place of the
-  fill's "Not enough filler items for excluded locations" (`ZexionWorld.stage_pre_fill`, since
+  Zexion player's Area Maps with Area Map Hints off), counted over the whole multiworld after
+  plando and every world's `pre_fill`, the seed is refused with the options to change, in place of
+  the fill's "Not enough filler items for excluded locations" (`ZexionWorld.stage_pre_fill`, since
   2026-10-26; tested only: `test_world.py`, `TestExcludedLocationsNeedFiller` and
   `TestExcludedLocationsNameThePlayerOver`).
 - **Item plando past what the game holds is refused** (`worlds/zexion/plando.py`, from
@@ -386,6 +394,14 @@ where its subject is:
   Containers (`0xE5450`), while the world holds them as boxes of ten and the rest as containers
   (`custom.starting_items`, as the new game gives them), so from 10 starting missiles the world's
   rules count fewer containers than the game's. No preset starts with 10 or more.
+- **Traps** (`trap_percentage`, 15 by default, and a weight for each) are not the game's: the
+  game's randomizer places none. They take the place of the pool's Scrap left after the locations
+  left out and the disks have taken theirs (`ZexionWorld.add_traps`), never an Area Map or an
+  Energy Shield, and no rule reads them or the Scrap, so the logic is unchanged. Each copies an
+  enemy's touch the game already has (`memory.md`, "The Phazo's disruption", "The Balorb's
+  disorienting wave"), longer, past a shield and AILMENTS, and looking important (a Zexion trap
+  as one of its owner's upgrades, keys or OS Install Disks), kept by the owner's decisions,
+  2026-11-11.
 - **The ASSIST lock** (`allow_assists`, off by default) is a protection the game does not have
   (the game's randomizer menu has no assist setting: `randocells.md`, "The randomizer menu's
   settings"), kept by the owner's decision, 2026-10-27.

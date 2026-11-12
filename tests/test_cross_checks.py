@@ -38,6 +38,20 @@ def test_the_helper_is_the_version_the_client_asks_for() -> None:
     assert versions == [native.VERSION]
 
 
+def test_the_traps_are_the_same_codes_and_names_in_the_client_and_the_helper() -> None:
+    # The client sends a trap's popup and `trap` line by its code (native.batch_text); the
+    # helper names it in the popup (native/src/trap.h).
+    text = source("trap.h")
+    codes = dict(re.findall(r"constexpr int (kDisruption|kDisorient) = (\d+);", text))
+    assert (int(codes["kDisruption"]), int(codes["kDisorient"])) == (
+        ids.DISRUPTION_TRAP,
+        ids.DISORIENT_TRAP,
+    )
+    for code in ids.TRAPS:
+        assert f'"{ids.TRAP_NAMES[code]}"' in text
+    assert '{"trap_status", ' in source("dllmain.cpp")
+
+
 def test_the_client_reads_the_ending_started_as_the_helper_says_it() -> None:
     said = re.findall(r'const char kEndingStarted\[\] = "([^"]+)";', source("mission.cpp"))
     assert said == [discs.ENDING_STARTED]

@@ -208,6 +208,116 @@ def test_a_secret_shuffle_seeds_offline_table_is_in_the_games_order() -> None:
     assert lines[1] == offline.seed_text(p.table, p.start, False, False, None, None).splitlines()[1]
 
 
+def test_traps_look_important() -> None:
+    # Location 3 holds a stand-in: this player's own trap there is a Zexion upgrade, alone;
+    # another Zexion player's, for them; another game's trap a progression item.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]], trap_looks=[[3, 24]]))
+    loc = ids.LOCATION_ID_BASE + 3
+    cell = ctx.conn.plan.cells[3]
+    for player, game_name, code, text in (
+        (1, "Zexion", ids.DISRUPTION_TRAP, aplabels.trap_label(24, ids.DISRUPTION_TRAP)),
+        (2, "Zexion", ids.DISORIENT_TRAP, aplabels.trap_label(24, ids.DISORIENT_TRAP, "Bob")),
+        (2, "Other", ids.DISORIENT_TRAP, aplabels.label(True, "Bob")),
+    ):
+        ctx.slot_info = {2: types.SimpleNamespace(game=game_name)}
+        ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + code, loc, player, 0b100)}
+        labels, own = ticks.foreign_labels(ctx)
+        assert labels == {cell: text} and own == 0, (player, game_name)
+    ctx.conn.trap_looks = {}  # a seed from before the drawn looks: a progression item
+    ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + ids.DISRUPTION_TRAP, loc, 1, 0b100)}
+    assert ticks.foreign_labels(ctx)[0] == {cell: aplabels.label(True, "Me")}
+
+
+def test_an_own_trap_found_is_set_off_once() -> None:
+    # Found in this world (the game's popup showed its label): set off with no popup of the
+    # client's, after that popup (the helper waits), and recorded as done, so never again.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISORIENT_TRAP]]))
+    ctx.server = None  # the record is kept for a later poll
+    ctx.helper = Homing()
+    ctx.told.client_back_sent = True
+    ctx.stored_data = {ctx.conn.popped_key: {}}
+    ctx.load.save_collected = {3}
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    run(ticks.followups_tick(ctx, no_finds(), shown))
+    assert ctx.helper.requests == ["apply\ntrap 103"]
+    assert 3 in ctx.seed_state.popped_mine
+    run(ticks.followups_tick(ctx, no_finds(), shown))
+    assert len(ctx.helper.requests) == 1, "once"
+
+
+def test_a_lost_reply_sends_a_disks_count_again_but_not_a_trap() -> None:
+    # The disk at 12 and an own trap at 3 found together: the reply lost, the count is sent again
+    # (shown twice at worst, as before the traps), the trap not (set off at most once).
+    ctx = homing_ctx()
+    ctx.conn.traps = {3: ids.DISRUPTION_TRAP}
+    ctx.server = None
+    ctx.load.save_collected = {3, 12}
+
+    def lost(text: str) -> str:
+        ctx.helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    p = types.SimpleNamespace(codes=[ids.DATA_DISC] * 3, found=[12])
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    ctx.helper.apply = lost
+    with pytest.raises(native.ReplyLost):
+        run(ticks.followups_tick(ctx, p, shown))
+    assert ctx.helper.requests[0].splitlines()[-1] == "trap 102"
+    del ctx.helper.apply  # the class's: applied
+    run(ticks.followups_tick(ctx, p, shown))
+    again = ctx.helper.requests[1].splitlines()
+    assert again[0] == "apply" and again[1].startswith("notice 44 ") and "trap 102" not in again
+    assert {3, 12} <= ctx.seed_state.popped_mine
+
+
+def test_an_own_trap_whose_reply_was_lost_is_not_sent_again() -> None:
+    # The helper may have queued it: sending it again could set it off twice.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
+    ctx.server = None
+    ctx.helper = Homing()
+    ctx.told.client_back_sent = True
+    ctx.stored_data = {ctx.conn.popped_key: {}}
+    ctx.load.save_collected = {3}
+
+    def lost(text: str) -> str:
+        ctx.helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    ctx.helper.apply = lost
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    with pytest.raises(native.ReplyLost):
+        run(ticks.followups_tick(ctx, no_finds(), shown))
+    assert 3 in ctx.seed_state.popped_mine
+    run(ticks.followups_tick(ctx, no_finds(), shown))
+    assert len(ctx.helper.requests) == 1, "not sent again"
+
+
+def test_an_own_trap_whose_reply_was_lost_is_stored_at_once() -> None:
+    # Storing needs no helper: a client closed before one comes back must not send it again.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
+    ctx.server = types.SimpleNamespace(socket=types.SimpleNamespace(open=True, closed=False))
+    sent: list[dict] = []
+
+    async def send_msgs(msgs: list[dict]) -> None:
+        sent.extend(msgs)
+
+    ctx.send_msgs = send_msgs
+    ctx.helper = Homing()
+    ctx.told.client_back_sent = True
+    ctx.stored_data = {ctx.conn.popped_key: {}}
+    ctx.load.save_collected = {3}
+
+    def lost(text: str) -> str:
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    ctx.helper.apply = lost
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    with pytest.raises(native.ReplyLost):
+        run(ticks.followups_tick(ctx, no_finds(), shown))
+    stores = [m for m in sent if m["cmd"] == "Set" and m["key"] == ctx.conn.popped_key]
+    assert stores and stores[-1]["operations"][0]["value"] == {"3": 1}
+
+
 def test_a_secret_shuffle_seeds_labels_go_on_each_locations_own_cell() -> None:
     ctx = Ctx(secret_connection())
     ctx.scout(progression=True)

@@ -8,6 +8,7 @@
 
 #include "game_layout.h"  // kMapSide, record::kCount
 #include "scan.h"         // scan_line_ok
+#include "trap.h"         // trap::is_trap
 
 namespace zap {
 
@@ -110,7 +111,11 @@ std::string parse_batch(const std::string& request, Batch& out) {
             const char* kept = bare ? " .,'!?-:" : " .,'!?-";
             const size_t most = bare ? kNoticeMax : kSuffixMax;
             unsigned item = 0;
-            if (!(words >> item) || item >= record::kCount) return "bad line " + line;
+            if (!(words >> item)) return "bad line " + line;
+            // A trap's popup has no record: its name (trap.h). Never a notice.
+            if (item >= record::kCount && (bare || !trap::is_trap(static_cast<int>(item)))) {
+                return "bad line " + line;
+            }
             std::string rest;
             std::getline(words >> std::ws, rest);
             std::string text;
@@ -121,6 +126,13 @@ std::string parse_batch(const std::string& request, Batch& out) {
             while (!text.empty() && text.back() == ' ') text.pop_back();
             if (bare && text.empty()) return "bad line " + line;
             out.popups.push_back({static_cast<uint8_t>(item), std::move(text), bare, true});
+        } else if (op == "trap") {
+            unsigned item = 0;
+            std::string extra;
+            if (!(words >> item) || !trap::is_trap(static_cast<int>(item)) || (words >> extra)) {
+                return "bad line " + line;
+            }
+            out.traps.push_back(static_cast<uint8_t>(item));
         } else if (!op.empty()) {
             return "unknown line " + line;
         }
@@ -259,7 +271,8 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
         // Up to two lines (the item, then whom it is for), each kept to the font's characters
         // and to its line: the first after the logo glyph. A first line "@N" names item N of
         // another Zexion player, made from its record later (Game::set_labels); "@N NAME" gives
-        // it this name instead of the record's (this player's own OS Install Disk).
+        // it this name instead of the record's (this player's own OS Install Disk); "@N/TEXT"
+        // keeps its look and name but has the pickup popup read TEXT (a disguised trap).
         std::vector<std::string> parts{std::string()};
         Label label;
         size_t from = 0;
@@ -268,15 +281,28 @@ std::string parse_labels(const std::string& request, std::map<int, Label>& out) 
             size_t i = 1;
             while (i < raw.size() && i < 4 && std::isdigit(raw[i])) n = n * 10 + (raw[i++] - '0');
             size_t end = i;
-            std::string item_name;
+            std::string item_name, pickup;
+            // "@N NAME", "@N/PICKUP" or "@N NAME/PICKUP" (a trap disguised as a disk, whose NAME
+            // replaces the record's): NAME ends at the first '/', which the client never sends
+            // in one.
             if (i > 1 && i < raw.size() && raw[i] == ' ') {
-                for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
+                for (end = i + 1; end < raw.size() && raw[end] != '\n' && raw[end] != '/'; ++end) {
                     keep_font_char(item_name, raw[end], kFontPunctuation);
+                }
+                i = end;
+            }
+            if (i > 1 && i < raw.size() && raw[i] == '/') {
+                for (end = i + 1; end < raw.size() && raw[end] != '\n'; ++end) {
+                    keep_font_char(pickup, raw[end], kFontPunctuation);
+                }
+                if (pickup.size() > static_cast<size_t>(kGamePopupWidth)) {
+                    pickup.resize(kGamePopupWidth);
                 }
             }
             if (i > 1 && n < record::kCount && (end == raw.size() || raw[end] == '\n')) {
                 label.item = n;
                 label.item_name = std::move(item_name);
+                label.pickup = std::move(pickup);
                 from = end;
             }
         }

@@ -266,6 +266,9 @@ uintptr_t frame(void* argument) {
                     guarded([] {
                         g_game.watch_newgame();
                         g_game.watch_all(&archipelago_chosen);
+                        // Traps patch the game's code as they start (trap.h): never while an
+                        // unload runs (they wait, and are lost with the helper, as popups are).
+                        g_game.pump_traps(GetTickCount64());
                     });
                 }
                 publish_blocker();
@@ -476,6 +479,8 @@ const Request kRequests[] = {
     {"mission_black", true, [] { return g_game.mission_black(); }},
     // The received scraps' drops (game_calls.h, drop_status): for live checks.
     {"drop_status", false, [] { return g_game.drop_status(); }},
+    // The traps set off (game_calls.h, trap_status): for live checks.
+    {"trap_status", false, [] { return g_game.trap_status(); }},
     {"disk_slots", false, nullptr, &disk_slots},
     {"discs_status", false, [] { return g_game.equipment_status(); }},
     {"discs", false, nullptr, &discs},
@@ -536,6 +541,7 @@ std::string undo_for_unload() {
                 // The game's memory only: what the client asked for is kept, for the watches to
                 // apply again should the unload be refused (the client would not resend it).
                 g_game.put_back_game(&archipelago_chosen);
+                g_game.put_back_traps();  // none held: refused above while one is
                 g_game.hold_translated_popups();  // until a watch runs again
                 g_game.restore_feats();
                 g_game.hide_title();

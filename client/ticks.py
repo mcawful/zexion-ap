@@ -52,7 +52,13 @@ DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received d
 
 async def attach_helper(ctx: ZexionContext) -> bool:
     """Load and configure the native helper in the attached game, or carry on without it.
-    Returns whether trying again soon may attach it: not for a mod that doesn't match."""
+    Returns whether trying again soon may attach it, so the step is held for it a while: for a
+    helper that may still come (no reply, no frame yet, a failed load), and one of another
+    version that didn't unload to make way (native.NotUnloaded). Not held for the rest of
+    native.ModFixable: a helper the player must fix (missing, not matching) or, only with a
+    developer's own build (native/build, ZEXION_DLL), the game folder's copy of another version
+    loaded by the proxy meanwhile, replaced with the client's build on a later attach once it
+    unloads; nor for one turned off (native.ModDisabled)."""
     dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
     notes: list[str] = []
     try:
@@ -63,15 +69,23 @@ async def attach_helper(ctx: ZexionContext) -> bool:
             # Only the player can fix it, with Zexion closed: not tried again until it restarts.
             ctx.mismatched(exc)
             return False
-        # Tried every 30 s (a rebuild of the client's own build, or an old helper that unloads
-        # on a later try, fixes a mismatch): each line said again only when it changes.
+        # Tried every 30 s, or every REFUSED_RETRY_SECONDS while the step is held for an old
+        # helper that refused to unload (a rebuild of the client's own build, or an old helper
+        # that unloads on a later try, fixes a mismatch): each line said again only when it
+        # changes.
         line = state.helper_failed(exc)
         if line is not None and ctx.said("helper", line):
             logger.warning(line)
         if ctx.said("helper detail", str(exc)):
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
-        return not mismatch
+        # One that didn't unload (a menu open, a trap waiting or running) may on a later try:
+        # worth waiting for, as for a helper lost, but asked only every REFUSED_RETRY_SECONDS
+        # (each try has the old helper put back what a client going away does).
+        if isinstance(exc, native.NotUnloaded):
+            ctx.attach_again_at = time.monotonic() + REFUSED_RETRY_SECONDS
+            return True
+        return not isinstance(exc, (native.ModFixable, native.ModDisabled))
     ctx.said.clear("helper", "helper detail")
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
@@ -179,8 +193,9 @@ async def slots_tick(ctx: ZexionContext, p: Poll) -> None:
 
 
 def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int] | None:
-    """The label of each map cell holding another player's item (or this player's own disk),
-    and how many are this player's own disks; None until the server has said what each holds."""
+    """The label of each map cell holding another player's item (or this player's own disk or
+    trap), and how many are this player's own disks; None until the server has said what each
+    holds."""
     conn = ctx.conn
     if conn is None:
         return None
@@ -193,15 +208,29 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
         player = ctx.player_names.get(info.player, "")
         slot = ctx.slot_info.get(info.player)
         code = info.item - ITEM_ID_BASE
-        if info.player == ctx.slot and code in ids.GAME_ITEMS:
+        zexion_trap = code in ids.TRAPS and (
+            info.player == ctx.slot or (slot is not None and slot.game == ctx.game)
+        )
+        look = conn.trap_looks.get(i)
+        if zexion_trap and look is None:
+            # A seed made before the world drew looks (only development builds of the traps' PR:
+            # 1.1.0 has no traps).
+            text = aplabels.label(True, player)
+        elif zexion_trap and info.player == ctx.slot:
+            text = aplabels.trap_label(look, code)  # this player's own trap, disguised
+        elif info.player == ctx.slot and code in ids.GAME_ITEMS:
             text = aplabels.own_label(code, discs.NAME)  # this player's own OS Install Disk
             own += 1
+        elif zexion_trap:
+            text = aplabels.trap_label(look, code, player)  # another Zexion player's, disguised
         elif slot is not None and slot.game == ctx.game and (look := aplabels.zexion_look(code)):
             # Another Zexion player's own item, whatever that player's settings.
             item, name = look
             text = aplabels.zexion_label(item, player, name)
         else:
-            text = aplabels.label(bool(info.flags & aplabels.PROGRESSION), player)
+            # Another game's trap looks like its progression items (world.important_elsewhere).
+            important = bool(info.flags & (aplabels.PROGRESSION | aplabels.TRAP))
+            text = aplabels.label(important, player)
         labels[conn.plan.cells[i]] = text
     return labels, own
 
@@ -677,8 +706,9 @@ async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:
 
 async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     """The follow-up popup (an OS Install Disk's count, an Intel Chip's hint) for each of this
-    world's finds in the loaded save, found with or without a client; the server's popped_key
-    keeps which were shown, so each is shown once."""
+    world's finds in the loaded save, found with or without a client, and this world's own trap
+    set off (its label disguises it, and the game's pickup popup names it; it goes off at once);
+    the server's popped_key keeps which were done, so each is done once."""
     conn, helper, told, seed = ctx.conn, ctx.helper, ctx.told, ctx.seed_state
     if conn is None or not conn.items_listed or not step.seed_matches:
         return
@@ -698,7 +728,8 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
     maps = [i for i in waiting if plan.location_items[i] == ids.AREA_MAP and conn.hint_targets]
     used = hints_used(ctx) or {}
     maps = [i for i in maps if f"l{i}" in used]  # its hint assigned (hints_tick)
-    if not disks and not maps:
+    traps = [i for i in waiting if i in conn.traps]
+    if not disks and not maps and not traps:
         return
     popups: list[tuple[int, str, bool]] = []
     if disks:
@@ -711,11 +742,26 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
             (ids.DATA_DISC, discs.note(first + k, told_count), True) for k in range(len(disks))
         ]
     popups += [(ids.AREA_MAP, hint_note(ctx, used[f"l{i}"]), True) for i in maps]
-    reply = await asyncio.to_thread(helper.apply, native.batch_text([], popups))
+    found_traps = [conn.traps[i] for i in traps]
+    try:
+        reply = await asyncio.to_thread(
+            helper.apply, native.batch_text([], popups, traps=found_traps)
+        )
+    except native.ReplyLost:
+        # The helper may have queued the traps (its queue outlives this client): not sent again,
+        # so each is set off at most once, as Session.give counts a lost batch's popups. A disk's
+        # count or a hint is sent again (at worst shown twice). Stored now, as storing needs no
+        # helper: a client closed before one comes back would send the trap again.
+        ctx.seed_state.popped_mine |= set(traps)
+        if traps:
+            await store_popped(ctx, conn)
+        raise
     if reply != "applied":
         return  # not shown: tried again
+    if found_traps:
+        detail(f"Found in this world: {', '.join(ids.TRAP_NAMES[c] for c in found_traps)}.")
     # This client's record holds them until the server has them.
-    ctx.seed_state.popped_mine |= set(disks) | set(maps)
+    ctx.seed_state.popped_mine |= {*disks, *maps, *traps}
     await store_popped(ctx, conn)
 
 

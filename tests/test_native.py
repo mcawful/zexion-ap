@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from client import native, process, state
+from client import ids, native, process, state
 
 WINDOWS = sys.platform == "win32"
 BUILT = native.default_dll()
@@ -47,6 +47,8 @@ def test_an_apply_request_puts_each_popup_on_one_line() -> None:
     # spaces (any text the server sends) must not break a popup into another line.
     cas = [(17, 0, 1), (0, 3, 4)]
     popups = [(17, "FROM  Bob\nthe\tBold "), (0, ""), (49, " A  hint\n", True), (16, "", True)]
+    traps = native.batch_text([], [(ids.DISRUPTION_TRAP, "from Bob")], traps=[ids.DISORIENT_TRAP])
+    assert traps.splitlines() == ["apply", "popup 102 from Bob", "trap 103"]
     assert native.batch_text(cas, popups, refresh=True, intel=True).splitlines() == [
         "apply",
         "cas 17 0 1",
@@ -449,6 +451,29 @@ def test_a_mod_of_another_version_that_wont_unload_says_they_dont_match(
     with pytest.raises(native.ModMismatch, match="version 0.29.0, this client") as caught:
         native.attach(game, built)
     assert "restart Zexion" in str(caught.value) and game.loads == 0
+    assert "(a menu is open)" in str(caught.value), "the refusal's reason, for the player"
+
+
+@pytest.mark.parametrize(
+    ("error", "said"),
+    [
+        (native.ReplyLost("no reply within 2.0 s"), "it didn't answer"),
+        (
+            native.ModMismatch("both are version 0, but from different builds"),
+            "it is too old to unload on request",
+        ),
+        (
+            native.HelperError("a trap is waiting to go off; not unloading"),
+            "a trap is waiting to go off",
+        ),
+    ],
+)
+def test_why_an_old_helper_did_not_unload_reads_plainly(error, said) -> None:
+    class Old:
+        def request(self, text: str, *args: object) -> str:
+            raise error
+
+    assert native._unload_refusal(Old(), 0) == said
 
 
 def test_a_mod_that_doesnt_know_the_games_build_is_another_build(tmp_path, monkeypatch) -> None:

@@ -454,19 +454,19 @@ class Goal(Choice):
 
 
 class OSInstallDisks(Range):
-    """OS Install Disks goal only: how many disks are placed. They replace filler items: the
-    Scrap first (the keys' four places among it), then Area Maps, so there are fewer Intel Chips
-    (or Area Maps), then Energy Shields. Each seed draws its filler as the game does: Easy and
-    Standard 27 filler items, on average about 17 Scrap, 5 Area Maps and 5 Energy Shields, and
-    OHKO 32, 4 of them for the locations it leaves out. In Easy, Standard and OHKO the 30 disks
-    always fit; in Custom your pool sets the numbers. Excluded locations can hold only Scrap
-    and Area Maps. A seed has about 26 of them, counting the keys' places (as few as 17), and
-    the disks take some, so many excluded locations can stop one seed and not another:
-    generation then stops with an error saying so, unless the other players' filler makes up
-    the difference. Where there is not enough filler for the disks, ten Missile
-    Containers or Mega Bombs become a box and nine Scrap Metal, as the game makes filler when it
-    runs short. The disks placed and any in start_inventory can be 99 at most, the most the
-    pause screen and the file select show."""
+    """OS Install Disks goal only: how many disks are placed. They replace filler items: the Scrap
+    first (the keys' four places among it), then Area Maps, so there are fewer Intel Chips (or
+    Area Maps), then Energy Shields. Each seed draws its filler as the game does: Easy and
+    Standard 27 filler items, on average about 17 Scrap (traps take some of it: Trap Percentage),
+    5 Area Maps and 5 Energy Shields, and OHKO 32, 4 of them for the locations it leaves out. In
+    Easy, Standard and OHKO the 30 disks always fit; in Custom your pool sets the numbers.
+    Excluded locations can hold only filler: Scrap, traps and Area Maps. A seed has about 26 of
+    them, counting the keys' places (as few as 17), and the disks take some, so many excluded
+    locations can stop one seed and not another: generation then stops with an error saying so,
+    unless the other players' filler makes up the difference. Where there is not enough filler for
+    the disks, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as the game
+    makes filler when it runs short. The disks placed and any in start_inventory can be 99 at
+    most, the most the pause screen and the file select show."""
 
     display_name = "OS Install Disks"
     range_start = 1
@@ -482,6 +482,48 @@ class OSInstallDisksRequired(Range):
     range_start = 1
     range_end = 30
     default = 12
+
+
+class TrapPercentage(Range):
+    """Percentage of the item pool's Scrap (Scrap Metal, Scrap Energy and Scrap Chunk, its
+    filler) that becomes traps, rounded to the nearest whole trap. Easy, Standard and OHKO seeds
+    usually have 2 or 3 traps at 15 (1 to 4). Only the Scrap left after everything else takes its
+    share becomes traps: the locations the seed leaves out and, with the OS Install Disks goal,
+    the disks take theirs first, so a disks seed may have few or none. 0: no traps. Which trap
+    each one is: the two weights below.
+
+    A trap does what the enemy it copies does on touch, for about 12 seconds (the enemies' last
+    about 4): the Disruption Trap is the Phazo's (your energy weapons don't fire; missiles and
+    Mega Bombs do; an Energy Shield doesn't stop it), the Disorient Trap the Balorb's wave (your
+    controls are reversed). The game's AILMENTS assist setting doesn't change traps. A trap
+    goes off as it reaches you, with its popup, once you are in play. In a Zexion world a trap
+    looks like one of its owner's upgrades, keys or OS Install Disks."""
+
+    display_name = "Trap Percentage"
+    range_start = 0
+    range_end = 100
+    default = 15
+
+
+class DisruptionTrapWeight(Range):
+    """How likely each trap is to be a Disruption Trap (the Phazo's touch: your energy weapons
+    don't fire for about 12 seconds), against the Disorient Trap's weight. 0: none."""
+
+    display_name = "Disruption Trap Weight"
+    range_start = 0
+    range_end = 100
+    default = 50
+
+
+class DisorientTrapWeight(Range):
+    """How likely each trap is to be a Disorient Trap (the Balorb's wave: your controls are
+    reversed for about 12 seconds), against the Disruption Trap's weight. 0: none. With both
+    weights 0 there are no traps."""
+
+    display_name = "Disorient Trap Weight"
+    range_start = 0
+    range_end = 100
+    default = 50
 
 
 @dataclass
@@ -520,6 +562,9 @@ class ZexionOptions(PerGameCommonOptions):
     goal: Goal
     os_install_disks: OSInstallDisks
     os_install_disks_required: OSInstallDisksRequired
+    trap_percentage: TrapPercentage
+    disruption_trap_weight: DisruptionTrapWeight
+    disorient_trap_weight: DisorientTrapWeight
     # Archipelago takes these out of the item pool after create_items, as the game's randomizer
     # takes a starting item out of its pool (worlds/zexion/starting.py).
     start_inventory_from_pool: StartInventoryPool

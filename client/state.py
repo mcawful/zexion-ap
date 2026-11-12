@@ -24,7 +24,7 @@ import enum
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from . import aplabels, deathlink, discs, game, native, save_patch, session, shields
+from . import aplabels, deathlink, discs, game, ids, native, save_patch, session, shields
 
 
 class UnsupportedSeed(ValueError):
@@ -56,11 +56,23 @@ class Connection:
     intel_chip: bool  # the seed's Area Maps are Intel Chips
     death_link_on: bool
     hunt: discs.DiscHunt | None  # the OS Install Disks goal, or None for the core goal
+    # This world's own traps in its own locations, by location index: the trap's item code
+    # (set off once found: ticks.followups_tick). Empty for a seed from before the traps.
+    traps: dict[int, int] = field(default_factory=dict)
+    # The item each Zexion trap in this world's locations is shown as, by location index (the
+    # world's draw: client/aplabels.py, trap_label). Empty for a seed from before it.
+    trap_looks: dict[int, int] = field(default_factory=dict)
     # The server's full item list has come (the packet after Connected may be it).
     items_listed: bool = False
     awaiting_backlog: bool = True
-    # Received items' popups (announced_tick): the count last stored.
+    # Received items' popups (announced_tick): the count last stored, and the waiting held traps
+    # last stored, or read from the server's record at the connection's first read (None: not
+    # yet).
     announced_sent: int | None = None
+    held_sent: list[int] | None = None
+    # This connection has stored the held traps' record once: later stores replace it, even
+    # before the server's reply says so (announced_tick).
+    held_stored: bool = False
     found_sent_at: float = 0.0  # when the locations found were last stored (store_found)
     # The stored hints' CreateHints sent again (hints_tick); cleared when a send of new ones
     # fails, so all are created again.
@@ -94,6 +106,8 @@ class Connection:
                 intel_chip=bool(slot_data["intel_chip"]),
                 death_link_on=bool(slot_data["death_link"]),
                 hunt=discs.from_slot_data(slot_data),
+                traps=own_traps(slot_data.get("trap_locations", [])),
+                trap_looks=trap_looks(slot_data.get("trap_looks", [])),
             )
         except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise UnsupportedSeed(
@@ -116,7 +130,32 @@ class Connection:
         self.found_key = self.key("found")
         self.popped_key = self.key("popped")
         self.announced_key = self.key("announced")
+        # The traps held at the slot's first connection still to pop up (held_traps), so a
+        # reconnect or a restarted client keeps them.
+        self.held_key = self.key("held")
         self.hints_key = self.key("hints")
+
+
+def own_traps(entries: list) -> dict[int, int]:
+    """The slot data's ``trap_locations`` ([location index, item code] each) by location index;
+    ValueError for one this client does not know (UnsupportedSeed)."""
+    out: dict[int, int] = {}
+    for index, code in entries:  # TypeError for another form
+        if code not in ids.TRAPS or not 0 <= index < ids.MAX_LOCATIONS:
+            raise ValueError(f"trap_locations entry {[index, code]}")
+        out[int(index)] = int(code)
+    return out
+
+
+def trap_looks(entries: list) -> dict[int, int]:
+    """The slot data's ``trap_looks`` ([location index, item code] each) by location index;
+    ValueError for an entry this client does not know (UnsupportedSeed)."""
+    out: dict[int, int] = {}
+    for index, code in entries:  # TypeError for another form
+        if code not in ids.GAME_ITEMS or not 0 <= index < ids.MAX_LOCATIONS:
+            raise ValueError(f"trap_looks entry {[index, code]}")
+        out[int(index)] = int(code)
+    return out
 
 
 def goal_reached(ended: bool, required: int | None, have: int) -> bool:
@@ -135,7 +174,9 @@ def stored_count(raw: object) -> int | None:
     The server keeps how many received items' popups have been handed over (announced_key:
     Session.announced), so items received offline still pop up and a reconnect replays none.
     Popups still queued when the game closes or the helper unloads are lost (the items are
-    given); a client closed between handing some over and storing the count shows them twice."""
+    given; a trap waiting in the save loaded holds the unload back, one for another save is lost
+    with its popup); a client closed between handing some over and storing the count shows them
+    twice."""
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
         return raw
     return None
@@ -159,6 +200,31 @@ def announced_start(raw: object, held: int, handed: int) -> int:
     stored = stored_count(raw)
     start = held if stored is None else min(stored, held)
     return max(start, min(handed, held))
+
+
+def held_traps(raw: object, codes: list[int], handed: int) -> list[int]:
+    """The indices of the traps among ``codes`` (the received items) that announced_start counts
+    as handed over with no popup: those past what the session handed over itself (``handed``),
+    where the server has no count stored (a slot's first connection). A trap rides on its popup
+    (native/README.md, "Traps"), so these still get theirs (Session.held_traps)."""
+    if stored_count(raw) is not None:
+        return []
+    return [i for i in range(min(handed, len(codes)), len(codes)) if codes[i] in ids.TRAPS]
+
+
+def stored_held(raw: object, codes: list[int]) -> list[int]:
+    """The waiting held traps the server's record (``held_key``) lists: indices into ``codes``
+    (the received items) that are traps. The key is open to any client in the room: anything
+    else is skipped."""
+    if not isinstance(raw, list):
+        return []
+    out = {
+        i
+        for i in raw
+        if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(codes)
+        if codes[i] in ids.TRAPS
+    }
+    return sorted(out)
 
 
 def announced_to_store(handed: int, raw: object, sent: int | None) -> int | None:

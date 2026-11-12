@@ -753,13 +753,14 @@ void test_the_disk_glyph_kept_for_its_popup() {
     g_slots_live = g_message_is_last = false;
 }
 
-// The cache needs every key but the optional text_cut_code (the next test), as a client's config
-// does: one missing refuses.
+// The cache needs every key but the optional text_cut_code (the next test) and the three
+// AILMENTS keys (the traps run without them: game_tests.cpp), as a client's config does: one
+// missing refuses.
 void test_a_cache_needs_every_key() {
     HMODULE self = GetModuleHandleW(nullptr);
     const auto full = stand_in_config();
     for (const auto& [key, rva] : full) {
-        if (key == "text_cut_code") continue;  // optional: the next test
+        if (key == "text_cut_code" || key.rfind("ailments", 0) == 0) continue;  // optional
         auto older = full;
         older.erase(key);
         zap::Game refused;

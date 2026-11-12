@@ -46,7 +46,8 @@ worlds/zexion/ → generation → slot data → client
   count up: any other item's byte is written as 1 at most, so a second copy (a server console's
   `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
-  items handed to the helper for their popup, the follow-up popups shown, the Intel Chip hints
+  items handed to the helper for their popup, the traps held at the slot's first connection still
+  to pop up, the follow-up popups shown (and this world's own traps set off), the Intel Chip hints
   made, the Energy Shields given, and this world's locations found in game, which the OS Install
   Disks count and the Area Map hints read; sent again until the server holds them). A failing
   side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
@@ -84,10 +85,10 @@ How the helper works: [`native/README.md`](../native/README.md).
 - **The helper**: `zexion_ap.dll`, built from `native/`. **The proxy**: `version.dll`, built
   from `native/proxy/`. Players call the two together "the mod".
 - **Stand-in**: the Scrap Energy (47) or Scrap Chunk (48) the game holds at a location whose
-  item it cannot hand out itself: another player's item (48 if it is progression, except another
-  Zexion player's supplies, 47 and minor as the game marks this player's own:
+  item it cannot hand out itself: another player's item (48 if it is progression or a trap,
+  except another Zexion player's supplies, 47 and minor as the game marks this player's own:
   `world.important_elsewhere`), or, with the OS Install Disks goal, one of this world's own disks
-  (48). The helper restyles them.
+  (48), or one of this world's own traps (48). The helper restyles them.
 - **Frame call**: one call the game makes, once per frame, through the hooked import; the
   helper runs its frame function in it.
 - **B1**: the only game build supported so far (Steam build 23943567:
@@ -135,6 +136,22 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   disconnected dropping once: 2026-11-09 ("Received scrap"; what the drops were and gave not
   described).
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
+- Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their first
+  design (after the trap's popup, the enemies' durations, a shield and AILMENTS applying) run in
+  game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one
+  held through the pause, one received while disconnected (once), this world's own and another
+  Zexion player's in this world, AILMENTS REDUCED and IMMUNE ("Traps"; `docs/re/memory.md`,
+  "Ailments: the script step that sets them"). The design since (at once, about 12 s, one of each
+  kind at a time, past a shield, AILMENTS's tests patched while one runs, disguised (then as a
+  Zexion upgrade), another game's trap as a progression item): 2026-11-11 (81dd8cc,
+  `lab/ap/live60`); the pickup popup naming the trap, a queued trap's popup waiting for it, the
+  drawn disguises, a trap held at a slot's first connection and `/reload_mod` refused during a
+  trap: 2026-11-11 (5f66f1b, `lab/ap/live61`). Not run in game: one held through a death, a reload
+  (and that the load's reset comes within the quarter second a trap waits in play,
+  `kTrapSettledMs`), the ending or RETURN HOME, an unload refused while a trap waits, a client
+  restarted or going away while a trap waits or runs, and what changed since 5f66f1b (the held
+  traps' record, a trap's popup placed after a notice, the look drawn from the owner's upgrades,
+  keys and OS Install Disks in the seed, and its fallback).
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
@@ -240,17 +257,22 @@ them, and there a missing one fails a test as well.
 
 On Windows, with the game. The command, what it needs and its flags: [`CLAUDE.md`](../CLAUDE.md),
 "The client". Running it may load the helper into the game: the one already there if it is this
-version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). Beyond that:
+version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). One of another version
+that refuses to unload for it (a menu open, a trap waiting or running) is asked again every 5 s,
+the client saying why, with items held back up to 30 s ([`native/README.md`](../native/README.md),
+"Getting in"). Beyond that:
 
 - A new game started from RANDOMIZER (kept by `--keep-randomizer`) with the seed's text typed
   into the menu gets the seed: the helper places it again with the seed's settings, whatever
   else the menu holds (`client/newgame.py`; `native/README.md`, "New games"; working in game,
   2026-10-27). From the Launcher: `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
-- `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
-  meanwhile (popups still queued are lost; items are not); with a menu or the map open, or
-  while the ending RETURN HOME WITH THE DISKS? started is on its way, it refuses and says why,
-  and the mod stays loaded. While the client is not connected and has let the helper go (the
-  client, above), it says so and does nothing.
+- `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items meanwhile
+  (popups still queued are lost; items are not, nor traps waiting in the save loaded, for which it
+  refuses; one waiting for another save is lost); with a menu or the map open, while the ending
+  RETURN HOME WITH THE DISKS? started is on its way, or while a trap runs or waits to go off, it
+  refuses and says why, and the mod stays loaded. If the mod does not come back (no frame, the
+  game in the background, say), items wait for it as after any lost helper. While the client is
+  not connected and has let the helper go (the client, above), it says so and does nothing.
 - While this seed's save is loaded, the client asks the helper whether its Feats and
   achievements guard is on ([`native/README.md`](../native/README.md), "Feats and achievements
   in AP saves"). If the helper says it could not do all of it (`feats=on:<why>` in its

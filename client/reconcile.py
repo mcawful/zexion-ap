@@ -47,8 +47,9 @@ COUNTED = frozenset(
 # Items whose byte cannot be written: Zexion (the goal).
 NOT_GRANTABLE = {ids.ZEXION}
 # Items never put in the inventory: the Data Disc, which the client counts instead
-# (client/discs.py), as holding one changes the game's endings.
-NOT_IN_INVENTORY = {ids.DATA_DISC}
+# (client/discs.py), as holding one changes the game's endings; and the traps, which the helper
+# sets off with their popups (native/README.md, "Traps").
+NOT_IN_INVENTORY = {ids.DATA_DISC, *ids.TRAPS}
 # Records 46-50 all name Scrap Metal's byte as the one their pickup increments, so each of
 # these counts as one Scrap Metal, collected or received (docs/re/memory.md, "Other players'
 # items"; docs/re/save-format.md, "Inventory").

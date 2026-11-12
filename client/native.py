@@ -90,11 +90,14 @@ def batch_text(
     popups: list[tuple[int, str] | tuple[int, str, bool]],
     refresh: bool = False,
     intel: bool = False,
+    traps: list[int] | None = None,
 ) -> str:
     """An ``apply`` request: (item, expected, value) writes, done all or none in one frame, and
     popups shown one at a time with the item's sound: (item, suffix) after the item's icon and
-    name, or (item, text, True) a notice, the text alone (an Area Map's hint). With ``intel``,
-    its Area Maps' popups read Intel Chip."""
+    name, or (item, text, True) a notice, the text alone (an Area Map's hint). A trap's popup
+    (its item code: ids.TRAPS) sets the trap off as the helper takes it. With ``intel``, its
+    Area Maps' popups read Intel Chip. ``traps``: traps set off with no popup of their own (this
+    world's own, found in it)."""
     lines = ["apply"]
     lines += [f"cas {item} {expected} {value}" for item, expected, value in cas]
     if refresh:
@@ -110,6 +113,7 @@ def batch_text(
                 lines.append(f"notice {item} {clean}")
         else:
             lines.append(f"popup {item} {clean}".rstrip())
+    lines += [f"trap {item}" for item in traps or ()]
     return "\n".join(lines)
 
 
@@ -480,15 +484,23 @@ def _shown(version: str) -> str:
     return f"version {version}" if version else "another version"
 
 
-def _unloaded(helper: Helper, handle: int) -> bool:
-    """Whether the helper unloaded when asked (a refusal or a failed request: not)."""
+def _unload_refusal(helper: Helper, handle: int) -> str | None:
+    """None once the helper unloaded when asked; else why not (its refusal's reason, or the
+    failed request's)."""
     try:
-        return helper.request("unload") == "bye" and wait_unloaded(handle)
+        if helper.request("unload") == "bye" and wait_unloaded(handle):
+            return None
+        return "it was still loaded"  # it said bye but stayed, or answered something else
     except GameExited:
         raise
-    except HelperError as exc:
-        log.warning(f"The helper of another version did not unload: {exc}")
-        return False
+    except ReplyLost as exc:
+        log.debug(f"unload: {exc!r}")
+        return "it didn't answer"
+    except ModMismatch as exc:  # "error unknown request"
+        log.debug(f"unload: {exc!r}")
+        return "it is too old to unload on request"
+    except HelperError as exc:  # its refusal ("<why>; not unloading"), or a pipe closed
+        return str(exc).removesuffix(UNLOAD_REFUSED)
 
 
 def _hello(helper: Helper) -> dict[str, str]:
@@ -541,11 +553,13 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                     raise _wrong_version(dll, version, own_build=False, where=where)
                 if stale is not None:  # the same file again: refused, the helper left alone
                     raise _wrong_version(dll, stale[1], own_build)
-                if not _unloaded(old, handle):
+                why = _unload_refusal(old, handle)
+                if why is not None:
                     raise NotUnloaded(
                         f"the mod loaded in Zexion is {_shown(version)}, this client "
-                        f"{VERSION}, and it didn't unload to make way for the client's build; "
-                        "the client tries again, and if it keeps failing, restart Zexion"
+                        f"{VERSION}, and it didn't unload to make way for the client's build "
+                        f"({why}); the client tries again, and if it keeps failing, restart "
+                        "Zexion"
                     )
                 if in_folder and notes is not None:
                     notes.append(
