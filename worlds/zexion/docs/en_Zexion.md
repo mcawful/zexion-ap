@@ -39,7 +39,7 @@ Set with the Goal option.
   - The scanner at Guardia 42,26, outside the core's door, which shows where the keys are in
     the normal game, tells you how many you need. Until you have been there, the pause screen
     shows "OF ?". With Hints Revealed (Custom), the game counts you as told from the start, so
-    the number shows at once (by the game's code; not yet checked in game).
+    the number shows at once (checked in game: it showed before the scanner).
   - Once you have enough, save at the Landing Pod's save point (Kresezoa 16,13, the
     `landing_pod` start room, whichever room you started in) and answer YES to RETURN HOME WITH
     THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
@@ -292,39 +292,39 @@ filler, so excluded locations can hold them.
   wears off.
 
 A trap goes off as soon as it reaches you, as its popup shows (DISRUPTION TRAP, FROM ALICE), once
-you are in play (a second of the same kind shows its popup as it starts): it waits through the
-pause menu, other menus, a death or a reload, and through RETURN HOME WITH THE DISKS? and the
-game's ending (it comes at your next load then). Each trap happens at most once, including one
-sent while your client was closed, or before you first connected (it comes when you connect); if
-the client closes just as a trap goes off, it may come again, and with no mod running a trap sent
-to you does nothing. A second trap of the same kind waits for the first to end and then goes off,
-so each lasts its full 12 seconds. The game's AILMENTS assist setting (pause, OPTIONS, ASSIST,
-where assists are allowed) doesn't change traps: while one runs, it is left out for that effect,
-so an enemy's touch of the same kind during a trap isn't shortened by it either.
+you are in play (a second of the same kind shows its popup as it starts), and its popup comes before
+others still waiting, such as an OS Install Disk's sent at the same time. It waits through the pause
+menu, other menus, a death or a load, and through RETURN HOME WITH THE DISKS? and the game's ending
+(it comes at your next load then). One that reaches you in the pause menu just before RELOAD FROM
+CHECKPOINT goes off during the reload's teleport, and the reload ends it at once. Each trap happens
+at most once, including one sent while your client was closed, or before you first connected (it
+comes when you connect); if the client closes just as a trap goes off, it may come again, and with
+no mod running a trap sent to you does nothing. A second trap of the same kind waits for the first
+to end and then goes off, so each lasts its full 12 seconds. The game's AILMENTS assist setting
+(pause, OPTIONS, ASSIST, where assists are allowed) doesn't change traps: while one runs, it is left
+out for that effect, so an enemy's touch of the same kind during a trap isn't shortened by it
+either.
 
-In a Zexion world, a trap looks like an important item: one of yours, or another Zexion
-player's, looks like one of that player's upgrades, keys or OS Install Disks that's in the seed
-(not one they start with), on the map too, and another game's trap like that game's progression
-items. That's on purpose: you can't tell a trap from a real item until you pick it up. Picking up
-a Zexion trap says what it is (DISORIENT TRAP, and FOR BOB if it's Bob's), and one that looks
-like an OS Install Disk never counts as a disk; another game's trap still says PROGRESSION ITEM.
-If none of those is in the seed (its owner starts with, or leaves out, every upgrade, and has no
-key or disk in the seed), a Zexion trap looks like any upgrade: maybe one they already have, or
-one not in the seed. Once the scanner, or a map revealed in full (Hints Revealed, in Custom
-mode), has shown your keys on the map, a trap that looks like one of your keys has no key marker
-there (not yet checked in the game). Picking up your own sets it off at once; if you picked it
-up with the client closed, it goes off when you next connect with that save loaded. Other games'
-traps sent to you do nothing in Zexion.
+In a Zexion world, a trap looks like an important item: one of yours, or another Zexion player's,
+looks like one of that player's upgrades, keys or OS Install Disks that's in the seed (not one they
+start with), on the map too, and another game's trap like that game's progression items. That's on
+purpose: you can't tell a trap from a real item until you pick it up. Picking up a Zexion trap says
+what it is (DISORIENT TRAP, and FOR BOB if it's Bob's), and one that looks like an OS Install Disk
+never counts as a disk; another game's trap still says PROGRESSION ITEM. If none of those is in the
+seed (its owner starts with, or leaves out, every upgrade, and has no key or disk in the seed), a
+Zexion trap looks like any upgrade: maybe one they already have, or one not in the seed. Once the
+scanner, or a map revealed in full (Hints Revealed, in Custom mode), has shown your keys on the map,
+a trap that looks like one of your keys has no key marker there: just an important item's. Picking
+up your own sets it off at once; if you picked it up with the client closed, it goes off when you
+next connect with that save loaded. Other games' traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
-row; one past a shield; AILMENTS at both settings not changing them; one sent while paused or
-while the client was disconnected; your own trap and other players' in your world, their look and
-their pickup popups; a second trap's popup waiting for it; and a trap sent before you first
-connected. All of this was checked on earlier versions of the mod; since then, how a disguise is
-picked (now also a key or an OS Install Disk), how a trap sent before you first connected is
-kept, and where a trap's popup goes among other popups have changed, and are not yet checked in
-the game. Not checked in the game at all: a trap through a death, a reload, RETURN HOME or the
-ending; the client restarted or closed while a trap waits or runs; and the mod refusing to reload
+row; one past a shield; AILMENTS at both settings not changing them; one sent while paused, while
+dead or while the client was disconnected; one sent before you first connected, with the client
+restarted before you played; your own trap and other players' in your world, their look (an
+upgrade, a key or an OS Install Disk) and their pickup popups, and a disk-look trap not counting;
+a second trap's popup waiting for it; and the client closed while a trap waits or runs. Not
+checked in the game: a trap through RETURN HOME or the ending, and the mod refusing to reload
 while a trap waits to go off.
 
 ## Can I use the assist menu?
