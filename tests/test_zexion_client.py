@@ -434,32 +434,40 @@ def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
 
 
 @pytest.mark.parametrize(
-    ("error", "held"),
+    ("error", "message", "own_build", "held"),
     [
-        (native.NotUnloaded, True),
-        (native.ReplyLost, True),
-        (native.ModFixable, False),  # the mod not installed: nothing to wait for
-        (native.ModDisabled, False),  # turned off by zexion_ap.disabled
+        # An old helper (loaded by an earlier build) that didn't unload for the client's build.
+        (native.NotUnloaded, "the mod loaded in Zexion is 0.29.0 (a menu is open)", True, True),
+        (native.ReplyLost, "no reply", False, True),  # no frame yet
+        # The Launcher's client, with no helper installed: nothing to wait for.
+        (native.ModFixable, "it isn't installed", False, False),
+        # Turned off by zexion_ap.disabled, which turns off the game folder's copy only.
+        (native.ModDisabled, "The mod is turned off", False, False),
+        # A developer's own build, and the proxy loaded the folder's 0.29.0 copy meanwhile.
+        (native.ModMismatch, "the mod in Zexion's folder (0.29.0) loaded meanwhile", True, False),
     ],
 )
-def test_a_first_attach_that_may_work_later_holds_back_the_step(monkeypatch, error, held) -> None:
+def test_a_first_attach_holds_back_the_step_only_for_a_helper_that_may_still_come(
+    monkeypatch, error, message, own_build, held
+) -> None:
     # The client started with the game running: an old helper refusing to unload (or no
     # frame yet) gives no step that writes items with no popup or drops a waiting trap; a mod
-    # the player must fix or turned off gives the step at once, as with no helper.
+    # missing, not matching or turned off gives the step at once, as with no helper.
     ctx = context(connection(), None)
     order: list[str] = []
     monkeypatch.setattr(zc.game.Game, "attach", staticmethod(lambda: Running(game.IN_PLAY)))
 
     def attach(*args) -> None:
         order.append("attach")
-        raise error("the mod loaded in Zexion is 0.29.0, and it didn't unload (a menu is open)")
+        raise error(message)
 
     def step(g, received, helper=None, give=True, **kwargs):
         order.append(f"step, {'gives' if give else 'waits'}")
         return session.Step(state=game.IN_PLAY)
 
     monkeypatch.setattr(native, "attach", attach)
-    monkeypatch.setattr(native, "default_dll", lambda: types.SimpleNamespace(is_file=lambda: True))
+    dll = types.SimpleNamespace(is_file=lambda: own_build)  # native/build or ZEXION_DLL
+    monkeypatch.setattr(native, "default_dll", lambda: dll)
     monkeypatch.setattr(zc, "BACK_RETRY_SECONDS", 0.0)
     monkeypatch.setattr(ctx.seed_state.session, "step", step)
     for name in ("newgame_tick", "labels_tick", "toggle_tick", "discs_helper_tick"):

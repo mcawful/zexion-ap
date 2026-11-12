@@ -54,8 +54,11 @@ async def attach_helper(ctx: ZexionContext) -> bool:
     """Load and configure the native helper in the attached game, or carry on without it.
     Returns whether trying again soon may attach it, so the step is held for it a while: for a
     helper that may still come (no reply, no frame yet, a failed load), and one of another
-    version that didn't unload to make way (native.NotUnloaded); not for one the player must fix
-    (missing, not matching: native.ModFixable) or turned off (native.ModDisabled)."""
+    version that didn't unload to make way (native.NotUnloaded). Not held for the rest of
+    native.ModFixable: a helper the player must fix (missing, not matching) or, only with a
+    developer's own build (native/build, ZEXION_DLL), the game folder's copy of another version
+    loaded by the proxy meanwhile, replaced on the next try; nor for one turned off
+    (native.ModDisabled)."""
     dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
     notes: list[str] = []
     try:
