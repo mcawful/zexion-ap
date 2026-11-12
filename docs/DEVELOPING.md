@@ -155,12 +155,13 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   trap's popup taking its turn in the queue, the trap going off as it shows, after a disk's popup
   and count sent before it: 2026-11-11 (932411b, `lab/ap/live62`,
   `lab/ingame-popup-order-checks.md`), and ARCHIPELAGO CLIENT CONNECTED. before the items received
-  while the client was away, the same run ("AP saves without the client"). Not working in game: a
-  trap received in the pause before RELOAD FROM CHECKPOINT, which went off in the reload's teleport
-  and was reset (`kTrapSettledMs` does not cover that load). Not run in game: the ending or RETURN
-  HOME, a key-look trap after the scanner, an unload refused while a trap waits, a trap's popup
-  passed by others while it waits for one of its kind, a connection's first held-traps record beside
-  another client's (the `default` operation), and the restart doubles ("Traps").
+  while the client was away, the same run ("AP saves without the client"); a popup's follow-ups kept
+  ahead of a trap it passed, added after that run: stand-in tests only. Not working in game: a trap
+  received in the pause before RELOAD FROM CHECKPOINT, which went off in the reload's teleport and
+  was reset (`kTrapSettledMs` does not cover that load). Not run in game: the ending or RETURN HOME,
+  a key-look trap after the scanner, an unload refused while a trap waits, a trap's popup passed by
+  others while it waits for one of its kind, a connection's first held-traps record beside another
+  client's (the `default` operation), and the restart doubles ("Traps").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
@@ -277,7 +278,7 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
   2026-10-27). From the Launcher: `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
 - `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items meanwhile
   (popups still queued are lost; items are not, nor traps waiting in the save loaded, for which it
-  refuses; one waiting for another save is lost); with a menu or the map open, while the ending
+  refuses; one waiting for a save not loaded is lost); with a menu or the map open, while the ending
   RETURN HOME WITH THE DISKS? started is on its way, or while a trap runs or waits to go off, it
   refuses and says why, and the mod stays loaded. If the mod does not come back (no frame, the
   game in the background, say), items wait for it as after any lost helper. While the client is

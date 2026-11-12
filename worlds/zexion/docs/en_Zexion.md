@@ -300,12 +300,13 @@ load, and through RETURN HOME WITH THE DISKS? and the game's ending (it comes at
 then). One that reaches you in the pause menu just before RELOAD FROM CHECKPOINT goes off during
 the reload's teleport, and the reload ends it at once. Each trap happens at most once, including
 one sent while your client was closed, or before you first connected (it comes when you connect);
-if the client closes just as a trap goes off, it may come again; if the game closes, or the mod is
-reloaded at the title, while a trap still waits for its popup, it is lost; and with no mod running
-a trap sent to you does nothing. A second trap of the same kind waits for the first to end and then
-goes off, so each lasts its full 12 seconds. The game's AILMENTS assist setting (pause, OPTIONS,
-ASSIST, where assists are allowed) doesn't change traps: while one runs, it is left out for that
-effect, so an enemy's touch of the same kind during a trap isn't shortened by it either.
+if the client closes just as a trap goes off, it may come again; a trap still waiting for its popup
+is lost if the game closes, or if the mod is reloaded while it waits for a save you've left; and
+with no mod running a trap sent to you does nothing. A second trap of the same kind waits for the
+first to end and then goes off, so each lasts its full 12 seconds. The game's AILMENTS assist
+setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change traps: while one runs,
+it is left out for that effect, so an enemy's touch of the same kind during a trap isn't shortened
+by it either.
 
 In a Zexion world, a trap looks like an important item: one of yours, or another Zexion player's,
 looks like one of that player's upgrades, keys or OS Install Disks that's in the seed (not one they
@@ -329,8 +330,8 @@ upgrade, a key or an OS Install Disk) and their pickup popups, and a disk-look t
 with Hints Revealed, a key-look trap having no key marker; a second trap's popup waiting for it;
 the client closed while a trap waits or runs; and a trap sent just after an OS Install Disk, coming
 after the disk's popup and count. Not checked in the game: a trap through RETURN HOME or the
-ending, a key-look trap after the scanner has shown your keys, the popups after a trap going first
-while it waits for one of its kind, and the mod refusing to reload while a trap waits to go off.
+ending, a key-look trap after the scanner has shown your keys, other popups showing first while a
+trap waits for one of its kind to end, and the mod refusing to reload while a trap waits to go off.
 
 ## Can I use the assist menu?
 
