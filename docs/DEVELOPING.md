@@ -14,8 +14,8 @@ build B1. A release build has run from Archipelago 0.6.8's Launcher since 2026-1
 ([`docs/re/memory.md`](re/memory.md), "The client in a live game"), the 1.0.0 client from it on
 2026-10-29 (`native/README.md`, "AP saves without the client"), the 1.0.0 release candidate's
 builds on 2026-11-03 and 04, the 1.1.0 candidate's on 2026-11-08 (develop 5597753) and 09
-(develop 88bebfb), and `develop` 4205871's Area Maps on 2026-11-09 ("Features, and when each was
-working in game", below).
+(develop 88bebfb), `develop` 4205871's Area Maps on 2026-11-09, and `develop` e500ab9's traps on
+2026-11-11 ("Features, and when each was working in game", below).
 
 ## How it fits together
 
@@ -138,23 +138,29 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
 - Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their first
   design (after the trap's popup, the enemies' durations, a shield and AILMENTS applying) run in
-  game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one
-  held through the pause, one received while disconnected (once), this world's own and another
-  Zexion player's in this world, AILMENTS REDUCED and IMMUNE ("Traps"; `docs/re/memory.md`,
-  "Ailments: the script step that sets them"). The design since (at once, about 12 s, one of each
-  kind at a time, past a shield, AILMENTS's tests patched while one runs, disguised (then as a
-  Zexion upgrade), another game's trap as a progression item): 2026-11-11 (81dd8cc,
-  `lab/ap/live60`); the pickup popup naming the trap, a queued trap's popup waiting for it, the
-  drawn disguises, a trap held at a slot's first connection and `/reload_mod` refused during a
-  trap: 2026-11-11 (5f66f1b, `lab/ap/live61`). Not run in game: one held through a death, a reload
-  (and that the load's reset comes within the quarter second a trap waits in play,
-  `kTrapSettledMs`), the ending or RETURN HOME, an unload refused while a trap waits, a client
-  restarted or going away while a trap waits or runs, what changed since 5f66f1b (the held
-  traps' record, the look drawn from the owner's upgrades, keys and OS Install Disks in the
-  seed, and its fallback). A received trap's popup taking its turn in the queue, the trap going
-  off as it shows (since 704bd25), behind a received disk's popup and count: 2026-11-11 (932411b,
-  `lab/ap/live62`); ARCHIPELAGO CLIENT CONNECTED. before the items received while the client was
-  away, the same run ("AP saves without the client").
+  game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one held
+  through the pause, one received while disconnected (once), this world's own and another Zexion
+  player's in this world, AILMENTS REDUCED and IMMUNE ("Traps"; `docs/re/memory.md`, "Ailments: the
+  script step that sets them"). The design since (at once, about 12 s, one of each kind at a time,
+  past a shield, AILMENTS's tests patched while one runs, disguised (then as a Zexion upgrade),
+  another game's trap as a progression item): 2026-11-11 (81dd8cc, `lab/ap/live60`); the pickup
+  popup naming the trap, a queued trap's popup waiting for it, the drawn disguises, a trap held at a
+  slot's first connection and `/reload_mod` refused during a trap: 2026-11-11 (5f66f1b,
+  `lab/ap/live61`); on `develop` e500ab9 (`lab/ap/live62` and `live63`,
+  `lab/ingame-138-develop-checks.md`): a trap held at a slot's first connection through a client
+  restart before play, the looks drawn from the owner's upgrades, keys and OS Install Disks and the
+  fallback, a key-look trap with no key marker (with Hints Revealed), one received while dead, and
+  the client closed while a trap waits (behind one of its kind) or runs: 2026-11-11. On e500ab9 a
+  disk's popup came after a trap's received with it (check 2 failed); as it is now, a received
+  trap's popup taking its turn in the queue, the trap going off as it shows, after a disk's popup
+  and count sent before it: 2026-11-11 (932411b, `lab/ap/live62`,
+  `lab/ingame-popup-order-checks.md`), and ARCHIPELAGO CLIENT CONNECTED. before the items received
+  while the client was away, the same run ("AP saves without the client"). Not working in game: a
+  trap received in the pause before RELOAD FROM CHECKPOINT, which went off in the reload's teleport
+  and was reset (`kTrapSettledMs` does not cover that load). Not run in game: the ending or RETURN
+  HOME, a key-look trap after the scanner, an unload refused while a trap waits, a trap's popup
+  passed by others while it waits for one of its kind, a connection's first held-traps record beside
+  another client's (the `default` operation), and the restart doubles ("Traps").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
