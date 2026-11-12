@@ -31,9 +31,11 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   copy with no build to replace it is refused: the player updates it there. One that refuses to
   unload ("Unloading": a menu open, a trap waiting or running) is asked again every 5 s, and the
   client's line says why (`native.NotUnloaded`); meanwhile items are held back as after a failed
-  attach (up to 30 s, then given with no popup: "AP saves without the client"), also when
-  the client attaches first with the game already running (stand-in tests,
-  `tests/test_zexion_client.py`).
+  attach (up to 30 s, then given with no popup: "AP saves without the client"), also when the
+  client attaches first with the game already running. That hold is only for a helper that may
+  still come (no reply, no frame yet, a failed load, one refusing to unload): with the mod
+  missing, not matching, or turned off by `zexion_ap.disabled`, items are given at once with no
+  popup (`client/ticks.py`, `attach_helper`; stand-in tests, `tests/test_zexion_client.py`).
 - A file that loads as another version is not loaded again until it changes; the client says to
   rebuild `native/` or copy this release's DLLs.
 - A helper whose `hello` the client can't read counts as another version. Without a build it is
@@ -1122,31 +1124,32 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   once it has been in play since it loaded (a menu or a death later keeps the same save, so it is
   dressed at once when a client goes away with a menu up): the item labels, INTEL CHIP, the ASSIST
   lock (the file free once the slot has received Assist Unlock: `client/ticks.py`, `offline_seed`;
-  stand-in tests only), the disk count (the file's, plus each own disk the map shows collected) and
-  the scanner's line, with a notice that the client is not connected (or, for `other_save`, is for
-  another seed; only for a save of a seed it has a file for, so a plain randomizer game gets no
-  notice): once a load, and again each time a client that configured during the load goes away
-  (working in game 2026-10-29, 1.0.0 (b790be9): `docs/re/memory.md`, "AP saves without the client").
-  While the save stays dressed, each look sets that look again where it was changed: a client of
-  another seed, attaching with the save in play, takes its own look back, which is not this save's
-  (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26). A client with no server
-  connection (the server down, say) lets the helper go, as if it had closed, while a save it has not
-  dressed is loaded: one loaded after a drop's save was left, or the one in play when the player
-  disconnects. Such a save then gets this look and its notice too. The client keeps the helper for a
-  save it dressed before a drop (its look stays), in the ending (its hold), and at the title, where
-  after a drop an armed new game stays armed until a save is loaded. It attaches again on
-  connecting, before it gives any item; an attach that fails holds the items back for up to 30 s
-  (counted afresh at each connection: a drop during it starts it over), then they are given as
-  with no helper (`client/zexion_client.py`, `leave_helper_tick` and `poll`;
-  stand-in tests, `tests/test_zexion_client.py`). Working in game 2026-10-29 (the Launcher's
-  client): a save loaded during a drop and a Disconnect in play, each given this look and its
-  notice, then the client's again on connecting, with CLIENT CONNECTED and received items' popups;
-  2026-11-04 (B1, `zexion_ap.dll` `a7469024…`, develop 345fea7), three Disconnects and Connects
-  in one load, and a Disconnect then Connect during an ending played again, the item received
-  meanwhile popping up at the next load. Not seen in game: a failed attach on connecting, an
-  ending that begins during a drop, and an armed new game kept at the title during a drop. The file select shows each such save's
-  count, from its map in the game's copy of the slot, and the AP logo ("AP saves on the file
-  select").
+  stand-in tests only), the disk count (the file's, plus each own disk the map shows collected)
+  and the scanner's line, with a notice that the client is not connected (or, for `other_save`, is
+  for another seed; only for a save of a seed it has a file for, so a plain randomizer game gets
+  no notice): once a load, and again each time a client that configured during the load goes away
+  (working in game 2026-10-29, 1.0.0 (b790be9): `docs/re/memory.md`, "AP saves without the
+  client"). While the save stays dressed, each look sets that look again where it was changed: a
+  client of another seed, attaching with the save in play, takes its own look back, which is not
+  this save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26). A client
+  with no server connection (the server down, say) lets the helper go, as if it had closed, while
+  a save it has not dressed is loaded: one loaded after a drop's save was left, or the one in play
+  when the player disconnects. Such a save then gets this look and its notice too. The client
+  keeps the helper for a save it dressed before a drop (its look stays), in the ending (its hold),
+  and at the title, where after a drop an armed new game stays armed until a save is loaded. It
+  attaches again on connecting, before it gives any item; an attach that fails, for a helper that
+  may still come ("Getting in"), holds the items back for up to 30 s (counted afresh at each
+  connection: a drop during it starts it over), then they are given as with no helper
+  (`client/zexion_client.py`, `leave_helper_tick` and `poll`; stand-in tests,
+  `tests/test_zexion_client.py`). Working in game 2026-10-29 (the Launcher's client): a save
+  loaded during a drop and a Disconnect in play, each given this look and its notice, then the
+  client's again on connecting, with CLIENT CONNECTED and received items' popups; 2026-11-04 (B1,
+  `zexion_ap.dll` `a7469024…`, develop 345fea7), three Disconnects and Connects in one load, and a
+  Disconnect then Connect during an ending played again, the item received meanwhile popping up at
+  the next load. Not seen in game: a failed attach on connecting, an ending that begins during a
+  drop, and an armed new game kept at the title during a drop. The file select shows each such
+  save's count, from its map in the game's copy of the slot, and the AP logo ("AP saves on the
+  file select").
 - **Put back:** leaving the save undresses it: no save loaded, or in play reading as no known
   seed. With a menu up, a save in play since its load that reads as no known seed is held as it
   is until play, so the lock never lifts in the options menu for one read (none such is known;

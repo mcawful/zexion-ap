@@ -460,7 +460,7 @@ def test_a_mod_of_another_version_that_wont_unload_says_they_dont_match(
         (native.ReplyLost("no reply within 2.0 s"), "it didn't answer"),
         (
             native.ModMismatch("both are version 0, but from different builds"),
-            "it doesn't know unload",
+            "it is too old to unload on request",
         ),
         (
             native.HelperError("a trap is waiting to go off; not unloading"),

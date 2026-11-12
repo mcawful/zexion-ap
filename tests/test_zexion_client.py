@@ -433,10 +433,19 @@ def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
     assert len(order) == 3 and order[2] != "step, retry at inf"
 
 
-@pytest.mark.parametrize("error", [native.NotUnloaded, native.ReplyLost])
-def test_a_first_attach_that_may_work_later_holds_back_the_step(monkeypatch, error) -> None:
+@pytest.mark.parametrize(
+    ("error", "held"),
+    [
+        (native.NotUnloaded, True),
+        (native.ReplyLost, True),
+        (native.ModFixable, False),  # the mod not installed: nothing to wait for
+        (native.ModDisabled, False),  # turned off by zexion_ap.disabled
+    ],
+)
+def test_a_first_attach_that_may_work_later_holds_back_the_step(monkeypatch, error, held) -> None:
     # The client started with the game running: an old helper refusing to unload (or no
-    # frame yet) gives no step that writes items with no popup or drops a waiting trap.
+    # frame yet) gives no step that writes items with no popup or drops a waiting trap; a mod
+    # the player must fix or turned off gives the step at once, as with no helper.
     ctx = context(connection(), None)
     order: list[str] = []
     monkeypatch.setattr(zc.game.Game, "attach", staticmethod(lambda: Running(game.IN_PLAY)))
@@ -458,6 +467,9 @@ def test_a_first_attach_that_may_work_later_holds_back_the_step(monkeypatch, err
     for name in ("slots_tick", "language_tick", "replay_tick", "offline_tick"):
         monkeypatch.setattr(zc, name, nothing)
     asyncio.run(zc.poll(ctx))
+    if not held:
+        assert order == ["attach", "step, gives"] and not ctx.helper_lost
+        return
     assert order == ["attach", "step, waits"] and ctx.helper_lost
     ctx.attach_again_at = 0.0
     asyncio.run(zc.poll(ctx))
