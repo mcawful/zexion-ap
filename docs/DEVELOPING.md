@@ -146,16 +146,17 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   another game's trap as a progression item): 2026-11-11 (81dd8cc, `lab/ap/live60`); the pickup
   popup naming the trap, a queued trap's popup waiting for it, the drawn disguises, a trap held at a
   slot's first connection and `/reload_mod` refused during a trap: 2026-11-11 (5f66f1b,
-  `lab/ap/live61`); as it is now (`develop` e500ab9, `lab/ap/live62` and `live63`): a trap held at a
-  slot's first connection through a client restart before play, the looks drawn from the owner's
-  upgrades, keys and OS Install Disks and the fallback, a key-look trap with no key marker, one
-  received while dead, and the client closed while a trap waits (behind one of its kind) or runs:
-  2026-11-11. Not working in game: a trap received in the pause before RELOAD FROM CHECKPOINT, which
-  went off in the reload's teleport and was reset (`kTrapSettledMs` does not cover that load), and a
-  disk's popup coming after a trap's received with it (the order the owner wants changed). Not run
-  in game: the ending or RETURN HOME, an unload refused while a trap waits, a trap's popup placed
-  after a notice, a connection's first held-traps record beside another client's (the `default`
-  operation), and the restart doubles ("Traps").
+  `lab/ap/live61`); as it is now (`develop` e500ab9, `lab/ap/live62` and `live63`,
+  `lab/ingame-138-develop-checks.md`): a trap held at a slot's first connection through a client
+  restart before play, the looks drawn from the owner's upgrades, keys and OS Install Disks and the
+  fallback, a key-look trap with no key marker (with Hints Revealed), one received while dead, and
+  the client closed while a trap waits (behind one of its kind) or runs: 2026-11-11. Not working in
+  game: a trap received in the pause before RELOAD FROM CHECKPOINT, which went off in the reload's
+  teleport and was reset (`kTrapSettledMs` does not cover that load), and a disk's popup coming
+  after a trap's received with it (the order the owner wants changed). Not run in game: the ending
+  or RETURN HOME, a key-look trap after the scanner, an unload refused while a trap waits, a trap's
+  popup placed after a notice, a connection's first held-traps record beside another client's (the
+  `default` operation), and the restart doubles ("Traps").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,

@@ -39,7 +39,8 @@ Set with the Goal option.
   - The scanner at Guardia 42,26, outside the core's door, which shows where the keys are in
     the normal game, tells you how many you need. Until you have been there, the pause screen
     shows "OF ?". With Hints Revealed (Custom), the game counts you as told from the start, so
-    the number shows at once (checked in game: it showed before the scanner).
+    the number shows at once (seen in game: a number showed before the scanner, though what it
+    read and where weren't checked).
   - Once you have enough, save at the Landing Pod's save point (Kresezoa 16,13, the
     `landing_pod` start room, whichever room you started in) and answer YES to RETURN HOME WITH
     THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
@@ -314,18 +315,20 @@ never counts as a disk; another game's trap still says PROGRESSION ITEM. If none
 seed (its owner starts with, or leaves out, every upgrade, and has no key or disk in the seed), a
 Zexion trap looks like any upgrade: maybe one they already have, or one not in the seed. Once the
 scanner, or a map revealed in full (Hints Revealed, in Custom mode), has shown your keys on the map,
-a trap that looks like one of your keys has no key marker there: just an important item's. Picking
-up your own sets it off at once; if you picked it up with the client closed, it goes off when you
-next connect with that save loaded. Other games' traps sent to you do nothing in Zexion.
+a trap that looks like one of your keys has no key marker there: just an important item's (checked
+in the game with Hints Revealed; after the scanner, not yet checked). Picking up your own sets it
+off at once; if you picked it up with the client closed, it goes off when you next connect with that
+save loaded. Other games' traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused, while
 dead or while the client was disconnected; one sent before you first connected, with the client
-restarted before you played; your own trap and other players' in your world, their look (an
-upgrade, a key or an OS Install Disk) and their pickup popups, and a disk-look trap not counting;
-a second trap's popup waiting for it; and the client closed while a trap waits or runs. Not
-checked in the game: a trap through RETURN HOME or the ending, and the mod refusing to reload
-while a trap waits to go off.
+restarted before you played; your own trap and other players' in your world, their look (an upgrade,
+a key or an OS Install Disk) and their pickup popups, and a disk-look trap not counting; with Hints
+Revealed, a key-look trap having no key marker; a second trap's popup waiting for it; and the client
+closed while a trap waits or runs. Not checked in the game: a trap through RETURN HOME or the
+ending, a key-look trap after the scanner has shown your keys, and the mod refusing to reload while
+a trap waits to go off.
 
 ## Can I use the assist menu?
 

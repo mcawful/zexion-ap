@@ -619,55 +619,54 @@ dealt on the next load ("DeathLink").
 Stand-in tests (`tests/game_tests.cpp`: `test_received_traps`, `test_own_traps`,
 `test_traps_without_ailments`, `test_traps_held_for_the_ending`). **Run in game in its first
 design** (2026-11-11, B1, `zexion_ap.dll` `8fb38a28…` built from PR #138's 57381bf, the seed
-`lab/ap/live59`, slot 7, the owner's reports; `lab/ingame-138-traps-checks.md`), when a trap
-went off after its popup closed, for 240 and 251 frames, an Energy Shield took a Disruption Trap
-and AILMENTS applied: a received Disruption Trap and Disorient Trap ("that all worked as
-expected"); a Disruption Trap with a shield up ("the shield kept the trap from working"), no
-shield spawned again; one sent in the pause menu, set off after it ("popup then trap"); one sent
-while the client was disconnected, once after the reconnect, not again after a second; this
-world's own Disruption Trap after its pickup popup, then labeled by its name; another Zexion
-player's Disorient Trap in this world, nothing to the player; a Disorient Trap with AILMENTS
-REDUCED ("about a second") and IMMUNE ("got the sound but no effect"). The owner then asked for
-the design above. **Run in game as it is now** but for the pickup text and the popup waiting with
-its trap (2026-11-11, B1, `zexion_ap.dll` `a5647085…` built from 81dd8cc, the seed
-`lab/ap/live60` with a Bumper Stickers player, slot 7, the owner's reports;
-`lab/ingame-138-traps-recheck.md`): this world's own Disruption Trap, its important marker and
-disguised look, going off at once for about 12 s; a received one with its popup, at once, about
-12 s; two Disorient Traps at once, one after the other; a Disruption Trap past a shield, whose
+`lab/ap/live59`, slot 7, the owner's reports; `lab/ingame-138-traps-checks.md`), when a trap went
+off after its popup closed, for 240 and 251 frames, an Energy Shield took a Disruption Trap and
+AILMENTS applied: a received Disruption Trap and Disorient Trap ("that all worked as expected"); a
+Disruption Trap with a shield up ("the shield kept the trap from working"), no shield spawned again;
+one sent in the pause menu, set off after it ("popup then trap"); one sent while the client was
+disconnected, once after the reconnect, not again after a second; this world's own Disruption Trap
+after its pickup popup, then labeled by its name; another Zexion player's Disorient Trap in this
+world, nothing to the player; a Disorient Trap with AILMENTS REDUCED ("about a second") and IMMUNE
+("got the sound but no effect"). The owner then asked for the design above. **Run in game as it is
+now** but for the pickup text and the popup waiting with its trap (2026-11-11, B1, `zexion_ap.dll`
+`a5647085…` built from 81dd8cc, the seed `lab/ap/live60` with a Bumper Stickers player, slot 7, the
+owner's reports; `lab/ingame-138-traps-recheck.md`): this world's own Disruption Trap, its important
+marker and disguised look, going off at once for about 12 s; a received one with its popup, at once,
+about 12 s; two Disorient Traps at once, one after the other; a Disruption Trap past a shield, whose
 strength read 80 after (a full one); a Disorient Trap with AILMENTS IMMUNE and a Disruption Trap
-with REDUCED, each its full length, the disruption's patch read in memory 2 s in (both `jne`s
-`EB`, the other timer's untouched) and put back after; another game's trap as PROGRESSION ITEM
-FOR BUB and another Zexion player's disguised, nothing to the player; and the three AILMENTS
-targets resolved live. The owner then asked for the pickup popup to name the trap (it named the
-disguise) and for a queued trap's popup to wait for it. **Working in game** with those and the
-drawn disguises (2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the seed
-`lab/ap/live61`, slot 8, the owner's reports; `lab/ingame-138-traps-check3.md`): a trap sent
-before the slot's first connection, popping up and going off when the owner started the save;
-this world's own trap disguised as Zenith Thrusters and another Zexion player's as the Jump
-Booster, each pickup popup naming the trap (FOR BOB for Bob's); two Disruption Traps at once,
-each popup showing as its trap went off; and the refused unload above. **Working in game as it is
-now** (2026-11-11, B1, `zexion_ap.dll` `8bd8e712…` built from `develop` e500ab9, the seeds
-`lab/ap/live62`, slot 5, and `lab/ap/live63`, slot 6, the owner's reports, the trap timers read
-in memory every 20 ms; `lab/ingame-138-develop-checks.md`): a trap sent before the slot's first
-connection, the client connected at the title and started again before play, going off once at
-the new game and not again after another restart (the held traps' record); a trap shown as an OS
-Install Disk (`@44 OS Install Disk/NAME`), its pickup popup naming the trap and the disk count
-unchanged; one shown as this world's own Beta Key, with the map revealed in full, a major's
-symbol and no key marker on its square while the real keys showed theirs, its pickup popup
-naming the trap; another Zexion player's with the fallback look (its owner started with every
-upgrade), shown as the Rocket Slide, FOR BOB, nothing to the player; a trap received while dead,
-going off 0.8 s after the respawn for its full 660 frames; and two Disruption Traps with the
-client closed 3.3 s into the first: the first ran its 660 frames, the second, waiting in the
-helper, went off with its popup as the first ran out, 660 frames, with no client, and neither
-again once the client was back. **Not working in game:** a trap received in the pause before
-RELOAD FROM CHECKPOINT went off during the reload's teleport and was reset 0.39 s later
-("When"; so `kTrapSettledMs` does not cover that load); and the popup order above (the owner
-wants a disk's popup before a trap's). **Not run in game:** an unload refused while a trap waits
-(the client hands a trap over only in play, and a menu's refusal comes first: tried with one
-received in the pause, refused for the menu, the trap then going off at full length); a trap
-through the ending or RETURN HOME; a trap's popup placed after a notice that has just shown; a
-connection's first held-traps record beside another client's (the `default` operation); and the
-restart doubles above.
+with REDUCED, each its full length, the disruption's patch read in memory 2 s in (both `jne`s `EB`,
+the other timer's untouched) and put back after; another game's trap as PROGRESSION ITEM FOR BUB and
+another Zexion player's disguised, nothing to the player; and the three AILMENTS targets resolved
+live. The owner then asked for the pickup popup to name the trap (it named the disguise) and for a
+queued trap's popup to wait for it. **Working in game** with those and the drawn disguises
+(2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8,
+the owner's reports; `lab/ingame-138-traps-check3.md`): a trap sent before the slot's first
+connection, popping up and going off when the owner started the save; this world's own trap
+disguised as Zenith Thrusters and another Zexion player's as the Jump Booster, each pickup popup
+naming the trap (FOR BOB for Bob's); two Disruption Traps at once, each popup showing as its trap
+went off; and the refused unload above. **Working in game as it is now** (2026-11-11, B1,
+`zexion_ap.dll` `8bd8e712…` built from `develop` e500ab9, the seeds `lab/ap/live62`, slot 5, and
+`lab/ap/live63`, slot 6, the owner's reports, the trap timers read in memory every 20 ms;
+`lab/ingame-138-develop-checks.md`): a trap sent before the slot's first connection, the client
+connected at the title and started again before play, going off once at the new game and not again
+after another restart (the held traps' record); a trap shown as an OS Install Disk (`@44 OS Install
+Disk/NAME`), its pickup popup naming the trap and the disk count unchanged; one shown as this
+world's own Beta Key, with the map revealed in full, a major's symbol and no key marker on its
+square while the real keys showed theirs, its pickup popup naming the trap; another Zexion player's
+with the fallback look (its owner started with every upgrade), shown as the Rocket Slide, FOR BOB,
+nothing to the player; a trap received while dead, going off 0.8 s after the respawn for its full
+660 frames; and two Disruption Traps with the client closed 3.3 s into the first: the first ran its
+660 frames, the second, waiting in the helper, went off with its popup as the first ran out, 660
+frames, with no client, and neither again once the client was back. **Not working in game:** a trap
+received in the pause before RELOAD FROM CHECKPOINT went off during the reload's teleport and was
+reset 0.39 s later ("When"; so `kTrapSettledMs` does not cover that load); and the popup order above
+(the owner wants a disk's popup before a trap's). **Not run in game:** an unload refused while a
+trap waits (the client hands a trap over only in play, and a menu's refusal comes first: tried with
+one received in the pause, refused for the menu, the trap then going off at full length); a trap
+through the ending or RETURN HOME; a key-look trap's missing marker after the scanner (only a map
+revealed in full was run); a trap's popup placed after a notice that has just shown; a connection's
+first held-traps record beside another client's (the `default` operation); and the restart doubles
+above.
 
 ### The assist menu
 
