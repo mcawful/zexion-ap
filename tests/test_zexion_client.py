@@ -324,6 +324,54 @@ def test_a_reconnect_attaches_the_helper_before_the_first_step(monkeypatch) -> N
     assert order == ["attach", "step with the helper", "back"]
 
 
+class Back(Helper):
+    """An attached helper that had dressed the save with no client: client_back says shown."""
+
+    def __init__(self, order: list[str]) -> None:
+        super().__init__()
+        self.order = order
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        if text == "client_back":
+            self.order.append(text)
+            return "shown"
+        return "ok"
+
+    def hello(self) -> dict[str, str]:
+        return {}
+
+
+@pytest.mark.parametrize(
+    ("states", "expected"),
+    [
+        # A reconnect in play: the first look gives nothing (two polls must agree), the second
+        # gives what was received meanwhile, after CLIENT CONNECTED is asked for.
+        ([game.IN_PLAY, game.IN_PLAY], ["step", "client_back", "step"]),
+        # Paused at the reconnect: asked once the poll before found it in play.
+        ([game.MENU, game.IN_PLAY, game.IN_PLAY], ["step", "step", "client_back", "step"]),
+    ],
+)
+def test_client_connected_is_asked_for_before_the_step_that_gives(
+    monkeypatch, states, expected
+) -> None:
+    conn = connection()
+    ctx = context(conn, Showing(game.IN_PLAY))
+    order: list[str] = []
+    ctx.helper, ctx.told = Back(order), state.HelperState()
+    looks = iter(states)
+
+    def step(g, received, **kwargs):
+        order.append("step")
+        return session.Step(seed_matches=True, state=next(looks, game.IN_PLAY))
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    for _ in states:
+        asyncio.run(zc.poll(ctx))
+    assert order == expected
+    asyncio.run(zc.poll(ctx))
+    assert order.count("client_back") == 1, "once an attach"
+
+
 def test_a_save_in_its_ending_keeps_the_helper() -> None:
     # A disconnect in the ending undresses the save but keeps its hold: letting the helper go
     # would put back its Feats guard and RETURN HOME's ending meanwhile.

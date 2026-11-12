@@ -385,6 +385,7 @@ class LoadState:
     """What the polls found of the loaded save of this seed."""
 
     seed_loaded: bool = False  # the last poll found this seed's save loaded
+    in_play: bool = False  # and found it in play (ticks.client_back_tick)
     save_collected: set[int] = field(default_factory=set)  # its collected locations
     # The landing-pod reminder and RETURN HOME WITH THE DISKS? for this load (mission_tick).
     return_home: discs.ReturnHome = field(default_factory=discs.ReturnHome)

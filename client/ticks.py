@@ -691,11 +691,13 @@ async def language_tick(ctx: ZexionContext) -> None:
         log.info(f"The game's language: {lang}")
 
 
-async def client_back_tick(ctx: ZexionContext, step: session.Step) -> None:
-    """Once per attach, when this seed's save is first seen in play: if the helper dressed it
-    with no client (client/offline.py), it pops up ARCHIPELAGO CLIENT CONNECTED (client_back)."""
-    helper, told = ctx.helper, ctx.told
-    if told.client_back_sent or not step.seed_matches or step.state != game.IN_PLAY:
+async def client_back_tick(ctx: ZexionContext) -> None:
+    """Once per attach, once the poll before found this seed's save in play: if the helper
+    dressed it with no client (client/offline.py), it pops up ARCHIPELAGO CLIENT CONNECTED
+    (client_back). Asked before the poll's step, so the notice is queued ahead of the popups the
+    step hands over: those of what was received while the client was away."""
+    helper, told, load = ctx.helper, ctx.told, ctx.load
+    if told.client_back_sent or not load.seed_loaded or not load.in_play:
         return
     reply = await asyncio.to_thread(helper.request, "client_back")
     if not reply.startswith("refused"):

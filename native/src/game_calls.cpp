@@ -364,21 +364,16 @@ std::string Game::apply(const Batch& batch) {
     if (rando_save_loaded()) {
         origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
     }
+    // A received trap's popup takes its turn with the rest, and its trap goes off as it shows
+    // (pump_traps; the owner's choice).
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
         popup.intel = batch.intel && !popup.bare && popup.item == kAreaMapItem;
-        // A received trap: set off now (pump_traps, this frame), its popup with it: one waiting
-        // for another of its kind keeps its popup until it goes off (the owner's choice).
-        if (trap_popup(popup) && popup.counted) {
-            const uint8_t item = popup.item;
-            std::shared_ptr<const OfflineSeed> from = popup.origin;
-            traps_.push_back({item, std::move(from), std::move(popup)});
-            continue;
-        }
         popups_.push_back(std::move(popup));
     }
-    // This world's own traps, found in it: set off at once too (pump_traps).
-    for (uint8_t item : batch.traps) traps_.push_back({item, origin, std::nullopt});
+    // This world's own traps, found in it: set off at once, with no popup of the helper's (the
+    // game's pickup popup names it: pump_traps).
+    for (uint8_t item : batch.traps) traps_.push_back({item, origin});
     return "applied";
 }
 
@@ -399,24 +394,44 @@ int32_t Game::popup_frames_left() const {
     return at<int32_t>(last, kMessageFramesLeft);
 }
 
-void Game::pump_popups() {
-    if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
-    if (popups_.empty() || !in_play()) return;
-    if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return;
+bool Game::received_trap(const Popup& popup) { return popup.counted && trap_popup(popup); }
+
+bool Game::trap_parked(const Popup& popup) const {
+    return received_trap(popup) && (trap_running(popup.item) || ending_held());
+}
+
+std::deque<Popup>::iterator Game::next_popup() {
+    if (popups_.empty() || !in_play()) return popups_.end();
+    if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return popups_.end();
     // RETURN HOME's fade and prompt; from its YES (the screen kept black or not: watch_mission)
     // and through the ending, whose cutscenes read as play, kept for this save's next load.
-    if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
-    // The first one for this save (or for any): a client's popups for another save wait for it.
-    auto next = std::find_if(popups_.begin(), popups_.end(),
-                             [this](const Popup& p) { return showable(p); });
+    if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) {
+        return popups_.end();
+    }
+    // The first one for this save (or for any): a client's popups for another save wait for it,
+    // and a trap's that cannot go off for a while lets the rest go first.
+    return std::find_if(popups_.begin(), popups_.end(),
+                        [this](const Popup& p) { return showable(p) && !trap_parked(p); });
+}
+
+void Game::pump_popups() {
+    if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
+    auto next = next_popup();
     if (next == popups_.end()) return;
+    // A received trap's turn: pump_traps shows it as the trap goes off (in play for a moment, not
+    // halted), so the popups behind it wait, as for any popup ahead of them.
+    if (received_trap(*next)) return;
+    show_popup(next);
+}
+
+bool Game::show_popup(std::deque<Popup>::iterator next) {
     const Popup& popup = *next;
     // A trap has no record: Scrap Metal's gives its sound (trap_popup).
     const bool is_trap = trap_popup(popup);
     BYTE* rec = record(is_trap ? kScrapMetal : popup.item);
     if (rec == nullptr) {
-        popups_.erase(next);
-        return;
+        if (!received_trap(popup)) popups_.erase(next);  // a trap's waits, never lost
+        return false;
     }
     // With a translation on, the text goes into a borrowed entry (translation.h), which may wait
     // a frame or two to free; not after hold_translated_popups.
@@ -427,7 +442,7 @@ void Game::pump_popups() {
     if (translated) {
         hd = hd_popup_text(popup, rec, *now);
         where = popup_areas_.reserve(*now, hd.size());
-        if (where == PopupAreas::kWait) return;
+        if (where == PopupAreas::kWait) return false;
     }
     int per_line = kGamePopupWidth;
     std::string text;
@@ -454,7 +469,7 @@ void Game::pump_popups() {
     last_message(last_before, seq_before);
     void* message = reinterpret_cast<MessageFn>(at_.message_fn)(
         text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
-    if (message == nullptr) return;  // all four slots busy: try again next frame
+    if (message == nullptr) return false;  // all four slots busy: try again next frame
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
     // The translation's font; failing that, the pixel text, the slot's last translated mark
     // cleared so it shows (clear_mark checks the flag itself).
@@ -483,6 +498,7 @@ void Game::pump_popups() {
         own_message_ = last;
         own_sequence_ = sequence;
     }
+    return true;
 }
 
 bool Game::own_popup_up() const {
@@ -645,33 +661,34 @@ std::string Game::drop_status() const {
 
 void Game::pump_traps(uint64_t now_ms) {
     if (!configured_) return;
-    if (held_for_ending() || traps_.empty()) return;
-    // At once, with its popup (the owner's choice), but in play for a moment (not the frame of a
-    // load), not halted, not from RETURN HOME's fade through its ending, and in the save it was
-    // for. A state not measured (a cutscene other than the ending's) is not told apart:
-    // docs/re/memory.md, "Telling play from menus, the title screen and death".
+    if (held_for_ending()) return;
+    // In play for a moment (not the frame of a load), not halted, not from RETURN HOME's fade
+    // through its ending, and in the save it was for. A state not measured (a cutscene other than
+    // the ending's) is not told apart: docs/re/memory.md, "Telling play from menus, the title
+    // screen and death".
     if (!in_play() || in_play_since_ms_ == 0 || now_ms - in_play_since_ms_ < kTrapSettledMs) return;
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     if (*at_.halt_flag != 0) return;
     // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a
     // trap started still runs, and starts as it ends; an enemy's own effect does not hold it.
-    auto next = std::find_if(traps_.begin(), traps_.end(), [this](const QueuedTrap& t) {
-        const bool running = t.item == trap::kDisruption ? trap_hit_ : trap_wave_;
-        return origin_loaded(t.origin) && !running;
+    // This world's own, found in it: at once (the game's pickup popup names it).
+    uint8_t item = 0;
+    auto own = std::find_if(traps_.begin(), traps_.end(), [this](const QueuedTrap& t) {
+        return origin_loaded(t.origin) && !trap_running(t.item);
     });
-    if (next == traps_.end()) return;
-    const uint8_t item = next->item;
-    const std::string outcome = run_trap(item);
-    // Its popup next: before the first popup of this save that is no notice, so after a disk's
-    // count or a chip's hint whose popup has just shown (kept together), and past popups waiting
-    // for another save.
-    if (next->popup) {
-        auto at = std::find_if(popups_.begin(), popups_.end(), [this](const Popup& queued) {
-            return !queued.bare && showable(queued);
-        });
-        popups_.insert(at, std::move(*next->popup));
+    if (own != traps_.end()) {
+        item = own->item;
+        traps_.erase(own);
+    } else {
+        // A received one: as its popup shows, in its turn in the queue (the owner's choice), so
+        // after the popups queued before it, a disk's count or a chip's hint among them, and past
+        // popups waiting for another save. Not drawn this frame: it waits with its popup.
+        auto next = next_popup();
+        if (next == popups_.end() || !received_trap(*next)) return;
+        item = next->item;
+        if (!show_popup(next)) return;
     }
-    traps_.erase(next);
+    const std::string outcome = run_trap(item);
     trap_status_ = outcome + " " + std::to_string(item);
     watch_trap_patches();  // before the game's next frame: AILMENTS left out from its first
 }
@@ -1159,10 +1176,12 @@ void Game::watch_mission() {
     // message down to kFadeMessageLeft frames, the helper's own never cut short. After YES no
     // game message is waited for: the ending ends them (docs/re/memory.md, "The mission prompt");
     // nor queued popups, which wait for the save's next load (pump_popups), as once the ending
-    // has started.
+    // has started. A trap's popup waiting for one of its kind to run out does not hold it (as
+    // next_popup passes it).
     const bool yes = mission_.ending();
-    const bool waiting = !yes && std::any_of(popups_.begin(), popups_.end(),
-                                             [this](const Popup& p) { return showable(p); });
+    const bool waiting = !yes && std::any_of(popups_.begin(), popups_.end(), [this](const Popup& p) {
+                             return showable(p) && !trap_parked(p);
+                         });
     const bool own = own_popup_up();
     const int32_t left = own ? 1 : yes ? INT32_MAX : kFadeMessageLeft;
     const bool idle = in_play() && !waiting && popup_frames_left() <= left &&

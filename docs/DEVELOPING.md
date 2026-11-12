@@ -149,9 +149,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   trap: 2026-11-11 (5f66f1b, `lab/ap/live61`). Not run in game: one held through a death, a reload
   (and that the load's reset comes within the quarter second a trap waits in play,
   `kTrapSettledMs`), the ending or RETURN HOME, an unload refused while a trap waits, a client
-  restarted or going away while a trap waits or runs, and what changed since 5f66f1b (the held
-  traps' record, a trap's popup placed after a notice, the look drawn from the owner's upgrades,
-  keys and OS Install Disks in the seed, and its fallback).
+  restarted or going away while a trap waits or runs, what changed since 5f66f1b (the held
+  traps' record, the look drawn from the owner's upgrades, keys and OS Install Disks in the
+  seed, and its fallback), and a received trap's popup taking its turn in the queue, the trap
+  going off as it shows (since 2026-11-12).
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,

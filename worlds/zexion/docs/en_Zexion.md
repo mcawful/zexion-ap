@@ -291,8 +291,10 @@ filler, so excluded locations can hold them.
   controls are reversed, with swirls around your head; a flash and a sound come just before it
   wears off.
 
-A trap goes off as soon as it reaches you, as its popup shows (DISRUPTION TRAP, FROM ALICE), once
-you are in play (a second of the same kind shows its popup as it starts): it waits through the
+A trap goes off as its popup shows (DISRUPTION TRAP, FROM ALICE), once you are in play. Its popup
+takes its turn after the popups that came before it, such as an OS Install Disk's and its count,
+so the trap comes after them (a second of the same kind shows its popup as it starts, and the
+popups after it don't wait for it meanwhile): it waits through the
 pause menu, other menus, a death or a reload, and through RETURN HOME WITH THE DISKS? and the
 game's ending (it comes at your next load then). Each trap happens at most once, including one
 sent while your client was closed, or before you first connected (it comes when you connect); if
@@ -322,8 +324,8 @@ while the client was disconnected; your own trap and other players' in your worl
 their pickup popups; a second trap's popup waiting for it; and a trap sent before you first
 connected. All of this was checked on earlier versions of the mod; since then, how a disguise is
 picked (now also a key or an OS Install Disk), how a trap sent before you first connected is
-kept, and where a trap's popup goes among other popups have changed, and are not yet checked in
-the game. Not checked in the game at all: a trap through a death, a reload, RETURN HOME or the
+kept, and where a trap's popup goes among other popups (now in its turn, the trap with it) have
+changed, and are not yet checked in the game. Not checked in the game at all: a trap through a death, a reload, RETURN HOME or the
 ending; the client restarted or closed while a trap waits or runs; and the mod refusing to reload
 while a trap waits to go off.
 
