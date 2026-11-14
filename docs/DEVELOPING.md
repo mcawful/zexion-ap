@@ -131,7 +131,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
   2026-11-03; given once across reconnects: 2026-11-04; the helper's check of the whole of
   event 3553: 2026-11-09 ("Received Energy Shields"; its stop after three misses: not run in
-  game).
+  game). One received in the pause, then TELEPORT TO START, coming up after the teleport's load:
+  2026-11-14 (99dc486, `lab/ap/live62`, `lab/ingame-checkpoint-checks.md`); scrap's drops,
+  received deaths and popups waiting out a TELEPORT TO's countdown: stand-in tests only ("Popups",
+  "Received Energy Shields").
 - Received scrap's drops (its pickup's event, after its popup), one received while
   disconnected dropping once: 2026-11-09 ("Received scrap"; what the drops were and gave not
   described).
@@ -156,10 +159,13 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   and count sent before it: 2026-11-11 (932411b, `lab/ap/live62`,
   `lab/ingame-popup-order-checks.md`), and ARCHIPELAGO CLIENT CONNECTED. before the items received
   while the client was away, the same run ("AP saves without the client"); a popup's follow-ups kept
-  ahead of a trap it passed, added after that run: stand-in tests only. Not working in game: a trap
-  received in the pause before RELOAD FROM CHECKPOINT, which went off in the reload's teleport and
-  was reset (`kTrapSettledMs` does not cover that load). Not run in game: the ending or RETURN HOME,
-  a key-look trap after the scanner, an unload refused while a trap waits, a trap's popup passed by
+  ahead of a trap it passed, added after that run: stand-in tests only. A trap received in the
+  pause, then a TELEPORT TO, waiting out the teleport's countdown and going off after its load, with
+  its popup as it went off (on e500ab9 check 8's trap went off in the teleport and was reset; its
+  record named RELOAD FROM CHECKPOINT, but it was TELEPORT TO START: the owner, 2026-11-14), and
+  through RELOAD FROM CHECKPOINT, RELOAD FROM SAVE and a death's respawn: 2026-11-13 (907abfd,
+  `lab/ap/live62`, `lab/ingame-checkpoint-checks.md`). Not run in game: the ending or RETURN HOME, a
+  key-look trap after the scanner, an unload refused while a trap waits, a trap's popup passed by
   others while it waits for one of its kind, a connection's first held-traps record beside another
   client's (the `default` operation), and the restart doubles ("Traps").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25

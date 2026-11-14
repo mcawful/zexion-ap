@@ -96,7 +96,9 @@ bool has_drop(const Popup& popup) {
 // A received trap's popup: its name and no icon (it has no record), Scrap Metal's sound.
 bool trap_popup(const Popup& popup) { return !popup.bare && trap::is_trap(popup.item); }
 constexpr uint64_t kSettledMs = 1000;  // in play in one cell this long: a shield, a drop, a death
-// In play this long, in any cell: a trap (not the frame of a load, whose reset would undo it).
+// In play this long, in any cell, with no transition queued: a trap. A margin past a menu, a death
+// or a load; alone it does not cover a transition's countdown, which reads as play (a TELEPORT
+// TO's 60 frames before its load, whose reset would undo the trap: transition_queued).
 constexpr uint64_t kTrapSettledMs = 250;
 // The player's death: death_fn(player, 0), as the damage code calls it (docs/re/memory.md,
 // "DeathLink").
@@ -403,7 +405,9 @@ bool Game::trap_parked(const Popup& popup) const {
 }
 
 std::deque<Popup>::iterator Game::next_popup() {
-    if (popups_.empty() || !in_play()) return popups_.end();
+    // Not through a queued transition either (a TELEPORT TO's countdown reads as play): the load at
+    // its end clears the message slots (0x1F9CE0), which would cut a popup short.
+    if (popups_.empty() || !in_play() || transition_queued()) return popups_.end();
     if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return popups_.end();
     // RETURN HOME's fade and prompt; from its YES (the screen kept black or not: watch_mission)
     // and through the ending, whose cutscenes read as play, kept for this save's next load.
@@ -589,8 +593,11 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
 }
 
 void Game::note_play(uint64_t now_ms) {
-    // A shield or a death waits for this, not for a load, a respawn or a room change settling.
-    if (!configured_ || !in_play()) {
+    // A shield, a drop, a death or a trap waits for this, not for a load, a respawn or a room
+    // change settling, nor through a queued transition (a TELEPORT TO's countdown reads as play,
+    // and the load at its end resets the player and the room): each clock starts again once it
+    // has run.
+    if (!configured_ || !in_play() || transition_queued()) {
         play_since_ms_ = 0;
         in_play_since_ms_ = 0;
         return;
@@ -604,11 +611,15 @@ void Game::note_play(uint64_t now_ms) {
     }
 }
 
+bool Game::settled(uint64_t now_ms) const {
+    // Checked here too, not only by note_play: a transition queued since its last call.
+    return in_play() && !transition_queued() && play_since_ms_ != 0 &&
+           now_ms - play_since_ms_ >= kSettledMs;
+}
+
 std::string Game::spawn_shield(uint64_t now_ms) {
     if (!configured_) return "refused not configured";
-    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
-        return "refused not settled";
-    }
+    if (!settled(now_ms)) return "refused not settled";
     if (mission_.started()) return "refused RETURN HOME WITH THE DISKS? ending";
     std::string why = run_item_event(kEnergyShield);
     return why.empty() ? "spawned" : "refused " + why;
@@ -619,12 +630,12 @@ std::string Game::kill(uint64_t now_ms) {
     // at 0 while halted, and can fault with every message slot busy: refused while halted or a
     // message shows.
     if (!configured_) return "refused not configured";
-    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
-        return "refused not settled";
-    }
+    if (!settled(now_ms)) return "refused not settled";
     if (*at_.halt_flag != 0) return "refused halted";
     if (popup_busy()) return "refused message showing";
-    // Not between RETURN HOME's fade and its prompt: the prompt would open over the death.
+    // Not between RETURN HOME's fade and its prompt: the prompt would open over the death. A
+    // defensive check: the fade's countdown (kFadeDelay, or 1) is a transition queued, which
+    // settled() refuses first.
     if (mission_.opening()) return "refused RETURN HOME WITH THE DISKS? opening";
     // Nor in the black after its YES, nor in the ending it started.
     if (mission_.dark() || mission_.started()) return "refused RETURN HOME WITH THE DISKS? ending";
@@ -654,9 +665,10 @@ bool Game::held_for_ending() {
 void Game::pump_drops(uint64_t now_ms) {
     if (!configured_) return;
     if (held_for_ending() || drops_.empty()) return;
-    // As spawn_shield waits: in play in one cell for a second, and not from RETURN HOME's fade
-    // through its ending (kept for this save's next load, as the popups are).
-    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) return;
+    // As spawn_shield waits: in play in one cell for a second with no transition queued, and not
+    // from RETURN HOME's fade through its ending (kept for this save's next load, as the popups
+    // are).
+    if (!settled(now_ms)) return;
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     auto next = std::find_if(drops_.begin(), drops_.end(),
                              [this](const Drop& d) { return origin_loaded(d.origin); });
@@ -680,11 +692,15 @@ std::string Game::drop_status() const {
 void Game::pump_traps(uint64_t now_ms) {
     if (!configured_) return;
     if (held_for_ending()) return;
-    // In play for a moment (not the frame of a load), not halted, not from RETURN HOME's fade
-    // through its ending, and in the save it was for. A state not measured (a cutscene other than
-    // the ending's) is not told apart: docs/re/memory.md, "Telling play from menus, the title
-    // screen and death".
-    if (!in_play() || in_play_since_ms_ == 0 || now_ms - in_play_since_ms_ < kTrapSettledMs) return;
+    // In play for a moment with no transition queued (a TELEPORT TO's countdown reads as play, and
+    // the load at its end resets the player), not halted, not from RETURN HOME's fade through its
+    // ending, and in the save it was for. A state not measured (a cutscene other than the
+    // ending's) is not told apart: docs/re/memory.md, "Telling play from menus, the title screen
+    // and death".
+    if (!in_play() || transition_queued() || in_play_since_ms_ == 0 ||
+        now_ms - in_play_since_ms_ < kTrapSettledMs) {
+        return;
+    }
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     if (*at_.halt_flag != 0) return;
     // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a

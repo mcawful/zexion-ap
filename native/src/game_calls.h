@@ -373,6 +373,13 @@ private:
     bool rando_save_loaded() const;
     // A new game queued: the game's new-game routine set as the next transition.
     bool newgame_queued() const { return at<void*>(at_.transition_fn, 0) == at_.newgame_fn; }
+    // A transition counting down to its routine (the timer above 0): a TELEPORT TO's 60 frames
+    // before its load, a death's respawn, the ending's. Idle in play the timer is 0, room changes
+    // leave it alone (docs/re/memory.md, "Telling play from menus, the title screen and death").
+    bool transition_queued() const { return at<int32_t>(at_.transition_timer, 0) > 0; }
+    // In play in one cell for kSettledMs with no transition queued (note_play): a shield, a drop,
+    // a death.
+    bool settled(uint64_t now_ms) const;
     bool in_play() const;
     // In play outside home's cell; false with no home given, or the player's cell off the map.
     bool away_from_home() const;
