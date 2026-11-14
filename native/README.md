@@ -316,11 +316,13 @@ and a key's area event (which only hides the key's map marker: `docs/re/memory.m
 gates and the key markers").
 
 **During a TELEPORT TO's countdown,** which reads as play, an `apply` is still taken. The load at
-its end loads the player from the copy the teleport made of the play state when it was chosen
-(`docs/re/memory.md`, "The mission prompt", "A save at the Landing Pod"), so by the code it undoes
-those writes; the client's next look finds the items missing and gives them again
-(`client/reconcile.py`), so none is lost. Not changed here, and not seen in game; the popups wait
-out the countdown ("Popups").
+its end loads the player from a copy of the play state (`docs/re/memory.md`, "The mission prompt",
+"A save at the Landing Pod"). In a randomizer save that copy is made again at the countdown's end,
+unless three bytes not traced say otherwise ("Received Energy Shields", "Limits"), so by the code
+those writes are kept; otherwise it is the copy made when the entry was chosen, which undoes them,
+and the client's next look finds the items missing and gives them again (`client/reconcile.py`), so
+none is lost. Not changed here, and not seen in game; the popups wait out the countdown
+("Popups").
 
 **The major-item list** (`pickup_list`; the file select's ITEMS row draws each save's): every
 frame call in play in an AP save (`Game::watch_pickups`), the helper appends to it each owned
@@ -428,39 +430,44 @@ were not singled out.
   whole record is B1's, and that its handler is in the game's code: `run_item_event`, as for
   "Received scrap").
 - **When:** once the player has been in play in one cell for a second with no transition counting
-  down (a TELEPORT TO's 60 frames read as play, and the load at their end resets the player, the
-  shield's strength with it; the second starts again after it:
-  `test_received_things_wait_out_a_teleport`; working in game 2026-11-14 (B1, `zexion_ap.dll`
-  `1b3a3e9f…` built from 99dc486, `lab/ap/live62`, slot 5, the owner's report;
-  `lab/ingame-checkpoint-checks.md`): one received in the pause, then TELEPORT TO START, came up
-  1.45 s after the teleport's load ("the shield arrived after the teleport")), and not in an ending
-  RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
-  asks for each received shield not yet given, again for one not seen up within a few seconds, and
-  counts it once it sees the shield up; after three requests in a row not seen up it asks for none
-  until the save is left or the game closes (another seed or slot has its own count of misses:
-  `client/shields.py`, `client/state.py`'s `SeedState`). A shield already up when the player
-  chooses a TELEPORT TO comes back after its load at the strength it had then, so the client reads
-  it up (by disassembly, not seen in game: the teleport's copy of the play state, made as the entry
-  is chosen, keeps the strength, and the load puts it back and makes a new shield for it;
-  `docs/re/memory.md`, "Received Energy Shields", "Limits"). One whose strength the game sets only
-  after that choice, during the countdown (a shield spawned just before the pause; when the strength
-  is set after a spawn is not traced), would be lost to the load: read up by `confirm_shield` if the
-  client looks during the countdown, then not given again (the limit "counted, then lost to a death
-  or reload"); or, at a first look after the load, a miss, which counts toward the three in a row
-  that stop shields until the save is left or the game closes (`client/shields.py`,
-  `Shields.looked`, STOP). The helper cannot hold that one: the spawn comes before the pause.
+  down (a TELEPORT TO's 60 frames read as play, and the load at their end resets the player and the
+  room, keeping a shield only as the teleport's last copy of the play state holds it: below; the
+  second starts again after it: `test_received_things_wait_out_a_teleport`; working in game
+  2026-11-14 (B1, `zexion_ap.dll` `1b3a3e9f…` built from 99dc486, `lab/ap/live62`, slot 5, the
+  owner's report; `lab/ingame-checkpoint-checks.md`): one received in the pause, then TELEPORT TO
+  START, came up 1.45 s after the teleport's load ("the shield arrived after the teleport"); a run
+  that matches the hold without isolating it, that countdown reading as play for 1.000 s,
+  `kSettledMs`, and the load moving the player to another cell, so the one-second rule alone would
+  likely have held it too), and not in an ending RETURN HOME WITH THE DISKS? started (`refused
+  RETURN HOME WITH THE DISKS? ending`). The client asks for each received shield not yet given,
+  again for one not seen up within a few seconds, and counts it once it sees the shield up; after
+  three requests in a row not seen up it asks for none until the save is left or the game closes
+  (another seed or slot has its own count of misses: `client/shields.py`, `client/state.py`'s
+  `SeedState`). A shield already up through a TELEPORT TO comes back after its load: the load
+  restores the strength of the teleport's last copy of the play state and makes a new shield for it
+  (by disassembly, not seen in game: `docs/re/memory.md`, "Received Energy Shields", "Limits"). In a
+  randomizer save that copy is made at the countdown's end (unless three bytes not traced say
+  otherwise), so a shield spawned just before the pause whose strength comes only during the
+  countdown comes back too. Where the copy is the one made as the entry was chosen, that shield
+  would be lost to the load (when a spawned shield's strength is set is not traced): read up by
+  `confirm_shield` if the client looks during the countdown, then not given again (the limit
+  "counted, then lost to a death or reload"); or, at a first look after the load, a miss, which
+  counts toward the three in a row that stop shields until the save is left or the game closes
+  (`client/shields.py`, `Shields.looked`, STOP); the helper cannot hold it, the spawn coming before
+  the pause.
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("Received Energy Shields"); the client's check as it is now, with the
 client attached to a save already in play, each shield spawned once and read as up and none spawned
 again, 2026-11-03 (B1, `zexion_ap.dll` `fce9e73b…`, the 1.0.0 RC at develop 76df074); one received
 while disconnected, given once on reconnecting and not again after another reconnect, 2026-11-04
-(B1, `zexion_ap.dll` `a7469024…`, develop 345fea7). The stop after three not seen up: stand-in
-tests only, not reached in game (`docs/re/memory.md`, "Received Energy Shields"). The check of
-the whole event (since 2026-11-08; before, its type, subtype, object and own number): working
-in game 2026-11-09 (B1, `zexion_ap.dll` `5f761061…`, develop 88bebfb, the seed
-`lab/ap/live57`, slot 6, the owner's report): a shield sent from the server's console came up
-and was read as up.
+(B1, `zexion_ap.dll` `a7469024…`, develop 345fea7); one received in the pause, then TELEPORT TO
+START, up after the teleport's load, 2026-11-14 (B1, `zexion_ap.dll` `1b3a3e9f…`, 99dc486, "When").
+The stop after three not seen up: stand-in tests only, not reached in game (`docs/re/memory.md`,
+"Received Energy Shields"). The check of the whole event (since 2026-11-08; before, its type,
+subtype, object and own number): working in game 2026-11-09 (B1, `zexion_ap.dll` `5f761061…`,
+develop 88bebfb, the seed `lab/ap/live57`, slot 6, the owner's report): a shield sent from the
+server's console came up and was read as up.
 
 ### Received scrap
 
