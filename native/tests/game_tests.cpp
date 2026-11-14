@@ -1940,7 +1940,8 @@ void test_received_traps() {
     // A trap's popup is never a notice, and only the two traps' codes are taken.
     check(apply(game, "apply\nnotice 102 HELLO").rfind("parse: bad line", 0) == 0, "no notice");
     check(apply(game, "apply\npopup 104 FROM X").rfind("parse: bad line", 0) == 0, "not 104");
-    check(apply(game, "apply\ntrap 46").rfind("parse: bad line", 0) == 0, "no trap 46");
+    check(apply(game, "apply\ntrap 102").rfind("parse: unknown line", 0) == 0,
+          "no trap line: this world's own are the helper's to set off (watch_own_traps)");
     reset_events();
 }
 
@@ -2092,8 +2093,8 @@ void test_traps_wait_out_a_teleport() {
     check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1 && game.queued_popups() == 1 &&
               g_messages == 0,
           "not set through the teleport, a second past the menu, nor its popup shown");
-    check(apply(game, "apply\ntrap 103") == "applied" && game.queued_traps() == 2,
-          "this world's own found meanwhile");
+    game.own_trap_found(103);
+    check(game.queued_traps() == 2, "this world's own picked up meanwhile");
     play_frames(game, 6016, 6200);
     check(field<int16_t>(0xDC4) == 0 && game.queued_traps() == 2, "it waits too");
     g_transition_timer = 0;  // the load: the player reset
@@ -2121,7 +2122,7 @@ void test_traps_wait_out_a_teleport() {
     trap_records();
     in_play_since(other, 5000);
     g_transition_timer = 60;
-    apply(other, "apply\ntrap 102");
+    other.own_trap_found(102);
     other.pump_traps(9000);
     check(field<int16_t>(0xDC2) == 0 && other.queued_traps() == 1,
           "a transition queued holds it at once");
@@ -2245,12 +2246,125 @@ void test_own_traps() {
     zap::Game game;
     ready(game);
     trap_records();
-    check(apply(game, "apply\ntrap 103") == "applied", "applied");
+    game.own_trap_found(103);
     check(game.queued_traps() == 1 && game.queued_popups() == 0, "queued, with no popup");
     message_showing(60);  // the game's pickup popup
     in_play_since(game, 3000);
     game.pump_traps(3000);
     check(field<int16_t>(0xDC4) == 660 && game.queued_traps() == 0, "set at once");
+}
+
+// This world's own trap goes off at its pickup, every pickup: the helper watches the cells the
+// loaded save's seed file lists, with a client or none, and takes no load for a pickup.
+void test_own_traps_go_off_at_each_pickup() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    g_rando_marker = 1;
+    const int disorient = 4 * 54 + 3, disruption = 7 * 54 + 9;
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.traps = {{disorient, 103}, {disruption, 102}};
+    game.set_offline({seed});
+    g_map_grid[disorient] = 0x19;  // seen, not picked up
+    g_map_grid[disruption] = 0;
+    in_play_since(game, 3000);
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "a look alone queues nothing");
+    g_map_grid[disorient] = zap::kCollectedCell;  // the pickup
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "queued by its pickup, with no request");
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660 && field<int16_t>(0xDC2) == 0 && game.queued_traps() == 0,
+          "its own trap, set off at once");
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "once a pickup");
+    game.put_back_traps();
+    field<int16_t>(0xDC4) = 0;
+
+    // RELOAD FROM SAVE without saving: the menu, then the save from before, the item back.
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_map_grid[disorient] = 0x19;
+    g_menu = 0;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "the reload queues nothing");
+    g_map_grid[disorient] = zap::kCollectedCell;  // picked up again
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "queued again by the pickup after the reload");
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660, "and set off again");
+    game.put_back_traps();
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);
+
+    // A load is no pickup: a save holding the other one collected, loaded from a menu, after a
+    // death, or from the file select.
+    for (int way = 0; way < 3; ++way) {
+        g_map_grid[disruption] = 0;
+        game.watch_all(&chosen);  // in play, not collected
+        if (way == 0) g_menu = 2;
+        if (way == 1) field<int16_t>(0xCEA) = -1;
+        if (way == 2) g_save_loaded = 0xFF;
+        game.watch_all(&chosen);
+        g_map_grid[disruption] = zap::kCollectedCell;  // the load
+        g_menu = 0;
+        field<int16_t>(0xCEA) = 48;
+        g_save_loaded = 3;
+        game.watch_all(&chosen);
+        game.watch_all(&chosen);
+        check(game.queued_traps() == 0, "a load with it collected is no pickup");
+    }
+
+    // Another seed's save, or a normal one: its cells are not this seed's traps.
+    g_map_grid[disruption] = 0;
+    game.watch_all(&chosen);
+    g_section[0x26C] ^= 1;  // another seed's item table
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "not in another seed's save");
+    g_section[0x26C] ^= 1;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "nor on coming back to this seed's with it collected");
+    g_map_grid[disruption] = 0;
+    game.watch_all(&chosen);
+    g_rando_marker = 0;  // a normal save
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "not in a normal save");
+    g_rando_marker = 1;
+    g_map_grid[disruption] = 0;
+    game.watch_all(&chosen);
+    game.watch_all(&chosen);
+
+    // A seed file put meanwhile with another list (a client's): looked at afresh.
+    seed.traps = {{disruption, 103}};
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.set_offline({seed});
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "a new list starts over");
+    g_map_grid[disruption] = 0;
+    game.watch_all(&chosen);
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660 && field<int16_t>(0xDC2) == 0,
+          "the trap the file names for the cell");
+    game.put_back_traps();
+    field<int16_t>(0xDC4) = 0;
+
+    // A seed with no traps listed (a file from before them): nothing.
+    seed.traps.clear();
+    game.set_offline({seed});
+    g_map_grid[disruption] = 0;
+    game.watch_all(&chosen);
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "no list, no trap");
+    g_map_grid[disorient] = 0;
+    g_map_grid[disruption] = 0;
+    g_rando_marker = 0;
+    game.set_offline({});
+    game.watch_all(&chosen);
 }
 
 // A config with none of the AILMENTS keys (an offline cache written before the traps): the traps
@@ -2265,7 +2379,8 @@ void test_traps_without_ailments() {
     zap::Game game;
     check(game.configure(self, older, false).empty(), "configures without them");
     trap_records();
-    apply(game, "apply\ntrap 103\ntrap 102");
+    game.own_trap_found(103);
+    game.own_trap_found(102);
     in_play_since(game, 3000);
     game.pump_traps(3000);
     game.pump_traps(3000);
@@ -2281,7 +2396,7 @@ void test_traps_held_for_the_ending() {
     g_flags[250] = 0;
     in_play_since(game, 1000);
     game.pump_traps(1000);  // the load's first frame in play: flag 250 clear
-    apply(game, "apply\ntrap 102");
+    game.own_trap_found(102);
     g_flags[250] = 1;  // the ending began in this load
     game.pump_traps(5000);
     check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1, "held through the ending");
@@ -3356,6 +3471,7 @@ int main() {
     test_received_death();
     test_received_traps();
     test_own_traps();
+    test_own_traps_go_off_at_each_pickup();
     test_a_trap_popup_takes_its_turn();
     test_a_popups_notices_stay_ahead_of_a_trap_it_passed();
     test_a_trap_popup_with_no_record_waits();

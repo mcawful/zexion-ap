@@ -126,13 +126,6 @@ std::string parse_batch(const std::string& request, Batch& out) {
             while (!text.empty() && text.back() == ' ') text.pop_back();
             if (bare && text.empty()) return "bad line " + line;
             out.popups.push_back({static_cast<uint8_t>(item), std::move(text), bare, true});
-        } else if (op == "trap") {
-            unsigned item = 0;
-            std::string extra;
-            if (!(words >> item) || !trap::is_trap(static_cast<int>(item)) || (words >> extra)) {
-                return "bad line " + line;
-            }
-            out.traps.push_back(static_cast<uint8_t>(item));
         } else if (!op.empty()) {
             return "unknown line " + line;
         }

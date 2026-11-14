@@ -375,9 +375,6 @@ std::string Game::apply(const Batch& batch) {
         popup.intel = batch.intel && !popup.bare && popup.item == kAreaMapItem;
         popups_.push_back(std::move(popup));
     }
-    // This world's own traps, found in it: set off at once, with no popup of the helper's (the
-    // game's pickup popup names it: pump_traps).
-    for (uint8_t item : batch.traps) traps_.push_back({item, origin});
     return "applied";
 }
 
@@ -705,7 +702,8 @@ void Game::pump_traps(uint64_t now_ms) {
     if (*at_.halt_flag != 0) return;
     // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a
     // trap started still runs, and starts as it ends; an enemy's own effect does not hold it.
-    // This world's own, found in it: at once (the game's pickup popup names it).
+    // This world's own, picked up in it (watch_own_traps): at once (the game's pickup popup
+    // names it).
     uint8_t item = 0;
     auto own = std::find_if(traps_.begin(), traps_.end(), [this](const QueuedTrap& t) {
         return origin_loaded(t.origin) && !trap_running(t.item);
@@ -927,6 +925,7 @@ void Game::watch_all(WidgetCallback callback) {
     watch_ap_items();
     watch_map_marks();
     watch_pickups();
+    watch_own_traps();  // before pump_traps: one picked up this frame goes off this frame
     watch_translation();
     text_cut_.watch(at_.text_cut_code);  // tall popups' lines cut right (text.h)
     watch_trap_patches();                 // AILMENTS left out while a trap runs (trap.h)

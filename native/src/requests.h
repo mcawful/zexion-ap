@@ -45,8 +45,6 @@ struct Batch {
     bool refresh = false;
     bool intel = false;  // its Area Maps are Intel Chips
     std::vector<Popup> popups;
-    // Traps set off with no popup of their own (`trap ITEM`: this world's own, found in it).
-    std::vector<uint8_t> traps;
 };
 
 // Bytes at an offset into the loaded randomizer section (kSectionSize bytes at rando_blob).

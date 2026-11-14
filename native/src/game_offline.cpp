@@ -219,6 +219,40 @@ void Game::watch_offline() {
     }
 }
 
+void Game::watch_own_traps() {
+    // The loaded save's seed, by its section (loaded_seed: the marker first), in play only: a
+    // load's frames in between are not looked at, so its cells are never compared with the last
+    // save's.
+    const int seed = configured_ && in_play() ? loaded_seed() : -1;
+    if (seed < 0) {
+        own_traps_looked_ = false;
+        return;
+    }
+    const std::vector<OfflineSeed::OwnTrap>& traps = offline_seeds_[static_cast<size_t>(seed)].traps;
+    std::vector<bool> collected(traps.size());
+    for (size_t i = 0; i < traps.size(); ++i) {
+        collected[i] = at_.map_grid[traps[i].cell] == kCollectedCell;
+    }
+    // The same list as the frame before (a seed file merged meanwhile, or another seed's save,
+    // starts over): each cell collected now and not then was picked up in between.
+    if (own_traps_looked_ && traps == own_traps_seen_) {
+        for (size_t i = 0; i < traps.size(); ++i) {
+            if (collected[i] && !own_traps_collected_[i]) own_trap_found(traps[i].item);
+        }
+    }
+    own_traps_seen_ = traps;
+    own_traps_collected_ = std::move(collected);
+    own_traps_looked_ = true;
+}
+
+void Game::own_trap_found(uint8_t item) {
+    std::shared_ptr<const OfflineSeed> origin;
+    if (rando_save_loaded()) {
+        origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
+    }
+    traps_.push_back({item, origin});
+}
+
 std::string Game::other_save() {
     // Only an AP save of another seed: one with a seed file (every ARCHIPELAGO new game is made
     // with a client, which leaves one). A plain randomizer game is left alone.

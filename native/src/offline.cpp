@@ -7,6 +7,7 @@
 
 #include "game_mem.h"
 #include "requests.h"  // parse_config, parse_discs, parse_hex
+#include "trap.h"      // trap::is_trap
 
 namespace zap {
 
@@ -113,6 +114,31 @@ bool good_seed_name(const std::string& name) {
 
 }  // namespace
 
+namespace {
+
+// "I:T,J:T,...": each a map grid index and a trap's item (trap.h), no cell twice.
+bool parse_own_traps(const std::string& text, std::vector<OfflineSeed::OwnTrap>& out) {
+    std::istringstream entries(text);
+    std::string entry;
+    while (std::getline(entries, entry, ',')) {
+        const size_t colon = entry.find(':');
+        if (colon == std::string::npos) return false;
+        std::vector<int> cell, item;
+        if (!parse_number_list(entry.substr(0, colon), 4, 0, kMapCells - 1, cell) ||
+            !parse_number_list(entry.substr(colon + 1), 3, 0, 255, item) || cell.size() != 1 ||
+            item.size() != 1 || !trap::is_trap(item[0])) {
+            return false;
+        }
+        for (const OfflineSeed::OwnTrap& t : out) {
+            if (t.cell == cell[0]) return false;
+        }
+        out.push_back({cell[0], static_cast<uint8_t>(item[0])});
+    }
+    return !out.empty() && text.back() != ',';
+}
+
+}  // namespace
+
 std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
     out = OfflineSeed{};
     std::istringstream lines(text);
@@ -163,6 +189,9 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
             if (a != "-" && !parse_number_list(a, 4, 0, kMapCells - 1, out.unfound)) {
                 return "bad unfound";
             }
+        } else if (key == "traps") {
+            if (!(words >> a)) return "bad traps";
+            if (a != "-" && !parse_own_traps(a, out.traps)) return "bad traps";
         }
         // Unknown keys are ignored (a newer client).
     }

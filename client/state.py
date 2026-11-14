@@ -57,7 +57,8 @@ class Connection:
     death_link_on: bool
     hunt: discs.DiscHunt | None  # the OS Install Disks goal, or None for the core goal
     # This world's own traps in its own locations, by location index: the trap's item code
-    # (set off once found: ticks.followups_tick). Empty for a seed from before the traps.
+    # (the helper sets each off at its pickup, from the seed's file: ticks.offline_seed). Empty
+    # for a seed from before the traps.
     traps: dict[int, int] = field(default_factory=dict)
     # The item each Zexion trap in this world's locations is shown as, by location index (the
     # world's draw: client/aplabels.py, trap_label). Empty for a seed from before it.
@@ -132,7 +133,7 @@ class Connection:
         # This slot's data storage keys: received Energy Shields counted as given (client/
         # shields.py); this world's locations found in game, in any save of the seed
         # (own_found: a release, which checks every location on the server, never writes it);
-        # the follow-up popups shown for this world's own finds, by location index; how many
+        # the hints shown for this world's own Area Maps found, by location index; how many
         # received items have had their popup (announced_tick); which entry each Area Map
         # used (client/hints.py).
         self.shield_key = self.key("shields")
@@ -297,9 +298,6 @@ class HelperState:
     discs: Toggle = field(default_factory=Toggle)
     discs_status: str = ""
     discs_status_at: float = 0.0
-    # The file select's count (discs.slots_request), and when the slots are read again.
-    slots: Toggle = field(default_factory=Toggle)
-    slots_read_at: float = 0.0
     # The labels: whether it may hold some (this client's, or an earlier client's), the
     # seed and slot whose labels it holds, whether it refused them (not asked again).
     labels_held: bool = True
@@ -405,6 +403,9 @@ class LoadState:
     seed_loaded: bool = False  # the last poll found this seed's save loaded
     in_play: bool = False  # and found it in play (ticks.client_back_tick)
     save_collected: set[int] = field(default_factory=set)  # its collected locations
+    # This world's own OS Install Disks in it whose count notice is not owed (discs.counted);
+    # None until the load's second look (a first one may be of a load half way).
+    disks_counted: set[int] | None = None
     # The landing-pod reminder and RETURN HOME WITH THE DISKS? for this load (mission_tick).
     return_home: discs.ReturnHome = field(default_factory=discs.ReturnHome)
     # RETURN HOME queued on this save past its ending: its YES plays the ending again, which flag

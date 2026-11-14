@@ -93,15 +93,12 @@ def batch_text(
     popups: list[tuple[int, str] | tuple[int, str, bool]],
     refresh: bool = False,
     intel: bool = False,
-    traps: list[int] | None = None,
 ) -> str:
     """An ``apply`` request: (item, expected, value) writes, done all or none in one frame, and
     popups shown one at a time with the item's sound: (item, suffix) after the item's icon and
     name, or (item, text, True) a notice, the text alone (an Area Map's hint). A trap's popup
     (its item code: ids.TRAPS) takes its turn with the rest, and the helper sets the trap off as
-    it shows. With ``intel``, its
-    Area Maps' popups read Intel Chip. ``traps``: traps set off with no popup of their own (this
-    world's own, found in it)."""
+    it shows. With ``intel``, its Area Maps' popups read Intel Chip."""
     lines = ["apply"]
     lines += [f"cas {item} {expected} {value}" for item, expected, value in cas]
     if refresh:
@@ -117,7 +114,6 @@ def batch_text(
                 lines.append(f"notice {item} {clean}")
         else:
             lines.append(f"popup {item} {clean}".rstrip())
-    lines += [f"trap {item}" for item in traps or ()]
     return "\n".join(lines)
 
 

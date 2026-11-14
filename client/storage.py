@@ -207,11 +207,12 @@ async def store_popped(ctx: ZexionContext, conn: state.Connection, due_only: boo
 def own_found(ctx: ZexionContext) -> list[int]:
     """This world's locations the player has found, as indices: those this client has reported
     from the game's map, and those any client of this slot has recorded as found in the
-    server's data storage (store_found), so another save of the seed counts them too. Not every
+    server's data storage (store_found), so another save of the seed counts them too: the Area
+    Map hints read it (an OS Install Disk follows the save instead: discs.owned). Not every
     location the server has as checked, which after a release (on the goal) is all of them: a
-    release gives no OS Install Disk, and no Area Map hint, the player did not find. Another
+    release gives no Area Map hint the player did not find. Another
     player's item the client marked collected (session.Session.mark) reads as found too; it is
-    none of this world's own, so no disk and no Area Map."""
+    none of this world's own, so no Area Map."""
     found = {loc - LOCATION_ID_BASE for loc in ctx.locations_checked if loc >= LOCATION_ID_BASE}
     key = ctx.conn.found_key if ctx.conn else None
     return sorted(found | stored_indices(ctx, key))

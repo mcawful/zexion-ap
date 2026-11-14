@@ -59,11 +59,15 @@ def seed_text(
     lock_assists: bool,
     discs: tuple[int, int, str, Sequence[int]] | None,
     labels: str | None,
+    traps: Sequence[tuple[int, int]] = (),
 ) -> str:
     """A seed file: ``table`` is the item table in the game's list order (SeedPlan.table);
-    ``discs`` is (the count, the number needed, the scanner's line, the grid cells of this
-    player's own disks not in the count), None without the disks; ``labels`` the helper's
-    ``ap_labels`` request (aplabels.labels_request), or None."""
+    ``discs`` is (the count every save of the seed shares: the disks the slot starts with and
+    those received; the number needed; the scanner's line; the grid cells of this player's own
+    disks, each of which a save counts once its map shows it collected), None without the
+    disks; ``labels`` the helper's ``ap_labels`` request (aplabels.labels_request), or None;
+    ``traps`` this player's own traps, each one's grid cell and item code, which the helper
+    sets off at their pickup (native/README.md, "Traps")."""
     lines = [
         "zexion-ap offline 1",
         "table " + bytes(table).hex(),
@@ -77,6 +81,8 @@ def seed_text(
         count, required, line, unfound = discs
         lines.append(f"discs {count} {required} {line.encode('ascii').hex()}")
         lines.append("unfound " + (",".join(str(c) for c in unfound) if unfound else "-"))
+    listed = ",".join(f"{cell}:{item}" for cell, item in sorted(traps))
+    lines.append("traps " + (listed or "-"))
     if labels:
         lines.append(labels)
     return "\n".join(lines) + "\n"

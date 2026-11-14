@@ -17,6 +17,9 @@
 //                      request is (a TOLD after it is ignored)
 //   unfound I,J,...    (or "-") map grid indices (y * 54 + x) of this player's own disks
 //                      not counted in COUNT: each one the map shows collected counts one more
+//   traps I:T,J:T,...  (or "-"; none in a file from before it) map grid indices of this
+//                      player's own traps, each with its trap's item (trap.h): set off when
+//                      its cell turns collected in play (Game::watch_own_traps)
 //   ap_labels          then "label X Y HEX" lines to the end, as the client's request
 #pragma once
 
@@ -44,6 +47,13 @@ struct OfflineSeed {
     int count = 0, required = 0;
     std::string scan_line;
     std::vector<int> unfound;
+    // This player's own traps: the map grid index of each one's cell, and its item (trap.h).
+    struct OwnTrap {
+        int cell = 0;
+        uint8_t item = 0;
+        bool operator==(const OwnTrap&) const = default;
+    };
+    std::vector<OwnTrap> traps;
     std::string labels;  // the "ap_labels" request, or empty
 };
 

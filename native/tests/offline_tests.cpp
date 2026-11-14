@@ -124,6 +124,27 @@ void test_the_file() {
     check(!zap::parse_offline_seed(seed_text("discs 3 12 4"), none).empty(), "odd hex");
     check(!zap::parse_offline_seed(seed_text("discs 3 12 41", "unfound 99999"), none).empty(),
           "a cell off the map");
+
+    // This player's own traps: a cell and a trap's item each.
+    check(s.traps.empty(), "a file from before the traps lists none");
+    zap::OfflineSeed traps;
+    check(zap::parse_offline_seed(seed_text("discs -", "unfound -\ntraps 1312:102,40:103"), traps)
+                  .empty() &&
+              traps.traps.size() == 2 && traps.traps[0].cell == 1312 &&
+              traps.traps[0].item == 102 && traps.traps[1].cell == 40 &&
+              traps.traps[1].item == 103,
+          "the own traps: each one's cell and item");
+    check(zap::parse_offline_seed(seed_text("discs -", "unfound -\ntraps -"), traps).empty() &&
+              traps.traps.empty(),
+          "none");
+    for (const char* bad : {"traps", "traps 1312", "traps 1312:44", "traps 2916:102",
+                            "traps 1312:102,", "traps 1312:102,1312:103", "traps x:102",
+                            "traps 1312:102:103"}) {
+        check(!zap::parse_offline_seed(seed_text("discs -", std::string("unfound -\n") + bad),
+                                       traps)
+                   .empty(),
+              bad);
+    }
 }
 
 void test_the_folder() {
