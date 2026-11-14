@@ -406,6 +406,7 @@ class LoadState:
     # This world's own OS Install Disks in it whose count notice is not owed (discs.counted);
     # None until the load's second look (a first one may be of a load half way).
     disks_counted: set[int] | None = None
+    disks_slot: bytes = b""  # the save slot they are of (the stamp's first four bytes)
     # The landing-pod reminder and RETURN HOME WITH THE DISKS? for this load (mission_tick).
     return_home: discs.ReturnHome = field(default_factory=discs.ReturnHome)
     # RETURN HOME queued on this save past its ending: its YES plays the ending again, which flag

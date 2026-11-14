@@ -92,8 +92,9 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build);
 
 // Pipe thread: an `offline_put` request, "offline_put config" or "offline_put seed NAME" then
 // the file's text, checked as the reader checks it and written in place of the old one, whole
-// or not at all: "stored", "unchanged" or "error <why>". A seed kept ("stored" or "unchanged") is
-// also given in `seed`, named NAME, if not null (Game::merge_offline).
+// or not at all: "stored", "unchanged" or "error <why>". A seed that reads right is also
+// given in `seed`, named NAME, if not null (Game::merge_offline), whether or not its file could
+// be written: the running helper works from it with a client too.
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request, OfflineSeed* seed = nullptr);
 

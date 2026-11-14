@@ -700,6 +700,12 @@ void Game::pump_traps(uint64_t now_ms) {
     }
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     if (*at_.halt_flag != 0) return;
+    // This world's own whose pickup a load undid while it waited (behind one of its kind still
+    // running, or through a death): its item lies in its room again, and picking it up again
+    // queues it again, so this one is dropped.
+    std::erase_if(traps_, [this](const QueuedTrap& t) {
+        return t.cell >= 0 && origin_loaded(t.origin) && at_.map_grid[t.cell] != kCollectedCell;
+    });
     // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a
     // trap started still runs, and starts as it ends; an enemy's own effect does not hold it.
     // This world's own, picked up in it (watch_own_traps): at once (the game's pickup popup

@@ -30,7 +30,9 @@ logger = logging.getLogger("Client")  # CommonClient's: the client's window show
 # and the console, not the window (Archipelago's window shows the "Client" logger only).
 log = logging.getLogger("Zexion")
 OFFLINE_FAILED = (
-    "Couldn't save this seed for playing without the client; playing with it is unaffected."
+    "Couldn't save this seed's file for the mod (details in the log): playing without the "
+    "client won't have it, and if the mod didn't get it at all, the file select's disk counts "
+    "and your own traps won't work either."
 )
 
 # The client's window shows what the player acts on (the connection, the mod, ARCHIPELAGO,

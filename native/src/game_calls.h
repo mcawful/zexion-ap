@@ -273,15 +273,19 @@ public:
     void pump_traps(uint64_t now_ms);
     // Game thread, every frame (watch_all), with a client or none: this world's own traps, as
     // the loaded save's seed file lists them (offline.h, `traps`), each queued for pump_traps
-    // when its map cell turns collected between a frame in play and the next: its pickup, every
-    // time, so again after a reload that put the item back. A load is never taken for one: it
-    // comes from a menu, a death or no save, after which the cells are only looked at again
-    // (as after a frame in another seed's save); a TELEPORT TO's, at the end of a countdown that
-    // reads as play, loads the play state as it was at that end or before (docs/re/memory.md,
-    // "Received Energy Shields", "Limits"), which turns no cell collected.
+    // when its map cell turns collected after kOwnTrapPlayLooks looks in play in a row: its
+    // pickup, every time, so again after a reload that put the item back. The look that sees it
+    // may be of a menu or a death (a pause taken on the pickup's frame). A load is never taken
+    // for a pickup: it comes from a menu, a death or no save, and the first looks in play after
+    // any of those, or after another seed's save, only take the cells as they are; a TELEPORT
+    // TO's, at the end of a countdown that reads as play, loads the play state as it was at
+    // that end or before (docs/re/memory.md, "Received Energy Shields", "Limits"), which turns
+    // no cell collected.
     void watch_own_traps();
-    // Queues one of this world's own traps for the save loaded, as watch_own_traps does.
-    void own_trap_found(uint8_t item);
+    // Queues one of this world's own traps for the save loaded, as watch_own_traps does:
+    // `cell` its map cell (-1: none known), by which pump_traps drops one whose pickup a load
+    // undid before it went off.
+    void own_trap_found(uint8_t item, int cell = -1);
     // `trap_status` (for live checks): "queued N; last <outcome>", the outcome "none", "set
     // <item>", or "nothing <item>" (its timer already longer: as the game's op does nothing).
     bool ailments_patched() const { return hit_patch_.patched() || wave_patch_.patched(); }
@@ -472,13 +476,16 @@ private:
     struct QueuedTrap {
         uint8_t item;
         std::shared_ptr<const OfflineSeed> origin;
+        int cell = -1;  // an own trap's map cell (own_trap_found)
     };
     std::deque<QueuedTrap> traps_;
-    // watch_own_traps: the seed's own traps as last looked at, each one's cell collected or not,
-    // in a frame in play (empty: no such frame yet, or one not in play since).
+    // watch_own_traps: the seed's own traps as last looked at, each one's cell collected or not
+    // (own_traps_looked_: in the save loaded now), and how many looks in a row before this one
+    // were in play.
     std::vector<OfflineSeed::OwnTrap> own_traps_seen_;
     std::vector<bool> own_traps_collected_;
     bool own_traps_looked_ = false;
+    int own_traps_play_looks_ = 0;
     std::string trap_status_ = "none";
     // Sets off trap `item` now: "set" or "nothing" (trap_status).
     std::string run_trap(uint8_t item);

@@ -775,6 +775,104 @@ def test_a_loads_own_disks_are_taken_as_counted_at_its_second_look(monkeypatch) 
     assert ctx.load.disks_counted is None
 
 
+class Noting(Helper):
+    """A helper that takes every batch and keeps its notices."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.notices: list[str] = []
+
+    def apply(self, text: str) -> str:
+        self.notices += [line for line in text.splitlines() if line.startswith("notice")]
+        return "applied"
+
+
+def disks_poll(monkeypatch, received: int = 1):
+    """A disks seed's save in play with a helper, the client back and the popup count read:
+    the context, and ``look(collected, slot)``, a poll that finds the save holding those
+    locations collected (through zc.poll, its real disk-count lines and follow-ups)."""
+    hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12, 40])
+    ctx = context(connection(**hunt), Running(game.IN_PLAY))
+    ctx.helper, ctx.told = Noting(), state.HelperState()
+    ctx.told.client_back_sent = True
+    ctx.seed_state.session.announced = received  # the received disks' popups handed over
+    ctx.seed_state.session.announced_read = True
+    ctx.server = None
+    monkeypatch.setattr(ctx, "received", lambda: ([44] * received, ["Bob"] * received))
+    for name in (
+        "newgame_tick",
+        "labels_tick",
+        "toggle_tick",
+        "discs_helper_tick",
+        "language_tick",
+        "replay_tick",
+        "offline_tick",
+        "announced_tick",
+        "client_back_tick",
+        "hints_tick",
+        "mission_tick",
+        "feats_tick",
+        "shields_tick",
+        "other_save_tick",
+    ):
+        monkeypatch.setattr(zc, name, nothing)
+
+    def look(collected: set[int], slot: int = 3) -> None:
+        stamp = bytes([slot, 0, 0, 0]) + bytes(10)
+        step = session.Step(
+            seed_matches=True, state=game.IN_PLAY, checked=set(collected), save_stamp=stamp
+        )
+        monkeypatch.setattr(ctx.seed_state.session, "step", lambda g, received, **kwargs: step)
+        asyncio.run(zc.poll(ctx))
+
+    return ctx, look
+
+
+def test_an_own_disk_shows_its_count_at_each_pickup_through_the_poll(monkeypatch) -> None:
+    ctx, look = disks_poll(monkeypatch)
+    look({12})  # the load's first look: the save holds the disk at 12
+    look({12})
+    assert ctx.helper.notices == [], "picked up before this load was watched: no notice"
+    look({12, 40})  # the one at 40 picked up
+    assert ctx.helper.notices == ["notice 44 OS Install Disk 3"]
+    look({12, 40})
+    assert len(ctx.helper.notices) == 1, "once a pickup"
+    look({12})  # a death or a reload without saving: it is back in its room
+    look({12})
+    assert len(ctx.helper.notices) == 1
+    look({12, 40})  # picked up again
+    assert ctx.helper.notices == ["notice 44 OS Install Disk 3"] * 2, "counted, and said, again"
+
+
+def test_another_slot_of_the_seed_shows_no_count_for_the_disks_it_holds(monkeypatch) -> None:
+    # Loaded while the polls paused (the helper attached again, say), so no poll saw the title:
+    # the disks the other slot holds were not picked up now.
+    ctx, look = disks_poll(monkeypatch)
+    look(set(), slot=3)
+    look(set(), slot=3)
+    look({12, 40}, slot=4)
+    look({12, 40}, slot=4)
+    assert ctx.helper.notices == [] and ctx.load.disks_counted == {12, 40}
+    look({12}, slot=4)  # a reload in it, then the pickup again
+    look({12, 40}, slot=4)
+    assert ctx.helper.notices == ["notice 44 OS Install Disk 3"]
+
+
+def test_own_traps_with_no_mod_are_said_once(monkeypatch, caplog) -> None:
+    conn = connection(trap_locations=[[3, ids.DISRUPTION_TRAP]])
+    ctx = context(conn, Running(game.IN_PLAY))
+    ctx.helper_retry_at = float("inf")  # no attach tried here
+    monkeypatch.setattr(zc, "hints_tick", nothing)
+    monkeypatch.setattr(zc, "offline_tick", nothing)
+    loaded = session.Step(seed_matches=True, state=game.IN_PLAY, save_stamp=bytes(14))
+    monkeypatch.setattr(ctx.seed_state.session, "step", lambda g, received, **kwargs: loaded)
+    caplog.set_level(logging.INFO, logger="Client")
+    for _ in range(3):
+        asyncio.run(zc.poll(ctx))
+    said = [r.message for r in caplog.records if "own traps" in r.message]
+    assert said == ["Without the mod, your own traps do nothing when you pick them up."]
+
+
 def test_a_helper_lost_for_good_holds_back_the_step_for_a_while_only(monkeypatch) -> None:
     ctx, order = lost_helper(monkeypatch, attaches=False)
     asyncio.run(zc.poll(ctx))

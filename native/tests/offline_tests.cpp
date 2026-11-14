@@ -183,6 +183,12 @@ void test_the_helper_writes_what_the_client_sends() {
                                 &none) == "stored" &&
               none.name.empty(),
           "the config stored, no seed handed back");
+    // A folder that cannot be written: refused, but the seed is the running helper's.
+    zap::OfflineSeed unwritten;
+    const std::wstring nowhere = folder + L"\\seeds\\AP_1-0-1.txt\\under-a-file";
+    check(zap::put_offline_file(nowhere, "B1", seed_put, &unwritten).rfind("error", 0) == 0 &&
+              unwritten.name == "AP_1-0-1" && unwritten.count == 3,
+          "a seed whose file cannot be written is still handed over");
     check(zap::put_offline_file(folder, "B1", "offline_put seed AP_2-0-1\nnot a seed\n", &none)
                   .rfind("error", 0) == 0 &&
               none.name.empty(),

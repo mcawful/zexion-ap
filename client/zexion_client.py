@@ -614,6 +614,11 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         await attach_helper(ctx)
+    if ctx.helper is not None:
+        ctx.said.clear("own traps")
+    elif conn.traps and step.seed_matches and ctx.said("own traps", "no mod"):
+        # The helper sets them off at their pickup; nothing makes one up later.
+        logger.info("Without the mod, your own traps do nothing when you pick them up.")
     # The popups the step handed the helper, or the items it wrote directly.
     await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
     load = ctx.load
@@ -662,7 +667,11 @@ async def poll(ctx: ZexionContext) -> None:
         return
     if hunt is not None:
         # From the second look on: the own disks the save holds have had their count, but one
-        # picked up since (followups_tick), again after a reload put it back.
+        # picked up since (followups_tick), again after a reload put it back. Another slot of
+        # the seed (loaded while the polls paused, so with no look at the title between) starts
+        # over: the disks it holds were not picked up now.
+        if step.save_stamp[:4] != load.disks_slot:
+            load.disks_counted, load.disks_slot = None, step.save_stamp[:4]
         load.disks_counted = discs.counted(load.disks_counted, step.checked, hunt.locations)
     shield_work = seed.shields.pending is not None or seed.shields.given is not None
     if ctx.helper is not None or shield_work:

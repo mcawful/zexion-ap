@@ -216,13 +216,17 @@ void Game::watch_offline() {
     }
 }
 
+// A cell that turns collected is a pickup only after this many looks in play in a row: the
+// first looks after a load, a menu or a death only take the cells as they are (chosen; a load
+// taking more than one frame to fill the grid was not measured).
+constexpr int kOwnTrapPlayLooks = 2;
+
 void Game::watch_own_traps() {
-    // The loaded save's seed, by its section (loaded_seed: the marker first), in play only: a
-    // load's frames in between are not looked at, so its cells are never compared with the last
-    // save's.
-    const int seed = configured_ && in_play() ? loaded_seed() : -1;
+    // The loaded save's seed, by its section (loaded_seed: the marker first).
+    const int seed = configured_ && *at_.save_loaded != kNoSaveLoaded ? loaded_seed() : -1;
     if (seed < 0) {
         own_traps_looked_ = false;
+        own_traps_play_looks_ = 0;
         return;
     }
     const std::vector<OfflineSeed::OwnTrap>& traps = offline_seeds_[static_cast<size_t>(seed)].traps;
@@ -230,24 +234,28 @@ void Game::watch_own_traps() {
     for (size_t i = 0; i < traps.size(); ++i) {
         collected[i] = at_.map_grid[traps[i].cell] == kCollectedCell;
     }
-    // The same list as the frame before (a seed file merged meanwhile, or another seed's save,
-    // starts over): each cell collected now and not then was picked up in between.
-    if (own_traps_looked_ && traps == own_traps_seen_) {
+    // The same list as the look before (a seed file merged meanwhile, or another seed's save,
+    // starts over), and play in the looks before this one: each cell collected now and not then
+    // was picked up in between, whatever this look is of (a pause on the pickup's frame).
+    if (own_traps_looked_ && own_traps_play_looks_ >= kOwnTrapPlayLooks && traps == own_traps_seen_) {
         for (size_t i = 0; i < traps.size(); ++i) {
-            if (collected[i] && !own_traps_collected_[i]) own_trap_found(traps[i].item);
+            if (collected[i] && !own_traps_collected_[i]) {
+                own_trap_found(traps[i].item, traps[i].cell);
+            }
         }
     }
     own_traps_seen_ = traps;
     own_traps_collected_ = std::move(collected);
     own_traps_looked_ = true;
+    own_traps_play_looks_ = in_play() ? std::min(own_traps_play_looks_ + 1, kOwnTrapPlayLooks) : 0;
 }
 
-void Game::own_trap_found(uint8_t item) {
+void Game::own_trap_found(uint8_t item, int cell) {
     std::shared_ptr<const OfflineSeed> origin;
     if (rando_save_loaded()) {
         origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
     }
-    traps_.push_back({item, origin});
+    traps_.push_back({item, origin, cell});
 }
 
 std::string Game::other_save() {

@@ -594,13 +594,20 @@ dealt on the next load ("DeathLink").
   seed's file lists each own trap's map cell and item (`traps`, "AP saves without the client";
   the client writes it from the slot data's `trap_locations`), and every frame call in play in
   that seed's save it reads those cells of the map grid; one that reads collected (`0x1B`) and
-  did not the frame before is a pickup, which queues the trap with no popup of the helper's, to
-  go off at once, whatever popups wait. It follows the save, as this world's other items do
+  did not the frame before, after two frames in play in a row, is a pickup (the frame that
+  first shows it may be of a menu: a pause taken on the pickup's frame), which queues the trap
+  with no popup of the helper's, to go off at once, whatever popups wait. It follows the save, as this world's other items do
   (the owner's decision, 2026-11-14): after a death or a reload without saving, the item lies in
   its room again, and picking it up again sets the trap off again. No load is taken for a
-  pickup: a load comes from a menu, a death or no save, and after any frame not in play, or in
-  another seed's save, the cells are only looked at again; a TELEPORT TO's load, at the end of
-  a countdown that reads as play, turns no cell collected (`game_calls.h`, `watch_own_traps`).
+  pickup: a load comes from a menu, a death or no save, and the first two frames in play
+  after any of those, or after another seed's save, only take the cells as they are; a
+  TELEPORT TO's load, at the end of a countdown that reads as play, turns no cell collected
+  (`game_calls.h`, `watch_own_traps`). A trap queued and not gone off yet (behind one of its
+  kind still running, or through a death) is dropped when its cell no longer reads collected,
+  its pickup undone by a load: the item is back, and its next pickup queues it again. The
+  helper has the list from the client's `offline_put` even when the file cannot be written
+  (the client then says so). With no helper attached an own trap does nothing, and nothing
+  makes it up later: the client says so once.
   The client sends nothing for an own trap and keeps no record of one: until 2026-11-14 it sent
   `trap ITEM` in an `apply` once per location, from the server's record of the follow-ups
   shown, so a trap picked up with no client went off at the next connection, and never again
@@ -1195,7 +1202,10 @@ loaded save (`client/discs.py`, `owned`). So it drops after a death or a reload 
 own disk's pickup, the disk lies in its room again, and picking it up again counts it again and
 shows its count again (`client/ticks.py`, `followups_tick`: a count notice for each own disk
 picked up while the load is watched; one the save already held at the load's first two looks,
-picked up with no client or before a reconnect, shows none). The goal is sent for an ending in
+picked up with no client or before a reconnect, shows none, nor one another slot of the seed
+holds when it is loaded). A received disk's notice is worked out before the poll's look at
+the save, so right after a reload that put an own disk back it can read one too many once;
+the count on the screens is the save's. The goal is sent for an ending in
 a save that holds enough. The server's checked locations and the client's found record no
 longer count a disk. Stand-in tests (`tests/test_ticks.py`, `test_discs.py`,
 `test_zexion_client.py`; `tests/offline_tests.cpp` for the file select); not run in game.

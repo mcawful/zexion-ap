@@ -279,12 +279,14 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     } else {
         return "error not config or seed";
     }
+    // The seed is the running helper's whether the file can be written or not: its own traps
+    // and its saves' disk counts come from it with a client too (Game::watch_own_traps).
+    if (parsed && seed_out != nullptr) *seed_out = std::move(*parsed);
     CreateDirectoryW(folder.c_str(), nullptr);
     if (parsed) CreateDirectoryW((folder + L"\\seeds").c_str(), nullptr);
     bool changed = false;
     std::string why = write_whole(path, body, changed);
     if (!why.empty()) return "error " + why;
-    if (parsed && seed_out != nullptr) *seed_out = std::move(*parsed);
     return changed ? "stored" : "unchanged";
 }
 
