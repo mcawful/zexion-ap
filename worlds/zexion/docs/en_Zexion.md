@@ -333,7 +333,7 @@ a key or an OS Install Disk) and their pickup popups, and a disk-look trap not c
 Revealed, a key-look trap having no key marker; a second trap's popup waiting for it; the client
 closed while a trap waits or runs; a trap sent just after an OS Install Disk, coming after the
 disk's popup and count; and one sent while paused, then TELEPORT TO START, RELOAD FROM CHECKPOINT or
-RELOAD FROM SAVE, going off once you are back in play. Not checked in the game: a trap through
+RELOAD FROM SAVE, going off with its popup once you are back in play. Not checked in the game: a trap through
 RETURN HOME or the ending, a key-look trap after the scanner has shown your keys, other popups
 showing first while a trap waits for one of its kind to end, and the mod refusing to reload while a
 trap waits to go off.

@@ -595,45 +595,44 @@ dealt on the next load ("DeathLink").
   look shows its label) is sent when a client next connects with that save loaded (the follow-ups
   take this world's finds made without a client too), so it starts then, wherever the player is.
 - **When:** one a frame call (`pump_traps`, after the watches, so never while an unload runs), once
-  the player has been in play for a quarter of a second in any cell with no transition counting
-  down (the game's transition timer above 0, `transition_queued`: a TELEPORT TO's 60 frames before
-  its load, which read as play, and whose load's reset would undo the trap) and with the game's halt
-  byte clear, not from RETURN HOME WITH THE DISKS?'s fade through the ending it started, and not in the
-  game's own ending, held as received scrap's drops are ("Received scrap", "When"), in the save its
-  `apply` was for (another seed's save or a normal save: it waits). One of each kind at a time (the
-  owner's choice): a trap waits while one of its kind that a trap started still runs, and starts as
-  it runs out, so traps that arrive together (after a reconnect, say) each get their 12 s, one after
-  another; an enemy's own effect does not hold one (the trap restarts it, as the enemy's touch
-  would), but an enemy's touch in a trap's last 240 or 251 frames extends that timer, and the next
-  trap of its kind waits for it too. A received trap's popup takes its turn in the popup queue as
-  any received item's does, and the trap goes off as it shows (the owner's choice, 2026-11-11: "the
-  traps should always go off as soon as the trap popup goes off"): after the popups queued before it
-  for the save loaded, a disk's and its count or a chip's and its hint among them, and past popups
-  waiting for another save. "Shows" is the frame the game's popup routine takes it (`message_fn`
-  returns a message): one not taken (every message slot busy, a translation's entry not free yet)
-  keeps its trap waiting with it. While its trap waits for a moment (a quarter second into play, a
-  transition counting down, the halt byte) the popups behind it wait too, as behind any popup; while it waits for one of its kind,
-  or through the game's ending, they go first, and its popup shows only as its trap starts (nor does
-  it hold RETURN HOME's fade). A popup that goes ahead of such a trap's keeps its own follow-ups (a
-  disk's count, a chip's hint: the notices of its own `apply`; another `apply`'s stay put) right
-  behind it, so a trap whose kind runs out while that popup shows comes after them (since the review
-  of 1ead60c, stand-in tests only: `test_a_popups_notices_stay_ahead_of_a_trap_it_passed` and
-  `test_a_later_batchs_notice_stays_behind_a_trap_passed`). With no
-  record for Scrap Metal (records not loaded) it waits, never dropped as other popups are. That the
-  game draws every message its routine takes is not traced, and a popup a load cuts short has
-  already set its trap off (the load's reset then ends it). Held through the pause and every menu
-  (not in play), a death (energy 0), a load, and a TELEPORT TO's countdown: after its menu closes the
-  game plays the teleport in the player's room for 60 frames that read as play, then loads, and the
-  load resets the player's timers, so a trap received in the pause waits until a quarter second after
-  that load, with its popup (before, in check 8, it went off during a teleport and the load ended
-  it 0.39 s later; that this was a TELEPORT TO's countdown is inferred: below; `docs/re/memory.md`,
-  "Telling play from menus, the title screen and death").
-  RELOAD FROM CHECKPOINT and RELOAD FROM SAVE load as their menu closes, and a death's respawn
-  behind its menu, so none of them has such a stretch; room changes leave the timer alone (the same
-  heading). A cutscene
-  other than the ending's is not told apart from play either: none was measured. Without the
-  AILMENTS keys (an offline cache written before the traps, configuring a helper that a client has
-  not configured since), a trap runs with AILMENTS as the game applies it.
+  the player has been in play for a quarter of a second in any cell with no transition counting down
+  (the game's transition timer above 0, `transition_queued`: a TELEPORT TO's 60 frames before its
+  load, which read as play, and whose load's reset would undo the trap) and with the game's halt
+  byte clear, not from RETURN HOME WITH THE DISKS?'s fade through the ending it started, and not in
+  the game's own ending, held as received scrap's drops are ("Received scrap", "When"), in the save
+  its `apply` was for (another seed's save or a normal save: it waits). One of each kind at a time
+  (the owner's choice): a trap waits while one of its kind that a trap started still runs, and
+  starts as it runs out, so traps that arrive together (after a reconnect, say) each get their 12 s,
+  one after another; an enemy's own effect does not hold one (the trap restarts it, as the enemy's
+  touch would), but an enemy's touch in a trap's last 240 or 251 frames extends that timer, and the
+  next trap of its kind waits for it too. A received trap's popup takes its turn in the popup queue
+  as any received item's does, and the trap goes off as it shows (the owner's choice, 2026-11-11:
+  "the traps should always go off as soon as the trap popup goes off"): after the popups queued
+  before it for the save loaded, a disk's and its count or a chip's and its hint among them, and
+  past popups waiting for another save. "Shows" is the frame the game's popup routine takes it
+  (`message_fn` returns a message): one not taken (every message slot busy, a translation's entry
+  not free yet) keeps its trap waiting with it. While its trap waits for a moment (a quarter second
+  into play, a transition counting down, the halt byte) the popups behind it wait too, as behind any
+  popup; while it waits for one of its kind, or through the game's ending, they go first, and its
+  popup shows only as its trap starts (nor does it hold RETURN HOME's fade). A popup that goes ahead
+  of such a trap's keeps its own follow-ups (a disk's count, a chip's hint: the notices of its own
+  `apply`; another `apply`'s stay put) right behind it, so a trap whose kind runs out while that
+  popup shows comes after them (since the review of 1ead60c, stand-in tests only:
+  `test_a_popups_notices_stay_ahead_of_a_trap_it_passed` and
+  `test_a_later_batchs_notice_stays_behind_a_trap_passed`). With no record for Scrap Metal (records
+  not loaded) it waits, never dropped as other popups are. That the game draws every message its
+  routine takes is not traced, and a popup a load cuts short has already set its trap off (the
+  load's reset then ends it). Held through the pause and every menu (not in play), a death (energy
+  0), a load, and a TELEPORT TO's countdown: after its menu closes the game plays the teleport in
+  the player's room for 60 frames that read as play, then loads, and the load resets the player's
+  timers, so a trap received in the pause waits until a quarter second after that load, with its
+  popup (before, in check 8, a TELEPORT TO START, it went off during the teleport and the load ended
+  it 0.39 s later: below; `docs/re/memory.md`, "Telling play from menus, the title screen and
+  death"). RELOAD FROM CHECKPOINT and RELOAD FROM SAVE load as their menu closes, and a death's
+  respawn behind its menu, so none of them has such a stretch; room changes leave the timer alone
+  (the same heading). A cutscene other than the ending's is not told apart from play either: none
+  was measured. Without the AILMENTS keys (an offline cache written before the traps, configuring a
+  helper that a client has not configured since), a trap runs with AILMENTS as the game applies it.
 - **Once:** a received trap rides on its popup: the client hands each received item's popup over
   once (its count in the server's data storage), and the helper queues the popup as the `apply`
   takes it and runs the trap once, in the frame it shows the popup and takes it off the queue. So
@@ -720,21 +719,24 @@ nothing to the player; a trap received while dead, going off 0.8 s after the res
 660 frames, the second, waiting in the helper, went off with its popup as the first ran out, 660
 frames, with no client, and neither again once the client was back. **Not working in game** on
 e500ab9: a trap received in the pause went off during a teleport and was reset 0.39 s later, in
-check 8 (inferred, not measured: its record names RELOAD FROM CHECKPOINT, and the owner has not
-confirmed which entry they chose; by its timing (the reset 1.0 s after the menu closed), the
-teleport and the start room the owner saw, and the 2026-11-13 trace, in which RELOAD FROM CHECKPOINT
-has no such stretch, it was a TELEPORT TO's countdown; "When"). Held through that countdown since
+check 8, a TELEPORT TO START, though its record named RELOAD FROM CHECKPOINT (the owner, asked on
+2026-11-14: "it was teleport because it did the teleport animation from the room you're in to the
+room you go to, the reload from checkpoint (or reload from save) option just loads your character in
+that spot"; its timing, the reset 1.0 s after the menu closed, and the 2026-11-13 trace, in which
+RELOAD FROM CHECKPOINT has no such stretch, agree; "When"). Held through that countdown since
 907abfd: **working in game** (2026-11-13, B1, `zexion_ap.dll` `55fd60e4…` built from 907abfd, the
 seed `lab/ap/live62`, slot 5, a new save, the owner's reports, the trap timers read in memory every
 2 ms; `lab/ingame-checkpoint-checks.md`): a Disruption Trap received in the pause, then TELEPORT TO
-START: set 0.25 s after the teleport's load, 660 frames ("the trap arrived after loading into the
-area the teleport took me to"); with a trap received in the pause, RELOAD FROM CHECKPOINT ("I got it
-after loading in from the checkpoint") and RELOAD FROM SAVE ("got the trap when loading back in"),
-the first named by the old record as the failing check 8, which is inferred to have been a TELEPORT
-TO (above), and the second not run before; and, as before, one received while dead, through the
-respawn ("I got the trap after getting back into the game"), each its full 660 frames. The other two
-TELEPORT TO entries set the same timer (by disassembly) and were not run. Also on e500ab9, the popup
-order, where a trap's popup and the trap came before a disk's popup and count received with it.
+START: set 0.25 s after the teleport's load, 660 frames, with its popup as it went off ("the trap
+arrived after loading into the area the teleport took me to"; asked on 2026-11-14 whether the popup
+showed as the effect started: "yes, as soon as the popup came in, the effect happened"); with a trap
+received in the pause, RELOAD FROM CHECKPOINT ("I got it after loading in from the checkpoint") and
+RELOAD FROM SAVE ("got the trap when loading back in"), neither run in game before (the old record
+of check 8 named RELOAD FROM CHECKPOINT, but that was a TELEPORT TO START: above); and, as before,
+one received while dead, through the respawn ("I got the trap after getting back into the game"),
+each its full 660 frames. The other two TELEPORT TO entries set the same timer (by disassembly) and
+were not run. Also on e500ab9, the popup order, where a trap's popup and the trap came before a
+disk's popup and count received with it.
 That order is changed since 704bd25 (a received trap's popup in its turn, the trap going off as it
 shows; stand-in tests `test_a_trap_popup_takes_its_turn` and
 `test_a_parked_trap_popup_does_not_hold_the_mission`, `test_a_trap_popup_with_no_record_waits`):
