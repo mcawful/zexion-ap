@@ -2648,7 +2648,6 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
     game.set_assists_locked(true);
     game.set_intel(true);
     game.set_discs(3, 15, "COLLECT 15 OS INSTALL DISKS!", true);
-    game.set_disk_slots({{2, 3}, {5, 3}});
     player_cell(3, 4);  // the label's cell
     // The stand-ins and INTEL CHIP restyled, ASSIST locked, the scanner's line written.
     auto applied = [&] {
@@ -2670,16 +2669,15 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
     check(game.newgame_status() == "armed" && game.assists_locked() && game.intel_on() &&
               game.disc_count() == 3 && game.discs_required() == 15 && game.discs_told() &&
               game.scan_line() == "COLLECT 15 OS INSTALL DISKS!" &&
-              game.files().counts() == std::map<int, int>{{2, 3}, {5, 3}} &&
               game.labels().count(4 * 54 + 3) == 1 && game.mission_status() == "asked",
           "what the client asked for kept: the new game, ASSIST, INTEL CHIP, the disks, the "
-          "file select's counts, the labels, RETURN HOME WITH THE DISKS?");
+          "labels, RETURN HOME WITH THE DISKS?");
     for (int i = 0; i < 32; ++i) game.watch_all(&chosen);  // the scanner's look every 30th
     check(applied(), "the unload refused: the watches apply it all again");
 
     game.client_gone(&chosen);
     check(games() && game.newgame_status() == "idle" && !game.assists_locked() &&
-              !game.intel_on() && game.scan_line().empty() && game.files().counts().empty() &&
+              !game.intel_on() && game.scan_line().empty() &&
               game.labels().empty() && game.mission_status() == "not asked",
           "a client gone: put back and dropped");
     for (int i = 0; i < 32; ++i) game.watch_all(&chosen);

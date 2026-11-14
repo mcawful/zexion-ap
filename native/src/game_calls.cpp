@@ -1696,8 +1696,6 @@ void Game::put_back_game(WidgetCallback callback) {
 void Game::forget_client() {
     disarm_newgame();
     drop_save_look();  // with the disks, a RETURN HOME prompt asked for (set_discs)
-    client_file_counts_.clear();
-    apply_file_counts();
 }
 
 void Game::put_back_traps() {

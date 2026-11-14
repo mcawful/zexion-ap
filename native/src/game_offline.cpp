@@ -105,10 +105,7 @@ void Game::leave_offline() {
 }
 
 void Game::apply_file_counts() {
-    // The client's counts for its seed's saves, the offline ones for the other known seeds'.
-    std::map<int, int> merged = offline_file_counts_;
-    for (const auto& [slot, count] : client_file_counts_) merged[slot] = count;
-    if (merged != files_.counts()) files_.set_counts(std::move(merged));
+    if (offline_file_counts_ != files_.counts()) files_.set_counts(offline_file_counts_);
 }
 
 bool Game::section_is(const OfflineSeed& seed, const BYTE* section) const {
@@ -198,7 +195,7 @@ void Game::watch_offline() {
         }
     }
     // The file select: each known disk seed's save by its own section copy, with or without a
-    // client (whose counts win for its seed's saves: apply_file_counts).
+    // client (which keeps the seed's file, and so what every save of it shares, up to date).
     std::map<int, int> counts;
     for (int n = 1; n <= slot::kCount; ++n) {
         const BYTE* copy = slot_section(n);

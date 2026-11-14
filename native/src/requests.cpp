@@ -231,22 +231,6 @@ std::string parse_mission(const std::string& request, int& column, int& row) {
     return "";
 }
 
-std::string parse_disk_slots(const std::string& request, std::map<int, int>& counts) {
-    counts.clear();
-    if (request == "disk_slots") return "";
-    if (request.rfind("disk_slots ", 0) != 0) return "not a disk_slots request";
-    std::istringstream words(request.substr(11));
-    std::string list, extra;
-    int count = 0;
-    std::vector<int> slots;
-    if (!(words >> count >> list) || (words >> extra) || count < 0 || count > 255 ||
-        (list != "-" && !parse_number_list(list, 2, 1, slot::kCount, slots))) {
-        return "bad disk_slots request";
-    }
-    for (int slot : slots) counts[slot] = count;
-    return "";
-}
-
 std::string parse_labels(const std::string& request, std::map<int, Label>& out) {
     std::istringstream lines(request);
     std::string line;

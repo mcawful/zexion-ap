@@ -311,8 +311,11 @@ void test_a_save_of_the_seed_dressed_offline() {
     check(game.files().counts().at(3) == 4, "counted for that save on the file select");
 
     check(configure(game).empty() && game.active(), "a client's config");
-    check(game.files().counts().empty(), "the file select's counts left to the client");
+    check(game.files().counts().empty(), "the file select's counts dropped with the look, counted again at the next");
     check(game.queued_popups() == 0, "no notice: no save was dressed (the file select)");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.files().counts().size() == 1 && game.files().counts().at(3) == 4,
+          "with a client too: each save's own count, from the seed's file and its map");
 
     zap::Game again;
     dress_offline(again, s);
@@ -369,14 +372,9 @@ void test_a_save_of_the_seed_dressed_offline() {
     }
 
     g_save_loaded = 0xFF;  // the file select
-    other.set_disk_slots({{4, 7}});
     for (int i = 0; i < 16; ++i) other.watch_offline();
-    auto merged = other.files().counts();
-    check(merged.size() == 2 && merged.at(4) == 7 && merged.at(3) == 4,
-          "the client's slot 4 and the known seed's slot 3, together");
-    other.set_disk_slots({});
     check(other.files().counts().size() == 1 && other.files().counts().at(3) == 4,
-          "the client's taken back: the offline one stays");
+          "the known seed's slot 3 keeps its own count with a client of another seed");
 }
 
 // A dressed save stays dressed, ASSIST locked, through a menu; a client going away with the

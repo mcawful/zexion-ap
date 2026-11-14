@@ -172,12 +172,9 @@ public:
         if (trap_waiting()) return kTrapWaitingRefusal;
         return nullptr;
     }
-    // The file select (files.h): `disk_slots` sets the counts by slot; the entries' wrapper calls
-    // the game's (file_entry_original), then file_event.
-    void set_disk_slots(std::map<int, int> counts) {
-        client_file_counts_ = std::move(counts);
-        apply_file_counts();
-    }
+    // The file select (files.h): the counts by slot are each save's own, from its seed's file
+    // and its map (watch_offline); the entries' wrapper calls the game's (file_entry_original),
+    // then file_event.
     void* file_entry_original(void* widget) const { return files_.original(widget); }
     const FileEntries& files() const { return files_; }
     void file_event(void* widget, intptr_t event);
@@ -277,9 +274,10 @@ public:
     // the loaded save's seed file lists them (offline.h, `traps`), each queued for pump_traps
     // when its map cell turns collected between a frame in play and the next: its pickup, every
     // time, so again after a reload that put the item back. A load is never taken for one: it
-    // comes from a menu, a death or no save, never straight from play (docs/re/memory.md,
-    // "Telling play from menus, the title screen and death"), and after any frame not in play,
-    // or in another seed's save, the cells are only looked at again.
+    // comes from a menu, a death or no save, after which the cells are only looked at again
+    // (as after a frame in another seed's save); a TELEPORT TO's, at the end of a countdown that
+    // reads as play, loads the play state as it was at that end or before (docs/re/memory.md,
+    // "Received Energy Shields", "Limits"), which turns no cell collected.
     void watch_own_traps();
     // Queues one of this world's own traps for the save loaded, as watch_own_traps does.
     void own_trap_found(uint8_t item);
@@ -454,8 +452,9 @@ private:
     int offline_count_ = -1, offline_told_ = -1;
     int offline_frames_ = 0;
     bool offline_settled_ = false;  // the loaded save in play since it loaded
-    // The file select's counts: the client's (disk_slots) and the offline ones (offline.h).
-    std::map<int, int> client_file_counts_, offline_file_counts_;
+    // The file select's counts, each save's own (offline.h, offline_disk_count), with a client
+    // or none.
+    std::map<int, int> offline_file_counts_;
     void apply_file_counts();
     std::deque<Popup> popups_;
     uint32_t batches_ = 0;  // the last `apply`'s number (Popup::batch)

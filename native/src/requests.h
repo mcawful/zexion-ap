@@ -119,11 +119,6 @@ std::string parse_batch(const std::string& request, Batch& out);
 std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
                         bool& told);
 
-// A `disk_slots` request: "disk_slots" (off: no slot) or "disk_slots COUNT SLOTS", SLOTS a comma
-// list of slots 1 to 30, or "-": `counts` gets COUNT for each slot (the file select shows the
-// count alone: files.h).
-std::string parse_disk_slots(const std::string& request, std::map<int, int>& counts);
-
 // A `mission_prompt` request: "mission_prompt COLUMN ROW", home's save point in tiles (the
 // Landing Pod's, as a save's continue point holds it: column first), on the 54 x 54 map (column
 // below 54 x 14, row below 54 x 20).

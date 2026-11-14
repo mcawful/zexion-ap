@@ -228,94 +228,119 @@ def test_traps_look_important() -> None:
     assert ticks.foreign_labels(ctx)[0] == {cell: aplabels.label(True, "Me")}
 
 
-def test_an_own_trap_found_is_set_off_once() -> None:
-    # Found in this world (the game's popup showed its label): set off with no popup of the
-    # client's, after that popup (the helper waits), and recorded as done, so never again.
+def test_an_own_trap_is_the_helpers_to_set_off() -> None:
+    # Found in this world: the helper sets it off at the pickup, from the seed's file, which
+    # lists its cell and item. The client sends nothing for it, and records nothing.
     ctx = Ctx(connection(trap_locations=[[3, ids.DISORIENT_TRAP]]))
-    ctx.server = None  # the record is kept for a later poll
+    ctx.server = None
     ctx.helper = Homing()
     ctx.told.client_back_sent = True
     ctx.stored_data = {ctx.conn.popped_key: {}}
     ctx.load.save_collected = {3}
     shown = session.Step(seed_matches=True, state=game.IN_PLAY)
     run(ticks.followups_tick(ctx, no_finds(), shown))
-    assert ctx.helper.requests == ["apply\ntrap 103"]
-    assert 3 in ctx.seed_state.popped_mine
-    run(ticks.followups_tick(ctx, no_finds(), shown))
-    assert len(ctx.helper.requests) == 1, "once"
+    assert ctx.helper.requests == [] and not ctx.seed_state.popped_mine
+    ctx.scout()
+    x, y = ctx.conn.plan.cells[3]
+    assert f"traps {y * 54 + x}:103" in ticks.offline_seed(ctx, no_finds()).splitlines()
 
 
-def test_a_lost_reply_sends_a_disks_count_again_but_not_a_trap() -> None:
-    # The disk at 12 and an own trap at 3 found together: the reply lost, the count is sent again
-    # (shown twice at worst, as before the traps), the trap not (set off at most once).
+def test_a_seed_with_no_own_trap_lists_none_for_the_helper() -> None:
+    ctx = Ctx(connection())
+    ctx.scout()
+    assert "traps -" in ticks.offline_seed(ctx, no_finds()).splitlines()
+
+
+def test_a_lost_reply_sends_a_disks_count_again() -> None:
+    # The disk at 12 picked up: the reply lost, its count is sent again (shown twice at worst).
     ctx = homing_ctx()
-    ctx.conn.traps = {3: ids.DISRUPTION_TRAP}
     ctx.server = None
-    ctx.load.save_collected = {3, 12}
+    ctx.load.save_collected = {12}
 
     def lost(text: str) -> str:
         ctx.helper.requests.append(text)
         raise native.ReplyLost("no reply within 3.0 s")
 
-    p = types.SimpleNamespace(codes=[ids.DATA_DISC] * 3, found=[12])
+    p = types.SimpleNamespace(codes=[ids.DATA_DISC] * 3, found=[])
     shown = session.Step(seed_matches=True, state=game.IN_PLAY)
     ctx.helper.apply = lost
     with pytest.raises(native.ReplyLost):
         run(ticks.followups_tick(ctx, p, shown))
-    assert ctx.helper.requests[0].splitlines()[-1] == "trap 102"
+    assert ctx.load.disks_counted == set(), "still owed"
     del ctx.helper.apply  # the class's: applied
     run(ticks.followups_tick(ctx, p, shown))
     again = ctx.helper.requests[1].splitlines()
-    assert again[0] == "apply" and again[1].startswith("notice 44 ") and "trap 102" not in again
-    assert {3, 12} <= ctx.seed_state.popped_mine
+    assert again == ["apply", "notice 44 OS Install Disk 4"]
+    assert ctx.load.disks_counted == {12}
+    run(ticks.followups_tick(ctx, p, shown))
+    assert len(ctx.helper.requests) == 2, "once it has shown"
 
 
-def test_an_own_trap_whose_reply_was_lost_is_not_sent_again() -> None:
-    # The helper may have queued it: sending it again could set it off twice.
-    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
+def test_an_own_disk_picked_up_again_after_a_reload_shows_its_count_again() -> None:
+    ctx = homing_ctx()
     ctx.server = None
-    ctx.helper = Homing()
-    ctx.told.client_back_sent = True
-    ctx.stored_data = {ctx.conn.popped_key: {}}
-    ctx.load.save_collected = {3}
-
-    def lost(text: str) -> str:
-        ctx.helper.requests.append(text)
-        raise native.ReplyLost("no reply within 3.0 s")
-
-    ctx.helper.apply = lost
+    hunt, load = ctx.conn.hunt, ctx.load
+    p = types.SimpleNamespace(codes=[ids.DATA_DISC], found=[])  # one received, handed over
+    ctx.seed_state.session.announced = 1
     shown = session.Step(seed_matches=True, state=game.IN_PLAY)
-    with pytest.raises(native.ReplyLost):
-        run(ticks.followups_tick(ctx, no_finds(), shown))
-    assert 3 in ctx.seed_state.popped_mine
-    run(ticks.followups_tick(ctx, no_finds(), shown))
-    assert len(ctx.helper.requests) == 1, "not sent again"
+
+    def look(collected: set[int]) -> None:
+        """A poll's look at the save (zexion_client.poll), then its follow-ups."""
+        load.save_collected = set(collected)
+        load.disks_counted = discs.counted(load.disks_counted, collected, hunt.locations)
+        run(ticks.followups_tick(ctx, p, shown))
+
+    look(set())
+    assert notices(ctx) == []
+    look({12})  # picked up
+    assert notices(ctx) == ["notice 44 OS Install Disk 2"]
+    look({12})
+    assert len(notices(ctx)) == 1, "once a pickup"
+    look(set())  # a death or a reload without saving: the disk is back in its room
+    look({12})  # picked up again
+    assert notices(ctx) == ["notice 44 OS Install Disk 2"] * 2, "it counts, and says so, again"
 
 
-def test_an_own_trap_whose_reply_was_lost_is_stored_at_once() -> None:
-    # Storing needs no helper: a client closed before one comes back must not send it again.
-    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]]))
-    ctx.server = types.SimpleNamespace(socket=types.SimpleNamespace(open=True, closed=False))
-    sent: list[dict] = []
-
-    async def send_msgs(msgs: list[dict]) -> None:
-        sent.extend(msgs)
-
-    ctx.send_msgs = send_msgs
-    ctx.helper = Homing()
-    ctx.told.client_back_sent = True
-    ctx.stored_data = {ctx.conn.popped_key: {}}
-    ctx.load.save_collected = {3}
-
-    def lost(text: str) -> str:
-        raise native.ReplyLost("no reply within 3.0 s")
-
-    ctx.helper.apply = lost
+def test_a_disk_the_save_held_when_first_looked_at_shows_no_count() -> None:
+    # Picked up before this load was watched (with no client, or before a reconnect): no notice.
+    ctx = homing_ctx()
+    ctx.server = None
+    ctx.load.disks_counted = None  # the load's second look not made yet
+    ctx.load.save_collected = {12}
+    p = types.SimpleNamespace(codes=[], found=[])
     shown = session.Step(seed_matches=True, state=game.IN_PLAY)
-    with pytest.raises(native.ReplyLost):
-        run(ticks.followups_tick(ctx, no_finds(), shown))
-    stores = [m for m in sent if m["cmd"] == "Set" and m["key"] == ctx.conn.popped_key]
-    assert stores and stores[-1]["operations"][0]["value"] == {"3": 1}
+    run(ticks.followups_tick(ctx, p, shown))
+    ctx.load.disks_counted = discs.counted(None, {12}, ctx.conn.hunt.locations)
+    run(ticks.followups_tick(ctx, p, shown))
+    assert notices(ctx) == [] and ctx.load.disks_counted == {12}
+
+
+def test_the_helpers_count_is_the_loaded_saves_own() -> None:
+    # One disk received, the own one at 12 picked up: 2. A reload from before the pickup: 1.
+    ctx = Ctx(connection(**HUNT))
+    ctx.seed_state.dressed = True
+    p = types.SimpleNamespace(codes=[ids.DATA_DISC], found=[12])  # found once, in some save
+    ctx.load.save_collected = {12}
+    run(ticks.discs_helper_tick(ctx, p))
+    assert ctx.helper.requests[-1].startswith("discs 2 3 ")
+    ctx.load.save_collected = set()
+    run(ticks.discs_helper_tick(ctx, p))
+    assert ctx.helper.requests[-1].startswith("discs 1 3 "), "the found record counts no disk"
+
+
+def test_the_offline_file_counts_each_saves_own_disks_from_its_map() -> None:
+    # What every save shares (the start and the received), and every own disk's cell: the
+    # helper adds those a save's map shows collected (native/src/offline.h), whatever the
+    # loaded save or the found record hold.
+    ctx = Ctx(connection(**HUNT))
+    ctx.scout()
+    x, y = ctx.conn.plan.cells[12]
+    for collected in (set(), {12}):
+        ctx.load.save_collected = collected
+        p = types.SimpleNamespace(codes=[ids.DATA_DISC, ids.DATA_DISC], found=[12])
+        lines = ticks.offline_seed(ctx, p).splitlines()
+        assert [line for line in lines if line.startswith("discs")][0].startswith("discs 2 3 ")
+        assert f"unfound {y * 54 + x}" in lines
 
 
 def test_a_secret_shuffle_seeds_labels_go_on_each_locations_own_cell() -> None:
@@ -639,6 +664,7 @@ def homing_ctx() -> Ctx:
     ctx.stored_data = {ctx.conn.popped_key: {}}
     ctx.seed_state.session.announced = 3  # the received disks' popups handed over
     ctx.seed_state.session.announced_read = True
+    ctx.load.disks_counted = set()  # the load looked at twice: no own disk in the save
     return ctx
 
 
@@ -699,8 +725,9 @@ def test_a_found_disks_count_leaves_out_a_received_disk_not_handed_over_yet(hand
     run(ticks.followups_tick(ctx, p, shown))
     assert notices(ctx) == [f"notice 44 OS Install Disk {1 + handed}"]
     if not handed:  # the received one's count, handed over on a later poll
-        pending = ctx.load.save_collected - ctx.seed_state.popped_mine
-        later = discs.received_notes(ctx.conn.hunt, p.codes, p.found, False, pending)
+        load, hunt = ctx.load, ctx.conn.hunt
+        pending = discs.uncounted(load.disks_counted, load.save_collected, hunt.locations)
+        later = discs.received_notes(hunt, p.codes, load.save_collected, False, pending)
         assert later == {0: "OS Install Disk 2"}
 
 

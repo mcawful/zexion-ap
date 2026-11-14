@@ -533,7 +533,7 @@ def test_a_first_attach_holds_back_the_step_only_for_a_helper_that_may_still_com
     monkeypatch.setattr(ctx.seed_state.session, "step", step)
     for name in ("newgame_tick", "labels_tick", "toggle_tick", "discs_helper_tick"):
         monkeypatch.setattr(zc, name, nothing)
-    for name in ("slots_tick", "language_tick", "replay_tick", "offline_tick"):
+    for name in ("language_tick", "replay_tick", "offline_tick"):
         monkeypatch.setattr(zc, name, nothing)
     asyncio.run(zc.poll(ctx))
     if not held:
@@ -591,7 +591,7 @@ def lost_helper(
 
     for name in ("newgame_tick", "labels_tick", "toggle_tick", "discs_helper_tick"):
         monkeypatch.setattr(zc, name, nothing)
-    for name in ("slots_tick", "language_tick", "replay_tick"):
+    for name in ("language_tick", "replay_tick"):
         monkeypatch.setattr(zc, name, nothing)
     monkeypatch.setattr(zc, "offline_tick", late)
     monkeypatch.setattr(zc, "attach_helper", attach)
@@ -727,6 +727,54 @@ def test_the_goal_is_sent_once(monkeypatch) -> None:
     assert ctx.finished_game
 
 
+def test_the_goal_counts_the_loaded_saves_own_disks_not_the_found_record(monkeypatch) -> None:
+    # Three disks needed, two received, this world's own at location 12. An ending in a save
+    # that holds it collected is the goal; in one reloaded from before its pickup it is not,
+    # though the disk was found once (this client reported it, and the found record has it).
+    hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
+    conn = connection(**hunt)
+    ctx = context(conn, Running(game.IN_PLAY))
+    ctx.locations_checked = {zc.LOCATION_ID_BASE + 12}
+    ctx.stored_data[conn.found_key] = {"12": 1}
+    sent: list[dict] = []
+
+    async def send_msgs(msgs: list[dict]) -> None:
+        sent.extend(msgs)
+
+    ctx.send_msgs = send_msgs
+    monkeypatch.setattr(ctx, "received", lambda: ([44, 44], ["Bob", "Bob"]))
+    monkeypatch.setattr(zc, "ClientStatus", types.SimpleNamespace(CLIENT_GOAL=30))
+    monkeypatch.setattr(zc, "attach_helper", lambda c: asyncio.sleep(0))
+    monkeypatch.setattr(zc, "hints_tick", nothing)
+    ended = dict(seed_matches=True, state=game.IN_PLAY, goal=True, ended=True, save_stamp=bytes(14))
+    step = session.Step(**ended)  # the disk not collected in this save
+    monkeypatch.setattr(ctx.seed_state.session, "step", lambda g, received, **kwargs: step)
+    for _ in range(3):
+        asyncio.run(zc.poll(ctx))
+    assert not ctx.finished_game and not [m for m in sent if m["cmd"] == "StatusUpdate"]
+    assert ctx.load.disks_counted == set(), "looked at twice: no own disk in the save"
+    step = session.Step(checked={12}, **ended)  # picked up (again)
+    for _ in range(2):
+        asyncio.run(zc.poll(ctx))
+    assert ctx.finished_game and [m["cmd"] for m in sent].count("StatusUpdate") == 1
+
+
+def test_a_loads_own_disks_are_taken_as_counted_at_its_second_look(monkeypatch) -> None:
+    hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
+    ctx = context(connection(**hunt), Running(game.IN_PLAY))
+    monkeypatch.setattr(zc, "attach_helper", lambda c: asyncio.sleep(0))
+    monkeypatch.setattr(zc, "hints_tick", nothing)
+    held = session.Step(seed_matches=True, state=game.IN_PLAY, checked={12}, save_stamp=bytes(14))
+    monkeypatch.setattr(ctx.seed_state.session, "step", lambda g, received, **kwargs: held)
+    asyncio.run(zc.poll(ctx))
+    assert ctx.load.disks_counted is None, "a first look may be of a load half way"
+    asyncio.run(zc.poll(ctx))
+    assert ctx.load.disks_counted == {12}, "picked up before this load was watched: no notice"
+    monkeypatch.setattr(zc.Utils, "async_start", lambda coro, name="": coro.close(), raising=False)
+    ctx.connected(slot_data(**hunt))  # a reconnect: its first look starts over
+    assert ctx.load.disks_counted is None
+
+
 def test_a_helper_lost_for_good_holds_back_the_step_for_a_while_only(monkeypatch) -> None:
     ctx, order = lost_helper(monkeypatch, attaches=False)
     asyncio.run(zc.poll(ctx))
@@ -830,9 +878,8 @@ def test_a_received_disks_count_leaves_out_a_found_disk_whose_count_is_still_to_
     hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
     conn = connection(**hunt)
     ctx = context(conn, Showing(game.IN_PLAY))
-    ctx.locations_checked = {zc.LOCATION_ID_BASE + 12}
     ctx.load.save_collected = {12}
-    ctx.stored_data[conn.popped_key] = {"12": 1} if shown else {}
+    ctx.load.disks_counted = {12} if shown else set()
     monkeypatch.setattr(ctx, "received", lambda: ([44], ["Bob"]))
     monkeypatch.setattr(zc, "hints_tick", nothing)
     passed: dict = {}
