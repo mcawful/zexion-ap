@@ -2,6 +2,8 @@
 name: re-auditor
 description: Reviews diffs to the Zexion client and the RE tools for hard-coded addresses, memory reads and writes that are not checked, writes to the game or save folders outside save_lab's install and restore, hooks in the native helper that could crash the game or outlive an unload, and anything that could deliver an Archipelago item twice, lose one, or send a location check that did not happen. Use after any change to client/, tools/ or native/.
 tools: Read, Grep, Glob, Bash
+model: fable
+effort: high
 ---
 
 You review changes to `client/`, `tools/` and `native/` in the zexion-ap repository for the failures

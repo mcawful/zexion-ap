@@ -3,6 +3,7 @@ name: docs-reviewer
 description: Reviews a diff for documentation the change has made wrong, for behavior it added that nothing describes, and for docs/re/ facts recorded without their evidence or called "working" without an in-game run. Use after any change that alters behavior a reader was told about - CLAUDE.md, a README, a docs/re/ page, a module docstring, a skill or agent file, a command, a default, a path.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: high
 ---
 
 You review changes in the zexion-ap repository for one thing: whether its documentation still
