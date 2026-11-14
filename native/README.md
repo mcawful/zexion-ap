@@ -318,11 +318,11 @@ gates and the key markers").
 **During a TELEPORT TO's countdown,** which reads as play, an `apply` is still taken. The load at
 its end loads the player from a copy of the play state (`docs/re/memory.md`, "The mission prompt",
 "A save at the Landing Pod"). In a randomizer save that copy is made again at the countdown's end,
-unless three bytes not traced say otherwise ("Received Energy Shields", "Limits"), so by the code
-those writes are kept; otherwise it is the copy made when the entry was chosen, which undoes them,
-and the client's next look finds the items missing and gives them again (`client/reconcile.py`), so
-none is lost. Not changed here, and not seen in game; the popups wait out the countdown
-("Popups").
+except from the escape skip's YES to the ending (flags 300 and 195) or with a byte not traced
+reading 2 ("Received Energy Shields", "Limits"), so by the code those writes are kept; otherwise it
+is the copy made when the entry was chosen, which undoes them, and the client's next look finds the
+items missing and gives them again (`client/reconcile.py`), so none is lost. Not changed here, and
+not seen in game; the popups wait out the countdown ("Popups").
 
 **The major-item list** (`pickup_list`; the file select's ITEMS row draws each save's): every
 frame call in play in an AP save (`Game::watch_pickups`), the helper appends to it each owned
@@ -437,24 +437,25 @@ were not singled out.
   owner's report; `lab/ingame-checkpoint-checks.md`): one received in the pause, then TELEPORT TO
   START, came up 1.45 s after the teleport's load ("the shield arrived after the teleport"); a run
   that matches the hold without isolating it, that countdown reading as play for 1.000 s,
-  `kSettledMs`, and the load moving the player to another cell, so the one-second rule alone would
-  likely have held it too), and not in an ending RETURN HOME WITH THE DISKS? started (`refused
-  RETURN HOME WITH THE DISKS? ending`). The client asks for each received shield not yet given,
-  again for one not seen up within a few seconds, and counts it once it sees the shield up; after
-  three requests in a row not seen up it asks for none until the save is left or the game closes
-  (another seed or slot has its own count of misses: `client/shields.py`, `client/state.py`'s
-  `SeedState`). A shield already up through a TELEPORT TO comes back after its load: the load
-  restores the strength of the teleport's last copy of the play state and makes a new shield for it
-  (by disassembly, not seen in game: `docs/re/memory.md`, "Received Energy Shields", "Limits"). In a
-  randomizer save that copy is made at the countdown's end (unless three bytes not traced say
-  otherwise), so a shield spawned just before the pause whose strength comes only during the
-  countdown comes back too. Where the copy is the one made as the entry was chosen, that shield
-  would be lost to the load (when a spawned shield's strength is set is not traced): read up by
-  `confirm_shield` if the client looks during the countdown, then not given again (the limit
-  "counted, then lost to a death or reload"); or, at a first look after the load, a miss, which
-  counts toward the three in a row that stop shields until the save is left or the game closes
-  (`client/shields.py`, `Shields.looked`, STOP); the helper cannot hold it, the spawn coming before
-  the pause.
+  `kSettledMs`, and the load likely moving the player to another cell (inferred, not recorded in
+  that run: the 2026-11-13 trace's teleport did), so the one-second rule alone would likely have
+  held it too), and not in an ending RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH
+  THE DISKS? ending`). The client asks for each received shield not yet given, again for one not
+  seen up within a few seconds, and counts it once it sees the shield up; after three requests in a
+  row not seen up it asks for none until the save is left or the game closes (another seed or slot
+  has its own count of misses: `client/shields.py`, `client/state.py`'s `SeedState`). A shield
+  already up through a TELEPORT TO comes back after its load: the load restores the strength of the
+  teleport's last copy of the play state and makes a new shield for it (by disassembly, not seen in
+  game: `docs/re/memory.md`, "Received Energy Shields", "Limits"). In a randomizer save that copy is
+  made at the countdown's end (except from the escape skip's YES to the ending, flags 300 and 195,
+  or with a byte not traced reading 2), so a shield spawned just before the pause whose strength
+  comes only during the countdown comes back too. Where the copy is the one made as the entry was
+  chosen, that shield would be lost to the load (when a spawned shield's strength is set is not
+  traced): read up by `confirm_shield` if the client looks during the countdown, then not given
+  again (the limit "counted, then lost to a death or reload"); or, at a first look after the load, a
+  miss, which counts toward the three in a row that stop shields until the save is left or the game
+  closes (`client/shields.py`, `Shields.looked`, STOP); the helper cannot hold it, the spawn coming
+  before the pause.
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("Received Energy Shields"); the client's check as it is now, with the
