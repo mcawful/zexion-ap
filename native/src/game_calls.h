@@ -377,6 +377,9 @@ private:
     // before its load, a death's respawn, the ending's. Idle in play the timer is 0, room changes
     // leave it alone (docs/re/memory.md, "Telling play from menus, the title screen and death").
     bool transition_queued() const { return at<int32_t>(at_.transition_timer, 0) > 0; }
+    // In play in one cell for kSettledMs with no transition queued (note_play): a shield, a drop,
+    // a death.
+    bool settled(uint64_t now_ms) const;
     bool in_play() const;
     // In play outside home's cell; false with no home given, or the player's cell off the map.
     bool away_from_home() const;

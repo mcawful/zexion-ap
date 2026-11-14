@@ -2131,6 +2131,87 @@ void test_traps_wait_out_a_teleport() {
     other.put_back_traps();
 }
 
+// A TELEPORT TO from the pause menu: the menu closes with the transition's 60 frames queued.
+void teleport_from_pause(zap::Game& game, uint64_t now) {
+    g_menu = 2;
+    game.note_play(now);
+    g_menu = 0;
+    g_transition_timer = 60;
+}
+
+// The rest of what the load at a TELEPORT TO's end could undo waits out its countdown too, then
+// settles as after any load: a received Energy Shield (the reset zeroes its strength), a scrap's
+// drop (spawned in the room left), a DeathLink death (against the load), and an ordinary popup
+// (the load clears the message slots); each released after the load, once.
+void test_received_things_wait_out_a_teleport() {
+    {
+        zap::Game game;
+        ready(game);
+        shield_records(2018);
+        game.note_play(1000);
+        g_transition_timer = 60;  // queued since note_play last ran
+        check(game.spawn_shield(2500) == "refused not settled", "a shield: held at once");
+        g_transition_timer = 0;
+        teleport_from_pause(game, 3000);
+        for (uint64_t now = 3016; now <= 5000; now += 16) game.note_play(now);
+        check(game.spawn_shield(5000) == "refused not settled" && g_spawn_calls == 0,
+              "a shield: not through the countdown, two seconds in play in one cell");
+        g_transition_timer = 0;  // the load
+        for (uint64_t now = 5016; now <= 5900; now += 16) game.note_play(now);
+        check(game.spawn_shield(5900) == "refused not settled", "nor in the second after the load");
+        game.note_play(6100);
+        check(game.spawn_shield(6100) == "spawned" && g_spawn_calls == 1, "a shield: then spawned");
+    }
+    {
+        zap::Game game;
+        ready(game);
+        scrap_records();
+        apply(game, "apply\npopup 46 FROM ALICE");
+        game.note_play(1000);
+        game.pump_popups();
+        check(game.queued_drops() == 1, "a drop queued as its popup shows");
+        teleport_from_pause(game, 1100);
+        for (uint64_t now = 1116; now <= 3500; now += 16) {
+            game.note_play(now);
+            game.pump_drops(now);
+        }
+        check(g_spawn_calls == 0 && game.queued_drops() == 1, "a drop: not through the countdown");
+        g_transition_timer = 0;  // the load
+        for (uint64_t now = 3516; now <= 4600; now += 16) {
+            game.note_play(now);
+            game.pump_drops(now);
+        }
+        check(g_spawn_calls == 1 && game.queued_drops() == 0, "a drop: spawned after the load, once");
+    }
+    {
+        zap::Game game;
+        ready(game);
+        game.note_play(1000);
+        teleport_from_pause(game, 2500);
+        for (uint64_t now = 2516; now <= 4500; now += 16) game.note_play(now);
+        check(game.kill(4500) == "refused not settled" && g_deaths == 0,
+              "a death: not through the countdown");
+        g_transition_timer = 0;  // the load
+        for (uint64_t now = 4516; now <= 5600; now += 16) game.note_play(now);
+        check(game.kill(5600) == "died" && g_deaths == 1, "a death: after the load");
+    }
+    {
+        zap::Game game;
+        ready(game);
+        game.note_play(1000);
+        teleport_from_pause(game, 1000);
+        game.note_play(1016);
+        check(apply(game, "apply\npopup 36 FROM ALICE") == "applied", "a popup applied meanwhile");
+        play_frames(game, 1016, 3000);
+        check(g_messages == 0 && game.queued_popups() == 1, "a popup: not through the countdown");
+        g_transition_timer = 0;  // the load
+        play_frames(game, 3016, 3100);
+        check(g_messages == 1 && g_text.find("FROM ALICE") != std::string::npos &&
+                  game.queued_popups() == 0,
+              "a popup: shown after the load");
+    }
+}
+
 // A received trap's popup with no record to show it by (Scrap Metal's, records not loaded) waits
 // with its trap, never dropped as other popups are.
 void test_a_trap_popup_with_no_record_waits() {
@@ -2718,12 +2799,15 @@ void test_popups_wait_for_the_mission_fade() {
           "idle: the fade, the opener 60 frames away");
     message_showing(1);  // GAME SAVED over: only the fade holds a popup back
     game.note_play(1000);
-    check(game.kill(3000) == "refused RETURN HOME WITH THE DISKS? opening" && g_deaths == 0,
+    // The fade's 60 frames are a transition queued: not settled (RETURN HOME's own refusal
+    // behind it).
+    check(game.kill(3000) == "refused not settled" && g_deaths == 0,
           "no received death between the fade and the prompt");
     apply(game, "apply\npopup 36 FROM ALICE");
     for (int i = 0; i < 60; ++i) game.pump_popups();
     check(g_messages == 0 && game.queued_popups() == 1, "a popup waits through the fade");
-    game.mission_open();  // the game runs the opener
+    g_transition_timer = 0;  // the game runs the opener as its timer reaches 0
+    game.mission_open();
     for (int i = 0; i < 30; ++i) game.pump_popups();
     check(g_messages == 1, "then shows");
 
@@ -2753,6 +2837,7 @@ void test_popups_wait_for_the_mission_fade() {
 
     // Dead when the opener runs: the fade turned back (a step every 6 frames), asked again.
     field<int16_t>(0xCEA) = -1;
+    g_transition_timer = 0;
     game.mission_open();
     check(game.mission_status() == "asked again: not in play when it opened" &&
               g_transition_fn == g_routine_table[zap::kIdleRoutine] && g_transition_timer == 0 &&
@@ -2925,6 +3010,7 @@ void test_return_home_lapses_away_from_the_pod() {
     // Dead when the opener runs, the death having set a fade of its own: left alone.
     field<int16_t>(0xCEA) = -1;
     g_fade[zap::fade_state::kTarget] = 4;  // not event 3667's
+    g_transition_timer = 0;
     game.mission_open();
     check(game.mission_status() == "asked again: not in play when it opened" &&
               g_fade_calls == fades + 1 && g_transition_fn == g_routine_table[zap::kIdleRoutine],
@@ -3016,6 +3102,7 @@ void test_the_black_after_yes() {
     g_transition_timer = 0;
     game.mission_end();  // the game runs the wrapper
     g_transition_fn = nullptr;
+    g_transition_timer = 0;
     g_save_loaded = 0xFF;  // MISSION COMPLETE: no save loaded
     game.watch_all(&chosen);
     g_save_loaded = 3;  // loaded again
@@ -3042,6 +3129,7 @@ void test_the_black_after_yes() {
     g_transition_timer = 0;
     game.mission_end();
     g_transition_fn = nullptr;
+    g_transition_timer = 0;
     g_save_loaded = 0xFF;
     game.watch_all(&chosen);
     g_save_loaded = 3;
@@ -3084,6 +3172,7 @@ void test_the_black_after_yes() {
               g_fade[zap::fade_state::kStep] == zap::kEndingFadeStep && !game.ending_pending(),
           "run: drawn black, fading in from there; nothing pending");
     g_transition_fn = nullptr;  // 0x948A0 run: the transition cleared
+    g_transition_timer = 0;
     game.watch_all(&chosen);
     MissionGame::idle();  // idle-looking later in its cutscenes
     game.request_mission(kPodColumn, kPodRow);
@@ -3267,6 +3356,7 @@ int main() {
     test_traps_without_ailments();
     test_traps_held_for_the_ending();
     test_traps_wait_out_a_teleport();
+    test_received_things_wait_out_a_teleport();
     test_assist_watch();
     test_newgame_watch();
     test_randomizer_by_seed();
