@@ -438,11 +438,17 @@ were not singled out.
   asks for each received shield not yet given, again for one not seen up within a few seconds, and
   counts it once it sees the shield up; after three requests in a row not seen up it asks for none
   until the save is left or the game closes (another seed or slot has its own count of misses:
-  `client/shields.py`, `client/state.py`'s `SeedState`). A shield spawned just before the player
-  pauses and chooses a TELEPORT TO is cleared by the teleport's load, as the game's own is; if the
-  client's first look comes after that load, it finds none up and counts a miss, spawning another
-  (`client/shields.py`, `shield_outcome`, `Shields.looked`). The helper cannot hold that one: the
-  spawn comes before the pause (by the code; not seen in game).
+  `client/shields.py`, `client/state.py`'s `SeedState`). A shield already up when the player
+  chooses a TELEPORT TO comes back after its load at the strength it had then, so the client reads
+  it up (by disassembly, not seen in game: the teleport's copy of the play state, made as the entry
+  is chosen, keeps the strength, and the load puts it back and makes a new shield for it;
+  `docs/re/memory.md`, "Received Energy Shields", "Limits"). One whose strength the game sets only
+  after that choice, during the countdown (a shield spawned just before the pause; when the strength
+  is set after a spawn is not traced), would be lost to the load: read up by `confirm_shield` if the
+  client looks during the countdown, then not given again (the limit "counted, then lost to a death
+  or reload"); or, at a first look after the load, a miss, which counts toward the three in a row
+  that stop shields until the save is left or the game closes (`client/shields.py`,
+  `Shields.looked`, STOP). The helper cannot hold that one: the spawn comes before the pause.
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("Received Energy Shields"); the client's check as it is now, with the

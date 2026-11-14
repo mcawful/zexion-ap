@@ -2174,14 +2174,14 @@ void test_received_things_wait_out_a_teleport() {
         game.pump_drops(2500);
         check(g_spawn_calls == 0 && game.queued_drops() == 1, "a drop: held at once");
         g_transition_timer = 0;
-        teleport_from_pause(game, 1100);
-        for (uint64_t now = 1116; now <= 3500; now += 16) {
+        teleport_from_pause(game, 2600);
+        for (uint64_t now = 2616; now <= 5000; now += 16) {
             game.note_play(now);
             game.pump_drops(now);
         }
         check(g_spawn_calls == 0 && game.queued_drops() == 1, "a drop: not through the countdown");
         g_transition_timer = 0;  // the load
-        for (uint64_t now = 3516; now <= 4600; now += 16) {
+        for (uint64_t now = 5016; now <= 6100; now += 16) {
             game.note_play(now);
             game.pump_drops(now);
         }
