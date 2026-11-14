@@ -435,7 +435,11 @@ were not singled out.
   not yet given, again for one not seen up within a few seconds, and counts it once it sees the
   shield up; after three requests in a row not seen up it asks for none until the save is left or
   the game closes (another seed or slot has its own count of misses: `client/shields.py`,
-  `client/state.py`'s `SeedState`).
+  `client/state.py`'s `SeedState`). A shield spawned just before the player pauses and chooses a
+  TELEPORT TO is cleared by the teleport's load, as the game's own is; if the client's first look
+  comes after that load, it finds none up and counts a miss, spawning another (`client/shields.py`,
+  `shield_outcome`, `Shields.looked`). The helper cannot hold that one: the spawn comes before the
+  pause (by the code; not seen in game).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("Received Energy Shields"); the client's check as it is now, with the
@@ -520,7 +524,8 @@ the player to be on the map.
   (the routine posts one without checking it was made) and RETURN HOME WITH THE DISKS? is not
   between its fade and its prompt, nor in the black after its YES or the ending it started;
   otherwise `refused` (`not configured`, `not settled`, `halted`, `message showing`, `RETURN HOME
-  WITH THE DISKS? opening`, `RETURN HOME WITH THE DISKS? ending`, `no frame`). The client queues
+  WITH THE DISKS? ending`, `no frame`; `RETURN HOME WITH THE DISKS? opening` is kept as a defensive
+  check but not expected, the fade's countdown refusing first as `not settled`). The client queues
   received deaths and asks once a second, one at a time (`client/deathlink.py`); it drops the queue
   while an ending that began in this load runs (`Session.holding`, also an ending played again
   through RETURN HOME); a save that had already ended deals them as any save does until its ending
@@ -603,8 +608,9 @@ dealt on the next load ("DeathLink").
   (not in play), a death (energy 0), a load, and a TELEPORT TO's countdown: after its menu closes the
   game plays the teleport in the player's room for 60 frames that read as play, then loads, and the
   load resets the player's timers, so a trap received in the pause waits until a quarter second after
-  that load, with its popup (before, it went off during the teleport and the load ended it 0.39 s
-  later: below; `docs/re/memory.md`, "Telling play from menus, the title screen and death").
+  that load, with its popup (before, in check 8, it went off during a teleport and the load ended
+  it 0.39 s later; that this was a TELEPORT TO's countdown is inferred: below; `docs/re/memory.md`,
+  "Telling play from menus, the title screen and death").
   RELOAD FROM CHECKPOINT and RELOAD FROM SAVE load as their menu closes, and a death's respawn
   behind its menu, so none of them has such a stretch; room changes leave the timer alone (the same
   heading). A cutscene
@@ -707,10 +713,11 @@ seed `lab/ap/live62`, slot 5, a new save, the owner's reports, the trap timers r
 START: set 0.25 s after the teleport's load, 660 frames ("the trap arrived after loading into the
 area the teleport took me to"); with a trap received in the pause, RELOAD FROM CHECKPOINT ("I got it
 after loading in from the checkpoint") and RELOAD FROM SAVE ("got the trap when loading back in"),
-the first recorded as failing in check 8 and the second not run before; and, as before, one received while dead, through the respawn ("I got the
-trap after getting back into the game"), each its full 660 frames. The other two TELEPORT TO entries
-set the same timer (by disassembly) and were not run. Also on e500ab9, the popup order, where a
-trap's popup and the trap came before a disk's popup and count received with it.
+the first named by the old record as the failing check 8, which is inferred to have been a TELEPORT
+TO (above), and the second not run before; and, as before, one received while dead, through the
+respawn ("I got the trap after getting back into the game"), each its full 660 frames. The other two
+TELEPORT TO entries set the same timer (by disassembly) and were not run. Also on e500ab9, the popup
+order, where a trap's popup and the trap came before a disk's popup and count received with it.
 That order is changed since 704bd25 (a received trap's popup in its turn, the trap going off as it
 shows; stand-in tests `test_a_trap_popup_takes_its_turn` and
 `test_a_parked_trap_popup_does_not_hold_the_mission`, `test_a_trap_popup_with_no_record_waits`):

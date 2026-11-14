@@ -633,7 +633,9 @@ std::string Game::kill(uint64_t now_ms) {
     if (!settled(now_ms)) return "refused not settled";
     if (*at_.halt_flag != 0) return "refused halted";
     if (popup_busy()) return "refused message showing";
-    // Not between RETURN HOME's fade and its prompt: the prompt would open over the death.
+    // Not between RETURN HOME's fade and its prompt: the prompt would open over the death. A
+    // defensive check: the fade's countdown (kFadeDelay, or 1) is a transition queued, which
+    // settled() refuses first.
     if (mission_.opening()) return "refused RETURN HOME WITH THE DISKS? opening";
     // Nor in the black after its YES, nor in the ending it started.
     if (mission_.dark() || mission_.started()) return "refused RETURN HOME WITH THE DISKS? ending";

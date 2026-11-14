@@ -2170,6 +2170,10 @@ void test_received_things_wait_out_a_teleport() {
         game.note_play(1000);
         game.pump_popups();
         check(game.queued_drops() == 1, "a drop queued as its popup shows");
+        g_transition_timer = 60;  // queued since note_play last ran
+        game.pump_drops(2500);
+        check(g_spawn_calls == 0 && game.queued_drops() == 1, "a drop: held at once");
+        g_transition_timer = 0;
         teleport_from_pause(game, 1100);
         for (uint64_t now = 1116; now <= 3500; now += 16) {
             game.note_play(now);
@@ -2187,6 +2191,9 @@ void test_received_things_wait_out_a_teleport() {
         zap::Game game;
         ready(game);
         game.note_play(1000);
+        g_transition_timer = 60;  // queued since note_play last ran
+        check(game.kill(2200) == "refused not settled" && g_deaths == 0, "a death: held at once");
+        g_transition_timer = 0;
         teleport_from_pause(game, 2500);
         for (uint64_t now = 2516; now <= 4500; now += 16) game.note_play(now);
         check(game.kill(4500) == "refused not settled" && g_deaths == 0,
