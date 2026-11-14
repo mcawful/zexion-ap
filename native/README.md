@@ -930,12 +930,22 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   While this seed's save is in play the client writes the cell's item state to collected, so
   the game makes no item there when it loads the room, then its map cell to `0x1B`, as a pickup
   leaves both (`client/session.py`, `mark`; `docs/re/memory.md`, "What decides whether an item
-  appears"): compare-and-set writes, only for a location two polls in a row found still to
-  mark, and never one whose item is in the loaded rooms (the room the player is in and those
-  loaded around it): that one stays to pick up as usual, and is marked once its room is left.
-  The one Scrap Metal a stand-in's pickup gives comes with the client's grants, which count a
-  marked cell as collected; the game's ITEMS count is not raised. With no client connected
-  nothing is marked. Stand-in tests (`tests/test_session.py`); not run in game.
+  appears"): compare-and-set writes, only for a location two polls in a row (in the same save
+  slot, seconds apart at most) found still to mark, and never one whose item is, or may be, in
+  the loaded rooms: one with an item object of its cell, one an object holds or has dropped,
+  and any within two map squares of the player's (the game keeps the squares next to the
+  player's loaded; an object of another kind may be the item there, as in a reversed-gravity
+  room). That one stays to pick up as usual, and is marked once the player is three squares
+  away. So after a reload at a save point that close to such an item, the item is back until
+  the player has been that far from it: the game loads those rooms, with their items, before
+  the client can mark. Removing an item object as the pickup does, or marking the slot's copy
+  in memory, would close that; neither is done. The one Scrap Metal a stand-in's pickup gives
+  comes with the client's grants, which count a marked cell as collected; the game's ITEMS
+  count is not raised, and a marked square reads explored on the map. A mark stays in the
+  save once the game saves: such a save played against another room of the same seed sends
+  its marked locations as checks. With no client connected nothing is marked, and a failing
+  read or write of the marking is said once while items and checks go on. Stand-in tests
+  (`tests/test_session.py`); not run in game.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.

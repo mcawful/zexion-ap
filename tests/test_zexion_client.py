@@ -864,6 +864,12 @@ def test_the_step_is_given_the_other_players_items_the_server_has_checked(monkey
     monkeypatch.setattr(ctx.seed_state.session, "step", step)
     asyncio.run(zc.poll(ctx))
     assert passed["gone"] == {3}, "never one of this world's own items"
+    # After a drop the checked locations are the last connection's until the next Connected:
+    # nothing is kept collected from them (a server back with an older save has fewer).
+    ctx.conn.items_listed = False  # as reset_server_state leaves the connection
+    ctx.game_conn = Showing(game.IN_PLAY)
+    asyncio.run(zc.poll(ctx))
+    assert not passed["gone"]
 
 
 @pytest.mark.parametrize("hints", [[], [[1, 3392510_520, 16]]])

@@ -255,9 +255,10 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
 - Another player's item stays collected once it has been found or sent: if you die or reload
   without saving after picking it up, or start another save of the seed, it's gone from its
   room, and so are the items a player collects from your world (`!collect`) and the ones you
-  release (`!release`). One in the room you're in, or right next to it, stays until you leave,
-  and you can still pick it up. Your own items aren't touched: they follow your save, so after
-  a death or a reload they're back in their rooms. This needs the client connected (not yet
+  release (`!release`). One within two map squares of you stays until you have been farther
+  from it, and you can still pick it up; so one that close to the save point you reload at is
+  back until you walk away. Your own items aren't touched: they follow your save, so after a
+  death or a reload they're back in their rooms. This needs the client connected (not yet
   checked in the game).
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
   Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
