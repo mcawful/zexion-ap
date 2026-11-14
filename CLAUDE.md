@@ -212,7 +212,7 @@ release's.
   | Module | Job |
   |---|---|
   | `zexion_client.py` | `CommonClient` wiring, the commands, the game loop |
-  | `session.py` | one poll: checks, the goal, grants |
+  | `session.py` | one poll: checks, the goal, grants, other players' items kept collected |
   | `reconcile.py` | what to give: should own minus inventory |
   | `state.py` | the client's state, by lifetime, and pure decisions on it |
   | `ticks.py` | the side tasks with the helper |

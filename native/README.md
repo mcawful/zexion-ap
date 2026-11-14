@@ -923,6 +923,19 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   names carry no icon: working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`: the owner's
   screenshot of the pickup popup, not kept in `lab/`, the logo, then Progression Item over for
   AneziaDS2, both lines centered; the map cursor's AP Item, "The map").
+- **Kept collected** (the client alone; the helper has no part): another player's item (not
+  this world's own disks and traps, which follow the save) stays collected once the server has
+  its location as checked, whoever checked it: found in any save of the seed, or before a death
+  or a reload without saving, collected by its owner (`!collect`), or released (`!release`).
+  While this seed's save is in play the client writes the cell's item state to collected, so
+  the game makes no item there when it loads the room, then its map cell to `0x1B`, as a pickup
+  leaves both (`client/session.py`, `mark`; `docs/re/memory.md`, "What decides whether an item
+  appears"): compare-and-set writes, only for a location two polls in a row found still to
+  mark, and never one whose item is in the loaded rooms (the room the player is in and those
+  loaded around it): that one stays to pick up as usual, and is marked once its room is left.
+  The one Scrap Metal a stand-in's pickup gives comes with the client's grants, which count a
+  marked cell as collected; the game's ITEMS count is not raised. With no client connected
+  nothing is marked. Stand-in tests (`tests/test_session.py`); not run in game.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.

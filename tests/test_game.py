@@ -8,7 +8,15 @@ import pytest
 from fakes import CELLS, SECRET_LIST, FakeGame, FakeProcess, pe_image
 
 from client import game
-from client.patterns import CLIENT_TARGETS, TARGETS, TOOL_TARGETS, Build, Pattern, Target
+from client.patterns import (
+    CLIENT_ONLY_TARGETS,
+    CLIENT_TARGETS,
+    TARGETS,
+    TOOL_TARGETS,
+    Build,
+    Pattern,
+    Target,
+)
 
 # lea rax, [rip + disp32] ; add rax, rdx ; ret  -- a stand-in for a referring instruction
 LEA = Pattern("48 8D 05 ?? ?? ?? ?? 48 01 D0 C3", disp_at=3, kind="rip", rip_end=7, addend=0)
@@ -77,6 +85,8 @@ def test_the_client_does_not_locate_the_targets_only_the_tools_read() -> None:
     # A pattern of the pickup counter breaking with an update cannot stop the client attaching.
     assert {"pickup_counter"} == TOOL_TARGETS
     assert {t.name for t in CLIENT_TARGETS} == {t.name for t in TARGETS} - TOOL_TARGETS
+    # The per-cell state is the client's alone: read and written by it, not sent to the helper.
+    assert {"cell_state"} == CLIENT_ONLY_TARGETS <= {t.name for t in CLIENT_TARGETS}
     assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS,)
 
 
@@ -168,6 +178,73 @@ def test_set_item_refuses_items_and_values_it_should_not_write() -> None:
         g.set_item(50, 0, 1)  # Energy Shield: its pickup counts in byte 46, not 50
     with pytest.raises(ValueError, match="fit a byte"):
         g.set_item(3, 0, 256)
+
+
+GRID_AT, CELLS_AT, POOL_AT = 0x2000, 0x3000, 0xA000  # in cells_game's memory
+
+
+def cells_game() -> FakeGame:
+    """A fake with the map grid, the per-cell state and the item pool."""
+    size = POOL_AT + game.ITEM_OBJECTS * game.ITEM_OBJECT_SIZE
+    return fake_game(size, map_grid=GRID_AT, cell_state=CELLS_AT, item_pool=POOL_AT)
+
+
+def cell_item_at(x: int, y: int) -> int:
+    return CELLS_AT + (y * 54 + x) * game.CELL_STRIDE + game.CELL_ITEM
+
+
+def test_each_cells_item_state_is_its_ninth_byte() -> None:
+    g = cells_game()
+    g.pm.memory[CELLS_AT : CELLS_AT + 54 * 54 * 9] = bytes([4] * 8 + [0]) * (54 * 54)
+    g.pm.memory[cell_item_at(25, 25)] = 1
+    g.pm.memory[cell_item_at(53, 53)] = 2
+    states = g.cell_items()
+    assert len(states) == 54 * 54 and states[25 * 54 + 25] == 1 and states[-1] == 2
+    assert states.count(0) == 54 * 54 - 2, "the eight object states before each are not read"
+
+
+def test_the_item_objects_in_use_give_their_cells() -> None:
+    g = cells_game()
+
+    def put(slot: int, serial: int, x: int, y: int) -> None:
+        at = POOL_AT + slot * game.ITEM_OBJECT_SIZE
+        g.pm.memory[at + game.OBJECT_HANDLE : at + game.OBJECT_HANDLE + 4] = struct.pack(
+            "<I", serial
+        )
+        # The game's X at +0x3AC is this repo's y.
+        g.pm.memory[at + game.ITEM_OBJECT_CELL : at + game.ITEM_OBJECT_CELL + 2] = bytes([y, x])
+
+    put(0, 77, 19, 11)
+    put(5, 0, 23, 14)  # a freed slot keeps its last item's cell
+    put(127, 3, 34, 51)
+    assert g.live_item_cells() == {(19, 11), (34, 51)}
+
+
+def test_marking_a_cells_item_collected_is_compare_and_set() -> None:
+    g = cells_game()
+    g.set_item_collected((25, 24))
+    assert g.pm.memory[cell_item_at(25, 24)] == game.ITEM_COLLECTED
+    assert sum(g.pm.memory[CELLS_AT:POOL_AT]) == 1, "one byte written"
+    with pytest.raises(game.GameError, match="not the expected"):
+        g.set_item_collected((25, 24))  # collected already
+    g.pm.memory[cell_item_at(3, 4)] = 2  # held by an object of the cell
+    with pytest.raises(game.GameError, match="not the expected"):
+        g.set_item_collected((3, 4))
+    assert g.pm.memory[cell_item_at(3, 4)] == 2
+    with pytest.raises(ValueError, match="not on the map"):
+        g.set_item_collected((54, 0))
+
+
+def test_marking_a_map_cell_collected_is_compare_and_set() -> None:
+    g = cells_game()
+    g.pm.memory[GRID_AT + 24 * 54 + 25] = 0x19
+    with pytest.raises(game.GameError, match="not the expected"):
+        g.set_map_collected((25, 24), expected=0)
+    assert g.map_grid()[24 * 54 + 25] == 0x19
+    g.set_map_collected((25, 24), expected=0x19)
+    assert g.map_grid()[24 * 54 + 25] == 0x1B and sum(g.map_grid()) == 0x1B
+    with pytest.raises(ValueError, match="not on the map"):
+        g.set_map_collected((0, -1), expected=0)
 
 
 def test_a_run_of_flags_is_read_at_once() -> None:

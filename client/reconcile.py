@@ -11,7 +11,9 @@ The collected locations come from the live map grid (a cell reading COLLECTED), 
 hands out what the seed's item table holds there (client/newgame.py). Both the map and the
 inventory go back to the last save when the player dies or reloads, so the difference stays
 right: an item the save lost is given again, and one the game handed out is never given twice.
-An inventory above what the player should own is left alone.
+An inventory above what the player should own is left alone. A cell the client marked collected
+itself (another player's item the server has as checked: session.Session.mark) counts like one
+picked up: its stand-in's one Scrap Metal is owed, and given once.
 
 Only the supplies and Scrap Metal are counts (``COUNTED``; docs/re/save-format.md, "Inventory:
 one byte per item ID at 0x92F3"). Every other item is held once, as the game's own seeds hold it

@@ -73,6 +73,11 @@ TARGETS = (
         rip("48 8D 05 ?? ?? ?? ?? 41 FF C7 49 03 C2 42 0F B6 14 00 80 FA 18 7C 0B 8D 43 01 80 FA 32 0F 4F C3 8B D8 48 8D 05 ?? ?? ?? ??", 3, 7),
         rip("48 8D 05 ?? ?? ?? ?? 49 03 C2 48 89 84 24 A8 00 00 00 48 8D 05 ?? ?? ?? ?? 49 03 C2 48 89 74 24 40", 3, 7),
     )),
+    Target("cell_state", "the live per-cell state, 9 bytes a map cell: its 8 objects' states, then its item's (0 there, 1 collected, 2 held by an object, 3 dropped by it)", {"B1": 0x3E5201}, (
+        rip("48 8D 35 ?? ?? ?? ?? 4C 89 84 24 38 01 00 00 4C 8D 35 ?? ?? ?? ??", 3, 7),
+        rip("48 8D 0D ?? ?? ?? ?? 49 6B C2 36 49 03 C0 4C 69 D8 9A 00 00 00", 3, 7),
+        rip("48 8D 05 ?? ?? ?? ?? 44 8B C2 4B 8D 0C D2 48 69 D5 E6 01 00 00", 3, 7, -0x8),
+    )),
     Target("inventory", "the live inventory, one byte per item ID (inside the player state)", {"B1": 0x3ED47E}, (
         rip("C6 05 ?? ?? ?? ?? 01 44 89 25 ?? ?? ?? ?? 44 88 25 ?? ?? ?? ?? C7 05 ?? ?? ?? ?? 00 00 03 00", 2, 7, -0x2),
         rip("48 8B 05 ?? ?? ?? ?? 48 89 90 30 01 00 00 48 8B 05 ?? ?? ?? ?? 48 89 88 38 01 00 00 48 8B 05 ?? ?? ?? ?? 4C 89 80 40 01 00 00", 3, 7, 0x71E),
@@ -519,3 +524,7 @@ TARGETS = (
 # locate them (CLIENT_TARGETS), so one of their patterns breaking cannot stop it attaching.
 TOOL_TARGETS = frozenset({"pickup_counter"})
 CLIENT_TARGETS = tuple(t for t in TARGETS if t.name not in TOOL_TARGETS)
+# Targets the client reads and writes that the helper is not given (native.CONFIG_KEYS): it has
+# no use for them, and a key added to its config makes the offline cache written before it
+# refused until the client runs again.
+CLIENT_ONLY_TARGETS = frozenset({"cell_state"})

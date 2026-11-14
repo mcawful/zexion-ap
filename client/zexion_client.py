@@ -571,6 +571,8 @@ async def poll(ctx: ZexionContext) -> None:
             followups=followups,
             helper=ctx.helper,
             give=not waiting,
+            # Other players' items the server has as checked stay collected in the save.
+            gone=state.others_gone(conn, ctx.checked_locations),
         )
     except game.GameNotRunning:
         game_closed(ctx, seed)
@@ -583,6 +585,16 @@ async def poll(ctx: ZexionContext) -> None:
         await asyncio.sleep(2)
         return
     ctx.said.clear("read", "read detail")
+    if step.marked:
+        n = len(step.marked)
+        places = ", ".join(
+            ctx.location_names.lookup_in_slot(LOCATION_ID_BASE + i, ctx.slot)
+            for i in sorted(step.marked)
+        )
+        detail(
+            f"Marked collected in this save ({n} other players' "
+            f"{'item' if n == 1 else 'items'} found or collected already): {places}."
+        )
     if step.helper_error is not None:
         # Nothing was given (session.py); the checks and the goal go on below. The helper is
         # attached again before the next step, once: one that fails the step again (a request

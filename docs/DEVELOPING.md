@@ -23,7 +23,8 @@ builds on 2026-11-03 and 04, the 1.1.0 candidate's on 2026-11-08 (develop 559775
 Archipelago server ⇄ (websocket) ⇄ client/  (Python, outside the game)
                                      ├─ reads Zexion.exe's memory, found by byte pattern
                                      │  (game state, inventory, map); writes inventory bytes
-                                     │  itself only when no helper is in use
+                                     │  itself only when no helper is in use, and marks other
+                                     │  players' items collected
                                      └─ named pipe \\.\pipe\zexion-ap-<pid>
                                           ⇄ zexion_ap.dll, the helper (inside Zexion.exe)
 version.dll, the proxy (in the game's folder) → loads the helper as the game starts
@@ -42,7 +43,13 @@ worlds/zexion/ → generation → slot data → client
   other worlds send, and sends the goal once the save has reached the ending (with the OS
   Install Disks goal, with enough disks). It never counts its own grants: it gives what the
   player should own minus what the inventory holds, so an item lost to a death or a reload is
-  given again. Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
+  given again. Another player's item in this world stays collected once the server has its
+  location as checked (found before a death or a reload, or in another save of the seed;
+  collected by its owner; released): the client marks it collected in the loaded save, so it
+  is not there to pick up again, but for one in the rooms loaded around the player, which
+  stays until its room is left ([`native/README.md`](../native/README.md), "Other players'
+  items"). This world's own items follow the save. Only Energy Tanks, Missile Containers,
+  Mega Bombs, the boxes and Scrap Metal
   count up: any other item's byte is written as 1 at most, so a second copy (a server console's
   `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received

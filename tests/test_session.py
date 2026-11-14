@@ -16,6 +16,7 @@ from client import session as ss
 
 class FakeGame:
     def __init__(self, p: sp.SeedPlan):
+        self.plan = p
         self.state_value = game.IN_PLAY
         self.grid = bytearray(54 * 54)
         self.inv = bytearray(51)
@@ -30,6 +31,9 @@ class FakeGame:
         self.stamp = bytes(14)
         self.saved: int | None = None  # game_saved
         self.cell = (0, 0)  # the player state's, the game's (X, Y)
+        self.items = bytearray(54 * 54)  # each cell's item state (game.Game.cell_items)
+        self.live: set[tuple[int, int]] = set()  # the cells of the item objects in the rooms
+        self.spawn: set[tuple[int, int]] = set()  # rooms loaded between a mark's look and write
 
     def state(self, energy: int | None = None) -> str:
         self.reads += 1
@@ -69,6 +73,27 @@ class FakeGame:
             raise game.GameError("not the expected value")
         self.inv[item] = value
 
+    def cell_items(self) -> bytes:
+        return bytes(self.items)
+
+    def live_item_cells(self) -> set[tuple[int, int]]:
+        return set(self.live)
+
+    def set_item_collected(self, cell: tuple[int, int]) -> None:
+        x, y = cell
+        if cell in self.spawn:  # the game loaded the room first: its item is there now
+            self.spawn.discard(cell)
+            self.live.add(cell)
+        if self.items[y * 54 + x] != game.ITEM_THERE:
+            raise game.GameError("not the expected state")
+        self.items[y * 54 + x] = game.ITEM_COLLECTED
+
+    def set_map_collected(self, cell: tuple[int, int], expected: int) -> None:
+        x, y = cell
+        if self.grid[y * 54 + x] != expected:
+            raise game.GameError("not the expected marker")
+        self.grid[y * 54 + x] = 0x1B
+
     def set_supplies(self, expected, new) -> None:
         if tuple(self.sup) != tuple(expected):
             raise game.GameError("not the expected supplies")
@@ -78,8 +103,11 @@ class FakeGame:
         """A native pickup: the map cell and the item the table holds there."""
         x, y = CELLS[i]
         self.grid[y * 54 + x] = 0x1B
-        item = PLAN.location_items[i]
-        self.inv[item] += 1
+        self.items[y * 54 + x] = game.ITEM_COLLECTED
+        self.live.discard((x, y))
+        item = self.plan.location_items[i]
+        # Records 46 to 50 all raise Scrap Metal's byte (reconcile.COUNTED_AS_SCRAP).
+        self.inv[ids.SCRAP_METAL if item >= ids.SCRAP_METAL else item] += 1
 
 
 # The flags the goal reads, by number (docs/re/memory.md, "The ending: flag 250"): the ending's,
@@ -740,3 +768,161 @@ def test_the_game_closing_while_disconnected_is_raised(setup) -> None:
     g.state = closed
     with pytest.raises(game.GameNotRunning):
         session.look_away(g, gap=0)  # the client then ends its load (game_closed)
+
+
+# --- other players' items kept collected (Session.mark) --------------------------------------
+
+# A seed whose location 3 holds another player's item (a stand-in, whose pickup gives one
+# Scrap Metal) and location 5 another's progression item.
+OTHERS_PLAN = plan(
+    location_items=tuple(
+        {3: ids.STAND_IN, 5: ids.STAND_IN_PROGRESSION}.get(i, i % 46) for i in range(sp.LOCATIONS)
+    )
+)
+
+
+@pytest.fixture
+def others():
+    return ss.Session(OTHERS_PLAN), FakeGame(OTHERS_PLAN)
+
+
+def at(i: int) -> int:
+    x, y = CELLS[i]
+    return y * 54 + x
+
+
+def marked(g: FakeGame, i: int) -> bool:
+    """Whether location i reads as a pickup leaves it: no item made, and collected on the map."""
+    return g.items[at(i)] == game.ITEM_COLLECTED and g.grid[at(i)] == 0x1B
+
+
+def test_a_checked_item_of_another_player_is_marked_collected_on_the_second_poll(others) -> None:
+    session, g = others
+    first = session.step(g, [], gap=0, gone={3})
+    assert not first.marked and not marked(g, 3), "one poll alone marks nothing"
+    second = session.step(g, [], gap=0, gone={3})
+    assert second.marked == {3} and marked(g, 3)
+    assert g.items[at(5)] == game.ITEM_THERE and g.grid[at(5)] == 0, "only what the server has"
+    third = session.step(g, [], gap=0, gone={3})
+    assert third.checked == {3} and not third.marked, "it reads as collected from then on"
+
+
+def test_a_reload_from_before_is_marked_again(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    session.step(g, [], gap=0, gone={3})
+    g.items[at(3)], g.grid[at(3)] = game.ITEM_THERE, 0x0D  # the save from before, hinted
+    session.step(g, [], gap=0, gone={3})
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_marking_gives_the_scrap_metal_its_pickup_would_have_once(others) -> None:
+    session, g = others
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(6):
+        session.step(g, [], gap=0, gone={3})
+    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap + 1
+
+
+def test_an_item_in_the_loaded_rooms_is_left_until_its_room_is_left(others) -> None:
+    session, g = others
+    g.live.add(CELLS[3])
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "nothing written under it"
+    g.live.clear()  # the room left: its item object is gone
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_an_item_left_in_the_room_is_picked_up_as_usual_and_counted_once(others) -> None:
+    session, g = others
+    g.live.add(CELLS[3])
+    scrap = g.inv[ids.SCRAP_METAL]
+    session.step(g, [], gap=0, gone={3})
+    g.collect(3)  # the player takes it: the game records the pickup, and gives its Scrap Metal
+    for _ in range(4):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap + 1
+
+
+@pytest.mark.parametrize("held", [2, 3])
+def test_an_item_an_object_holds_or_has_dropped_is_left(others, held) -> None:
+    session, g = others
+    g.items[at(3)] = held
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == held and g.grid[at(3)] == 0
+    g.items[at(3)] = game.ITEM_THERE  # its room left: the game puts the state back
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_a_room_loaded_between_the_look_and_the_write_keeps_its_item_to_pick_up(others) -> None:
+    session, g = others
+    g.spawn.add(CELLS[3])
+    session.step(g, [], gap=0, gone={3})
+    step = session.step(g, [], gap=0, gone={3})
+    # The state is written, so the game makes no second item; the map cell is not, as the item
+    # is there to pick up, and a pickup counts once.
+    assert not step.marked and g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0
+    scrap = g.inv[ids.SCRAP_METAL]
+    assert not session.step(g, [], gap=0, gone={3}).marked and g.grid[at(3)] == 0
+    g.live.clear()  # the room left without picking it up
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap + 1
+
+
+def test_a_map_cell_the_game_changed_since_the_look_is_marked_by_a_later_poll(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    real = g.set_map_collected
+
+    def changed(cell, expected):
+        g.grid[at(3)] = 0x19  # the room's reveal, between the look and the write
+        real(cell, expected)
+
+    g.set_map_collected = changed
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0x19
+    g.set_map_collected = real
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_nothing_is_marked_out_of_play_or_in_another_save(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    g.state_value = game.MENU
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    g.state_value = game.IN_PLAY
+    assert not session.step(g, [], gap=0, gone={3}).marked, "two polls in play in a row again"
+    g.marker = 0  # a normal save loaded: the section in memory is still the seed's
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    g.marker = 1
+    g.blob = bytes(section(PLAN))  # a save of another seed with the same locations
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert not marked(g, 3) and g.items[at(3)] == game.ITEM_THERE
+    g.blob = bytes(section(OTHERS_PLAN))
+    session.step(g, [], gap=0, gone={3})
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_nothing_is_marked_once_the_ending_began(others) -> None:
+    session, g = others
+    begin_ending(session, g)
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert not marked(g, 3)
+
+
+def test_a_helper_to_attach_again_holds_the_grants_not_the_marking(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3}, give=False)
+    assert session.step(g, [], gap=0, gone={3}, give=False).marked == {3}
+
+
+def test_locations_the_seed_does_not_list_are_not_marked(others) -> None:
+    session, g = others
+    for _ in range(2):
+        assert not session.step(g, [], gap=0, gone={-1, sp.LOCATIONS, 999}).marked
+    assert not any(g.items) and not any(g.grid)

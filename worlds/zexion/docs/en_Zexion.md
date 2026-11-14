@@ -252,6 +252,13 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   ITEM, as every item does, with Obscure Class on; otherwise ADVANCED TECH with Obscure Majors
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
   when you pick it up.
+- Another player's item stays collected once it has been found or sent: if you die or reload
+  without saving after picking it up, or start another save of the seed, it's gone from its
+  room, and so are the items a player collects from your world (`!collect`) and the ones you
+  release (`!release`). One in the room you're in, or right next to it, stays until you leave,
+  and you can still pick it up. Your own items aren't touched: they follow your save, so after
+  a death or a reload they're back in their rooms. This needs the client connected (not yet
+  checked in the game).
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
   Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
   does, after its popup, once you have stayed on one map square for a second. Both, and the

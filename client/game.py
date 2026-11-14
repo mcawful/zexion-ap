@@ -44,6 +44,17 @@ MESSAGE_SEQUENCE = 0x1D8
 MESSAGE_GLYPH_COUNT, MESSAGE_GLYPHS, GLYPH_CHARACTER = 0x200, 0x220, 0x1C4
 GAME_SAVED = b"GAME SAVED"
 
+# The per-cell state (cell_state): 9 bytes a map cell, in the map grid's order: the states of the
+# cell's 8 objects, then its item's, which the game reads to decide whether the item appears when
+# the cell is loaded (docs/re/memory.md, "What decides whether an item appears").
+CELL_STRIDE, CELL_ITEM = 9, 8
+ITEM_THERE, ITEM_COLLECTED = 0, 1  # 2: held by an object of the cell; 3: dropped by it
+# The live item objects (item_pool): in use while the dword at +0x1D8 is not 0, the item's map
+# cell at +0x3AC (the game's X, this repo's y) and +0x3AD (docs/re/memory.md, "Live item
+# objects").
+ITEM_OBJECTS, ITEM_OBJECT_SIZE = 128, 0x3B0
+ITEM_OBJECT_CELL = 0x3AC
+
 PROCESS = "Zexion.exe"
 FLAGS = 0x9C4  # the loaded game's flags, one byte each
 # Player state fields, by offset from the player state, which starts 0x108E before the
@@ -356,6 +367,52 @@ class Game:
                 f"flags {first} to {first + count - 1} are outside the 0x{FLAGS:X} flags"
             )
         return self._read("flags", first, count)
+
+    def cell_items(self) -> bytes:
+        """Each map cell's item state (ITEM_THERE, ITEM_COLLECTED, or 2 or 3 while an object of
+        the cell holds the item or has dropped it), in the map grid's order, from one read."""
+        cells = MAP_SIZE * MAP_SIZE
+        return self._read("cell_state", 0, cells * CELL_STRIDE)[CELL_ITEM::CELL_STRIDE]
+
+    def live_item_cells(self) -> set[tuple[int, int]]:
+        """The map cells (x, y) of the item objects now in the loaded rooms, from one read of
+        the pool: an item that is there to pick up, whatever its cell's state says."""
+        pool = self._read("item_pool", 0, ITEM_OBJECTS * ITEM_OBJECT_SIZE)
+        out = set()
+        for at in range(0, len(pool), ITEM_OBJECT_SIZE):
+            if struct.unpack_from("<I", pool, at + OBJECT_HANDLE)[0]:
+                y, x = struct.unpack_from("<2b", pool, at + ITEM_OBJECT_CELL)
+                out.add((x, y))
+        return out
+
+    def _set_cell_byte(self, target: str, offset: int, expected: int, value: int) -> None:
+        """Compare-and-set one byte of a per-cell array, then read it back (as set_item)."""
+        current = self._read(target, offset, 1)[0]
+        if current != expected:
+            raise GameError(
+                f"{target}+{offset:#x} holds {current}, not the expected {expected}; not written"
+            )
+        self._write(target, offset, bytes([value]))
+
+    def set_item_collected(self, cell: tuple[int, int]) -> None:
+        """Compare-and-set a map cell's item state from ITEM_THERE to ITEM_COLLECTED, which
+        keeps the game from making the cell's item when it loads the cell (an item object
+        already there stays until its room is left). Refuses (``GameError``) if the byte does
+        not hold ITEM_THERE just before the write."""
+        x, y = cell
+        if not (0 <= x < MAP_SIZE and 0 <= y < MAP_SIZE):
+            raise ValueError(f"cell {cell} is not on the map")
+        offset = (y * MAP_SIZE + x) * CELL_STRIDE + CELL_ITEM
+        self._set_cell_byte("cell_state", offset, ITEM_THERE, ITEM_COLLECTED)
+
+    def set_map_collected(self, cell: tuple[int, int], expected: int) -> None:
+        """Compare-and-set a map cell's marker to collected (ids.COLLECTED), as a pickup
+        leaves it. Refuses (``GameError``) if the cell does not hold ``expected`` just before
+        the write."""
+        x, y = cell
+        if not (0 <= x < MAP_SIZE and 0 <= y < MAP_SIZE):
+            raise ValueError(f"cell {cell} is not on the map")
+        self._set_cell_byte("map_grid", y * MAP_SIZE + x, expected, ids.COLLECTED)
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         """Compare-and-set an item's inventory byte, then read it back.
