@@ -254,7 +254,9 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   when you pick it up.
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
   Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
-  does, after its popup, once you have stayed on one map square for a second. Scrap whose popup
+  does, after its popup, once you have stayed on one map square for a second. Both, and the
+  popups of items sent to you, wait out a teleport from the pause menu and come once you
+  arrive (not yet tried in the game). Scrap whose popup
   you saw before version 1.1.0, or that reached you before your first connection to the seed (it
   gets no popup), drops nothing, and nothing drops during the game's ending: what arrives then
   drops the next time you load the save.
@@ -297,16 +299,16 @@ takes its turn after the popups that came before it, such as an OS Install Disk'
 the trap comes after them (a second of the same kind shows its popup as it starts, and the popups
 after it don't wait for it meanwhile). It waits through the pause menu, other menus, a death or a
 load, and through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load
-then). It also waits through a teleport from the pause menu (TELEPORT TO START and the
-others), and goes off once you arrive. Each trap happens at most once, including
-one sent while your client was closed, or before you first connected (it comes when you connect);
-if the client closes just as a trap goes off, it may come again; a trap still waiting for its popup
-is lost if the game closes, or if the mod is reloaded while it waits for a save that isn't loaded;
-and with no mod running a trap sent to you does nothing. A second trap of the same kind waits for
-the first to end and then goes off, so each lasts its full 12 seconds. The game's AILMENTS assist
-setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change traps: while one runs,
-it is left out for that effect, so an enemy's touch of the same kind during a trap isn't shortened
-by it either.
+then). It also waits through a teleport from the pause menu, such as TELEPORT TO START (the other
+TELEPORT TO entries work the same way but were not tried), and goes off once you arrive. Each trap
+happens at most once, including one sent while your client was closed, or before you first connected
+(it comes when you connect); if the client closes just as a trap goes off, it may come again; a trap
+still waiting for its popup is lost if the game closes, or if the mod is reloaded while it waits for
+a save that isn't loaded; and with no mod running a trap sent to you does nothing. A second trap of
+the same kind waits for the first to end and then goes off, so each lasts its full 12 seconds. The
+game's AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change
+traps: while one runs, it is left out for that effect, so an enemy's touch of the same kind during a
+trap isn't shortened by it either.
 
 In a Zexion world, a trap looks like an important item: one of yours, or another Zexion player's,
 looks like one of that player's upgrades, keys or OS Install Disks that's in the seed (not one they
@@ -325,13 +327,15 @@ save loaded. Other games' traps sent to you do nothing in Zexion.
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused, while
 dead or while the client was disconnected; one sent before you first connected, with the client
-restarted before you played; your own trap and other players' in your world, their look (an
-upgrade, a key or an OS Install Disk) and their pickup popups, and a disk-look trap not counting;
-with Hints Revealed, a key-look trap having no key marker; a second trap's popup waiting for it;
-the client closed while a trap waits or runs; and a trap sent just after an OS Install Disk, coming
-after the disk's popup and count. Not checked in the game: a trap through RETURN HOME or the
-ending, a key-look trap after the scanner has shown your keys, other popups showing first while a
-trap waits for one of its kind to end, and the mod refusing to reload while a trap waits to go off.
+restarted before you played; your own trap and other players' in your world, their look (an upgrade,
+a key or an OS Install Disk) and their pickup popups, and a disk-look trap not counting; with Hints
+Revealed, a key-look trap having no key marker; a second trap's popup waiting for it; the client
+closed while a trap waits or runs; a trap sent just after an OS Install Disk, coming after the
+disk's popup and count; and one sent while paused, then TELEPORT TO START, RELOAD FROM CHECKPOINT or
+RELOAD FROM SAVE, going off once you are back in play. Not checked in the game: a trap through
+RETURN HOME or the ending, a key-look trap after the scanner has shown your keys, other popups
+showing first while a trap waits for one of its kind to end, and the mod refusing to reload while a
+trap waits to go off.
 
 ## Can I use the assist menu?
 
@@ -371,7 +375,8 @@ for the whole game, as they would in any save.
 ## Does Zexion support DeathLink?
 
 Yes, with the DeathLink option. When you die, everyone else in the DeathLink dies too. When
-another player dies, you die as soon as you are in play, even with an Energy Shield up. Deaths
+another player dies, you die as soon as you are in play (after a teleport from the pause menu,
+once you arrive), even with an Energy Shield up. Deaths
 received together come one at a time, after you respawn. Any still waiting when your ending
 begins, or sent during it, are dropped, unless the client first saw your save after the ending
 began (opened or connected during it): then they can still reach you during the ending. A death

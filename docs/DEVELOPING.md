@@ -131,7 +131,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
   2026-11-03; given once across reconnects: 2026-11-04; the helper's check of the whole of
   event 3553: 2026-11-09 ("Received Energy Shields"; its stop after three misses: not run in
-  game).
+  game). Shields, scrap's drops, received deaths and popups waiting out a TELEPORT TO's
+  countdown: stand-in tests only ("Popups", "Received Energy Shields").
 - Received scrap's drops (its pickup's event, after its popup), one received while
   disconnected dropping once: 2026-11-09 ("Received scrap"; what the drops were and gave not
   described).
@@ -158,9 +159,11 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   while the client was away, the same run ("AP saves without the client"); a popup's follow-ups kept
   ahead of a trap it passed, added after that run: stand-in tests only. A trap received in the
   pause, then a TELEPORT TO, waiting out the teleport's countdown and going off after its load (on
-  e500ab9 check 8, recorded as RELOAD FROM CHECKPOINT but by its timing a TELEPORT TO's countdown,
-  went off in the teleport and was reset), and through RELOAD FROM CHECKPOINT, RELOAD FROM SAVE
-  and a death's respawn: 2026-11-13 (907abfd, `lab/ap/live62`, `lab/ingame-checkpoint-checks.md`).
+  e500ab9 check 8's trap went off in a teleport and was reset; that it was a TELEPORT TO's countdown is
+  inferred from its timing, the teleport the owner saw and the 2026-11-13 trace: its record names
+  RELOAD FROM CHECKPOINT, and the owner has not confirmed), and through RELOAD FROM CHECKPOINT,
+  RELOAD FROM SAVE and a death's respawn: 2026-11-13 (907abfd, `lab/ap/live62`,
+  `lab/ingame-checkpoint-checks.md`).
   Not run in game: the ending or RETURN HOME,
   a key-look trap after the scanner, an unload refused while a trap waits, a trap's popup passed by
   others while it waits for one of its kind, a connection's first held-traps record beside another

@@ -244,7 +244,8 @@ waiting to go off; not unloading`, ending in "(no frame came)" when none came) w
 save loaded, or for any save (one received with none loaded), waits to go off: the unload would drop
 it, and the client counts it handed over. That is a quarter of a second of play once its popup's
 turn has come, longer while the popups queued before it show first, the game is halted, a menu is
-open, a transition counts down (a TELEPORT TO's 60 frames), or RETURN HOME or the ending holds it. A trap waiting for a save that is not loaded (another
+open, a transition counts down (a TELEPORT TO's 60 frames), or RETURN HOME or the ending holds it. A
+trap waiting for a save that is not loaded (another
 save, or none: the title) is lost with the helper, as its popup is (stand-in tests:
 `tests/apply_test.cpp` over the pipe, `tests/game_tests.cpp`; not run in game). Working in game
 2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8,
@@ -314,6 +315,13 @@ major-item list (the frame call fills that in: below), achievements, switching t
 and a key's area event (which only hides the key's map marker: `docs/re/memory.md`, "Keys, the
 gates and the key markers").
 
+**During a TELEPORT TO's countdown,** which reads as play, an `apply` is still taken. The load at
+its end loads the player from the copy the teleport made of the play state when it was chosen
+(`docs/re/memory.md`, "The mission prompt", "A save at the Landing Pod"), so by the code it undoes
+those writes; the client's next look finds the items missing and gives them again
+(`client/reconcile.py`), so none is lost. Not changed here, and not seen in game; the popups wait
+out the countdown ("Popups").
+
 **The major-item list** (`pickup_list`; the file select's ITEMS row draws each save's): every
 frame call in play in an AP save (`Game::watch_pickups`), the helper appends to it each owned
 item the game's pickup would list (`pickups::listed`, `src/game_layout.h`) whose icon is not in
@@ -334,12 +342,13 @@ select filled; the Machine Gun's row in a Standard save not singled out).
 
 ### Popups
 
-- **When:** one at a time, in a frame call, in play only, once the game's last popup has ended
-  and at least 20 frames after the helper's last, and not while RETURN HOME WITH THE DISKS? is
-  on its way (its fade, before the game opens it), nor from its YES (the screen kept black or
-  not) through the ending it started: the ending does not wait for them, so they show at the
-  save's next load. Each plays
-  the item's own pickup sound.
+- **When:** one at a time, in a frame call, in play only, once the game's last popup has ended and
+  at least 20 frames after the helper's last, and not while RETURN HOME WITH THE DISKS? is on its
+  way (its fade, before the game opens it), nor from its YES (the screen kept black or not) through
+  the ending it started: the ending does not wait for them, so they show at the save's next load.
+  Nor while a transition counts down (a TELEPORT TO's 60 frames, which read as play): the load at
+  its end clears the message slots (`0x1F9CE0`) and would cut a popup short (stand-in tests only:
+  `test_received_things_wait_out_a_teleport`). Each plays the item's own pickup sound.
 - **Queue:** a popup the game cannot take yet (all four message slots busy) stays queued; one
   whose item has no record (records not loaded yet) is dropped. `applied` means queued, not
   shown; the client counts a received item's popup as done once `apply` took it. The queue
@@ -347,8 +356,8 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   closing, loses the popups still queued (their items are given). A received trap waits in the
   queue as its popup, in its turn, and goes off as it shows, which an unload waits for in the
   save loaded ("Traps", "Unloading"); while it cannot go off (one of its kind running, the
-  game's ending) the popups behind it show first, and while it waits a moment (the frame of a
-  load, the game halted) they wait with it.
+  game's ending) the popups behind it show first, and while it waits a moment (a quarter second
+  into play, the game halted) they wait with it.
 - **Their save:** a client's popup is for the seed of the randomizer save loaded when `apply`
   took it (with none loaded, it shows in any save). While a save of another seed, or a normal
   save, is in play it waits (not keeping RETURN HOME WITH THE DISKS? waiting), and the next one
@@ -418,12 +427,15 @@ were not singled out.
   cell (`spawn_shield`, which checks first that the record names event 3553, that the event's
   whole record is B1's, and that its handler is in the game's code: `run_item_event`, as for
   "Received scrap").
-- **When:** once the player has been in play in one cell for a second, and not in an ending
-  RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
-  asks for each received shield not yet given, again for one not seen up within a few seconds,
-  and counts it once it sees the shield up; after three requests in a row not seen up it asks
-  for none until the save is left or the game closes (another seed or slot has its own count of
-  misses: `client/shields.py`, `client/state.py`'s `SeedState`).
+- **When:** once the player has been in play in one cell for a second with no transition counting
+  down (a TELEPORT TO's 60 frames read as play, and the load at their end resets the player, the
+  shield's strength with it; the second starts again after it: stand-in tests only,
+  `test_received_things_wait_out_a_teleport`), and not in an ending RETURN HOME WITH THE DISKS?
+  started (`refused RETURN HOME WITH THE DISKS? ending`). The client asks for each received shield
+  not yet given, again for one not seen up within a few seconds, and counts it once it sees the
+  shield up; after three requests in a row not seen up it asks for none until the save is left or
+  the game closes (another seed or slot has its own count of misses: `client/shields.py`,
+  `client/state.py`'s `SeedState`).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("Received Energy Shields"); the client's check as it is now, with the
@@ -456,22 +468,22 @@ and was read as up.
   "Intel Chips"), an Energy Shield (the client's `shield`) or a notice, nor for a
   stand-in found in the world (its record names no event while restyled: the item is another
   player's).
-- **When:** as `shield`: once the player has been in play in one cell for a second, and not
-  from RETURN HOME WITH THE DISKS?'s fade through the ending it started; one a frame call, in
-  the order of their popups. In another seed's save or a normal save it waits for its popup's
-  save ("Popups"); off the map, for the player to be on it. Nor in the game's own ending, whose
-  cutscenes read as play: the helper reads the client's goal (flag 250 set, flag 211 clear:
-  `client/session.py`) every frame, and once a load has been in play with it false, every drop
-  waits while it reads true, whenever its popup showed, until the next load
-  (`docs/re/memory.md`, "The ending: flag 250", "The escape skip"), as the client holds
-  received items then. A save past its ending reads it true from the start and gets its drops,
-  until it plays the ending again (211 set at the ship, or by the escape skip's YES, and cleared
-  as the ending begins; 211 read set counts even on a frame not in play). As for the client, an
-  ending replayed under Abridged Finale (no escape, so no 211) is not told apart; that 211
-  behaves in a replay as measured in a first playthrough is assumed; and a death after 211 is
-  set at the ship (the save point's flags back: 250 set, 211 clear) holds drops, as it does
-  the client's items, until the next load. The popup itself still shows over the ending's
-  cutscenes, as before.
+- **When:** as `shield`: once the player has been in play in one cell for a second with no
+  transition counting down (the load at a TELEPORT TO's end rebuilds the room: stand-in tests only,
+  `test_received_things_wait_out_a_teleport`), and not from RETURN HOME WITH THE DISKS?'s fade
+  through the ending it started; one a frame call, in the order of their popups. In another seed's
+  save or a normal save it waits for its popup's save ("Popups"); off the map, for the player to be
+  on it. Nor in the game's own ending, whose cutscenes read as play: the helper reads the client's
+  goal (flag 250 set, flag 211 clear: `client/session.py`) every frame, and once a load has been in
+  play with it false, every drop waits while it reads true, whenever its popup showed, until the
+  next load (`docs/re/memory.md`, "The ending: flag 250", "The escape skip"), as the client holds
+  received items then. A save past its ending reads it true from the start and gets its drops, until
+  it plays the ending again (211 set at the ship, or by the escape skip's YES, and cleared as the
+  ending begins; 211 read set counts even on a frame not in play). As for the client, an ending
+  replayed under Abridged Finale (no escape, so no 211) is not told apart; that 211 behaves in a
+  replay as measured in a first playthrough is assumed; and a death after 211 is set at the ship
+  (the save point's flags back: 250 set, 211 clear) holds drops, as it does the client's items,
+  until the next load. The popup itself still shows over the ending's cutscenes, as before.
 - **Once:** a drop rides on its popup. The client hands each received item's popup over once
   (its count in the server's data storage: "Grants"); the helper queues the drop as it shows
   the popup and forgets it once run. So a scrap received while disconnected, or out of play,
@@ -502,15 +514,17 @@ the player to be on the map.
 
 - **What:** `die` deals a received death as the game's damage code does: energy to 0, then the
   game's death routine (`kill`), through an Energy Shield too.
-- **When:** once the player has been in play in one cell for a second, the game's halt byte is
-  clear, no message is showing (the routine posts one without checking it was made) and
-  RETURN HOME WITH THE DISKS? is not between its fade and its prompt, nor in the black after its
-  YES or the ending it started; otherwise `refused` (`not configured`, `not settled`, `halted`,
-  `message showing`, `RETURN HOME WITH THE DISKS? opening`, `RETURN HOME WITH THE DISKS?
-  ending`, `no frame`). The client queues received deaths and asks once a second, one at a time
-  (`client/deathlink.py`); it drops the queue while an ending that began in this load runs
-  (`Session.holding`, also an ending played again through RETURN HOME); a save that had already
-  ended deals them as any save does until its ending is played again (stand-in tests only).
+- **When:** once the player has been in play in one cell for a second with no transition counting
+  down (a death in a TELEPORT TO's countdown would race the load at its end: stand-in tests only,
+  `test_received_things_wait_out_a_teleport`), the game's halt byte is clear, no message is showing
+  (the routine posts one without checking it was made) and RETURN HOME WITH THE DISKS? is not
+  between its fade and its prompt, nor in the black after its YES or the ending it started;
+  otherwise `refused` (`not configured`, `not settled`, `halted`, `message showing`, `RETURN HOME
+  WITH THE DISKS? opening`, `RETURN HOME WITH THE DISKS? ending`, `no frame`). The client queues
+  received deaths and asks once a second, one at a time (`client/deathlink.py`); it drops the queue
+  while an ending that began in this load runs (`Session.holding`, also an ending played again
+  through RETURN HOME); a save that had already ended deals them as any save does until its ending
+  is played again (stand-in tests only).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23; 2026-11-02 (B1, `zexion_ap.dll` `946b08a1…`), a death received
@@ -682,19 +696,21 @@ nothing to the player; a trap received while dead, going off 0.8 s after the res
 660 frames; and two Disruption Traps with the client closed 3.3 s into the first: the first ran its
 660 frames, the second, waiting in the helper, went off with its popup as the first ran out, 660
 frames, with no client, and neither again once the client was back. **Not working in game** on
-e500ab9: a trap received in the pause went off during the teleport that followed and was reset 0.39
-s later, in check 8, recorded as RELOAD FROM CHECKPOINT (that reload loads as its menu closes, with
-no teleport: by its timing and the teleport the owner saw, it was a TELEPORT TO's countdown;
-"When"). Held through that countdown since 907abfd: **working in game** (2026-11-13, B1,
-`zexion_ap.dll` `55fd60e4…` built from 907abfd, the seed `lab/ap/live62`, slot 5, a new save, the
-owner's reports, the trap timers read in memory every 2 ms; `lab/ingame-checkpoint-checks.md`): a
-Disruption Trap received in the pause, then TELEPORT TO START: set 0.25 s after the teleport's load,
-660 frames ("the trap arrived after loading into the area the teleport took me to"); and, as before,
-with a trap received in the pause, RELOAD FROM CHECKPOINT ("I got it after loading in from the
-checkpoint") and RELOAD FROM SAVE ("got the trap when loading back in"), and one received while
-dead, through the respawn ("I got the trap after getting back into the game"), each its full 660
-frames. Also on e500ab9, the popup order, where a trap's popup and the trap came before a disk's
-popup and count received with it.
+e500ab9: a trap received in the pause went off during a teleport and was reset 0.39 s later, in
+check 8 (inferred, not measured: its record names RELOAD FROM CHECKPOINT, and the owner has not
+confirmed which entry they chose; by its timing (the reset 1.0 s after the menu closed), the
+teleport and the start room the owner saw, and the 2026-11-13 trace, in which RELOAD FROM CHECKPOINT
+has no such stretch, it was a TELEPORT TO's countdown; "When"). Held through that countdown since
+907abfd: **working in game** (2026-11-13, B1, `zexion_ap.dll` `55fd60e4…` built from 907abfd, the
+seed `lab/ap/live62`, slot 5, a new save, the owner's reports, the trap timers read in memory every
+2 ms; `lab/ingame-checkpoint-checks.md`): a Disruption Trap received in the pause, then TELEPORT TO
+START: set 0.25 s after the teleport's load, 660 frames ("the trap arrived after loading into the
+area the teleport took me to"); with a trap received in the pause, RELOAD FROM CHECKPOINT ("I got it
+after loading in from the checkpoint") and RELOAD FROM SAVE ("got the trap when loading back in"),
+the first recorded as failing in check 8 and the second not run before; and, as before, one received while dead, through the respawn ("I got the
+trap after getting back into the game"), each its full 660 frames. The other two TELEPORT TO entries
+set the same timer (by disassembly) and were not run. Also on e500ab9, the popup order, where a
+trap's popup and the trap came before a disk's popup and count received with it.
 That order is changed since 704bd25 (a received trap's popup in its turn, the trap going off as it
 shows; stand-in tests `test_a_trap_popup_takes_its_turn` and
 `test_a_parked_trap_popup_does_not_hold_the_mission`, `test_a_trap_popup_with_no_record_waits`):
