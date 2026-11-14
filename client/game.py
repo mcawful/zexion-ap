@@ -6,11 +6,13 @@
 ``PatternError`` and nothing is touched. Every read and write first checks the process is
 alive (``GameNotRunning`` only once it has exited).
 
-Item writes are compare-and-set and read back. A grant lasts only once the game saves it
-(docs/re/memory.md, "Granting each kind of item"); client/session.py gives again what a reload
-took. ``state()`` can read IN_PLAY mid-load (the load sets two of its three values before
-restoring the inventory), so writers use ``settled_state()`` and re-check after writing
-(docs/re/memory.md, "Telling play from menus, the title screen and death").
+Item writes are compare-and-set and read back, as are the two that mark a location collected
+(``set_item_collected``, ``set_map_collected``: docs/re/memory.md, "What decides whether an item
+appears"). A grant lasts only once the game saves it (docs/re/memory.md, "Granting each kind of
+item"); client/session.py gives again what a reload took, and marks again. ``state()`` can read
+IN_PLAY mid-load (the load sets two of its three values before restoring the inventory), so
+writers use ``settled_state()`` and re-check after writing (docs/re/memory.md, "Telling play
+from menus, the title screen and death").
 """
 
 from __future__ import annotations

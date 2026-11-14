@@ -133,6 +133,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04; another
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
+- Other players' items kept collected once the server has them as checked (after a death or a
+  reload, in another save of the seed, after `!collect` or `!release`): stand-in tests only,
+  not run in game ("Other players' items", "Kept collected"; "What decides whether an item
+  appears").
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:

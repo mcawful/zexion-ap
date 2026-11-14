@@ -1,5 +1,6 @@
 """One poll of the running game: which locations were checked, whether the goal was reached,
-and the grants that bring the inventory up to what the player should own.
+the grants that bring the inventory up to what the player should own, and other players' items
+the server has as checked marked collected in the save.
 
 No Archipelago imports, so the tests drive it with a fake game. The client calls ``step`` a few
 times a second from a worker thread and does the networking.
