@@ -2061,6 +2061,76 @@ void test_a_later_batchs_notice_stays_behind_a_trap_passed() {
     game.put_back_traps();
 }
 
+// Frame calls as dllmain.cpp makes them (note_play, pump_traps, pump_popups), one every 16 ms
+// from `from` to `to`.
+void play_frames(zap::Game& game, uint64_t from, uint64_t to) {
+    for (uint64_t now = from; now <= to; now += 16) {
+        game.note_play(now);
+        game.pump_traps(now);
+        game.pump_popups();
+    }
+}
+
+// A TELEPORT TO's countdown (the transition timer at 60 as the menu closes, the load and its
+// reset of the player when it reaches 0) reads as play: a trap received in the pause (which the
+// client hands over once the menu has closed), and this world's own, wait it out with their
+// popups, then go off a moment after the load, for their full time (check 8 of the 2026-11-11
+// run, docs/re/memory.md, "Telling play from menus, the title screen and death").
+void test_traps_wait_out_a_teleport() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    g_menu = 2;  // the pause menu
+    game.note_play(5000);
+    g_menu = 0;  // TELEPORT TO START: the menu closes with its 60 frames queued
+    g_transition_timer = 60;
+    game.note_play(5016);
+    check(apply(game, "apply\npopup 102 FROM ALICE") == "applied",
+          "received in the pause, handed over as the countdown reads as play");
+    play_frames(game, 5016, 6000);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1 && game.queued_popups() == 1 &&
+              g_messages == 0,
+          "not set through the teleport, a second past the menu, nor its popup shown");
+    check(apply(game, "apply\ntrap 103") == "applied" && game.queued_traps() == 2,
+          "this world's own found meanwhile");
+    play_frames(game, 6016, 6200);
+    check(field<int16_t>(0xDC4) == 0 && game.queued_traps() == 2, "it waits too");
+    g_transition_timer = 0;  // the load: the player reset
+    field<int8_t>(0xDDB) = -1;
+    play_frames(game, 6216, 6400);
+    check(field<int16_t>(0xDC2) == 0 && field<int16_t>(0xDC4) == 0 && game.queued_traps() == 2,
+          "not in the moment after the load");
+    play_frames(game, 6416, 6600);
+    check(field<int16_t>(0xDC4) == 660 && field<int16_t>(0xDC2) == 660 &&
+              game.queued_traps() == 0 && g_messages == 1 &&
+              g_text.find("DISRUPTION TRAP") != std::string::npos,
+          "then both, full length, the received one's popup as it goes off");
+    check(game.trap_status() == "queued 0; last set 102", "each once");
+    field<int16_t>(0xDC2) = 300;  // counting down
+    field<int16_t>(0xDC4) = 300;
+    play_frames(game, 6616, 7000);
+    check(field<int16_t>(0xDC2) == 300 && field<int16_t>(0xDC4) == 300 && g_messages == 1,
+          "not again");
+    game.put_back_traps();
+
+    // A transition queued with no frame of note_play since (a frame call's order): held all the
+    // same, and long in play does not let it through.
+    zap::Game other;
+    ready(other);
+    trap_records();
+    in_play_since(other, 5000);
+    g_transition_timer = 60;
+    apply(other, "apply\ntrap 102");
+    other.pump_traps(9000);
+    check(field<int16_t>(0xDC2) == 0 && other.queued_traps() == 1,
+          "a transition queued holds it at once");
+    g_transition_timer = 0;
+    play_frames(other, 9000, 9300);
+    check(field<int16_t>(0xDC2) == 660 && other.queued_traps() == 0, "set once it has run");
+    other.put_back_traps();
+}
+
 // A received trap's popup with no record to show it by (Scrap Metal's, records not loaded) waits
 // with its trap, never dropped as other popups are.
 void test_a_trap_popup_with_no_record_waits() {
@@ -3196,6 +3266,7 @@ int main() {
     test_a_later_batchs_notice_stays_behind_a_trap_passed();
     test_traps_without_ailments();
     test_traps_held_for_the_ending();
+    test_traps_wait_out_a_teleport();
     test_assist_watch();
     test_newgame_watch();
     test_randomizer_by_seed();

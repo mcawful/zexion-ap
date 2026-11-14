@@ -559,9 +559,10 @@ dealt on the next load ("DeathLink").
   look shows its label) is sent when a client next connects with that save loaded (the follow-ups
   take this world's finds made without a client too), so it starts then, wherever the player is.
 - **When:** one a frame call (`pump_traps`, after the watches, so never while an unload runs), once
-  the player has been in play for a quarter of a second in any cell (not the frame of a load, whose
-  reset would undo it; but see RELOAD FROM CHECKPOINT's teleport below) with the game's halt byte
-  clear, not from RETURN HOME WITH THE DISKS?'s fade through the ending it started, and not in the
+  the player has been in play for a quarter of a second in any cell with no transition counting
+  down (the game's transition timer above 0, `transition_queued`: a TELEPORT TO's 60 frames before
+  its load, which read as play, and whose load's reset would undo the trap) and with the game's halt
+  byte clear, not from RETURN HOME WITH THE DISKS?'s fade through the ending it started, and not in the
   game's own ending, held as received scrap's drops are ("Received scrap", "When"), in the save its
   `apply` was for (another seed's save or a normal save: it waits). One of each kind at a time (the
   owner's choice): a trap waits while one of its kind that a trap started still runs, and starts as
@@ -574,21 +575,25 @@ dealt on the next load ("DeathLink").
   for the save loaded, a disk's and its count or a chip's and its hint among them, and past popups
   waiting for another save. "Shows" is the frame the game's popup routine takes it (`message_fn`
   returns a message): one not taken (every message slot busy, a translation's entry not free yet)
-  keeps its trap waiting with it. While its trap waits for a moment (a quarter second into play, the
-  halt byte) the popups behind it wait too, as behind any popup; while it waits for one of its kind,
+  keeps its trap waiting with it. While its trap waits for a moment (a quarter second into play, a
+  transition counting down, the halt byte) the popups behind it wait too, as behind any popup; while it waits for one of its kind,
   or through the game's ending, they go first, and its popup shows only as its trap starts (nor does
   it hold RETURN HOME's fade). A popup that goes ahead of such a trap's keeps its own follow-ups (a
   disk's count, a chip's hint: the notices of its own `apply`; another `apply`'s stay put) right
   behind it, so a trap whose kind runs out while that popup shows comes after them (since the review
-  of 1ead60c, stand-in tests only: `test_a_popups_notices_stay_ahead_of_a_trap_it_passed`). With no
+  of 1ead60c, stand-in tests only: `test_a_popups_notices_stay_ahead_of_a_trap_it_passed` and
+  `test_a_later_batchs_notice_stays_behind_a_trap_passed`). With no
   record for Scrap Metal (records not loaded) it waits, never dropped as other popups are. That the
   game draws every message its routine takes is not traced, and a popup a load cuts short has
-  already set its trap off (the load's reset then ends it: see the frame of a load above). Held
-  through the pause and every menu (not in play), a death (energy 0) and a load. But not through
-  RELOAD FROM CHECKPOINT's teleport: after its menu closes the game plays a teleport in the player's
-  room for about a second that reads as play, so a trap received in the pause goes off during it and
-  the load at its end resets the timer (in game 2026-11-11: 0.39 s of a Disruption Trap's 660
-  frames; `docs/re/memory.md`, "Telling play from menus, the title screen and death"). A cutscene
+  already set its trap off (the load's reset then ends it). Held through the pause and every menu
+  (not in play), a death (energy 0), a load, and a TELEPORT TO's countdown: after its menu closes the
+  game plays the teleport in the player's room for 60 frames that read as play, then loads, and the
+  load resets the player's timers, so a trap received in the pause waits until a quarter second after
+  that load, with its popup (`test_traps_wait_out_a_teleport`; before, it went off during the
+  teleport and the load ended it 0.39 s later, in game 2026-11-11: `docs/re/memory.md`, "Telling
+  play from menus, the title screen and death"). RELOAD FROM CHECKPOINT and RELOAD FROM SAVE load in
+  the frame after their menu closes, and a death's respawn behind its menu, so neither has such a
+  stretch; room changes leave the timer alone (the same heading). A cutscene
   other than the ending's is not told apart from play either: none was measured. Without the
   AILMENTS keys (an offline cache written before the traps, configuring a helper that a client has
   not configured since), a trap runs with AILMENTS as the game applies it.

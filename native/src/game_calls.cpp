@@ -96,7 +96,9 @@ bool has_drop(const Popup& popup) {
 // A received trap's popup: its name and no icon (it has no record), Scrap Metal's sound.
 bool trap_popup(const Popup& popup) { return !popup.bare && trap::is_trap(popup.item); }
 constexpr uint64_t kSettledMs = 1000;  // in play in one cell this long: a shield, a drop, a death
-// In play this long, in any cell: a trap (not the frame of a load, whose reset would undo it).
+// In play this long, in any cell, with no transition queued: a trap. A margin past a menu, a death
+// or a load; alone it does not cover a transition's countdown, which reads as play (a TELEPORT
+// TO's 60 frames before its load, whose reset would undo the trap: transition_queued).
 constexpr uint64_t kTrapSettledMs = 250;
 // The player's death: death_fn(player, 0), as the damage code calls it (docs/re/memory.md,
 // "DeathLink").
@@ -595,7 +597,12 @@ void Game::note_play(uint64_t now_ms) {
         in_play_since_ms_ = 0;
         return;
     }
-    if (in_play_since_ms_ == 0) in_play_since_ms_ = now_ms;
+    // A trap's clock starts again once a queued transition has run (pump_traps).
+    if (transition_queued()) {
+        in_play_since_ms_ = 0;
+    } else if (in_play_since_ms_ == 0) {
+        in_play_since_ms_ = now_ms;
+    }
     BYTE* p = player();
     int cell = at<uint8_t>(p, kPlayerCellRow) * 256 + at<uint8_t>(p, kPlayerCellColumn);
     if (play_since_ms_ == 0 || cell != play_cell_) {
@@ -680,11 +687,15 @@ std::string Game::drop_status() const {
 void Game::pump_traps(uint64_t now_ms) {
     if (!configured_) return;
     if (held_for_ending()) return;
-    // In play for a moment (not the frame of a load), not halted, not from RETURN HOME's fade
-    // through its ending, and in the save it was for. A state not measured (a cutscene other than
-    // the ending's) is not told apart: docs/re/memory.md, "Telling play from menus, the title
-    // screen and death".
-    if (!in_play() || in_play_since_ms_ == 0 || now_ms - in_play_since_ms_ < kTrapSettledMs) return;
+    // In play for a moment with no transition queued (a TELEPORT TO's countdown reads as play, and
+    // the load at its end resets the player), not halted, not from RETURN HOME's fade through its
+    // ending, and in the save it was for. A state not measured (a cutscene other than the
+    // ending's) is not told apart: docs/re/memory.md, "Telling play from menus, the title screen
+    // and death".
+    if (!in_play() || transition_queued() || in_play_since_ms_ == 0 ||
+        now_ms - in_play_since_ms_ < kTrapSettledMs) {
+        return;
+    }
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     if (*at_.halt_flag != 0) return;
     // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a

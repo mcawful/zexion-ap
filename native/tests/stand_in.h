@@ -820,6 +820,7 @@ inline void reset_game() {
     std::memset(g_pickups, 0, sizeof(g_pickups));
     g_save_loaded = 3;
     g_menu = 0;
+    g_transition_timer = 0;  // no transition queued, as idle in play
     field<int16_t>(0xCEA) = 48;  // energy
     field<int16_t>(0xCEC) = 48;
     field<int16_t>(0xCBC) = 2;  // missiles, of a max of 3
