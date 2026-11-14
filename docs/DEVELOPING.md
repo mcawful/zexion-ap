@@ -156,9 +156,12 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   and count sent before it: 2026-11-11 (932411b, `lab/ap/live62`,
   `lab/ingame-popup-order-checks.md`), and ARCHIPELAGO CLIENT CONNECTED. before the items received
   while the client was away, the same run ("AP saves without the client"); a popup's follow-ups kept
-  ahead of a trap it passed, added after that run: stand-in tests only. Not working in game: a trap
-  received in the pause before RELOAD FROM CHECKPOINT, which went off in the reload's teleport and
-  was reset (`kTrapSettledMs` does not cover that load). Not run in game: the ending or RETURN HOME,
+  ahead of a trap it passed, added after that run: stand-in tests only. A trap received in the
+  pause, then a TELEPORT TO, waiting out the teleport's countdown and going off after its load (on
+  e500ab9 check 8, recorded as RELOAD FROM CHECKPOINT but by its timing a TELEPORT TO's countdown,
+  went off in the teleport and was reset), and through RELOAD FROM CHECKPOINT, RELOAD FROM SAVE
+  and a death's respawn: 2026-11-13 (907abfd, `lab/ap/live62`, `lab/ingame-checkpoint-checks.md`).
+  Not run in game: the ending or RETURN HOME,
   a key-look trap after the scanner, an unload refused while a trap waits, a trap's popup passed by
   others while it waits for one of its kind, a connection's first held-traps record beside another
   client's (the `default` operation), and the restart doubles ("Traps").

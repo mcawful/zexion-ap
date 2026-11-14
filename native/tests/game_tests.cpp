@@ -1685,7 +1685,7 @@ void trap_records() {
     put<float>(g_records + 46 * 100, 0x5C, 1.0f);
 }
 
-// In play for a moment, as a trap waits for (not the frame of a load).
+// In play for a moment, as a trap waits for (a quarter second, with no transition queued).
 void in_play_since(zap::Game& game, uint64_t now) { game.note_play(now - 1000); }
 
 // The stand-in's AILMENTS tests, each jne as the game has it (75) or patched (EB).

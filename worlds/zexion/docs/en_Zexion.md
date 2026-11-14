@@ -297,8 +297,8 @@ takes its turn after the popups that came before it, such as an OS Install Disk'
 the trap comes after them (a second of the same kind shows its popup as it starts, and the popups
 after it don't wait for it meanwhile). It waits through the pause menu, other menus, a death or a
 load, and through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load
-then). One that reaches you in the pause menu just before RELOAD FROM CHECKPOINT goes off during
-the reload's teleport, and the reload ends it at once. Each trap happens at most once, including
+then). It also waits through a teleport from the pause menu (TELEPORT TO START and the
+others), and goes off once you arrive. Each trap happens at most once, including
 one sent while your client was closed, or before you first connected (it comes when you connect);
 if the client closes just as a trap goes off, it may come again; a trap still waiting for its popup
 is lost if the game closes, or if the mod is reloaded while it waits for a save that isn't loaded;

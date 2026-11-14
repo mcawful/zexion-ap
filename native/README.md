@@ -244,7 +244,7 @@ waiting to go off; not unloading`, ending in "(no frame came)" when none came) w
 save loaded, or for any save (one received with none loaded), waits to go off: the unload would drop
 it, and the client counts it handed over. That is a quarter of a second of play once its popup's
 turn has come, longer while the popups queued before it show first, the game is halted, a menu is
-open, or RETURN HOME or the ending holds it. A trap waiting for a save that is not loaded (another
+open, a transition counts down (a TELEPORT TO's 60 frames), or RETURN HOME or the ending holds it. A trap waiting for a save that is not loaded (another
 save, or none: the title) is lost with the helper, as its popup is (stand-in tests:
 `tests/apply_test.cpp` over the pipe, `tests/game_tests.cpp`; not run in game). Working in game
 2026-11-11, B1, `zexion_ap.dll` `9370c356…` built from 5f66f1b, the seed `lab/ap/live61`, slot 8,
@@ -589,11 +589,11 @@ dealt on the next load ("DeathLink").
   (not in play), a death (energy 0), a load, and a TELEPORT TO's countdown: after its menu closes the
   game plays the teleport in the player's room for 60 frames that read as play, then loads, and the
   load resets the player's timers, so a trap received in the pause waits until a quarter second after
-  that load, with its popup (`test_traps_wait_out_a_teleport`; before, it went off during the
-  teleport and the load ended it 0.39 s later, in game 2026-11-11: `docs/re/memory.md`, "Telling
-  play from menus, the title screen and death"). RELOAD FROM CHECKPOINT and RELOAD FROM SAVE load in
-  the frame after their menu closes, and a death's respawn behind its menu, so neither has such a
-  stretch; room changes leave the timer alone (the same heading). A cutscene
+  that load, with its popup (before, it went off during the teleport and the load ended it 0.39 s
+  later: below; `docs/re/memory.md`, "Telling play from menus, the title screen and death").
+  RELOAD FROM CHECKPOINT and RELOAD FROM SAVE load as their menu closes, and a death's respawn
+  behind its menu, so none of them has such a stretch; room changes leave the timer alone (the same
+  heading). A cutscene
   other than the ending's is not told apart from play either: none was measured. Without the
   AILMENTS keys (an offline cache written before the traps, configuring a helper that a client has
   not configured since), a trap runs with AILMENTS as the game applies it.
@@ -629,7 +629,9 @@ dealt on the next load ("DeathLink").
   restart before the hand-over finds no held trap: lost, which needs another client to write the
   key. Junk in the popup count (not a count, from another client) reads as none stored, so a client
   restarted then counts every trap the slot ever received as held and sets them off again. A trap
-  whose effect a reload or a death ends early is not given again, as with the enemies' own.
+  whose effect a reload or a death ends early is not given again, as with the enemies' own; nor one
+  a save at a save point ends (its player reset, by disassembly, not seen in game:
+  `docs/re/memory.md`, "Ailments: the script step that sets them", "What clears them").
 - `trap_status` (for live checks): `queued N; last <outcome>`, N the traps not set off yet (this
   world's own and the received ones' popups waiting), the outcome `none`, `set ITEM`, or `nothing
   ITEM` (its timer already longer).
@@ -639,7 +641,7 @@ dealt on the next load ("DeathLink").
   are the game's, and run out as the enemies' do.
 
 Stand-in tests (`tests/game_tests.cpp`: `test_received_traps`, `test_own_traps`,
-`test_traps_without_ailments`, `test_traps_held_for_the_ending`). **Run in game in its first
+`test_traps_without_ailments`, `test_traps_held_for_the_ending`, `test_traps_wait_out_a_teleport`). **Run in game in its first
 design** (2026-11-11, B1, `zexion_ap.dll` `8fb38a28…` built from PR #138's 57381bf, the seed
 `lab/ap/live59`, slot 7, the owner's reports; `lab/ingame-138-traps-checks.md`), when a trap went
 off after its popup closed, for 240 and 251 frames, an Energy Shield took a Disruption Trap and
@@ -679,10 +681,20 @@ with the fallback look (its owner started with every upgrade), shown as the Rock
 nothing to the player; a trap received while dead, going off 0.8 s after the respawn for its full
 660 frames; and two Disruption Traps with the client closed 3.3 s into the first: the first ran its
 660 frames, the second, waiting in the helper, went off with its popup as the first ran out, 660
-frames, with no client, and neither again once the client was back. **Not working in game:** a trap
-received in the pause before RELOAD FROM CHECKPOINT went off during the reload's teleport and was
-reset 0.39 s later ("When"; so `kTrapSettledMs` does not cover that load); and the popup order on
-e500ab9, where a trap's popup and the trap came before a disk's popup and count received with it.
+frames, with no client, and neither again once the client was back. **Not working in game** on
+e500ab9: a trap received in the pause went off during the teleport that followed and was reset 0.39
+s later, in check 8, recorded as RELOAD FROM CHECKPOINT (that reload loads as its menu closes, with
+no teleport: by its timing and the teleport the owner saw, it was a TELEPORT TO's countdown;
+"When"). Held through that countdown since 907abfd: **working in game** (2026-11-13, B1,
+`zexion_ap.dll` `55fd60e4…` built from 907abfd, the seed `lab/ap/live62`, slot 5, a new save, the
+owner's reports, the trap timers read in memory every 2 ms; `lab/ingame-checkpoint-checks.md`): a
+Disruption Trap received in the pause, then TELEPORT TO START: set 0.25 s after the teleport's load,
+660 frames ("the trap arrived after loading into the area the teleport took me to"); and, as before,
+with a trap received in the pause, RELOAD FROM CHECKPOINT ("I got it after loading in from the
+checkpoint") and RELOAD FROM SAVE ("got the trap when loading back in"), and one received while
+dead, through the respawn ("I got the trap after getting back into the game"), each its full 660
+frames. Also on e500ab9, the popup order, where a trap's popup and the trap came before a disk's
+popup and count received with it.
 That order is changed since 704bd25 (a received trap's popup in its turn, the trap going off as it
 shows; stand-in tests `test_a_trap_popup_takes_its_turn` and
 `test_a_parked_trap_popup_does_not_hold_the_mission`, `test_a_trap_popup_with_no_record_waits`):
