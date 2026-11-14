@@ -282,5 +282,7 @@ Committed under `.claude/`, so they apply to anyone working here:
 - Subagents: `docs-reviewer` (docs a change made wrong, behavior nothing describes),
   `logic-reviewer` (APWorld rules not backed by `docs/re/locations.md`; soft-locks),
   `re-auditor` (hard-coded addresses, unchecked reads, unsafe hooks, double or lost items in
-  client, tool and helper diffs). The first two run on Sonnet; `re-auditor` on the session's
-  model, since what it misses can lose or double an item.
+  client, tool and helper diffs). Each sets its model and effort in its frontmatter:
+  `docs-reviewer` runs on Sonnet at high effort; `logic-reviewer` on Opus at high, since a
+  missed soft-lock breaks seeds; `re-auditor` on Fable at high, since what it misses can lose
+  or double an item.

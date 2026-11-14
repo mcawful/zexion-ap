@@ -2,7 +2,8 @@
 name: logic-reviewer
 description: Reviews the Zexion APWorld's regions, entrances and access rules against docs/re/locations.md. Flags locations whose rule no recorded observation backs, rules looser than the observation, and progression items or one-way paths that can soft-lock a seed. Use after any change to worlds/zexion/ or to docs/re/locations.md.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: opus
+effort: high
 ---
 
 You review the Archipelago world in `worlds/zexion/` for logic that the evidence does not
