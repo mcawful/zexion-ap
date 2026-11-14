@@ -571,8 +571,11 @@ async def poll(ctx: ZexionContext) -> None:
             followups=followups,
             helper=ctx.helper,
             give=not waiting,
-            # Other players' items the server has as checked stay collected in the save.
-            gone=state.others_gone(conn, ctx.checked_locations),
+            # Other players' items the server has as checked stay collected in the save. Not
+            # before this connection's item list has come: after a drop the checked locations
+            # are the last connection's until the next Connected (a server that came back with
+            # an older save has fewer).
+            gone=state.others_gone(conn, ctx.checked_locations) if conn.items_listed else (),
         )
     except game.GameNotRunning:
         game_closed(ctx, seed)

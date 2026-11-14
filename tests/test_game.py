@@ -233,6 +233,9 @@ def test_marking_a_cells_item_collected_is_compare_and_set() -> None:
     assert g.pm.memory[cell_item_at(3, 4)] == 2
     with pytest.raises(ValueError, match="not on the map"):
         g.set_item_collected((54, 0))
+    g.pm.overwrite_with = 0  # the game puts the byte back straight after (a load)
+    with pytest.raises(game.ReadBackMismatch):
+        g.set_item_collected((7, 7))
 
 
 def test_marking_a_map_cell_collected_is_compare_and_set() -> None:
@@ -245,6 +248,9 @@ def test_marking_a_map_cell_collected_is_compare_and_set() -> None:
     assert g.map_grid()[24 * 54 + 25] == 0x1B and sum(g.map_grid()) == 0x1B
     with pytest.raises(ValueError, match="not on the map"):
         g.set_map_collected((0, -1), expected=0)
+    g.pm.overwrite_with = 0x19  # the game writes the cell straight after (a reveal)
+    with pytest.raises(game.ReadBackMismatch):
+        g.set_map_collected((7, 7), expected=0)
 
 
 def test_a_run_of_flags_is_read_at_once() -> None:

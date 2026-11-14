@@ -46,9 +46,9 @@ worlds/zexion/ → generation → slot data → client
   given again. Another player's item in this world stays collected once the server has its
   location as checked (found before a death or a reload, or in another save of the seed;
   collected by its owner; released): the client marks it collected in the loaded save, so it
-  is not there to pick up again, but for one in the rooms loaded around the player, which
-  stays until its room is left ([`native/README.md`](../native/README.md), "Other players'
-  items"). This world's own items follow the save. Only Energy Tanks, Missile Containers,
+  is not there to pick up again, but for one within two map squares of the player, which
+  stays until the player is farther from it ([`native/README.md`](../native/README.md),
+  "Other players' items"). This world's own items follow the save. Only Energy Tanks, Missile Containers,
   Mega Bombs, the boxes and Scrap Metal
   count up: any other item's byte is written as 1 at most, so a second copy (a server console's
   `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's

@@ -783,7 +783,9 @@ OTHERS_PLAN = plan(
 
 @pytest.fixture
 def others():
-    return ss.Session(OTHERS_PLAN), FakeGame(OTHERS_PLAN)
+    g = FakeGame(OTHERS_PLAN)
+    g.cell = (40, 40)  # the player far from the locations marked here (ss.NEAR_CELLS)
+    return ss.Session(OTHERS_PLAN), g
 
 
 def at(i: int) -> int:
@@ -873,6 +875,19 @@ def test_a_room_loaded_between_the_look_and_the_write_keeps_its_item_to_pick_up(
     assert g.inv[ids.SCRAP_METAL] == scrap + 1
 
 
+def test_an_item_whose_state_was_written_under_it_counts_once_when_picked_up(others) -> None:
+    session, g = others
+    g.spawn.add(CELLS[3])
+    session.step(g, [], gap=0, gone={3})
+    session.step(g, [], gap=0, gone={3})
+    assert g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0 and CELLS[3] in g.live
+    scrap = g.inv[ids.SCRAP_METAL]
+    g.collect(3)  # the player takes it
+    for _ in range(4):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap + 1
+
+
 def test_a_map_cell_the_game_changed_since_the_look_is_marked_by_a_later_poll(others) -> None:
     session, g = others
     session.step(g, [], gap=0, gone={3})
@@ -900,7 +915,8 @@ def test_nothing_is_marked_out_of_play_or_in_another_save(others) -> None:
     assert not session.step(g, [], gap=0, gone={3}).marked
     g.marker = 1
     g.blob = bytes(section(PLAN))  # a save of another seed with the same locations
-    assert not session.step(g, [], gap=0, gone={3}).marked
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
     assert not marked(g, 3) and g.items[at(3)] == game.ITEM_THERE
     g.blob = bytes(section(OTHERS_PLAN))
     session.step(g, [], gap=0, gone={3})
@@ -917,8 +933,15 @@ def test_nothing_is_marked_once_the_ending_began(others) -> None:
 
 def test_a_helper_to_attach_again_holds_the_grants_not_the_marking(others) -> None:
     session, g = others
+    scrap = g.inv[ids.SCRAP_METAL]
     session.step(g, [], gap=0, gone={3}, give=False)
     assert session.step(g, [], gap=0, gone={3}, give=False).marked == {3}
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3}, give=False)
+    assert g.inv[ids.SCRAP_METAL] == scrap, "its Scrap Metal waits with the other grants"
+    for _ in range(2):
+        session.step(g, [], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap + 1
 
 
 def test_locations_the_seed_does_not_list_are_not_marked(others) -> None:
@@ -926,3 +949,96 @@ def test_locations_the_seed_does_not_list_are_not_marked(others) -> None:
     for _ in range(2):
         assert not session.step(g, [], gap=0, gone={-1, sp.LOCATIONS, 999}).marked
     assert not any(g.items) and not any(g.grid)
+
+
+@pytest.mark.parametrize("state", [game.MENU, game.DEAD, game.NO_SAVE])
+def test_a_poll_out_of_play_starts_the_two_polls_over(others, state) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    g.state_value = state
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    g.state_value = game.IN_PLAY
+    assert not session.step(g, [], gap=0, gone={3}).marked and not marked(g, 3)
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+@pytest.mark.parametrize("between", ["connected", "hold_ending", "leave"])
+def test_a_new_connection_or_load_starts_the_two_polls_over(others, between) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    getattr(session, between)()
+    session.holding = False  # hold_ending's hold itself is tested above
+    assert not session.step(g, [], gap=0, gone={3}).marked, "one poll of the new one alone"
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_the_two_polls_are_of_one_save_slot_and_close_together(others, monkeypatch) -> None:
+    session, g = others
+    clock = [100.0]
+    monkeypatch.setattr(ss.time, "monotonic", lambda: clock[0])
+    session.step(g, [], gap=0, gone={3})
+    clock[0] += ss.MARK_AGREE_SECONDS + 1  # the polls paused: the helper attached again, say
+    assert not session.step(g, [], gap=0, gone={3}).marked, "too long since the poll before"
+    g.stamp = bytes([5]) + bytes(13)  # another slot of the seed, loaded during such a pause
+    clock[0] += 1
+    assert not session.step(g, [], gap=0, gone={3}).marked, "another save slot"
+    clock[0] += 1
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_the_cells_around_the_player_are_left(others) -> None:
+    session, g = others
+    x, y = CELLS[3]
+    # The player state gives the game's (X, Y): this repo's (y, x). An object of another kind
+    # may be the item there (a reversed-gravity room's), which the item pool does not show.
+    for dx, dy in ((0, 0), (ss.NEAR_CELLS, 0), (-ss.NEAR_CELLS, ss.NEAR_CELLS)):
+        g.cell = (y + dy, x + dx)
+        for _ in range(3):
+            assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0
+    g.cell = (y, x + ss.NEAR_CELLS + 1)  # far enough for its room to be unloaded
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_a_mark_a_load_cut_in_two_is_finished(others) -> None:
+    session, g = others
+    # The map cell collected over an item still there: a mark whose state a load took back
+    # between its two writes (the game's own pickup never leaves the two so).
+    g.grid[at(3)] = 0x1B
+    first = session.step(g, [], gap=0, gone={3})
+    assert first.checked == {3} and not first.marked
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+    assert not session.step(g, [], gap=0, gone={3}).marked
+
+
+def test_a_failing_read_of_the_marking_holds_back_no_check_or_grant(others, caplog) -> None:
+    session, g = others
+
+    def broken() -> bytes:
+        raise game.GameError("short read")
+
+    g.cell_items = broken
+    g.collect(7)
+    caplog.set_level(logging.WARNING, logger="Zexion")
+    steps = [session.step(g, [17], gap=0, gone={3}) for _ in range(3)]
+    assert all(step.checked == {7} and not step.marked for step in steps)
+    assert g.inv[17] == 1, "the received item is given"
+    said = [r.message for r in caplog.records if "mark" in r.message]
+    assert len(said) == 1 and "items and checks still work" in said[0]
+
+
+def test_the_game_closing_in_the_marking_is_raised(others) -> None:
+    session, g = others
+
+    def closed() -> bytes:
+        raise game.GameNotRunning("the game exited")
+
+    g.cell_items = closed
+    with pytest.raises(game.GameNotRunning):
+        session.step(g, [], gap=0, gone={3})
+
+
+def test_nothing_is_read_for_the_marking_with_nothing_to_keep_collected(others) -> None:
+    session, g = others
+    g.cell_items = None  # not called
+    assert not session.step(g, [], gap=0).marked
