@@ -160,7 +160,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their first
   design (after the trap's popup, the enemies' durations, a shield and AILMENTS applying) run in
   game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one held
-  through the pause, one received while disconnected (once), this world's own and another Zexion
+  through the pause, one received while disconnected (once), this world's own (then set off
+  once by the client's follow-up; by the helper at each pickup since 2026-11-14, not run in
+  game) and another Zexion
   player's in this world, AILMENTS REDUCED and IMMUNE ("Traps"; `docs/re/memory.md`, "Ailments: the
   script step that sets them"). The design since (at once, about 12 s, one of each kind at a time,
   past a shield, AILMENTS's tests patched while one runs, disguised (then as a Zexion upgrade),
@@ -207,10 +209,14 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   load: 2026-11-04. A received disk's own popup before its count, two at once, and both held
   at YES for the next load: 2026-11-08 ("Popups"); a received and a found disk's counts going
   up in order, then the reminder: 2026-11-08 (develop 5597753; the counts' text not quoted).
+  Those runs were of the count as it was until 2026-11-14, shared by every save of the seed
+  (a found disk from the found record, the file select's from the client): the screens, the
+  notices and their order stand; the count's source since, the loaded save, is not run in game.
   Not run in game: RELOAD FROM CHECKPOINT and
   a teleport at the pod, and the map right after saving.
-- Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
-  offline finds included: 2026-10-25.
+- An Intel Chip's hint for each of this world's own found, once each, offline finds
+  included: 2026-10-25 (then with a found disk's count, once each too; a disk's count now
+  shows at each pickup: the own disks' line above).
 - The helper loaded with the game by the proxy: 2026-10-25 ("The proxy").
 - `/reload_mod`: 2026-10-26; refused with a menu open or the ending on its way: 2026-10-27
   ("Unloading").

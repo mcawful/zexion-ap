@@ -12,11 +12,13 @@
 //   start HEX          the start record, 6 bytes (+0x310)
 //   intel 0|1          the Area Map named INTEL CHIP
 //   assists lock|free  the ASSIST lock
-//   discs COUNT REQUIRED HEX   (or "discs -") the disk count when the client last saw it,
-//                      the number needed, and the scanner's line in hex: read as the `discs`
-//                      request is (a TOLD after it is ignored)
-//   unfound I,J,...    (or "-") map grid indices (y * 54 + x) of this player's own disks
-//                      not counted in COUNT: each one the map shows collected counts one more
+//   discs COUNT REQUIRED HEX   (or "discs -") the disk count every save of the seed shares
+//                      (the disks the slot starts with and those received, when the client
+//                      last wrote it), the number needed, and the scanner's line in hex: read as
+//                      the `discs` request is (a TOLD after it is ignored)
+//   unfound I,J,...    (or "-") map grid indices (y * 54 + x) of this player's own disks, none
+//                      of them in COUNT: each one a save's map shows collected counts one more
+//                      in that save
 //   traps I:T,J:T,...  (or "-"; none in a file from before it) map grid indices of this
 //                      player's own traps, each with its trap's item (trap.h): set off when
 //                      its cell turns collected in play (Game::watch_own_traps)

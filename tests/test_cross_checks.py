@@ -156,7 +156,7 @@ def test_the_randomizer_section_is_laid_out_alike() -> None:
 
 
 def test_the_save_slots_are_laid_out_alike() -> None:
-    # docs/re/memory.md, "The file select": 30 blocks of 0x9408 (client/game.py, slot_markers).
+    # docs/re/memory.md, "The file select": 30 blocks of 0x9408 (client/game.py, save_stamp).
     slot = layout("slot")
     assert (slot["kCount"], slot["kStride"]) == (game.SLOTS, game.SLOT_STRIDE) == (30, 0x9408)
     assert (slot["kEmpty"], slot["kRandoMarker"]) == (0x935E, 0x9400)

@@ -313,7 +313,7 @@ after it don't wait for it meanwhile). It waits through the pause menu, other me
 load, and through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load
 then). It also waits through a teleport from the pause menu, such as TELEPORT TO START (the other
 TELEPORT TO entries work the same way but were not tried), and goes off once you arrive. Each trap
-happens at most once, including one sent while your client was closed, or before you first connected
+sent to you happens at most once, including one sent while your client was closed, or before you first connected
 (it comes when you connect); if the client closes just as a trap goes off, it may come again; a trap
 still waiting for its popup is lost if the game closes, or if the mod is reloaded while it waits for
 a save that isn't loaded; and with no mod running a trap sent to you does nothing. A second trap of

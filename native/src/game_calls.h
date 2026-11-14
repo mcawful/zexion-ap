@@ -262,7 +262,8 @@ public:
     std::string drop_status() const;
     size_t queued_drops() const { return drops_.size(); }
     // Game thread, every frame, and not while an unload runs (dllmain.cpp: with the watches,
-    // after watch_all): sets off each trap an `apply` took, as the game's touch does (trap.h),
+    // after watch_all): sets off each trap queued (this world's own by watch_own_traps, a
+    // received one's popup by an `apply`), as the game's touch does (trap.h),
     // one a frame, once in play for a moment in the save it was for, not halted, not from RETURN
     // HOME's fade through its ending, and not in an ending that began in the load (kept for the
     // next), one of each kind at a time (the next waits for the last to run out): this world's

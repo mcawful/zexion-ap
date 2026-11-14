@@ -615,7 +615,8 @@ dealt on the next load ("DeathLink").
   load, which read as play, and whose load's reset would undo the trap) and with the game's halt
   byte clear, not from RETURN HOME WITH THE DISKS?'s fade through the ending it started, and not in
   the game's own ending, held as received scrap's drops are ("Received scrap", "When"), in the save
-  its `apply` was for (another seed's save or a normal save: it waits). One of each kind at a time
+  it was queued for, its `apply`'s or its pickup's (another seed's save or a normal save: it
+  waits). One of each kind at a time
   (the owner's choice): a trap waits while one of its kind that a trap started still runs, and
   starts as it runs out, so traps that arrive together (after a reconnect, say) each get their 12 s,
   one after another; an enemy's own effect does not hold one (the trap restarts it, as the enemy's
@@ -663,11 +664,10 @@ dealt on the next load ("DeathLink").
   helper (the game closing loses the traps not run yet, as it does the popups, and an unload those
   waiting for a save not loaded, refusing for the rest; a received one now waits there behind the
   popups queued before it, so longer than its quarter second: a reconnect's many popups can keep it
-  a minute or more). This world's own, found in it, is recorded in the client's follow-ups (the
-  server's data storage) once the helper took it, or once its reply was lost (it may have been
-  queued), so it is not sent again. As with a received scrap's drop, a trap can run twice where the
-  helper took it and the client closed before the server stored its record (the popup count, the
-  held traps' record, or the follow-ups): at that moment, or after the connection dropped then and
+  a minute or more). This world's own is no client's to send or record: the helper sets it off
+  at each pickup ("This world's own", above). As with a received scrap's drop, a received trap
+  can run twice where the helper took it and the client closed before the server stored its
+  record (the popup count or the held traps' record): at that moment, or after the connection dropped then and
   before a reconnect. That includes a held trap's first record lost with the connection: the client
   restarted then finds no count and no record, and counts that trap held again. A reconnect keeps
   the session's own list of held traps, not the server's record, so an emptying store the connection
@@ -703,7 +703,9 @@ disconnected, once after the reconnect, not again after a second; this world's o
 after its pickup popup, then labeled by its name; another Zexion player's Disorient Trap in this
 world, nothing to the player; a Disorient Trap with AILMENTS REDUCED ("about a second") and IMMUNE
 ("got the sound but no effect"). The owner then asked for the design above. **Run in game as it is
-now** but for the pickup text and the popup waiting with its trap (2026-11-11, B1, `zexion_ap.dll`
+now** but for the pickup text, the popup waiting with its trap, and what sets this world's own
+off (then the client's follow-up, once per location; since 2026-11-14 the helper's watch, at
+each pickup, not run in game: "This world's own") (2026-11-11, B1, `zexion_ap.dll`
 `a5647085…` built from 81dd8cc, the seed `lab/ap/live60` with a Bumper Stickers player, slot 7, the
 owner's reports; `lab/ingame-138-traps-recheck.md`): this world's own Disruption Trap, its important
 marker and disguised look, going off at once for about 12 s; a received one with its popup, at once,
@@ -1216,7 +1218,11 @@ after the HD disk icon and its description wrapped inside its box, the question 
 pause row's count ("4 of ?") in the HD font (`946b08a1…`); the scanner's line, 2026-11-04
 (`a7469024…`, develop 345fea7).
 
-Working in game: 2026-10-24 and 2026-10-25 ("The scanner", "The equipment screen", "The mission
+Working in game, under the count as it was until 2026-11-14 (shared by every save of the seed,
+from the found record; the file select's for a client's seed sent by the client: what those
+runs showed of the screens, the scanner and the prompt stands, the count's source and the
+file select's count with a client are not run in game as they are now): 2026-10-24 and
+2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
 received disks' popups (`docs/DEVELOPING.md`), and the pause row with the file's count on a
 pause right after loading and the 24 x 24 disc ("The pause screen's KEYS row"); 2026-10-27,
@@ -1339,9 +1345,8 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   next save, and the next load is told again. The other-seed notice and CLIENT CONNECTED. are also
   for their client: one not shown when it goes away is withdrawn. A not-connected warning withdrawn
   before it showed is given again when the save is next dressed with no client.
-- **Waits for the client:** received items, hints, the goal and RETURN HOME WITH THE DISKS?,
-  and this world's own traps picked up meanwhile (each starts when a client next connects with
-  that save loaded: "Traps").
+- **Waits for the client:** received items, hints, the goal and RETURN HOME WITH THE DISKS?.
+  This world's own traps do not: the helper sets each off at its pickup ("Traps").
   What was picked up is on the save's map, and the client sends those checks when it next
   connects with the save loaded.
 
