@@ -927,8 +927,9 @@ class ZexionWorld(World):
             "discs_start": start_names.count(NAMES[DATA_DISC]),
             "disc_locations": self.disc_locations(),
             # This world's own traps in its own locations, [location index, item code] each:
-            # the game holds a stand-in there, and the client sets the trap off once it is found
-            # (client/ticks.py, followups_tick). Older seeds lack it.
+            # the game holds a stand-in there, and the helper sets the trap off at each pickup,
+            # from the seed's file the client writes (client/ticks.py, offline_seed). Older
+            # seeds lack it.
             "trap_locations": self.trap_locations(),
             # The item each Zexion trap in this world's locations is shown as (client/
             # aplabels.py, trap_label). Older seeds lack it.

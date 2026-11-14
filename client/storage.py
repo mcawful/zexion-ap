@@ -181,7 +181,9 @@ async def announced_tick(
 
 def popped(ctx: ZexionContext) -> set[int] | None:
     """The location indices whose follow-up popup has been shown (the server's record and this
-    client's), or None until the server's record has been read."""
+    client's), or None until the server's record has been read: the hints of this world's own
+    Area Maps found (an OS Install Disk's count follows the save instead, and an own trap is
+    the helper's: ticks.followups_tick). A record from before that may hold disks and traps."""
     conn = ctx.conn
     if conn is None or conn.popped_key not in ctx.stored_data:
         return None

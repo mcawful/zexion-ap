@@ -37,8 +37,8 @@ ASSIST_UNLOCK = 100
 INTEL_CHIP = 101
 DRAWN_AS = {INTEL_CHIP: AREA_MAP}
 # The traps: never held; the helper sets the game's timer for each with its popup
-# (native/README.md, "Traps"), or, found in this world, with the game's own popup
-# (client/ticks.py, followups_tick). Named here for the client's log.
+# (native/README.md, "Traps"), or, picked up in this world, with the game's own popup, at each
+# pickup. Named here for the client's log.
 DISRUPTION_TRAP, DISORIENT_TRAP = 102, 103
 TRAP_NAMES = {DISRUPTION_TRAP: "Disruption Trap", DISORIENT_TRAP: "Disorient Trap"}
 TRAPS = frozenset(TRAP_NAMES)

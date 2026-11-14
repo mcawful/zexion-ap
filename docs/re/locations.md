@@ -160,7 +160,8 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
   (`client/ids.py`'s `STAND_IN` and `STAND_IN_PROGRESSION`; the helper shows them as Archipelago items,
   `memory.md`, "Other players' items"), and Scrap Metal (46) where the location was left out.
   `trap_locations` lists this world's own traps in its own locations (index and item code), which
-  the client sets off once found (`native/README.md`, "Traps"); `trap_looks` the Zexion item
+  the helper sets off at each pickup, from the seed's file the client writes (`native/README.md`,
+  "Traps"); `trap_looks` the Zexion item
   each Zexion trap in this world's locations is shown as (any Zexion player's), drawn from the
   trap's owner's upgrades, keys and OS Install Disks that lie in the seed's locations
   (`items.LOOKS`), none twice until they run out (with none in the seed, any of the 16

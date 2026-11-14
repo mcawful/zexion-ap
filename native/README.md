@@ -115,7 +115,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `ping` | `pong frames=<calls since load>` | |
 | `config name=rva …` (frame) | `ok`, or `error <why>` | below |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
-| `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `intel`, `popup ITEM SUFFIX` (ITEM a record, 0 to 50, or a trap, 102 or 103), `notice ITEM TEXT`, `trap ITEM` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups; Traps |
+| `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `intel`, `popup ITEM SUFFIX` (ITEM a record, 0 to 50, or a trap, 102 or 103), `notice ITEM TEXT` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups; Traps |
 | `ap_newgame` and lines `identify`, `expect`, `write` or `menu OFFSET HEX`, `start_table HEX`, `choice` (frame; a plan needs `write`, `menu` and `identify` lines) | `armed`, `refused <why>`, `error <why>` | New games |
 | `newgame_status`, `disarm` (frame) | `armed`, `idle`, `applied slot N`, `refused <why>`; `disarmed` | New games |
 | `ap_labels` and lines `label X Y HEX` (frame) | `labeled N`, `refused <why>` | Other players' items |
@@ -124,7 +124,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `trap_status` (frame) | `queued N; last <outcome>`, the outcome `none`, `set ITEM`, or `nothing ITEM`: the traps set off, for live checks | Traps |
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
-| `discs COUNT REQUIRED HEX TOLD`, `discs`; `disk_slots COUNT SLOTS`, `disk_slots` (frame) | `discs on`, `discs off`, `disk_slots on`, `disk_slots off`, `refused <why>` | The OS Install Disks goal |
+| `discs COUNT REQUIRED HEX TOLD`, `discs` (frame) | `discs on`, `discs off`, `refused <why>` | The OS Install Disks goal |
 | `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
 | `mission_black` (frame) | how the last black after RETURN HOME's YES ended: `none`, `kept black` or `ended: …` | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
@@ -587,13 +587,28 @@ dealt on the next load ("DeathLink").
   - **Left out:** the game's random number the handler draws (the two states' random part is 0,
     so the duration is the same); and where the sounds play: each at the player's position,
     where the game plays 26 at the touching object's and 82 at a point on the screen.
-- **This world's own**, found in it: the game hands out an important stand-in there, labeled as
-  one of its owner's items, whose pickup popup names the trap (`@N/NAME`, `@N NAME/PICKUP` for a
-  disk: "Other players' items"; `client/aplabels.py`, `trap_label`); the client then sends `trap
-  ITEM` in an `apply` (`client/ticks.py`, `followups_tick`), which queues the trap with no popup
-  of the helper's, to go off at once, whatever popups wait. One found with no client (the offline
-  look shows its label) is sent when a client next connects with that save loaded (the follow-ups
-  take this world's finds made without a client too), so it starts then, wherever the player is.
+- **This world's own**, picked up in it: the game hands out an important stand-in there, labeled
+  as one of its owner's items, whose pickup popup names the trap (`@N/NAME`, `@N NAME/PICKUP` for
+  a disk: "Other players' items"; `client/aplabels.py`, `trap_label`). The helper sets it off
+  itself, at the pickup, with a client or none (`watch_own_traps`, `src/game_offline.cpp`): the
+  seed's file lists each own trap's map cell and item (`traps`, "AP saves without the client";
+  the client writes it from the slot data's `trap_locations`), and every frame call in play in
+  that seed's save it reads those cells of the map grid; one that reads collected (`0x1B`) and
+  did not the frame before is a pickup, which queues the trap with no popup of the helper's, to
+  go off at once, whatever popups wait. It follows the save, as this world's other items do
+  (the owner's decision, 2026-11-14): after a death or a reload without saving, the item lies in
+  its room again, and picking it up again sets the trap off again. No load is taken for a
+  pickup: a load comes from a menu, a death or no save, and after any frame not in play, or in
+  another seed's save, the cells are only looked at again; a TELEPORT TO's load, at the end of
+  a countdown that reads as play, turns no cell collected (`game_calls.h`, `watch_own_traps`).
+  The client sends nothing for an own trap and keeps no record of one: until 2026-11-14 it sent
+  `trap ITEM` in an `apply` once per location, from the server's record of the follow-ups
+  shown, so a trap picked up with no client went off at the next connection, and never again
+  after a reload. A seed file written before the `traps` line lists none: its traps do nothing
+  with no client until a client has connected once (only development builds made such files:
+  1.1.0 has no traps). Stand-in tests (`tests/game_tests.cpp`,
+  `test_own_traps_go_off_at_each_pickup`; `tests/apply_test.cpp`, through the frame hook and
+  the pipe: each fails with the watch taken out of `watch_all`); not run in game.
 - **When:** one a frame call (`pump_traps`, after the watches, so never while an unload runs), once
   the player has been in play for a quarter of a second in any cell with no transition counting down
   (the game's transition timer above 0, `transition_queued`: a TELEPORT TO's 60 frames before its
@@ -867,7 +882,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   (every upgrade started or left out, in Custom mode or by `start_inventory_from_pool`, and no key
   or disk placed), any of the 16 upgrades, which the owner may then hold, or which may not be in
   the seed. A trap shown as a disk is never counted as one: the client counts disks from those
-  received and the slot's own disk locations (`client/discs.py`), which never hold a trap. A trap
+  received and the slot's own disk locations collected in the save (`client/discs.py`), which
+  never hold a trap. A trap
   shown as one of this player's own keys has no key marker on the map, which a real one in this
   world has once flag 39 is set, by the scanner or from the start by a map revealed in full (flag
   291, Hints Revealed; `docs/re/memory.md`, "Keys, the gates and the key markers" and "The
@@ -1160,14 +1176,29 @@ the helper:
   back, another transition's fade left alone, a death's own fade left alone, and `discs` turned off
   after such a save.
 
-With `disk_slots` (the save slots holding the seed), and for other seeds it has files for, it shows
-each save's count on the file select, COPY FILE and DELETE FILE in place of the keys
+For every seed it has a file for, with a client or none, it shows
+each save's own count on the file select, COPY FILE and DELETE FILE in place of the keys
 (`src/files.cpp`, wrapping each entry's handler): DISK over KEYS, and the count. The count's two
 digits sit 5 px below their row (`kCountDrop`), centered on the items bracket beside them (`0xD9`
 over `0xDA`, rows 3 and 4: its middle 7.5 px below row 3's top, a digit's 3, so 4.5; 5 chosen in
-game). Nothing shows for a save with no disk; the client's count wins for its seed's slots.
+game). Nothing shows for a save with no disk. The count is the save's own: what the seed's
+file holds (the disks the slot starts with and those received, which the client keeps up to
+date while connected) plus each of this player's own disks the save's map shows collected
+(`offline_disk_count`). Until 2026-11-14 a client sent one count for all its seed's slots
+(`disk_slots`), which counted a disk found in any save of the seed.
 
-Put back: `discs` and `disk_slots` with no arguments, and with the rest. An unload refuses while
+**The count follows the save** (the owner's decision, 2026-11-14): the disks the slot starts
+with, those received from other players, and this world's own disk locations collected in the
+loaded save (`client/discs.py`, `owned`). So it drops after a death or a reload from before an
+own disk's pickup, the disk lies in its room again, and picking it up again counts it again and
+shows its count again (`client/ticks.py`, `followups_tick`: a count notice for each own disk
+picked up while the load is watched; one the save already held at the load's first two looks,
+picked up with no client or before a reconnect, shows none). The goal is sent for an ending in
+a save that holds enough. The server's checked locations and the client's found record no
+longer count a disk. Stand-in tests (`tests/test_ticks.py`, `test_discs.py`,
+`test_zexion_client.py`; `tests/offline_tests.cpp` for the file select); not run in game.
+
+Put back: `discs` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way
 back from OPTION MENU is still its wrapper.
 
@@ -1235,8 +1266,10 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
 - **What the client leaves:** while connected, `offline_put` (when they change) sends the
   addresses it resolved for this build, with the first 16 bytes of each game function, and a
   small file per seed: its item table (154 bytes, or 155 with Secret Shuffle) and start, the Intel Chip and ASSIST settings, the OS
-  Install Disks (count, number needed, scanner's line, and this player's own disks not counted
-  yet) and the item labels.
+  Install Disks (the count every save shares: the disks the slot starts with and those
+  received; the number needed; the scanner's line; and the cells of this player's own disks,
+  each counted in a save whose map shows it collected), this player's own traps (each one's
+  cell and item: "Traps") and the item labels.
 - **Where:** `offline_put` checks each file as the reader will (the config with at least 8
   function checks; NAME in `<seed>-<team>-<slot>` form; each file at most 48 KB). The helper
   writes it on the pipe's thread into `%LOCALAPPDATA%\ZexionAP` (`config-<build>.txt`,

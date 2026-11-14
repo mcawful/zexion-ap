@@ -54,9 +54,12 @@ worlds/zexion/ → generation → slot data → client
   `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
   items handed to the helper for their popup, the traps held at the slot's first connection still
-  to pop up, the follow-up popups shown (and this world's own traps set off), the Intel Chip hints
-  made, the Energy Shields given, and this world's locations found in game, which the OS Install
-  Disks count and the Area Map hints read; sent again until the server holds them). A failing
+  to pop up, the hints shown for this world's own Area Maps found, the Intel Chip hints
+  made, the Energy Shields given, and this world's locations found in game, which the Area Map
+  hints read; sent again until the server holds them). This world's own OS Install Disks and
+  traps follow the save instead: the disk count is the loaded save's own, and the helper sets an
+  own trap off at each pickup ([`native/README.md`](../native/README.md), "The OS Install Disks
+  goal", "Traps"). A failing
   side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
   and the goal go on. With no server connection, while a save it has not dressed is loaded and
   no ending is on its way, it lets the helper go, so the helper gives AP saves their look as
@@ -133,6 +136,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04; another
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
+- This world's own OS Install Disks and traps following the save (the count dropping after a
+  reload and a disk's count showing again at its next pickup; an own trap set off by the helper
+  at each pickup, with a client or none): stand-in tests only, not run in game ("The OS Install
+  Disks goal", "Traps").
 - Other players' items kept collected once the server has them as checked (after a death or a
   reload, in another save of the seed, after `!collect` or `!release`): stand-in tests only,
   not run in game ("Other players' items", "Kept collected"; "What decides whether an item
