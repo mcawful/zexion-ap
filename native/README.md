@@ -429,17 +429,20 @@ were not singled out.
   "Received scrap").
 - **When:** once the player has been in play in one cell for a second with no transition counting
   down (a TELEPORT TO's 60 frames read as play, and the load at their end resets the player, the
-  shield's strength with it; the second starts again after it: stand-in tests only,
-  `test_received_things_wait_out_a_teleport`), and not in an ending RETURN HOME WITH THE DISKS?
-  started (`refused RETURN HOME WITH THE DISKS? ending`). The client asks for each received shield
-  not yet given, again for one not seen up within a few seconds, and counts it once it sees the
-  shield up; after three requests in a row not seen up it asks for none until the save is left or
-  the game closes (another seed or slot has its own count of misses: `client/shields.py`,
-  `client/state.py`'s `SeedState`). A shield spawned just before the player pauses and chooses a
-  TELEPORT TO is cleared by the teleport's load, as the game's own is; if the client's first look
-  comes after that load, it finds none up and counts a miss, spawning another (`client/shields.py`,
-  `shield_outcome`, `Shields.looked`). The helper cannot hold that one: the spawn comes before the
-  pause (by the code; not seen in game).
+  shield's strength with it; the second starts again after it:
+  `test_received_things_wait_out_a_teleport`; working in game 2026-11-14 (B1, `zexion_ap.dll`
+  `1b3a3e9f…` built from 99dc486, `lab/ap/live62`, slot 5, the owner's report;
+  `lab/ingame-checkpoint-checks.md`): one received in the pause, then TELEPORT TO START, came up
+  1.45 s after the teleport's load ("the shield arrived after the teleport")), and not in an ending
+  RETURN HOME WITH THE DISKS? started (`refused RETURN HOME WITH THE DISKS? ending`). The client
+  asks for each received shield not yet given, again for one not seen up within a few seconds, and
+  counts it once it sees the shield up; after three requests in a row not seen up it asks for none
+  until the save is left or the game closes (another seed or slot has its own count of misses:
+  `client/shields.py`, `client/state.py`'s `SeedState`). A shield spawned just before the player
+  pauses and chooses a TELEPORT TO is cleared by the teleport's load, as the game's own is; if the
+  client's first look comes after that load, it finds none up and counts a miss, spawning another
+  (`client/shields.py`, `shield_outcome`, `Shields.looked`). The helper cannot hold that one: the
+  spawn comes before the pause (by the code; not seen in game).
 - **Put back:** nothing to put back.
 
 Working in game: 2026-10-23 ("Received Energy Shields"); the client's check as it is now, with the

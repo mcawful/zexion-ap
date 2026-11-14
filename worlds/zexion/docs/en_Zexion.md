@@ -256,7 +256,8 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
   does, after its popup, once you have stayed on one map square for a second. Both, and the
   popups of items sent to you, wait out a teleport from the pause menu and come once you
-  arrive (not yet tried in the game). Scrap whose popup
+  arrive (checked in the game for an Energy Shield and TELEPORT TO START; not yet for Scrap or
+  popups). Scrap whose popup
   you saw before version 1.1.0, or that reached you before your first connection to the seed (it
   gets no popup), drops nothing, and nothing drops during the game's ending: what arrives then
   drops the next time you load the save.

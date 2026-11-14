@@ -131,8 +131,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
   2026-11-03; given once across reconnects: 2026-11-04; the helper's check of the whole of
   event 3553: 2026-11-09 ("Received Energy Shields"; its stop after three misses: not run in
-  game). Shields, scrap's drops, received deaths and popups waiting out a TELEPORT TO's
-  countdown: stand-in tests only ("Popups", "Received Energy Shields").
+  game). One received in the pause, then TELEPORT TO START, coming up after the teleport's load:
+  2026-11-14 (99dc486, `lab/ap/live62`, `lab/ingame-checkpoint-checks.md`); scrap's drops,
+  received deaths and popups waiting out a TELEPORT TO's countdown: stand-in tests only ("Popups",
+  "Received Energy Shields").
 - Received scrap's drops (its pickup's event, after its popup), one received while
   disconnected dropping once: 2026-11-09 ("Received scrap"; what the drops were and gave not
   described).
