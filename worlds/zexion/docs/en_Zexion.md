@@ -38,7 +38,8 @@ Set with the Goal option.
     does, with who sent it), on the pause screen and on the file select. It's your save's own:
     the disks sent to you, plus your own that the save holds. If you die or reload without
     saving after picking up one of your own, it's back in its room and off your count until you
-    pick it up again, which shows the count again (not yet checked in the game).
+    pick it up again, which shows the count again (checked in the game). With the client
+    closed, the mod shows the count itself when you pick up one of your own.
   - The scanner at Guardia 42,26, outside the core's door, which shows where the keys are in
     the normal game, tells you how many you need. Until you have been there, the pause screen
     shows "OF ?". With Hints Revealed (Custom), the game counts you as told from the start, so
@@ -335,7 +336,7 @@ scanner, or a map revealed in full (Hints Revealed, in Custom mode), has shown y
 a trap that looks like one of your keys has no key marker there: just an important item's (checked
 in the game with Hints Revealed; after the scanner, not yet checked). Picking up your own sets it
 off at once, with the client open or closed, and every time: if you die or reload without saving,
-it's back in its room, and picking it up again sets it off again (not yet checked in the game).
+it's back in its room, and picking it up again sets it off again (checked in the game).
 Other games' traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a

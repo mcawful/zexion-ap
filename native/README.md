@@ -615,7 +615,14 @@ dealt on the next load ("DeathLink").
   with no client until a client has connected once (only development builds made such files:
   1.1.0 has no traps). Stand-in tests (`tests/game_tests.cpp`,
   `test_own_traps_go_off_at_each_pickup`; `tests/apply_test.cpp`, through the frame hook and
-  the pipe: each fails with the watch taken out of `watch_all`); not run in game.
+  the pipe: each fails with the watch taken out of `watch_all`). Working in game, 2026-11-14
+  (B1, slot 6, the seed `lab/ap/live64`, `zexion_ap.dll` `5f19e4d4…` built from bbaf3c5; the
+  owner's reports, `lab/ingame-collected-checks.md`): this world's own Disruption Trap at
+  Kresezoa 25,25 with the client running, and its own Disorient Trap at Kresezoa 26,26 with
+  no client, each set off at its pickup, back in its room after a RELOAD FROM SAVE, and set
+  off again at the next pickup (the owner's "as expected" for each; with no client, a
+  read-only watcher timed the two pickups and the reload between). Not run in game: a death,
+  a trap queued behind one of its kind, a pause on the pickup's frame, and no helper.
 - **When:** one a frame call (`pump_traps`, after the watches, so never while an unload runs), once
   the player has been in play for a quarter of a second in any cell with no transition counting down
   (the game's transition timer above 0, `transition_queued`: a TELEPORT TO's 60 frames before its
@@ -712,7 +719,7 @@ world, nothing to the player; a Disorient Trap with AILMENTS REDUCED ("about a s
 ("got the sound but no effect"). The owner then asked for the design above. **Run in game as it is
 now** but for the pickup text, the popup waiting with its trap, and what sets this world's own
 off (then the client's follow-up, once per location; since 2026-11-14 the helper's watch, at
-each pickup, not run in game: "This world's own") (2026-11-11, B1, `zexion_ap.dll`
+each pickup, working in game that day: "This world's own") (2026-11-11, B1, `zexion_ap.dll`
 `a5647085…` built from 81dd8cc, the seed `lab/ap/live60` with a Bumper Stickers player, slot 7, the
 owner's reports; `lab/ingame-138-traps-recheck.md`): this world's own Disruption Trap, its important
 marker and disguised look, going off at once for about 12 s; a received one with its popup, at once,
@@ -1085,7 +1092,9 @@ the helper:
   comes about a second after a RELOAD FROM SAVE, and a screen opened before it kept the count
   from before the reload for as long as it stayed open (the owner's report, 2026-11-14: "1 of 4"
   after a reload that put the disk back; stand-in tests, `tests/pause_tests.cpp`, failing with
-  the rewrite taken out). OPTION MENU opens over the pause screen, which stays open under
+  the rewrite taken out; in game since, the same day, `7859b9e7…` built from 1b04f24: a pause
+  screen opened 0.6 s after such a reload read 0, whether at once or after the rewrite not
+  told apart). OPTION MENU opens over the pause screen, which stays open under
   it, and the game calls the pause menu's way back (`options_back_fn`, which OPTION MENU's opener
   puts at the menu's `+0x68`) as it closes, before it draws that frame; while the row is on, that
   pointer is the helper's wrapper, which calls the game's and then turns the row in the same call
@@ -1223,19 +1232,29 @@ shows its count again (`client/ticks.py`, `followups_tick`: a count notice for e
 picked up while the load is watched; one the save already held at the load's first two looks,
 picked up with no client or before a reconnect, shows none from the client, nor one another
 slot of the seed holds when it is loaded). With no client attached the helper shows that count
-itself at the pickup, with the disk's pickup sound (`Game::watch_own_disks`, the owner's request, 2026-11-14): in a known
+itself at the pickup, with the disk's pickup sound (`Game::watch_own_disks`, the owner's
+request, 2026-11-14): in a known
 disk seed's save, an own disk's cell turning collected after two frames in play, as for an own
 trap, queues "OS Install Disk 3 of 15" ("of 15" once the scanner has told), the count from the
 seed's file and the save's map (`offline_disk_count`), behind the game's pickup popup; a load
 is no pickup, and a count not shown yet is withdrawn when a load puts a disk back, a client
 attaches or the save is left (stand-in test, `tests/game_tests.cpp`,
 `test_an_own_disk_shows_its_count_with_no_client`, failing with the watch taken out of
-`watch_all`). A received disk's notice is worked out before the poll's look at
+`watch_all`; in game 2026-11-14, `7859b9e7…`, no client: the count popup showed at the pickup,
+silent then; its sound, `Popup::sounds`, added after, has its stand-in check only and is not
+run in game). A received disk's notice is worked out before the poll's look at
 the save, so right after a reload that put an own disk back it can read one too many once;
 the count on the screens is the save's. The goal is sent for an ending in
 a save that holds enough. The server's checked locations and the client's found record no
 longer count a disk. Stand-in tests (`tests/test_ticks.py`, `test_discs.py`,
-`test_zexion_client.py`; `tests/offline_tests.cpp` for the file select); not run in game.
+`test_zexion_client.py`; `tests/offline_tests.cpp` for the file select). Working in game,
+2026-11-14 (B1, slot 6, the seed `lab/ap/live64`, `zexion_ap.dll` `5f19e4d4…` built from
+bbaf3c5; the owner's reports, `lab/ingame-collected-checks.md`): the own disk at Kresezoa
+24,24 picked up, then RELOAD FROM SAVE without saving: back in its room and off the count
+(the pause row 0 of 4), and picked up again: counted again with its popup. Not run in game:
+the file select's count as it is now, the goal sent from a save's count, RETURN HOME WITH THE
+DISKS?, the equipment screen's count after a reload, a death, and a disk received right
+after a reload.
 
 Put back: `discs` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way
@@ -1257,8 +1276,8 @@ pause row's count ("4 of ?") in the HD font (`946b08a1…`); the scanner's line,
 
 Working in game, under the count as it was until 2026-11-14 (shared by every save of the seed,
 from the found record; the file select's for a client's seed sent by the client: what those
-runs showed of the screens, the scanner and the prompt stands, the count's source and the
-file select's count with a client are not run in game as they are now): 2026-10-24 and
+runs showed of the screens, the scanner and the prompt stands; the count's source as it is
+now ran in game 2026-11-14, above, the file select's count with a client has not): 2026-10-24 and
 2026-10-25 ("The scanner", "The equipment screen", "The mission
 prompt", "The pause screen's KEYS row", "The file select"); 2026-10-26, the reminder after the
 received disks' popups (`docs/DEVELOPING.md`), and the pause row with the file's count on a

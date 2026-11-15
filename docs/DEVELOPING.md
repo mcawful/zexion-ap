@@ -137,9 +137,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
 - This world's own OS Install Disks and traps following the save (the count dropping after a
-  reload and a disk's count showing again at its next pickup; an own trap set off by the helper
-  at each pickup, with a client or none): stand-in tests only, not run in game ("The OS Install
-  Disks goal", "Traps").
+  reload and a disk's count showing again at its next pickup, with a client or none; an own
+  trap set off by the helper at each pickup, with a client or none): 2026-11-14. Not run in
+  game: the file select's count, the goal from a save's count, a death, and the sound of the
+  count popup the helper shows with no client ("The OS Install Disks goal", "Traps").
 - Other players' items kept collected once the server has them as checked: after a pickup and
   a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
   the player has left): 2026-11-14 (PR #144's branch at bbaf3c5, which holds the marking
@@ -212,7 +213,7 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   up in order, then the reminder: 2026-11-08 (develop 5597753; the counts' text not quoted).
   Those runs were of the count as it was until 2026-11-14, shared by every save of the seed
   (a found disk from the found record, the file select's from the client): the screens, the
-  notices and their order stand; the count's source since, the loaded save, is not run in game.
+  notices and their order stand; the count's source since, the loaded save: 2026-11-14.
   Not run in game: RELOAD FROM CHECKPOINT and
   a teleport at the pod, and the map right after saving.
 - An Intel Chip's hint for each of this world's own found, once each, offline finds
