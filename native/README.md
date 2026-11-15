@@ -1209,7 +1209,7 @@ shows its count again (`client/ticks.py`, `followups_tick`: a count notice for e
 picked up while the load is watched; one the save already held at the load's first two looks,
 picked up with no client or before a reconnect, shows none from the client, nor one another
 slot of the seed holds when it is loaded). With no client attached the helper shows that count
-itself at the pickup (`Game::watch_own_disks`, the owner's request, 2026-11-14): in a known
+itself at the pickup, with the disk's pickup sound (`Game::watch_own_disks`, the owner's request, 2026-11-14): in a known
 disk seed's save, an own disk's cell turning collected after two frames in play, as for an own
 trap, queues "OS Install Disk 3 of 15" ("of 15" once the scanner has told), the count from the
 seed's file and the save's map (`offline_disk_count`), behind the game's pickup popup; a load

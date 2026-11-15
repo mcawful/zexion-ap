@@ -22,12 +22,14 @@ constexpr char kOtherSeedNotice[] =
 // One of the helper's own notices: silent, for any save.
 Popup notice(const char* text) { return {kAreaMapItem, text, true}; }
 
-// An own disk's count with no client (watch_own_disks): the helper's own, silent (the game's
-// pickup popup before it has played the sound); told apart by its item.
+// An own disk's count with no client (watch_own_disks): the helper's own, with the disk's
+// pickup sound as the client's count has it; told apart by its item.
 Popup disk_notice(int count, int required) {
     std::string text = std::string(kDiskName) + " " + std::to_string(count);
     if (required > 0) text += " of " + std::to_string(required);
-    return {static_cast<uint8_t>(kDiskItem), std::move(text), true};
+    Popup popup{static_cast<uint8_t>(kDiskItem), std::move(text), true};
+    popup.sounds = true;
+    return popup;
 }
 bool is_disk_notice(const Popup& p) {
     return p.bare && !p.counted && p.batch == 0 && p.item == kDiskItem;

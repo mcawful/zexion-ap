@@ -38,6 +38,9 @@ struct Popup {
     std::shared_ptr<const OfflineSeed> origin;
     // The `apply` that queued it (Game::apply numbers them from 1); 0: one of the helper's own.
     uint32_t batch = 0;
+    // One of the helper's own that plays its item's pickup sound, as a client's does: an own
+    // disk's count with no client (Game::watch_own_disks).
+    bool sounds = false;
 };
 
 struct Batch {

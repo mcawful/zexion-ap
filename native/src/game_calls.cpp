@@ -481,7 +481,8 @@ bool Game::show_popup(std::deque<Popup>::iterator next) {
     }
     BYTE* p = player();
     auto sound = at<int16_t>(rec, record::kSound);
-    if (popup.counted && sound >= 0) {  // the helper's own notices make no sound
+    // The helper's own notices make no sound, but a disk's count (watch_own_disks).
+    if ((popup.counted || popup.sounds) && sound >= 0) {
         reinterpret_cast<SoundFn>(at_.sound_fn)(
             at_.sound_system, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);

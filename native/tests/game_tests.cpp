@@ -2276,6 +2276,8 @@ void test_an_own_disk_shows_its_count_with_no_client() {
     g_map_grid[first] = 0x19;
     g_map_grid[second] = 0;
     g_flags[39] = 0;  // the scanner has not said how many
+    put<int16_t>(g_records + 44 * 100, 0x5A, 77);  // the disk's pickup sound
+    put<float>(g_records + 44 * 100, 0x5C, 1.0f);
     game.set_offline({seed});
 
     // With a client: its own follow-up shows the count.
@@ -2289,7 +2291,7 @@ void test_an_own_disk_shows_its_count_with_no_client() {
     game.client_gone(&chosen);
     for (int i = 0; i < 40; ++i) game.watch_all(&chosen);  // dressed, its warning queued
     for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
-    check(game.queued_popups() == 0, "the offline warning shown");
+    check(game.queued_popups() == 0 && g_sound == -1, "the offline warning shown, silent");
     const int shown = g_messages;
     g_map_grid[first] = zap::kCollectedCell;  // the pickup
     game.watch_all(&chosen);
@@ -2300,6 +2302,7 @@ void test_an_own_disk_shows_its_count_with_no_client() {
     check(g_messages == shown + 1 && g_text.find("OS INSTALL DISK 2") != std::string::npos &&
               g_text.find(" OF ") == std::string::npos,
           "the save's count, before the scanner has said how many");
+    check(g_sound == 77, "with the disk's pickup sound, as the client's count has");
 
     // RELOAD FROM SAVE without saving: the disk back, then picked up again.
     g_menu = 2;
