@@ -71,8 +71,7 @@ Archipelago logo beside the file number.
 - Locations you check are sent at once.
 - Items for you arrive while you play (not in menus).
 - If you die or reload, you don't lose the items sent to you: they're given back. Other
-  players' items you had found stay found too, but for one close to where you reload, which is
-  back until you walk away (see the game page; checked in the game after a reload).
+  players' items you had found stay found too (see the game page).
 - The client says when your seed's save is loaded. When you leave it, or play a save of
   another seed, nothing is sent, and items sent to you wait until you load your seed's save
   again. Plain (not Archipelago) normal or randomizer saves are left alone.

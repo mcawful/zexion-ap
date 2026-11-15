@@ -34,6 +34,9 @@ class FakeGame:
         self.items = bytearray(54 * 54)  # each cell's item state (game.Game.cell_items)
         self.live: set[tuple[int, int]] = set()  # the cells of the item objects in the rooms
         self.loaded = bytearray(54 * 54)  # each cell's loaded byte (game.Game.loaded_cells)
+        # The game ends an item object once its cell's state reads collected or held (its
+        # update, each frame); False: not yet, as between two of the game's updates.
+        self.ends_items = True
         self.spawn: set[tuple[int, int]] = set()  # rooms loaded between a mark's look and write
         self.load_after_writes = False  # a load beginning as the marking's last write lands
 
@@ -79,6 +82,8 @@ class FakeGame:
         return bytes(self.items)
 
     def live_item_cells(self) -> set[tuple[int, int]]:
+        if self.ends_items:
+            self.live = {(x, y) for x, y in self.live if self.items[y * 54 + x] not in (1, 2)}
         return set(self.live)
 
     def loaded_cells(self) -> bytes:
@@ -834,22 +839,63 @@ def test_marking_gives_the_scrap_metal_its_pickup_would_have_once(others) -> Non
     assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap + 1
 
 
-def test_an_item_in_the_loaded_rooms_is_left_until_its_room_is_left(others) -> None:
+def in_the_room(g: FakeGame, i: int) -> None:
+    """Location i's item made by the game in a room loaded around the player (a reload at a
+    save point beside it)."""
+    x, y = CELLS[i]
+    g.cell = (y, x)
+    g.loaded[at(i)] = 1
+    g.live.add(CELLS[i])
+
+
+def test_an_item_object_in_the_loaded_rooms_is_ended_by_its_state_and_marked(others) -> None:
     session, g = others
-    g.live.add(CELLS[3])
-    for _ in range(3):
+    in_the_room(g, 3)
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and CELLS[3] in g.live, "two polls, as for any"
+    # The state written, the game's update ends the object; the map cell follows at once.
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+    assert CELLS[3] not in g.live_item_cells()
+    assert not session.step(g, [], gap=0, gone={3}).marked
+
+
+def test_the_map_cell_waits_for_an_item_object_the_game_has_not_ended_yet(others) -> None:
+    session, g = others
+    in_the_room(g, 3)
+    g.ends_items = False
+    session.step(g, [], gap=0, gone={3})
+    for _ in range(2):
         assert not session.step(g, [], gap=0, gone={3}).marked
-    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "nothing written under it"
-    g.live.clear()  # the room left: its item object is gone
+        assert g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0, "never under it"
+    # Ended and freed between two polls, the room still loaded around the player: marked, as
+    # the cell is known to have had an item object of its own.
+    g.live.clear()
     assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
 
 
-def test_an_item_left_in_the_room_is_picked_up_as_usual_and_counted_once(others) -> None:
+def test_a_save_death_or_reload_forgets_which_cells_had_an_item_object(others) -> None:
     session, g = others
-    g.live.add(CELLS[3])
+    in_the_room(g, 3)
+    g.ends_items = False
+    session.step(g, [], gap=0, gone={3})
+    session.step(g, [], gap=0, gone={3})
+    g.live.clear()
+    g.stamp = bytes([0, 0, 0, 0, 9]) + bytes(9)  # the same slot, saved again
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked, "a loaded cell with no object"
+    g.loaded[at(3)] = 0
+    g.cell = (40, 40)
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_an_item_picked_up_before_the_game_ends_it_counts_once(others) -> None:
+    session, g = others
+    in_the_room(g, 3)
+    g.ends_items = False
     scrap = g.inv[ids.SCRAP_METAL]
     session.step(g, [], gap=0, gone={3})
-    g.collect(3)  # the player takes it: the game records the pickup, and gives its Scrap Metal
+    session.step(g, [], gap=0, gone={3})  # the state written under it
+    g.collect(3)  # the player takes it in that frame: the game records the pickup
     for _ in range(4):
         assert not session.step(g, [], gap=0, gone={3}).marked
     assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap + 1
@@ -866,36 +912,22 @@ def test_an_item_an_object_holds_or_has_dropped_is_left(others, held) -> None:
     assert session.step(g, [], gap=0, gone={3}).marked == {3}
 
 
-def test_a_room_loaded_between_the_look_and_the_write_keeps_its_item_to_pick_up(others) -> None:
+def test_a_room_loaded_between_the_look_and_the_write_gets_its_map_cell_later(others) -> None:
     session, g = others
     g.spawn.add(CELLS[3])
     session.step(g, [], gap=0, gone={3})
     step = session.step(g, [], gap=0, gone={3})
-    # The state is written, so the game makes no second item; the map cell is not, as the item
-    # is there to pick up, and a pickup counts once.
+    # The state is written, so the game ends the item it had just made; the map cell is not:
+    # the cell reads loaded, and no item object of its own was seen there before the write.
     assert not step.marked and g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0
+    assert CELLS[3] not in g.live_item_cells()
     scrap = g.inv[ids.SCRAP_METAL]
-    assert not session.step(g, [], gap=0, gone={3}).marked and g.grid[at(3)] == 0
-    g.live.clear()  # the room left without picking it up
     assert not session.step(g, [], gap=0, gone={3}).marked, "its cell still reads loaded"
     g.loaded[at(3)] = 0
     assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
     for _ in range(3):
         session.step(g, [], gap=0, gone={3})
     assert g.inv[ids.SCRAP_METAL] == scrap + 1
-
-
-def test_an_item_whose_state_was_written_under_it_counts_once_when_picked_up(others) -> None:
-    session, g = others
-    g.spawn.add(CELLS[3])
-    session.step(g, [], gap=0, gone={3})
-    session.step(g, [], gap=0, gone={3})
-    assert g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0 and CELLS[3] in g.live
-    scrap = g.inv[ids.SCRAP_METAL]
-    g.collect(3)  # the player takes it
-    for _ in range(4):
-        assert not session.step(g, [], gap=0, gone={3}).marked
-    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap + 1
 
 
 def test_a_map_cell_the_game_changed_since_the_look_is_marked_by_a_later_poll(others) -> None:
