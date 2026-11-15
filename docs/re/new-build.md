@@ -21,6 +21,9 @@ the same heading with the new build, beside the old one, never in its place.
 3. **Check every pattern** against the copy: `.venv/Scripts/python tools/check_patterns.py
    lab/data/<exe-hash-12>/Zexion.exe`. Each target must resolve (every pattern once, all agreeing);
    for a build not yet known the tool reports the addresses found, for `docs/re/memory.md`.
+   One target may fail without stopping the client: `cell_state`
+   (`patterns.CLIENT_ONLY_TARGETS`), without which it still attaches and only stops marking
+   other players' items collected, saying so once. Replace its patterns all the same.
 4. **Replace the patterns that fail** with `.venv/Scripts/python tools/make_pattern.py EXE RVA`
    (the `/find-address` skill, step 4): find the target's new RVA from the old code (its
    references, its function), take candidates, and keep two or more from different code. A
