@@ -79,7 +79,7 @@ void test_the_row_shows_the_disks() {
 }
 
 // Before the client sets its count, the seed file's shows at once (no KEYS flash); the client's
-// then wins, from the next pause screen.
+// then wins, on the open screen too (its characters written again, nothing else).
 void test_prepared_before_the_count() {
     Pause p;
     zap::PauseDiskRow row;
@@ -89,12 +89,37 @@ void test_prepared_before_the_count() {
     check(branch() == 0xEB && row.patched(), "prepared: the panel built");
     check(p.frame(p.sprite[4]) == 829 && p.frame(p.sprite[1]) == '3',
           "the file's count shown at once");
+    const double x = at<double>(p.sprite[0], 0x40);
+    at<double>(p.sprite[0], 0x40) = 77;  // only the characters are written again
     row.set(zap::pause_row_text(4, 0));
     row.watch(a, false);
-    check(p.frame(p.sprite[1]) == '3', "an open screen's row turned once");
+    check(p.frame(p.sprite[1]) == '4' && p.frame(p.sprite[4]) == 829 &&
+              at<double>(p.sprite[0], 0x40) == 77,
+          "an open screen's row shows the new count, its characters alone written again");
+    at<double>(p.sprite[0], 0x40) = x;
+    at<int32_t>(p.sprite[1], 0x1C4) = 'X';
+    row.watch(a, false);
+    check(p.frame(p.sprite[1]) == 'X', "written once a change");
+    // A reload from save put a disk back with the screen opened before the client's count.
+    row.set(zap::pause_row_text(12, 15));
+    row.watch(a, false);
+    const char* text = "12 OF 15";
+    bool all = p.frame(p.sprite[0]) == text[0] && p.frame(p.sprite[1]) == text[1] &&
+               p.frame(p.sprite[2]) == text[6] && p.frame(p.sprite[3]) == text[7];
+    for (int i = 0; i < 4; ++i) all = all && p.frame(p.glyph[i]) == text[2 + i];
+    check(all, "every cell of the new text");
     Pause q;
     row.watch(q.addresses(), false);
-    check(q.frame(q.sprite[1]) == '4', "the next pause screen: the client's count");
+    check(q.frame(q.sprite[0]) == '1' && q.frame(q.sprite[1]) == '2',
+          "the next pause screen: the client's count");
+    // A row some other helper turned (this one loaded under an open pause screen): left as it is.
+    zap::PauseDiskRow late;
+    late.set(zap::pause_row_text(7, 15));
+    late.watch(q.addresses(), false);
+    check(q.frame(q.sprite[1]) == '2', "a row this helper did not turn keeps its characters");
+    late.set("");
+    late.watch(q.addresses(), false);
+    row.watch(q.addresses(), false);  // the branch again, as `late` put it back
     row.set("");
     row.prepare("");
     row.watch(a, false);
@@ -497,6 +522,14 @@ void test_the_row_in_a_translation() {
             check(stand_in::g_builds.size() == builds + 2 &&
                       stand_in::g_builds.back().text == L"2 of 15",
                   "and again after the game's");
+            row.set(zap::pause_row_text(1, 15));  // a reload from save put a disk back
+            row.watch(a, false);
+            check(stand_in::g_builds.back().text == L"1 of 15" &&
+                      !zap::pixel_glyphs_shown(p.label) && !slots_shown(),
+                  "a count that changes under the open screen is built again");
+            const size_t after = stand_in::g_builds.size();
+            row.watch(a, false);
+            check(stand_in::g_builds.size() == after, "once a change");
         } else {
             check(stand_in::g_builds.empty() && slots_shown(),
                   "the flag clear: nothing built, the key slots shown");

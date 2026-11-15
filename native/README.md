@@ -1066,7 +1066,12 @@ the helper:
   only once flag 39 is set made a `jmp`, then a disc and the count, the key slots and icons hidden.
   As soon as a save of a known disk seed (one the client left a file for) is loaded, in play or not,
   the row shows the count from that file until the client's arrives, so a pause screen opened at
-  once shows the disks, not KEYS. OPTION MENU opens over the pause screen, which stays open under
+  once shows the disks, not KEYS. A count that changes while one pause screen stays open is
+  written into its row again, the characters alone (`PauseDiskRow::turn`): the client's count
+  comes about a second after a RELOAD FROM SAVE, and a screen opened before it kept the count
+  from before the reload for as long as it stayed open (the owner's report, 2026-11-14: "1 of 4"
+  after a reload that put the disk back; stand-in tests, `tests/pause_tests.cpp`, failing with
+  the rewrite taken out). OPTION MENU opens over the pause screen, which stays open under
   it, and the game calls the pause menu's way back (`options_back_fn`, which OPTION MENU's opener
   puts at the menu's `+0x68`) as it closes, before it draws that frame; while the row is on, that
   pointer is the helper's wrapper, which calls the game's and then turns the row in the same call
@@ -1202,8 +1207,16 @@ loaded save (`client/discs.py`, `owned`). So it drops after a death or a reload 
 own disk's pickup, the disk lies in its room again, and picking it up again counts it again and
 shows its count again (`client/ticks.py`, `followups_tick`: a count notice for each own disk
 picked up while the load is watched; one the save already held at the load's first two looks,
-picked up with no client or before a reconnect, shows none, nor one another slot of the seed
-holds when it is loaded). A received disk's notice is worked out before the poll's look at
+picked up with no client or before a reconnect, shows none from the client, nor one another
+slot of the seed holds when it is loaded). With no client attached the helper shows that count
+itself at the pickup (`Game::watch_own_disks`, the owner's request, 2026-11-14): in a known
+disk seed's save, an own disk's cell turning collected after two frames in play, as for an own
+trap, queues "OS Install Disk 3 of 15" ("of 15" once the scanner has told), the count from the
+seed's file and the save's map (`offline_disk_count`), behind the game's pickup popup; a load
+is no pickup, and a count not shown yet is withdrawn when a load puts a disk back, a client
+attaches or the save is left (stand-in test, `tests/game_tests.cpp`,
+`test_an_own_disk_shows_its_count_with_no_client`, failing with the watch taken out of
+`watch_all`). A received disk's notice is worked out before the poll's look at
 the save, so right after a reload that put an own disk back it can read one too many once;
 the count on the screens is the save's. The goal is sent for an ending in
 a save that holds enough. The server's checked locations and the client's found record no

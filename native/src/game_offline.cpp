@@ -22,6 +22,17 @@ constexpr char kOtherSeedNotice[] =
 // One of the helper's own notices: silent, for any save.
 Popup notice(const char* text) { return {kAreaMapItem, text, true}; }
 
+// An own disk's count with no client (watch_own_disks): the helper's own, silent (the game's
+// pickup popup before it has played the sound); told apart by its item.
+Popup disk_notice(int count, int required) {
+    std::string text = std::string(kDiskName) + " " + std::to_string(count);
+    if (required > 0) text += " of " + std::to_string(required);
+    return {static_cast<uint8_t>(kDiskItem), std::move(text), true};
+}
+bool is_disk_notice(const Popup& p) {
+    return p.bare && !p.counted && p.batch == 0 && p.item == kDiskItem;
+}
+
 }  // namespace
 
 void Game::set_offline(std::vector<OfflineSeed> seeds) {
@@ -248,6 +259,47 @@ void Game::watch_own_traps() {
     own_traps_collected_ = std::move(collected);
     own_traps_looked_ = true;
     own_traps_play_looks_ = in_play() ? std::min(own_traps_play_looks_ + 1, kOwnTrapPlayLooks) : 0;
+}
+
+void Game::watch_own_disks() {
+    // With a client its follow-up shows the count (and knows the disks received since the
+    // seed's file was written); with none, this.
+    const int seed =
+        configured_ && !active_ && *at_.save_loaded != kNoSaveLoaded ? loaded_seed() : -1;
+    const OfflineSeed* sd = seed >= 0 ? &offline_seeds_[static_cast<size_t>(seed)] : nullptr;
+    if (sd == nullptr || !sd->discs) {
+        if (own_disks_looked_) std::erase_if(popups_, is_disk_notice);
+        own_disks_looked_ = false;
+        own_disks_play_looks_ = 0;
+        return;
+    }
+    const std::vector<int>& cells = sd->unfound;  // every own disk's cell (client/ticks.py)
+    std::vector<bool> collected(cells.size());
+    for (size_t i = 0; i < cells.size(); ++i) {
+        collected[i] = cells[i] >= 0 && cells[i] < kMapCells &&
+                       at_.map_grid[cells[i]] == kCollectedCell;
+    }
+    if (own_disks_looked_ && cells == own_disks_seen_) {
+        bool found = false, undone = false;
+        for (size_t i = 0; i < cells.size(); ++i) {
+            found = found || (collected[i] && !own_disks_collected_[i]);
+            undone = undone || (!collected[i] && own_disks_collected_[i]);
+        }
+        // A load put a disk back: the counts queued are no longer the save's.
+        if (undone) std::erase_if(popups_, is_disk_notice);
+        // One notice a look, with the count as it is now (two disks in one frame: one notice).
+        if (found && own_disks_play_looks_ >= kOwnTrapPlayLooks) {
+            const bool told = at_.flags[flag::kScannerTold] != 0;
+            popups_.push_back(
+                disk_notice(offline_disk_count(*sd, at_.map_grid), told ? sd->required : 0));
+        }
+    } else if (own_disks_looked_) {
+        std::erase_if(popups_, is_disk_notice);  // another seed's save, or its file merged
+    }
+    own_disks_seen_ = cells;
+    own_disks_collected_ = std::move(collected);
+    own_disks_looked_ = true;
+    own_disks_play_looks_ = in_play() ? std::min(own_disks_play_looks_ + 1, kOwnTrapPlayLooks) : 0;
 }
 
 void Game::own_trap_found(uint8_t item, int cell) {

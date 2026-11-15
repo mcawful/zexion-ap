@@ -45,7 +45,10 @@ public:
     bool on() const { return !text_.empty() || !prepared_.empty(); }
 
     // Game thread, each frame: the branch while on (or put back while off), and the row turned
-    // on a pause screen that has not been. `disc`: the helper's disc is painted now.
+    // on a pause screen that has not been, or its characters written again on the one the helper
+    // turned, once the text is another (a count that changed under an open screen: one opened
+    // right after a reload from save, before the client's count). `disc`: the helper's disc is
+    // painted now.
     void watch(const GameAddresses& addresses, bool disc);
 
     // Game thread: the branch and the pause menu's way back put back, and the disc's entry
@@ -73,6 +76,10 @@ private:
 
     std::string text_;
     std::string prepared_;
+    // The pause screen the helper last turned and the text it wrote there (compared only: a
+    // screen at the same address is turned afresh, as its row is the game's again).
+    const BYTE* turned_ = nullptr;
+    std::string written_;
     bool patched_ = false;
     BYTE* entry_ = nullptr;  // in a page never freed (above)
     float game_rect_[4] = {};  // frame 829's texture rectangle, as copied

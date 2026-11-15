@@ -2259,6 +2259,91 @@ void play_looks(zap::Game& game) {
     for (int i = 0; i < 2; ++i) game.watch_all(&chosen);
 }
 
+// With no client, an own OS Install Disk's pickup shows the save's count, as the client's
+// follow-up does with one: every pickup, so again after a reload put the disk back; a load is
+// no pickup, and a count queued for a pickup a load undid is withdrawn.
+void test_an_own_disk_shows_its_count_with_no_client() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    const int first = 4 * 54 + 3, second = 7 * 54 + 9;
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.discs = true;
+    seed.count = 1;  // the disks the slot starts with and those received
+    seed.required = 4;
+    seed.scan_line = "Collect 4 OS Install Disks!";
+    seed.unfound = {first, second};
+    g_map_grid[first] = 0x19;
+    g_map_grid[second] = 0;
+    g_flags[39] = 0;  // the scanner has not said how many
+    game.set_offline({seed});
+
+    // With a client: its own follow-up shows the count.
+    in_play_since(game, 3000);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    g_map_grid[first] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 0, "with a client: the count is the client's to show");
+    g_map_grid[first] = 0x19;
+
+    game.client_gone(&chosen);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);  // dressed, its warning queued
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(game.queued_popups() == 0, "the offline warning shown");
+    const int shown = g_messages;
+    g_map_grid[first] = zap::kCollectedCell;  // the pickup
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "an own disk's pickup queues its count");
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "once a pickup");
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(g_messages == shown + 1 && g_text.find("OS INSTALL DISK 2") != std::string::npos &&
+              g_text.find(" OF ") == std::string::npos,
+          "the save's count, before the scanner has said how many");
+
+    // RELOAD FROM SAVE without saving: the disk back, then picked up again.
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_map_grid[first] = 0x19;
+    g_menu = 0;
+    play_looks(game);
+    check(game.queued_popups() == 0, "the reload queues nothing");
+    g_flags[39] = 1;
+    g_map_grid[first] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(g_messages == shown + 2 && g_text.find("OS INSTALL DISK 2 OF 4") != std::string::npos,
+          "counted, and said, again; with how many are needed once told");
+
+    // A load is no pickup: a save holding the second disk, loaded from the menu.
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_map_grid[second] = zap::kCollectedCell;
+    g_menu = 0;
+    play_looks(game);
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 0 && g_messages == shown + 2, "a load is no pickup");
+
+    // A count still queued when a load undoes its pickup is withdrawn.
+    g_map_grid[second] = 0;
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_menu = 0;
+    play_looks(game);
+    g_map_grid[second] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "queued by the pickup");
+    g_menu = 2;  // paused before it showed, then RELOAD FROM SAVE
+    game.watch_all(&chosen);
+    g_map_grid[second] = 0;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 0, "withdrawn: its count is no longer the save's");
+    g_menu = 0;
+    g_rando_marker = 0;
+    g_flags[39] = 0;
+    g_map_grid[first] = g_map_grid[second] = 0;
+}
+
 // This world's own trap goes off at its pickup, every pickup: the helper watches the cells the
 // loaded save's seed file lists, with a client or none, and takes no load for a pickup.
 void test_own_traps_go_off_at_each_pickup() {
@@ -3542,6 +3627,7 @@ int main() {
     test_received_traps();
     test_own_traps();
     test_own_traps_go_off_at_each_pickup();
+    test_an_own_disk_shows_its_count_with_no_client();
     test_an_own_trap_whose_pickup_was_undone_is_dropped();
     test_a_trap_popup_takes_its_turn();
     test_a_popups_notices_stay_ahead_of_a_trap_it_passed();

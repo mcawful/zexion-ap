@@ -932,6 +932,7 @@ void Game::watch_all(WidgetCallback callback) {
     watch_map_marks();
     watch_pickups();
     watch_own_traps();  // before pump_traps: one picked up this frame goes off this frame
+    watch_own_disks();
     watch_translation();
     text_cut_.watch(at_.text_cut_code);  // tall popups' lines cut right (text.h)
     watch_trap_patches();                 // AILMENTS left out while a trap runs (trap.h)
