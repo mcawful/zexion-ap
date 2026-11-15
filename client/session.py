@@ -124,9 +124,10 @@ def game_saved(g: game.Game) -> int | None:
 # Two polls agree on what to mark only this close together, and in the same save slot: a
 # pause in the polls (the helper attached again, a read that failed) starts over.
 MARK_AGREE_SECONDS = 5.0
-# The cells this far from the player's, each way, are never marked: the game keeps the cells
-# next to the player's loaded (docs/re/memory.md, "What decides whether an item appears"), and
-# one more is the margin chosen for the player moving on between the look and the write.
+# The cells this far from the player's, each way, are never marked, on top of the cells the
+# game says it has loaded (game.Game.loaded_cells): the game keeps the cells next to the
+# player's loaded (docs/re/memory.md, "What decides whether an item appears"), and one more is
+# the margin chosen for the player moving on between the look and the write.
 NEAR_CELLS = 2
 
 
@@ -153,29 +154,47 @@ def to_mark(
     return out
 
 
+def same_load(g: game.Game, stamp: bytes) -> bool:
+    """Whether the game is in play in the randomizer save a look found, by its slot's stamp
+    (new after each save, death and reload): read again right before the marking's writes."""
+    return (
+        len(stamp) >= 4
+        and g.state() == game.IN_PLAY
+        and g.rando_marker() == 1
+        and g.save_stamp() == stamp
+    )
+
+
 def mark_collected(
     g: game.Game,
     grid: bytes,
-    states: bytes,
     cells: Sequence[tuple[int, int]],
     indices: Iterable[int],
-    player: tuple[int, int],
+    stamp: bytes,
 ) -> set[int]:
     """Mark these locations (``to_mark``'s) collected, as Session.mark describes; the ones
-    marked. First each cell's item state, which stops the game making the item from then on;
-    then, for each with no item object of its cell in the loaded rooms after that write, so
-    none can come any more, its map cell. One whose room was loaded between the look and the
-    write keeps the state, with its item there to pick up, and gets its map cell from that
-    pickup or, once the room is left, from a later poll, as does one whose map cell could not
-    be written this time (the game changed it since the look). GameNotRunning is raised;
-    another GameError leaves that location for a later poll."""
+    marked. Right before the first write the save is checked to be the look's, in play
+    (``same_load``), and the item states, the loaded cells, the item objects and the player's
+    cell are read again. First each cell's item state, which stops the game making the item
+    from then on; then, for each whose cell is not loaded and has no item object after that
+    write, so none can come any more, its map cell. One whose room was loaded between the look
+    and the write keeps the state, with its item there to pick up, and gets its map cell from
+    that pickup or, once the room is left, from a later poll, as does one whose map cell could
+    not be written this time (the game changed it since the look). Nothing counts as marked if
+    the game is not in play after the last write (a load began: the next polls look again).
+    GameNotRunning is raised; another GameError leaves that location for a later poll."""
+    if not same_load(g, stamp):
+        return set()
+    states, loaded = g.cell_items(), g.loaded_cells()
     live = g.live_item_cells()
+    player = g.player_state().cell
     todo = []
     for i in indices:
         x, y = cells[i]
         state = states[y * ids.MAP_SIZE + x]
         if (
-            (x, y) in live
+            loaded[y * ids.MAP_SIZE + x]
+            or (x, y) in live
             or near((x, y), player)
             or state not in (game.ITEM_THERE, game.ITEM_COLLECTED)
         ):
@@ -191,11 +210,11 @@ def mark_collected(
         todo.append(i)
     if not todo:
         return set()
-    live = g.live_item_cells()
+    live, loaded = g.live_item_cells(), g.loaded_cells()
     marked = set()
     for i in todo:
         x, y = cells[i]
-        if (x, y) in live:
+        if loaded[y * ids.MAP_SIZE + x] or (x, y) in live:
             continue
         try:
             if grid[y * ids.MAP_SIZE + x] != ids.COLLECTED:
@@ -206,6 +225,9 @@ def mark_collected(
             logger.info(f"Not marked collected this time: {exc}")
             continue
         marked.add(i)
+    if marked and g.state() != game.IN_PLAY:
+        logger.info("A load began during the marking; the next polls look again.")
+        return set()
     return marked
 
 
@@ -429,14 +451,16 @@ class Session:
         Only one the poll before found still to mark too and did not mark, in play, in the same
         save slot and no more than MARK_AGREE_SECONDS ago, so a load caught half way marks
         nothing. One whose item is, or may be, in the loaded rooms now is left as it is, to
-        pick up as usual or to mark once its room is left: one with an item object of its cell,
-        one an object of the cell holds or has dropped, and any within NEAR_CELLS of the
-        player's cell (where an object of another kind may be the item, in a reversed-gravity
-        room, say). Marked under an item still there, the save would count a pickup of it
-        twice. The Scrap Metal a stand-in's pickup gives comes with the next polls' grants
-        (reconcile.should_own counts a marked cell as collected), so a save reads the same
-        marked or picked up, but for the game's pickup counter (ITEMS on the pause screen),
-        which marking leaves alone."""
+        pick up as usual or to mark once its room is left: one whose cell the game has loaded
+        (game.Game.loaded_cells), one with an item object of its cell, one an object of the
+        cell holds or has dropped, and any within NEAR_CELLS of the player's cell (where an
+        object of another kind may be the item, in a reversed-gravity room, say). All of it is
+        read again right before the writes, with the save and the state (mark_collected).
+        Marked under an item still there, the save would count a pickup of it twice. The Scrap
+        Metal a stand-in's pickup gives comes with the next polls' grants (reconcile.should_own
+        counts a marked cell as collected), so a save reads the same marked or picked up, but
+        for the game's pickup counter (ITEMS on the pause screen), which marking leaves
+        alone."""
         gone = set(gone)
         if not gone:
             self._to_mark = set()
@@ -445,12 +469,15 @@ class Session:
         states = g.cell_items()
         want = to_mark(snap.grid, states, cells, gone)
         now, slot = time.monotonic(), snap.stamp[:4]
+        if len(slot) < 4:
+            self._to_mark = set()  # the slot's stamp did not read: no save to tell apart
+            return set()
         agreed = slot == self._to_mark_slot and now - self._to_mark_at <= MARK_AGREE_SECONDS
         ready = want & self._to_mark if agreed else set()
         self._to_mark, self._to_mark_at, self._to_mark_slot = want, now, slot
         if not ready:
             return set()
-        marked = mark_collected(g, snap.grid, states, cells, sorted(ready), snap.cell)
+        marked = mark_collected(g, snap.grid, cells, sorted(ready), snap.stamp)
         self._to_mark -= marked  # one a reload brings back waits for two polls again
         return marked
 

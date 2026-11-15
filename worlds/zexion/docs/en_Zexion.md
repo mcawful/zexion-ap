@@ -256,15 +256,18 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   ITEM, as every item does, with Obscure Class on; otherwise ADVANCED TECH with Obscure Majors
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
   when you pick it up.
-- Another player's item stays collected once it has been found or sent: if you die or reload
-  without saving after picking it up, or start another save of the seed, it's gone from its
-  room, and so are the items a player collects from your world (`!collect`) and the ones you
-  release (`!release`). One within two map squares of you stays until you have been farther
-  from it, and you can still pick it up; so one that close to the save point you reload at is
-  back until you walk away. Your own items aren't touched: they follow your save, so after a
-  death or a reload they're back in their rooms. This needs the client connected (checked in
-  the game after a reload and after another player's `!collect`; a death, another save and
-  `!release` not yet).
+- Another player's item stays collected once its location is checked, by you, by its owner's
+  `!collect` or by a release: if you die or reload without saving after picking it up, or
+  play another save of your seed, it's gone from its room, and so are items another player
+  collects with `!collect` and the ones you release (`!release`). One in a room around you
+  (within two map squares, or in a room the game still has loaded) stays until you have been
+  farther from it, and you can still pick it up; so one that close to the save point you
+  reload at is back until you walk away. Your own items aren't touched: they follow your
+  save, so after a death or a reload they're back in their rooms. This needs the client
+  connected (checked in the game after a reload and after another player's `!collect`; a
+  death, another save and `!release` not yet). A save keeps what was marked: played against a
+  new room of the same seed, or after the server went back to an older state, it sends those
+  locations as found.
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
   Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
   does, after its popup, once you have stayed on one map square for a second. Both, and the

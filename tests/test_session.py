@@ -33,7 +33,9 @@ class FakeGame:
         self.cell = (0, 0)  # the player state's, the game's (X, Y)
         self.items = bytearray(54 * 54)  # each cell's item state (game.Game.cell_items)
         self.live: set[tuple[int, int]] = set()  # the cells of the item objects in the rooms
+        self.loaded = bytearray(54 * 54)  # each cell's loaded byte (game.Game.loaded_cells)
         self.spawn: set[tuple[int, int]] = set()  # rooms loaded between a mark's look and write
+        self.load_after_writes = False  # a load beginning as the marking's last write lands
 
     def state(self, energy: int | None = None) -> str:
         self.reads += 1
@@ -79,11 +81,15 @@ class FakeGame:
     def live_item_cells(self) -> set[tuple[int, int]]:
         return set(self.live)
 
+    def loaded_cells(self) -> bytes:
+        return bytes(self.loaded)
+
     def set_item_collected(self, cell: tuple[int, int]) -> None:
         x, y = cell
         if cell in self.spawn:  # the game loaded the room first: its item is there now
             self.spawn.discard(cell)
             self.live.add(cell)
+            self.loaded[y * 54 + x] = 1
         if self.items[y * 54 + x] != game.ITEM_THERE:
             raise game.GameError("not the expected state")
         self.items[y * 54 + x] = game.ITEM_COLLECTED
@@ -93,6 +99,8 @@ class FakeGame:
         if self.grid[y * 54 + x] != expected:
             raise game.GameError("not the expected marker")
         self.grid[y * 54 + x] = 0x1B
+        if self.load_after_writes:
+            self.state_value = game.MENU
 
     def set_supplies(self, expected, new) -> None:
         if tuple(self.sup) != tuple(expected):
@@ -869,6 +877,8 @@ def test_a_room_loaded_between_the_look_and_the_write_keeps_its_item_to_pick_up(
     scrap = g.inv[ids.SCRAP_METAL]
     assert not session.step(g, [], gap=0, gone={3}).marked and g.grid[at(3)] == 0
     g.live.clear()  # the room left without picking it up
+    assert not session.step(g, [], gap=0, gone={3}).marked, "its cell still reads loaded"
+    g.loaded[at(3)] = 0
     assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
     for _ in range(3):
         session.step(g, [], gap=0, gone={3})
@@ -998,6 +1008,96 @@ def test_the_cells_around_the_player_are_left(others) -> None:
     assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0
     g.cell = (y, x + ss.NEAR_CELLS + 1)  # far enough for its room to be unloaded
     assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_a_cell_the_game_has_loaded_is_left(others) -> None:
+    session, g = others
+    # The game's own word that the cell's objects are loaded, wherever the player stands and
+    # whatever kind of object the item is there (none of the item pool's here).
+    g.loaded[at(3)] = 1
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3, 5}).marked - {5}
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0 and marked(g, 5)
+    g.loaded[at(3)] = 0  # the room left
+    session.step(g, [], gap=0, gone={3, 5})
+    assert marked(g, 3)
+
+
+def test_a_cell_loaded_between_the_two_writes_keeps_its_map_cell(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    real = g.set_item_collected
+
+    def loads_right_after(cell: tuple[int, int]) -> None:
+        real(cell)
+        g.loaded[at(3)] = 1  # no item object: an item of another kind may be there
+
+    g.set_item_collected = loads_right_after
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0
+    g.loaded[at(3)] = 0
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_an_item_state_that_changed_since_the_look_is_not_written(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3, 5})
+    real = g.cell_items
+    calls = []
+
+    def taken_after_the_look() -> bytes:
+        states = real()
+        calls.append(1)
+        if len(calls) == 2:  # the read right before the writes: an object takes the item next
+            g.items[at(3)] = 2
+        return states
+
+    g.cell_items = taken_after_the_look
+    step = session.step(g, [], gap=0, gone={3, 5})
+    # The compare-and-set refuses: nothing of that cell is written, the other is marked.
+    assert step.marked == {5} and g.items[at(3)] == 2 and g.grid[at(3)] == 0
+    assert not session.step(g, [], gap=0, gone={3, 5}).marked, "held by an object: left"
+
+
+@pytest.mark.parametrize("change", ["stamp", "state", "marker", "no stamp"])
+def test_the_save_is_checked_again_right_before_the_writes(others, change) -> None:
+    _, g = others
+    stamp = g.stamp
+    if change == "stamp":
+        g.stamp = bytes([1]) + bytes(13)  # a save, a death or a reload since the look
+    elif change == "state":
+        g.state_value = game.MENU
+    elif change == "marker":
+        g.marker = 0
+    else:
+        stamp = b""
+    assert ss.mark_collected(g, bytes(g.grid), CELLS, [3], stamp) == set()
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "nothing written"
+    g.stamp, g.state_value, g.marker = bytes(14), game.IN_PLAY, 1
+    assert ss.mark_collected(g, bytes(g.grid), CELLS, [3], bytes(14)) == {3} and marked(g, 3)
+
+
+def test_a_load_beginning_under_the_marking_counts_nothing_as_marked(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    g.load_after_writes = True
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert not session.step(g, [], gap=0, gone={3}).marked  # the load, not in play
+    g.load_after_writes, g.state_value = False, game.IN_PLAY
+    g.items[at(3)], g.grid[at(3)] = game.ITEM_THERE, 0  # it put the item back
+    assert not session.step(g, [], gap=0, gone={3}).marked, "two polls again"
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_nothing_is_marked_while_the_slots_stamp_does_not_read(others) -> None:
+    session, g = others
+    g.stamp = b""
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0
+    g.stamp = bytes(14)
+    session.step(g, [], gap=0, gone={3})
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
 
 
 def test_a_mark_a_load_cut_in_two_is_finished(others) -> None:

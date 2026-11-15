@@ -2,9 +2,10 @@
 
 Archipelago comes from .ap/Archipelago (or ``ZEXION_AP_DIR``), or is the Launcher's own when
 started as Zexion Client. While this seed's save is loaded it sends the locations the map marks
-collected, gives items from other worlds (client/session.py) and sends the goal when the ending
-begins; the side tasks with the in-game helper are in client/ticks.py. This world's own items
-are in the save's item table, so it asks the server only for other worlds' (items_handling).
+collected, gives items from other worlds, marks other players' items the server has as
+checked collected in the save (client/session.py) and sends the goal when the ending begins;
+the side tasks with the in-game helper are in client/ticks.py. This world's own items are in
+the save's item table, so it asks the server only for other worlds' (items_handling).
 """
 
 from __future__ import annotations

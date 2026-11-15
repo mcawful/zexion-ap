@@ -320,6 +320,16 @@ def test_the_others_are_the_stand_ins_but_the_own_disks_and_traps() -> None:
     assert conn.others == {3, 40}, "the own disk (20) and the own trap (30) follow the save"
 
 
+def test_an_own_disk_is_never_among_the_others_whatever_the_goal() -> None:
+    items = [46] * 154
+    items[3], items[20] = 47, 48
+    conn = state.Connection.from_slot_data(
+        slot_data(location_items=items, goal="core", disc_locations=[20]), team=0, slot=1
+    )
+    assert conn.hunt is None and conn.foreign == [3, 20]
+    assert conn.others == {3}, "the slot data's own disks follow the save with the core goal too"
+
+
 def test_only_the_others_the_server_has_checked_are_kept_collected() -> None:
     items = [46] * 154
     items[3], items[20], items[40] = 47, 48, 48

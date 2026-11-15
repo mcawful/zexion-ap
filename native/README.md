@@ -964,14 +964,23 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   leaves both (`client/session.py`, `mark`; `docs/re/memory.md`, "What decides whether an item
   appears"): compare-and-set writes, only for a location two polls in a row (in the same save
   slot, seconds apart at most) found still to mark, and never one whose item is, or may be, in
-  the loaded rooms: one with an item object of its cell, one an object holds or has dropped,
-  and any within two map squares of the player's (the game keeps the squares next to the
-  player's loaded; an object of another kind may be the item there, as in a reversed-gravity
-  room). That one stays to pick up as usual, and is marked once the player is three squares
-  away. So after a reload at a save point that close to such an item, the item is back until
-  the player has been that far from it: the game loads those rooms, with their items, before
-  the client can mark. Removing an item object as the pickup does, or marking the slot's copy
-  in memory, would close that; neither is done. The one Scrap Metal a stand-in's pickup gives
+  the loaded rooms: one whose cell the game has loaded (its loaded byte, in the array right
+  after the per-cell state), one with an item object of its cell, one an object holds or has
+  dropped, and any within two map squares of the player's (a margin on top of the loaded
+  cells, which are the squares next to the one the game tracks; an object of another kind may
+  be the item there, as in a reversed-gravity room). Right before the writes the client checks
+  the save again (in play, a randomizer save, the slot's stamp as at the look) and reads the
+  states, the loaded cells, the item objects and the player's cell afresh; the loaded cells and
+  the item objects once more before the map cell; and it counts nothing as marked if the game
+  is not in play after the last write. An item left out stays to pick up as usual, and is
+  marked once its room is unloaded and the player is three squares away. So after a reload at
+  a save point that close to such an item, the item is back until the player has been that far
+  from it: the game loads those rooms, with their items, before the client can mark. The
+  helper removing such an item object as the pickup does would close that (the owner's
+  decision, 2026-11-14): it comes in its own pull request, after #144. `cell_state`, the one
+  target the marking alone reads, may be missing: on a game build where its patterns no longer
+  match, the client still attaches and only the marking stops, said once
+  (`patterns.CLIENT_ONLY_TARGETS`). The one Scrap Metal a stand-in's pickup gives
   comes with the client's grants, which count a marked cell as collected; the game's ITEMS
   count is not raised, and a marked square reads explored on the map. A mark stays in the
   save once the game saves: such a save played against another room of the same seed sends
@@ -991,7 +1000,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   owner walked and used the map; the marks were in the save file once the game saved (a lab
   copy: item state 1 and `0x1B`). Each marked cell gave its one Scrap Metal: 82 after the
   collect. Not run in game: a death, another save of the seed, `!release`, a cell whose item
-  an object holds, and the client connecting with locations already checked.
+  an object holds, and the client connecting with locations already checked; nor, added after
+  that run (c77879d) and stand-in tested only, the loaded-cell test, the checks right before
+  the writes and the attach without `cell_state`.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.

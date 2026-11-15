@@ -46,10 +46,11 @@ worlds/zexion/ → generation → slot data → client
   given again. Another player's item in this world stays collected once the server has its
   location as checked (found before a death or a reload, or in another save of the seed;
   collected by its owner; released): the client marks it collected in the loaded save, so it
-  is not there to pick up again, but for one within two map squares of the player, which
-  stays until the player is farther from it ([`native/README.md`](../native/README.md),
-  "Other players' items"). This world's own items follow the save. Only Energy Tanks, Missile Containers,
-  Mega Bombs, the boxes and Scrap Metal
+  is not there to pick up again, but for one in a room the game has loaded or within two map
+  squares of the player, which stays until the player is farther from it
+  ([`native/README.md`](../native/README.md), "Other players' items"). With `--verbose` each
+  marking is logged ("Marked collected in this save (...)"). This world's own items follow
+  the save. Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
   count up: any other item's byte is written as 1 at most, so a second copy (a server console's
   `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
@@ -61,7 +62,9 @@ worlds/zexion/ → generation → slot data → client
   own trap off at each pickup ([`native/README.md`](../native/README.md), "The OS Install Disks
   goal", "Traps"). A failing
   side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
-  and the goal go on. With no server connection, while a save it has not dressed is loaded and
+  and the goal go on, and so is a failing marking of other players' items ("Can't mark other
+  players' items collected right now"), which is part of the poll's step, not a side task.
+  With no server connection, while a save it has not dressed is loaded and
   no ending is on its way, it lets the helper go, so the helper gives AP saves their look as
   with no client, and attaches it again on connecting
   ([`native/README.md`](../native/README.md), "AP saves without the client").
