@@ -1093,10 +1093,15 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   Y51 and the one at Exodia X20 Y0 were each picked up as the game's regular Scrap Metal,
   with its drops. The client was connected for the first minute after the save's load and
   then stopped (its session ended), the helper running on alone; which of the two each
-  pickup ran under is not known. Not run in game: the map square of such a scrap not yet
-  picked up (`minor_value`); and, with this helper, whether the fight at Exodia X20 Y0 and
-  the gate at R'Talva X34 Y51 follow the pickup (not said in that run; the fight did with
-  the stand-in naming no event, above).
+  pickup ran under is not known. The map square, the same day and helper (a new game of
+  that seed in slot 5, the client connected, the presets' Obscure Majors and Minors; "Check
+  L"): R'Talva X34 Y51's square, of item 48 (another player's trap), read `0x13`, an
+  obscured minor's, and the cursor named it UNKNOWN ITEM where it had said ADVANCED TECH
+  before this change (the owner's report, and the grid read live); Exodia X20 Y0's, of item
+  47, the same. Not run in game: the square under the other Obscure settings, and while the
+  item is on screen; and, with this helper, whether the fight at Exodia X20 Y0 and the gate
+  at R'Talva X34 Y51 follow the pickup (not said in the first run; the fight did with the
+  stand-in naming no event, above).
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen), and its pickup event; and Scrap Energy in another seed's save would
   look the same, so the
