@@ -858,6 +858,25 @@ def test_another_slot_of_the_seed_shows_no_count_for_the_disks_it_holds(monkeypa
     assert ctx.helper.notices == ["notice 44 OS Install Disk 3"]
 
 
+def test_a_disk_picked_up_while_the_helper_was_lost_is_the_helpers_to_count(monkeypatch) -> None:
+    # With no client the helper shows an own disk's count itself (watch_own_disks): the client,
+    # back, takes the disks the save holds for counted, as at a connection.
+    ctx, look = disks_poll(monkeypatch)
+    look({12})
+    look({12})
+    helper = ctx.helper
+    ctx.drop_helper()  # the mod stopped responding
+    assert ctx.load.disks_counted is None
+    ctx.helper, ctx.told = helper, state.HelperState()  # attached again
+    ctx.told.client_back_sent = True
+    look({12, 40})  # the one at 40 picked up meanwhile
+    look({12, 40})
+    assert helper.notices == [], "counted by the helper's own notice: not again"
+    look({12})  # a reload, then the pickup again
+    look({12, 40})
+    assert helper.notices == ["notice 44 OS Install Disk 3"]
+
+
 def test_own_traps_with_no_mod_are_said_once(monkeypatch, caplog) -> None:
     conn = connection(trap_locations=[[3, ids.DISRUPTION_TRAP]])
     ctx = context(conn, Running(game.IN_PLAY))

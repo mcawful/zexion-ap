@@ -286,6 +286,9 @@ class ZexionContext(CommonContext):
         self.told = None
         self.reload_mod_pending = False  # a request for the helper gone, not the next one
         self.load.feats = state.FeatsCheck()  # the next helper is asked about its own guard
+        # A disk picked up while the helper has no client is the helper's to count (its own
+        # notice): the next helper's first look takes the disks the save holds for counted.
+        self.load.disks_counted = None
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         conn = self.conn
         # Its popups not shown yet still show if it stays loaded, and are lost if it is gone. A

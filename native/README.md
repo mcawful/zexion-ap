@@ -1237,8 +1237,12 @@ request, 2026-11-14): in a known
 disk seed's save, an own disk's cell turning collected after two frames in play, as for an own
 trap, queues "OS Install Disk 3 of 15" ("of 15" once the scanner has told), the count from the
 seed's file and the save's map (`offline_disk_count`), behind the game's pickup popup; a load
-is no pickup, and a count not shown yet is withdrawn when a load puts a disk back, a client
-attaches or the save is left (stand-in test, `tests/game_tests.cpp`,
+is no pickup, and a count not shown yet is withdrawn when a load puts a disk back or the save
+is left. One queued stays when a client attaches, and the cells are watched with a client
+too, so a disk picked up with one is no pickup once it goes; a client that lost the helper
+takes the disks the save holds for counted when it is back (`drop_helper`), so a disk picked
+up meanwhile gets the helper's count alone (the re-auditor's finding, 2026-11-14: two count
+popups for one pickup; stand-in tests on both sides) (stand-in test, `tests/game_tests.cpp`,
 `test_an_own_disk_shows_its_count_with_no_client`, failing with the watch taken out of
 `watch_all`; in game 2026-11-14, `7859b9e7…`, no client: the count popup showed at the pickup,
 silent then; its sound, `Popup::sounds`, added after, has its stand-in check only and is not

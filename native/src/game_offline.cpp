@@ -264,10 +264,10 @@ void Game::watch_own_traps() {
 }
 
 void Game::watch_own_disks() {
-    // With a client its follow-up shows the count (and knows the disks received since the
-    // seed's file was written); with none, this.
-    const int seed =
-        configured_ && !active_ && *at_.save_loaded != kNoSaveLoaded ? loaded_seed() : -1;
+    // Watched with a client or none, so a disk picked up with one is not taken for a pickup
+    // once it goes; queued only with none: with a client its follow-up shows the count (and
+    // knows the disks received since the seed's file was written).
+    const int seed = configured_ && *at_.save_loaded != kNoSaveLoaded ? loaded_seed() : -1;
     const OfflineSeed* sd = seed >= 0 ? &offline_seeds_[static_cast<size_t>(seed)] : nullptr;
     if (sd == nullptr || !sd->discs) {
         if (own_disks_looked_) std::erase_if(popups_, is_disk_notice);
@@ -290,7 +290,9 @@ void Game::watch_own_disks() {
         // A load put a disk back: the counts queued are no longer the save's.
         if (undone) std::erase_if(popups_, is_disk_notice);
         // One notice a look, with the count as it is now (two disks in one frame: one notice).
-        if (found && own_disks_play_looks_ >= kOwnTrapPlayLooks) {
+        // One queued stays when a client attaches: the pickup was the helper's to count (the
+        // client takes the disks a save holds at its first look for counted).
+        if (found && !active_ && own_disks_play_looks_ >= kOwnTrapPlayLooks) {
             const bool told = at_.flags[flag::kScannerTold] != 0;
             popups_.push_back(
                 disk_notice(offline_disk_count(*sd, at_.map_grid), told ? sd->required : 0));

@@ -2342,6 +2342,29 @@ void test_an_own_disk_shows_its_count_with_no_client() {
     game.watch_all(&chosen);
     check(game.queued_popups() == 0, "withdrawn: its count is no longer the save's");
     g_menu = 0;
+
+    // A client attaching (one that lost the helper and is back) leaves a count queued: the
+    // pickup was the helper's to count. A disk picked up with it is not counted once it goes.
+    play_looks(game);
+    g_map_grid[second] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "queued with no client");
+    check(configure(game).empty(), "a client attaches");
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "kept when a client attaches");
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    g_map_grid[first] = 0x19;
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_menu = 0;
+    play_looks(game);
+    g_map_grid[first] = zap::kCollectedCell;  // picked up with the client attached
+    game.watch_all(&chosen);
+    game.client_gone(&chosen);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(g_text.find("OS INSTALL DISK") == std::string::npos,
+          "one picked up with a client is not counted by the helper once the client goes");
     g_rando_marker = 0;
     g_flags[39] = 0;
     g_map_grid[first] = g_map_grid[second] = 0;

@@ -286,13 +286,13 @@ public:
     // `cell` its map cell (-1: none known), by which pump_traps drops one whose pickup a load
     // undid before it went off.
     void own_trap_found(uint8_t item, int cell = -1);
-    // Game thread, every frame (watch_all), with no client: in a known disk seed's save, an own
+    // Game thread, every frame (watch_all): with no client, in a known disk seed's save, an own
     // OS Install Disk's pickup queues its count notice, as the client's follow-up does with one
     // (client/discs.py, `note`): "OS Install Disk 3 of 15", the save's count from the seed's
     // file and the map (offline_disk_count), "of 15" once the scanner has said how many. A
     // pickup is a cell turning collected, as for watch_own_traps (no load is taken for one);
-    // a load that puts a disk back withdraws the count notices not shown yet, as does a client
-    // attaching or the save being left: their count is no longer the save's.
+    // a load that puts a disk back withdraws the count notices not shown yet, as does the save
+    // being left: their count is no longer the save's. A client attaching leaves one queued.
     void watch_own_disks();
     // `trap_status` (for live checks): "queued N; last <outcome>", the outcome "none", "set
     // <item>", or "nothing <item>" (its timer already longer: as the game's op does nothing).
