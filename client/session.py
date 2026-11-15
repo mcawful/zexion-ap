@@ -124,10 +124,11 @@ def game_saved(g: game.Game) -> int | None:
 # Two polls agree on what to mark only this close together, and in the same save slot: a
 # pause in the polls (the helper attached again, a read that failed) starts over.
 MARK_AGREE_SECONDS = 5.0
-# The cells this far from the player's, each way, are never marked, on top of the cells the
-# game says it has loaded (game.Game.loaded_cells): the game keeps the cells next to the
-# player's loaded (docs/re/memory.md, "What decides whether an item appears"), and one more is
-# the margin chosen for the player moving on between the look and the write.
+# The cells this far from the player's, each way, are marked only where an item object of the
+# cell is in the loaded rooms, on top of the cells the game says it has loaded
+# (game.Game.loaded_cells): the game keeps the cells next to the player's loaded
+# (docs/re/memory.md, "What decides whether an item appears"), and one more is the margin
+# chosen for the player moving on between the look and the write.
 NEAR_CELLS = 2
 
 
@@ -171,34 +172,42 @@ def mark_collected(
     cells: Sequence[tuple[int, int]],
     indices: Iterable[int],
     stamp: bytes,
+    gap: float = 0.0,
+    ended: set[int] | None = None,
 ) -> set[int]:
     """Mark these locations (``to_mark``'s) collected, as Session.mark describes; the ones
     marked. Right before the first write the save is checked to be the look's, in play
     (``same_load``), and the item states, the loaded cells, the item objects and the player's
     cell are read again. First each cell's item state, which stops the game making the item
-    from then on; then, for each whose cell is not loaded and has no item object after that
-    write, so none can come any more, its map cell. One whose room was loaded between the look
-    and the write keeps the state, with its item there to pick up, and gets its map cell from
-    that pickup or, once the room is left, from a later poll, as does one whose map cell could
-    not be written this time (the game changed it since the look). Nothing counts as marked if
-    the game is not in play after the last write (a load began: the next polls look again).
-    GameNotRunning is raised; another GameError leaves that location for a later poll."""
+    from then on and, for an item object of the cell in the loaded rooms, has the game end it
+    in its next update (docs/re/memory.md, "What decides whether an item appears": the item's
+    update ends its own object once the state reads collected); then, after ``gap`` for those
+    updates and the save checked again, the map cell of each with no item object left. A cell
+    the game has loaded, or near the player's, with no item object of its own is left out: an
+    object of another kind may be its item, and writing the state would not end that. Such a
+    cell is marked once it had an item object here (``ended`` keeps those across polls of one
+    load, so the map cell follows even if the object goes between two polls). One whose map
+    cell could not be written this time (the game changed it since the look) is left for a
+    later poll. Nothing counts as marked if the game is not in play after the last write (a
+    load began: the next polls look again). GameNotRunning is raised; another GameError leaves
+    that location for a later poll."""
     if not same_load(g, stamp):
         return set()
+    ended = set() if ended is None else ended
     states, loaded = g.cell_items(), g.loaded_cells()
     live = g.live_item_cells()
     player = g.player_state().cell
-    todo = []
+    todo, waits = [], False
     for i in indices:
         x, y = cells[i]
         state = states[y * ids.MAP_SIZE + x]
-        if (
-            loaded[y * ids.MAP_SIZE + x]
-            or (x, y) in live
-            or near((x, y), player)
-            or state not in (game.ITEM_THERE, game.ITEM_COLLECTED)
-        ):
-            continue  # its item is, or may be, in the loaded rooms: left to be picked up
+        if state not in (game.ITEM_THERE, game.ITEM_COLLECTED):
+            continue  # an object of the cell holds its item, or has dropped it
+        if (x, y) in live:
+            ended.add(i)  # the game ends that object once the state reads collected
+            waits = True
+        elif i not in ended and (loaded[y * ids.MAP_SIZE + x] or near((x, y), player)):
+            continue  # its item may be in the loaded rooms as an object of another kind
         try:
             if state == game.ITEM_THERE:
                 g.set_item_collected((x, y))
@@ -210,12 +219,16 @@ def mark_collected(
         todo.append(i)
     if not todo:
         return set()
+    if waits:
+        time.sleep(gap)  # the game's next updates end the item objects of the cells written
+        if not same_load(g, stamp):
+            return set()
     live, loaded = g.live_item_cells(), g.loaded_cells()
     marked = set()
     for i in todo:
         x, y = cells[i]
-        if loaded[y * ids.MAP_SIZE + x] or (x, y) in live:
-            continue
+        if (x, y) in live or (loaded[y * ids.MAP_SIZE + x] and i not in ended):
+            continue  # an item object still there, or a room loaded since the look
         try:
             if grid[y * ids.MAP_SIZE + x] != ids.COLLECTED:
                 g.set_map_collected((x, y), grid[y * ids.MAP_SIZE + x])
@@ -281,6 +294,10 @@ class Session:
         self._to_mark: set[int] = set()
         self._to_mark_at = 0.0
         self._to_mark_slot = b""
+        # Locations seen with an item object in the loaded rooms while being marked, in the
+        # load with this stamp (mark_collected's ``ended``).
+        self._ended: set[int] = set()
+        self._ended_stamp = b""
         # How many received items have been handed over, to the helper for their popup or
         # written directly, and whether this connection has read the server's count since
         # Connected (client/storage.py, announced_tick; the client clears it at each). Until it
@@ -397,7 +414,7 @@ class Session:
         self._goal_before = goal
         if snap.state == game.IN_PLAY and not self.holding:
             try:
-                step.marked = self.mark(g, snap, gone)
+                step.marked = self.mark(g, snap, gone, gap)
             except game.GameNotRunning:
                 raise
             except game.GameError as exc:
@@ -440,7 +457,7 @@ class Session:
         self.holding = False
         self._to_mark = set()
 
-    def mark(self, g: game.Game, snap: Snapshot, gone: Iterable[int]) -> set[int]:
+    def mark(self, g: game.Game, snap: Snapshot, gone: Iterable[int], gap: float = 0.0) -> set[int]:
         """Keep ``gone`` collected in the loaded save (other players' items the server has as
         checked: found in another save of the seed or before a death or reload, collected by
         their owner, or released), so they are not there to pick up again: each one's map cell
@@ -450,13 +467,16 @@ class Session:
 
         Only one the poll before found still to mark too and did not mark, in play, in the same
         save slot and no more than MARK_AGREE_SECONDS ago, so a load caught half way marks
-        nothing. One whose item is, or may be, in the loaded rooms now is left as it is, to
-        pick up as usual or to mark once its room is left: one whose cell the game has loaded
-        (game.Game.loaded_cells), one with an item object of its cell, one an object of the
-        cell holds or has dropped, and any within NEAR_CELLS of the player's cell (where an
-        object of another kind may be the item, in a reversed-gravity room, say). All of it is
-        read again right before the writes, with the save and the state (mark_collected).
-        Marked under an item still there, the save would count a pickup of it twice. The Scrap
+        nothing. An item object of the cell in the loaded rooms is ended by the game itself
+        once the state is written (a reload at a save point beside it, its owner collecting
+        while the player stands by it), and the map cell follows. One whose item may be in the
+        loaded rooms as something else is left as it is, to pick up as usual or to mark once
+        its room is left: one an object of the cell holds or has dropped, and, with no item
+        object of its own, one whose cell the game has loaded (game.Game.loaded_cells) or
+        within NEAR_CELLS of the player's cell (an object of another kind may be the item, in
+        a reversed-gravity room, say). All of it is read again right before the writes, with
+        the save and the state (mark_collected). The map cell is never written under an item
+        object still there: the save would count a pickup of it twice. The Scrap
         Metal a stand-in's pickup gives comes with the next polls' grants (reconcile.should_own
         counts a marked cell as collected), so a save reads the same marked or picked up, but
         for the game's pickup counter (ITEMS on the pause screen), which marking leaves
@@ -477,7 +497,9 @@ class Session:
         self._to_mark, self._to_mark_at, self._to_mark_slot = want, now, slot
         if not ready:
             return set()
-        marked = mark_collected(g, snap.grid, cells, sorted(ready), snap.stamp)
+        if snap.stamp != self._ended_stamp:
+            self._ended, self._ended_stamp = set(), snap.stamp  # a save, a death or a reload
+        marked = mark_collected(g, snap.grid, cells, sorted(ready), snap.stamp, gap, self._ended)
         self._to_mark -= marked  # one a reload brings back waits for two polls again
         return marked
 
