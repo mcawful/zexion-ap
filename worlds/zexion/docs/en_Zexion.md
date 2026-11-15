@@ -265,9 +265,9 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   item up is what moves the game on: Exodia 20,0 (it starts the boss fight) and R'Talva
   34,51 (the boss's reward, which opens the warp gate). Once such an item is checked, a
   Scrap Metal lies there instead, and you still pick it up (checked in the game at Exodia
-  20,0, where it started the fight; at R'Talva 34,51 the scrap showed, and the gate is not
-  yet checked; with the mod it is picked up as the game's own Scrap Metal, drops and all:
-  not yet checked in the game either). An enemy that would have dropped a checked item drops nothing (checked in the
+  20,0, where it started the fight; the gate at R'Talva 34,51 is not yet checked). With the
+  mod it is picked up as the game's own Scrap Metal, drops and all (checked in the game in
+  both rooms). An enemy that would have dropped a checked item drops nothing (checked in the
   game). In an upside-down room the mod hides a checked item
   (checked in the game; without the mod it shows, and touching it gives you nothing).
   Your own items aren't touched: they follow your save, so after a death or a reload they're

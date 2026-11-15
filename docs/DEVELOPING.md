@@ -50,7 +50,7 @@ worlds/zexion/ → generation → slot data → client
   X20 Y0, where the pickup starts the boss fight, and R'Talva X34 Y51, the boss's reward,
   whose pickup turns the warp gate on): there the item stays and shows as Scrap Metal once
   it is checked, and with the helper it is picked up as the game's own Scrap Metal, drops
-  and all (that part not run in game). An item the game has made already is ended by the game itself
+  and all (in game in both rooms; its map square as a minor's not run in game). An item the game has made already is ended by the game itself
   once its state is written; one that may be
   there as another kind of object (in a room the game has loaded or within two map squares
   of the player) stays until the player is farther from it
@@ -162,8 +162,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   as a picture that gives nothing): 2026-11-15 (the same branch at a17904b). The helper
   hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at 399f57e).
   R'Talva X34 Y51, the boss's reward, is left unmarked too since, and showed as scrap in
-  game: 2026-11-15; the helper making such a scrap's pickup the game's own Scrap Metal's
-  (its popup, drops and map square): stand-in tests only.
+  game: 2026-11-15; the helper making such a scrap's pickup the game's own Scrap Metal's:
+  its popup and drops in both rooms, 2026-11-15 (PR #146's branch at fe4fe1b); its map
+  square, stand-in tests only.
   Not run in game: a
   death, another save of the seed, `!release`, a reload beside an item ("Other players'
   items", "Kept collected"; "What decides whether an item appears").

@@ -1086,8 +1086,17 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   tests (`tests/apitem_tests.cpp`, `test_own_scrap_metal_names_scrap_metals_event`;
   `tests/game_tests.cpp`, `test_own_scrap_metal_is_picked_up_as_the_games`;
   `tests/mapmarks_tests.cpp`, `test_own_scrap_metals_square_is_a_minors`; each failing with
-  `Label::scrap` false); not run in game. The pickup reads the record's event when the item
-  is taken, as it reads its name (`docs/re/memory.md`, "What a scrap's pickup runs").
+  `Label::scrap` false). The pickup reads the record's event when the item is taken, as it
+  reads its name (`docs/re/memory.md`, "What a scrap's pickup runs"). Working in game,
+  2026-11-15 (B1, `zexion_ap.dll` `8c4202ad…`, PR #146's fe4fe1b, slot 6 of `lab/ap/live65`,
+  the owner's report, `lab/ingame-collected-checks.md`, "Check K"): the scrap at R'Talva X34
+  Y51 and the one at Exodia X20 Y0 were each picked up as the game's regular Scrap Metal,
+  with its drops. The client was connected for the first minute after the save's load and
+  then stopped (its session ended), the helper running on alone; which of the two each
+  pickup ran under is not known. Not run in game: the map square of such a scrap not yet
+  picked up (`minor_value`); and, with this helper, whether the fight at Exodia X20 Y0 and
+  the gate at R'Talva X34 Y51 follow the pickup (not said in that run; the fight did with
+  the stand-in naming no event, above).
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen), and its pickup event; and Scrap Energy in another seed's save would
   look the same, so the
