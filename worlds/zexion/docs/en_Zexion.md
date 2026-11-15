@@ -261,12 +261,13 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   play another save of your seed, it's gone from its room, and so are items another player
   collects with `!collect` and the ones you release (`!release`). One in a room around you
   disappears a moment later (checked in the game when its owner collects; after a reload,
-  where you may see it for a second, not yet). One room is left out: Exodia 20,0, where
-  picking the item up starts the boss fight. Once that item is checked, a Scrap Metal lies
-  there instead, and you still pick it up to start the fight (checked in the game). After
-  a boss, a checked reward still shows; touching it gives you nothing and opens the warp
-  gate, as picking up the reward does. An enemy that would have dropped a checked item drops
-  nothing (both checked in the game). In an upside-down room the mod hides a checked item
+  where you may see it for a second, not yet). Two rooms are left out, where picking the
+  item up is what moves the game on: Exodia 20,0 (it starts the boss fight) and R'Talva
+  34,51 (the boss's reward, which opens the warp gate). Once such an item is checked, a
+  Scrap Metal lies there instead, and you still pick it up (checked in the game; with the
+  mod it is picked up as the game's own Scrap Metal, drops and all: not yet checked in the
+  game). An enemy that would have dropped a checked item drops nothing (checked in the
+  game). In an upside-down room the mod hides a checked item
   (checked in the game; without the mod it shows, and touching it gives you nothing).
   Your own items aren't touched: they follow your save, so after a death or a reload they're
   back in their rooms. This needs the client connected (a death, another save and `!release`

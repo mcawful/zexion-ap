@@ -481,7 +481,8 @@ server's console came up and was read as up.
   they can be reached from anywhere in it, is not recorded (run once from the far side of a
   big room, below). Its inventory byte stays the
   client's grant, +1 Scrap Metal ("Grants"). The record must name the event (or −1, a
-  stand-in's record while the helper restyles it: "Other players' items"), and the event, and
+  stand-in's record while the helper restyles it, or Scrap Metal's 3548 while it is named
+  after this player's own Scrap Metal: "Other players' items"), and the event, and
   the fade it runs next, must be B1's records byte for byte, their handlers in the game's code
   (`docs/re/memory.md`, "Received scrap"); otherwise it is dropped, and `drop_status` says
   why. Nothing is run for a received Area Map (its event, 3551, reveals the map around the
@@ -964,16 +965,22 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   leaves both (`client/session.py`, `mark`; `docs/re/memory.md`, "What decides whether an item
   appears"): compare-and-set writes, only for a location two polls in a row (in the same save
   slot, seconds apart at most) found still to mark. **Never in a room that waits for its
-  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0). In game, 2026-11-14, that square
+  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0 and R'Talva X34 Y51). In game,
+  2026-11-14, the first of those squares
   marked from afar was a soft-lock: its item gone, the boss fight its pickup starts never
   began, and the room could not be left. There the item stays, and once the server has it as
   checked the client labels it as the game's Scrap Metal, for no one (`@46`: `client/ticks.py`,
   `foreign_labels`; the labels are sent again when one changes), so what is left looks like
   what it is, a pickup the room needs, and gives its Scrap Metal as any stand-in does (the
-  owner's decision, 2026-11-15). That room is the only one listed, by the owner's judgment of
-  the game: 51 other location squares have an after-pickup event in the game's per-cell table
+  owner's decision, 2026-11-15); with the helper it is picked up as the game's own Scrap
+  Metal ("This player's own Scrap Metal" below). R'Talva X34 Y51, a boss's reward whose
+  pickup turns the warp gate on, was listed the same day: marked, the reward still showed
+  after the fight as the item it had been and gave nothing, while the gate waited for its
+  touch; left unmarked, it showed as scrap in game (2026-11-15, the fourth run below). Those
+  two rooms are the ones listed, by the owner's judgment of
+  the game: 50 other location squares have an after-pickup event in the game's per-cell table
   (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
-  a boss's reward, an arena and one more event square were played marked with no harm
+  an arena and one more event square were played marked with no harm
   (below), the rest not. **An item the game has made already**
   (a reload at a save point beside it, its owner collecting while the player stands by it)
   goes too: the item's own update ends its object once its cell's state reads collected, with
@@ -1045,8 +1052,34 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   this world's own two dropped them, and the room was left as usual; Kresezoa X23 Y21, an
   event square of Exodia X20 Y0's kind, marked, showed nothing unusual. Not run in game: a
   death, another save of the seed, `!release`, and a reload beside an item.
+- **This player's own Scrap Metal** (`@46` alone, for no one; `Label::scrap`, `src/text.h`):
+  the label the client gives another player's checked item in a room that waits for its
+  pickup (above). The square still holds the stand-in, so the helper makes its pickup the
+  game's Scrap Metal's. Its popup reads the name alone, with no icon, as the game's does (the
+  record's own has none; in a translation too). While a stand-in's record is named after such
+  a cell it names Scrap Metal's pickup event, 3548, where it otherwise names none, so the
+  game's own pickup spawns Scrap Metal's drops (`ApItems::watch`): only while that event, its
+  record and its handler are as traced on B1 (`Game::item_event_ready`, the check a received
+  scrap's drop goes through); back to none when the record is named after another cell, and
+  to the game's own event with the rest. Its map square is a minor's: item 48's there is not
+  raised, and one raised before the label came is lowered to what it was raised from
+  (`minor_value`, `src/mapmarks.cpp`; under Obscure Minors alone, in an unfinished game, a
+  shown major is left, the raise there not being one to one). While the item is on screen the
+  game's patched write still gives a square of item 48 a major's class ("The map"), lowered
+  again within 16 frame calls. Another Zexion player's Scrap Metal (`@46` and whom it is for)
+  stays their item: the logo, no event. A fourth run (2026-11-15, B1, slot 6, a new game of
+  `lab/ap/live65`, the client with R'Talva X34 Y51 unmarked, the helper of PR #145's 399f57e,
+  before this change; the owner's report, `lab/ingame-collected-checks.md`): R'Talva X34
+  Y51's reward showed as scrap, its popup read Scrap Metal with the AP symbol, nothing
+  dropped, and the map showed the square as a major's (ADVANCED TECH); hence this. Stand-in
+  tests (`tests/apitem_tests.cpp`, `test_own_scrap_metal_names_scrap_metals_event`;
+  `tests/game_tests.cpp`, `test_own_scrap_metal_is_picked_up_as_the_games`;
+  `tests/mapmarks_tests.cpp`, `test_own_scrap_metals_square_is_a_minors`; each failing with
+  `Label::scrap` false); not run in game. Assumed: that the pickup reads the record's event
+  when the item is taken, as it reads its name.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
-  one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
+  one's name (not seen), and its pickup event; and Scrap Energy in another seed's save would
+  look the same, so the
   client sends labels only while this seed's save is loaded.
 
 Working in game: 2026-10-23 ("Other players' items"); 2026-10-26, a three-game seed: no owner
@@ -1494,7 +1527,8 @@ disconnected.
 
 - **What:** in an AP save holding the seed the labels are for, in play or in a menu (a plain
   randomizer save is never touched), raises the map squares of item 48 at the section's
-  locations (154, or 155 with Secret Shuffle) (this player's OS
+  locations (154, or 155 with Secret Shuffle; one labeled this player's own Scrap Metal is
+  lowered to a minor's instead: "Other players' items") (this player's OS
   Install Disks and other players' progression items, but not a Zexion player's supplies:
   `worlds/zexion/world.py`, `important_elsewhere`) from the game's basic marker to its
   important one (`src/mapmarks.cpp`), obscured or shown as the game's own majors are under

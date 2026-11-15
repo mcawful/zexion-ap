@@ -159,6 +159,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   and reversed-gravity room played with no harm (the first and the last still show the item
   as a picture that gives nothing): 2026-11-15 (the same branch at a17904b). The helper
   hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at 399f57e).
+  R'Talva X34 Y51, the boss's reward, is left unmarked too since, and showed as scrap in
+  game: 2026-11-15; the helper making such a scrap's pickup the game's own Scrap Metal's
+  (its popup, drops and map square): stand-in tests only.
   Not run in game: a
   death, another save of the seed, `!release`, a reload beside an item ("Other players'
   items", "Kept collected"; "What decides whether an item appears").
