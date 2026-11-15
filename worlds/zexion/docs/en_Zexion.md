@@ -261,8 +261,9 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   release (`!release`). One within two map squares of you stays until you have been farther
   from it, and you can still pick it up; so one that close to the save point you reload at is
   back until you walk away. Your own items aren't touched: they follow your save, so after a
-  death or a reload they're back in their rooms. This needs the client connected (not yet
-  checked in the game).
+  death or a reload they're back in their rooms. This needs the client connected (checked in
+  the game after a reload and after another player's `!collect`; a death, another save and
+  `!release` not yet).
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
   Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
   does, after its popup, once you have stayed on one map square for a second. Both, and the
