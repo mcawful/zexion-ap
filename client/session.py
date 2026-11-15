@@ -23,7 +23,9 @@ Safety, in order:
   way through recording (the map cell set, the inventory byte not yet) is never taken for an
   item owed.
 - Other players' items the server has as checked are kept collected in the save (``mark``):
-  only in play, only those two polls in a row found still to mark, as compare-and-set writes.
+  only in play, only those two polls in a row found still to mark, as compare-and-set writes,
+  and never on a square with an after-pickup event (``plain``: its room may wait for the
+  pickup).
   An item object in the loaded rooms is ended by the game once its state is written, and the
   map cell is never written under one still there; a cell whose item may be there as another
   kind of object is left. A read or write of it that fails is said once and never holds back

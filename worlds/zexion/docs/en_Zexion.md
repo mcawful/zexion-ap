@@ -256,13 +256,14 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   `!collect` or by a release: if you die or reload without saving after picking it up, or
   play another save of your seed, it's gone from its room, and so are items another player
   collects with `!collect` and the ones you release (`!release`). One in a room around you
-  disappears a moment later, so right after a reload you may see it for a second (not yet
-  checked in the game). A few stay until you have been farther away, and you can still pick
-  them up: an item held by an enemy or a boss, and one in an upside-down room. Your own
-  items aren't touched: they follow your save, so after a death or a reload they're back in
-  their rooms. This needs the client connected (checked in the game, for items in rooms away
-  from you, after a reload and after another player's `!collect`; a death, another save and
-  `!release` not yet). A save keeps what was marked: played against a
+  disappears a moment later (checked in the game when its owner collects; after a reload,
+  where you may see it for a second, not yet). About a third of the item squares are left
+  out: rooms where something happens when you pick the item up, such as boss rooms, arenas
+  and upside-down rooms. There the item stays in its room even once it's checked, and
+  picking it up again does no harm (not yet checked in the game). Your own items aren't
+  touched: they follow your save, so after a death or a reload they're back in their rooms.
+  This needs the client connected (a death, another save and `!release` are not yet checked
+  in the game). A save keeps what was marked: played against a
   new room of the same seed, or after the server went back to an older state, it sends those
   locations as found.
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
