@@ -257,13 +257,14 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   play another save of your seed, it's gone from its room, and so are items another player
   collects with `!collect` and the ones you release (`!release`). One in a room around you
   disappears a moment later (checked in the game when its owner collects; after a reload,
-  where you may see it for a second, not yet). About a third of the item squares are left
-  out: rooms where something happens when you pick the item up, such as boss rooms, arenas
-  and upside-down rooms. There the item stays in its room even once it's checked, and
-  picking it up again does no harm (not yet checked in the game). Your own items aren't
-  touched: they follow your save, so after a death or a reload they're back in their rooms.
-  This needs the client connected (a death, another save and `!release` are not yet checked
-  in the game). A save keeps what was marked: played against a
+  where you may see it for a second, not yet). One room is left out: Exodia 20,0, where
+  picking the item up starts the boss fight. Once that item is checked, a Scrap Metal lies
+  there instead, and you still pick it up to start the fight (not yet checked in the game).
+  An item an enemy or a boss holds, or one in an upside-down room, may still show after it
+  is checked. Your own items aren't touched: they follow your save, so after a death or a
+  reload they're back in their rooms. This needs the client connected (a death, another save
+  and `!release` are not yet checked in the game). A save keeps what was marked: played
+  against a
   new room of the same seed, or after the server went back to an older state, it sends those
   locations as found.
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
