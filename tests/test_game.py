@@ -87,7 +87,23 @@ def test_the_client_does_not_locate_the_targets_only_the_tools_read() -> None:
     assert {t.name for t in CLIENT_TARGETS} == {t.name for t in TARGETS} - TOOL_TARGETS
     # The per-cell state is the client's alone: read and written by it, not sent to the helper.
     assert {"cell_state"} == CLIENT_ONLY_TARGETS <= {t.name for t in CLIENT_TARGETS}
-    assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS,)
+    assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS, None)
+
+
+def test_a_client_only_target_that_no_longer_matches_does_not_stop_the_attach() -> None:
+    # A game update that breaks the per-cell state's patterns stops the marking alone.
+    code = code_with(lea(0x100))
+    missing = Pattern("48 8D 0D ?? ?? ?? ?? 90 90 90 90", 3, "rip", 7, 0)
+    targets = [Target("there", "test", {}, (LEA,)), Target("gone", "test", {}, (missing,))]
+    with pytest.raises(game.PatternError):
+        game.locate_all(code, 0, targets)
+    assert game.locate_all(code, 0, targets, optional={"gone"}) == {"there": 0x40 + 7 + 0x100}
+    with pytest.raises(game.PatternError):
+        game.locate_all(code, 0, targets, optional={"there"})
+    g = fake_game(map_grid=GRID_AT)  # attached with no cell_state
+    for call in (g.cell_items, g.loaded_cells, lambda: g.set_item_collected((1, 1))):
+        with pytest.raises(game.PatternError, match="cell_state was not found"):
+            call()
 
 
 # --- PE header and build identity ----------------------------------------------------------
@@ -180,7 +196,7 @@ def test_set_item_refuses_items_and_values_it_should_not_write() -> None:
         g.set_item(3, 0, 256)
 
 
-GRID_AT, CELLS_AT, POOL_AT = 0x2000, 0x3000, 0xA000  # in cells_game's memory
+GRID_AT, CELLS_AT, POOL_AT = 0x2000, 0x3000, 0xB000  # in cells_game's memory
 
 
 def cells_game() -> FakeGame:
@@ -201,6 +217,15 @@ def test_each_cells_item_state_is_its_ninth_byte() -> None:
     states = g.cell_items()
     assert len(states) == 54 * 54 and states[25 * 54 + 25] == 1 and states[-1] == 2
     assert states.count(0) == 54 * 54 - 2, "the eight object states before each are not read"
+
+
+def test_each_cells_loaded_byte_is_read_from_right_after_the_states() -> None:
+    g = cells_game()
+    after = CELLS_AT + 54 * 54 * game.CELL_STRIDE
+    g.pm.memory[CELLS_AT:after] = bytes([7]) * (after - CELLS_AT)
+    g.pm.memory[after + 25 * 54 + 24] = 1
+    loaded = g.loaded_cells()
+    assert len(loaded) == 54 * 54 and loaded[25 * 54 + 24] == 1 and loaded.count(0) == 54 * 54 - 1
 
 
 def test_the_item_objects_in_use_give_their_cells() -> None:

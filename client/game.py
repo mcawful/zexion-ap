@@ -20,12 +20,20 @@ from __future__ import annotations
 import re
 import struct
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 
 from . import ids, pe, process
 from .ids import LOCATIONS, MAP_SIZE, SECRET_SHUFFLE, SECTION_SIZE, WRITABLE_ITEMS
-from .patterns import CLIENT_TARGETS, KNOWN_BUILDS, TARGETS, Build, Pattern, Target
+from .patterns import (
+    CLIENT_ONLY_TARGETS,
+    CLIENT_TARGETS,
+    KNOWN_BUILDS,
+    TARGETS,
+    Build,
+    Pattern,
+    Target,
+)
 from .save_patch import OPTIONS_AT, TABLE_AT
 
 SLOTS = 30  # save slots
@@ -166,14 +174,25 @@ def resolve(code: bytes, code_rva: int, pattern: Pattern) -> int:
     return code_rva + at + pattern.rip_end + field + pattern.addend
 
 
-def locate_all(code: bytes, code_rva: int, targets: Iterable[Target] = TARGETS) -> dict[str, int]:
-    """RVA of every target; every pattern of a target must agree."""
+def locate_all(
+    code: bytes,
+    code_rva: int,
+    targets: Iterable[Target] = TARGETS,
+    optional: Collection[str] = (),
+) -> dict[str, int]:
+    """RVA of every target; every pattern of a target must agree. A target named in
+    ``optional`` whose patterns do not is left out instead of raising."""
     out = {}
     for target in targets:
-        found = {resolve(code, code_rva, p) for p in target.patterns}
-        if len(found) != 1:
-            listed = ", ".join(f"{v:#x}" for v in sorted(found))
-            raise PatternError(f"{target.name}: patterns disagree ({listed})")
+        try:
+            found = {resolve(code, code_rva, p) for p in target.patterns}
+            if len(found) != 1:
+                listed = ", ".join(f"{v:#x}" for v in sorted(found))
+                raise PatternError(f"{target.name}: patterns disagree ({listed})")
+        except PatternError:
+            if target.name in optional:
+                continue
+            raise
         out[target.name] = found.pop()
     return out
 
@@ -267,8 +286,14 @@ class Game:
     build: Build
 
     @classmethod
-    def attach(cls, targets: Iterable[Target] = CLIENT_TARGETS) -> Game:
-        """Attach to the running game and locate ``targets`` (the client's by default)."""
+    def attach(
+        cls, targets: Iterable[Target] = CLIENT_TARGETS, optional: Collection[str] | None = None
+    ) -> Game:
+        """Attach to the running game and locate ``targets`` (the client's by default). The
+        targets named in ``optional`` (for the client's: patterns.CLIENT_ONLY_TARGETS; none
+        for another list) may be missing: a read or write of one then raises PatternError."""
+        if optional is None:
+            optional = CLIENT_ONLY_TARGETS if targets is CLIENT_TARGETS else ()
         try:
             pm = process.Process(PROCESS)
         except process.ProcessNotFound as exc:
@@ -286,7 +311,7 @@ class Game:
             build = identify_build(header)
             text_rva, text_size = code_section(header)
             code = pm.read_bytes(base + text_rva, text_size)
-            rva = locate_all(code, text_rva, targets)
+            rva = locate_all(code, text_rva, targets, optional)
             return cls(pm, base, rva, pm.process_id, build)
         except GameError:
             pm.close_process()
@@ -320,8 +345,14 @@ class Game:
         return out
 
     # Every access goes through _read_pointer or _write, which check liveness first.
+    def _at(self, target: str) -> int:
+        """A located target's address; PatternError for an optional one that was not found."""
+        if target not in self.rva:
+            raise PatternError(f"{target} was not found in this build of the game")
+        return self.base + self.rva[target]
+
     def _read(self, target: str, offset: int, size: int) -> bytes:
-        return self._read_pointer(self.base + self.rva[target] + offset, size)
+        return self._read_pointer(self._at(target) + offset, size)
 
     def _read_pointer(self, address: int, size: int) -> bytes:
         """Read at an address: a located target's, or a pointer the game holds."""
@@ -336,7 +367,7 @@ class Game:
 
     def _write(self, target: str, offset: int, data: bytes) -> None:
         self._check_alive()
-        address = self.base + self.rva[target] + offset
+        address = self._at(target) + offset
         try:
             self.pm.write_bytes(address, data)
         except Exception as exc:
@@ -375,6 +406,13 @@ class Game:
         the cell holds the item or has dropped it), in the map grid's order, from one read."""
         cells = MAP_SIZE * MAP_SIZE
         return self._read("cell_state", 0, cells * CELL_STRIDE)[CELL_ITEM::CELL_STRIDE]
+
+    def loaded_cells(self) -> bytes:
+        """Each map cell's loaded byte, in the map grid's order: not 0 while the game has the
+        cell's objects loaded, its item among them (the array right after the per-cell state:
+        docs/re/memory.md, "What decides whether an item appears")."""
+        cells = MAP_SIZE * MAP_SIZE
+        return self._read("cell_state", cells * CELL_STRIDE, cells)
 
     def live_item_cells(self) -> set[tuple[int, int]]:
         """The map cells (x, y) of the item objects now in the loaded rooms, from one read of

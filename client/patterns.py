@@ -526,5 +526,7 @@ TOOL_TARGETS = frozenset({"pickup_counter"})
 CLIENT_TARGETS = tuple(t for t in TARGETS if t.name not in TOOL_TARGETS)
 # Targets the client reads and writes that the helper is not given (native.CONFIG_KEYS): it has
 # no use for them, and a key added to its config makes the offline cache written before it
-# refused until the client runs again.
+# refused until the client runs again. The client attaches without one whose patterns no
+# longer match (game.Game.attach): only what reads it stops, the marking of other players'
+# items (client/session.py, ``mark``), which says so once, while items and checks go on.
 CLIENT_ONLY_TARGETS = frozenset({"cell_state"})

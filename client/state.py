@@ -101,7 +101,8 @@ class Connection:
             foreign = aplabels.foreign_locations(slot_data["location_items"], kept)
             hunt = discs.from_slot_data(slot_data)
             traps = own_traps(slot_data.get("trap_locations", []))
-            own = set(traps) | (hunt.locations if hunt is not None else frozenset())
+            # Never an own disk, whatever the goal (the slot data lists them for every one).
+            own = set(traps) | {int(i) for i in slot_data["disc_locations"]}
             return cls(
                 team=team,
                 slot=slot,
