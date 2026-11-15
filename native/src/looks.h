@@ -32,7 +32,9 @@ public:
     void scan(const GameAddresses& at, BYTE* base);
 
     // Game thread, every frame while the stand-ins are restyled, after scan, whatever the labels:
-    // R'Talva X34 Y51's marker hidden while it waits on a painted logo frame, else shown again.
+    // R'Talva X34 Y51's marker hidden while it waits on a painted logo frame, else shown again;
+    // and a reversed-gravity room's item hidden while its map cell reads collected (another
+    // player's item the client marked collected: the object left there is only a picture).
     void hide_marker(const GameAddresses& at, BYTE* base);
 
     // Game thread, each frame while restyled, after apply: each live stand-in not dressed drawn in

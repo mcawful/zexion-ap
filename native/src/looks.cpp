@@ -6,6 +6,7 @@
 
 #include "apitem.h"  // the stand-ins and their logo frames
 #include "game_mem.h"
+#include "offline.h"  // kCollectedCell
 
 namespace zap {
 
@@ -20,6 +21,20 @@ constexpr int32_t kOwnStyle = 34;
 constexpr int kPalettes = 65;       // the table's filled entries in a live B1 game, 0 to 64
 constexpr int kScanFrames = 30;     // frames between scans of the general pool
 constexpr int16_t kMarkerFirstState = 8210;  // type 1146's first state (Enemies, B1)
+// Type 2026's first state (Enemies, B1): the general object that draws the item in a
+// reversed-gravity room (docs/re/memory.md, "Live item objects").
+constexpr int16_t kFlippedFirstState = 13867;
+
+// A reversed-gravity room's item object (`seen`: its copy) over a map cell that reads collected:
+// what is left of another player's item the client marked collected, a picture that gives
+// nothing when touched (docs/re/memory.md, "What decides whether an item appears"). A pickup of
+// the game's own ends the object, so none is left to hide then.
+bool collected_flipped(const BYTE* seen, const GameAddresses& at) {
+    const uint8_t row = seen[obj::kGeneralRow], column = seen[obj::kGeneralColumn];
+    return field<int16_t>(seen, obj::kFirstState) == kFlippedFirstState &&
+           at.map_grid != nullptr && row < kMapSide && column < kMapSide &&
+           at.map_grid[row * kMapSide + column] == kCollectedCell;
+}
 constexpr int kMarkerFlag = 154;             // its wait ends once set (state 8210's branch)
 
 // How item `item` looks at `clock`: the frame its record's animation is on, and its palette.
@@ -374,9 +389,13 @@ void ItemLooks::hide_marker(const GameAddresses& at, BYTE* base) {
         if (h.spawn != 0 && h.spawn != spawn) h = {};  // another object now: not ours to put back
         const int stand_in = logo_index(field<int32_t>(seen, sprite::kFrameIndex));
         // Hidden while it waits on the helper's logo frame, if the game shows it (one the game
-        // hid is left to the game); shown again otherwise, whatever its frame.
+        // hid is left to the game); shown again otherwise, whatever its frame. A reversed-gravity
+        // room's item over a collected cell is hidden the same way, for as long as the cell
+        // reads collected (a reload that takes the mark back shows it again).
+        const bool marker =
+            is_marker(slot, seen, at) && stand_in >= 0 && ours[stand_in] && waits;
         if (base != nullptr && shows_stand_in(seen, base) &&
-            is_marker(slot, seen, at) && stand_in >= 0 && ours[stand_in] && waits) {
+            (marker || collected_flipped(seen, at))) {
             if (h.spawn != 0 || seen[sprite::kVisible] != 0) {
                 if (seen[sprite::kVisible] != 0) put<BYTE>(object, sprite::kVisible, 0);
                 h = {spawn};

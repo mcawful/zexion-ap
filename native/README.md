@@ -988,7 +988,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   player's (a margin on top of the loaded cells, which are the squares next to the one the
   game tracks): an object of another kind may be the item there, as in a reversed-gravity
   room, which a written state does not end (marked from afar, such a room still shows the
-  item, as a picture that gives nothing: the third run below). That one stays to pick up as
+  item, as a picture that gives nothing: the third run below; with the helper that picture is
+  hidden, "The marker" below). That one stays to pick up as
   usual, and is marked once its room is unloaded and the player is three squares away. Right
   before the writes the client checks the save again (in play, a randomizer save, the slot's
   stamp as at the look) and reads the states, the loaded cells, the item objects and the
@@ -1086,7 +1087,18 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   leaves the logo frame (its reward), when the stand-ins are put back and on an unload, if it is
   still that spawn and still hidden. Other objects on a logo frame in their own palette (a boss's
   drop showing another game's item, type 1998) are left as they are, drawing the logo frame
-  through their own palette. The marker can show
+  through their own palette. **A reversed-gravity room's item over a collected square** is
+  hidden the same way, in the same pass: the general object that draws the item there (type
+  2026, known by its first script state, 13867, at `+0x32E`) is not ended when the client
+  marks its square collected, so it is left showing a picture that gives nothing when touched
+  (in game, 2026-11-15, Exodia X22 Y1; the owner's request to hide it). While the stand-ins
+  are restyled and the object's map cell reads collected (`0x1B`), every frame call clears
+  its shown byte; it is shown again when the cell no longer reads collected (a reload from
+  before the mark), when the stand-ins are put back and on an unload. A pickup of the game's
+  own ends the object, so nothing is hidden then. A boss's reward is left showing: its touch
+  is what turns the warp gate on. Stand-in test (`tests/game_tests.cpp`,
+  `test_a_collected_item_in_a_reversed_gravity_room_is_hidden`, failing with the hiding taken
+  out); not run in game. The marker can show
   the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame
   in a hit's blink. Hiding it by that byte worked in game
   (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: working in game

@@ -1041,6 +1041,52 @@ void test_stand_ins_in_their_own_colors() {
           "restore puts palette 8 and the style back");
 }
 
+// A reversed-gravity room draws its item with a general object (type 2026), which a mark of
+// the cell does not end: over a cell that reads collected it is hidden, and shown again when the
+// cell no longer does (a reload from before the mark) or on restore.
+void test_a_collected_item_in_a_reversed_gravity_room_is_hidden() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    auto flipped = [](int k, int32_t spawn, int x, int y, int16_t first) {
+        put_flipped(k, spawn, 63, x, y);
+        put<int16_t>(general_slot(k), 0x32E, first);
+        general_slot(k)[0x120] = 1;
+    };
+    auto shown = [](int k) { return general_slot(k)[0x120]; };
+    const int cell = 2 * 54 + 6, other = 5 * 54 + 9;  // as the labels name them: y * 54 + x
+    flipped(21, 602, 6, 2, 13867);  // type 2026's first state
+    flipped(24, 603, 9, 5, 13609);  // type 715's: another kind of object, left alone
+    std::map<int, zap::Label> labels;
+    zap::parse_labels(kBoxAndApItem, labels);
+    game.set_labels(labels);
+    g_map_grid[cell] = 0x19;
+    g_map_grid[other] = 0x1B;
+    game.watch_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0, "not collected: shown");
+    check(shown(24) == 1, "another type over a collected cell is left alone");
+
+    g_map_grid[cell] = 0x1B;  // the client marked it collected
+    game.watch_ap_items();
+    check(shown(21) == 0 && game.looks().hidden_markers() == 1,
+          "hidden once its cell reads collected");
+    general_slot(21)[0x120] = 1;  // the game shows it again
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again the next frame");
+
+    g_map_grid[cell] = 0x19;  // a reload from before the mark
+    game.watch_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0,
+          "shown again when the cell no longer reads collected");
+
+    g_map_grid[cell] = 0x1B;
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden");
+    game.restore_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0, "restore shows it again");
+    g_map_grid[cell] = g_map_grid[other] = 0;
+}
+
 // The logo-frame marker at R'Talva X34 Y51 is hidden (+0x120 cleared) each frame while restyled
 // and flag 154 is clear, and shown again on the flag, off the logo frame, or on restore
 // (docs/re/memory.md, "Other players' items").
@@ -3639,6 +3685,7 @@ int main() {
     test_zexion_items_show_as_themselves();
     test_flipped_items_show_as_themselves();
     test_the_marker_hidden();
+    test_a_collected_item_in_a_reversed_gravity_room_is_hidden();
     test_stand_ins_in_their_own_colors();
     test_colored_stand_ins_dressed_later();
     test_zexion_scrap_shown_as_itself();
