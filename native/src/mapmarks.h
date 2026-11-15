@@ -19,7 +19,10 @@ namespace zap {
 
 // The loaded randomizer section (game_layout.h, rando) and the map grid (54 x 54, index
 // y * 54 + x); `ended`: flag 250 (no obscuring once finished). Returns the squares changed.
-int mark_important(const BYTE* section, BYTE* grid, bool ended);
+// A square of item 48 that `labels` (by the grid's index) names this player's own Scrap Metal
+// (Label::scrap) is not raised, and one raised already is lowered (minor_value).
+int mark_important(const BYTE* section, BYTE* grid, bool ended,
+                   const std::map<int, Label>& labels = {});
 
 // The randomizer's three Obscure settings, from the loaded section: Obscure Majors (t29),
 // Obscure Minors (t38) and Obscure Class (t41). All off with no section.
@@ -31,6 +34,13 @@ Obscure obscure_settings(const BYTE* section);
 // One square's value raised from the minor class to the major one, as the game would have set
 // it for a major item under `obscure`; any other value unchanged.
 uint8_t important_value(uint8_t value, Obscure obscure, bool ended);
+
+// One square's value lowered from the major class to the minor one: what important_value
+// raised it from under `obscure` (a shown major from a shown minor, an obscured major from an
+// obscured minor, or from a shown one under Obscure Majors alone, where no minor is obscured).
+// Under Obscure Minors alone in an unfinished game a shown major is left: the raise there is
+// not one to one. Any other value unchanged.
+uint8_t minor_value(uint8_t value, Obscure obscure, bool ended);
 
 // The item update's write of the square under an item on screen in a randomizer game (0x19E5A5
 // on B1, each frame the item is in view), which would undo mark_important's raise of item 48.

@@ -1510,6 +1510,56 @@ void show_next(zap::Game& game) {
     for (int i = 0; i < 100 && g_messages == before; ++i) game.pump_popups();
 }
 
+// Another player's checked item in a room that waits for its pickup, labeled "@46" for no one
+// (this player's own Scrap Metal): the stand-in there reads SCRAP METAL with no icon and names
+// Scrap Metal's pickup event, so the game's pickup spawns its drops, while that event is the
+// one traced; a received Scrap Energy still drops meanwhile.
+void test_own_scrap_metal_is_picked_up_as_the_games() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    std::map<int, zap::Label> labels;
+    check(zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@46") + "\nlabel 9 2 " +
+                                hex("@46\nfor Bob"),
+                            labels)
+                  .empty() &&
+              labels[2 * 54 + 8].scrap() && !labels[2 * 54 + 9].scrap(),
+          "@46 for no one is this player's own Scrap Metal; for another player it is theirs");
+    game.set_labels(labels);
+    auto event_of = [](int item) { return get<int16_t>(g_records, item * 100 + 0x40); };
+    player_cell(8, 2);
+    game.watch_ap_items();
+    check(record_name(47) == "SCRAP METAL" && record_name(48) == "SCRAP METAL",
+          "the game's name for it, no icon");
+    check(event_of(47) == 3548 && event_of(48) == 3548, "Scrap Metal's pickup event");
+    check(event_of(46) == 3548 && record_name(46) == "SCRAP METAL", "Scrap Metal's record as is");
+
+    // A received Scrap Energy meanwhile: its own event still runs.
+    apply(game, "apply\npopup 47 FROM BOB");
+    game.note_play(5000);
+    show_next(game);
+    game.pump_drops(6100);
+    check(g_spawn_calls == 1 && g_spawn_event == g_events + 3549 * 0x28,
+          "a received Scrap Energy drops as before");
+
+    player_cell(9, 2);  // another Zexion player's Scrap Metal: their item, no drops
+    game.watch_ap_items();
+    check(event_of(47) == -1 && event_of(48) == -1 &&
+              record_name(47).find('\xEE') != std::string::npos,
+          "another player's: the logo and no event");
+
+    put<int16_t>(g_events + 3548 * 0x28, 4, 2011);  // Scrap Metal's event not as traced
+    player_cell(8, 2);
+    game.watch_ap_items();
+    check(event_of(47) == -1 && event_of(48) == -1 && record_name(47) == "SCRAP METAL",
+          "an event not as traced is not named");
+    put<int16_t>(g_events + 3548 * 0x28, 4, 2010);
+    game.watch_ap_items();
+    check(event_of(47) == 3548, "named again once it is");
+    game.restore_ap_items();
+    check(event_of(47) == 3549 && event_of(48) == 3550, "restore: the game's own events");
+}
+
 // A received scrap's drop: its pickup's event, run once after its popup shows, once the player
 // has been in one cell for a second, in the save its popup was for.
 void test_received_scrap_drops() {
@@ -3712,6 +3762,7 @@ int main() {
     test_received_disk_popup();
     test_received_intel_chip_popup();
     test_received_shield();
+    test_own_scrap_metal_is_picked_up_as_the_games();
     test_received_scrap_drops();
     test_received_scrap_drops_held();
     test_received_death();

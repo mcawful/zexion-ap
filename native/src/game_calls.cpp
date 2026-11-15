@@ -57,6 +57,7 @@ using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event 
 constexpr uint8_t kScrapMetal = 46, kScrapEnergy = 47, kScrapChunk = 48, kEnergyShield = 50;
 static_assert(kScrapEnergy == kStandInItem && kScrapChunk == kStandInProgression,
               "kStandInOwnEvents is in the stand-ins' order");
+static_assert(kScrapMetal == kScrapMetalItem, "Label::scrap's item");
 constexpr uint8_t kSpawnEventType = 11, kFadeEventType = 1;
 constexpr ptrdiff_t kEventNext = 0x20;
 // The record, but for each item's object (+4), next event (+0x20) and own number (+0x24).
@@ -76,7 +77,7 @@ struct ItemEvent {
     int16_t event, object, next;
 };
 constexpr ItemEvent kItemEvents[] = {
-    {kScrapMetal, 3548, 2010, -1},
+    {kScrapMetal, kScrapMetalEvent, 2010, -1},
     {kScrapEnergy, kStandInOwnEvents[0], 2016, -1},
     {kScrapChunk, kStandInOwnEvents[1], 2017, kChunkFade},
     {kEnergyShield, 3553, 2018, -1},
@@ -558,7 +559,8 @@ std::wstring Game::hd_label_text(const Label& label, bool first_line, bool icon)
     if (first.empty()) {
         first = hd_case(at_, label.item_name.empty() ? label.first_text() : label.item_name);
     }
-    std::wstring out = (icon ? hd_icon(label.glyph) : std::wstring()) + first;
+    // This player's own Scrap Metal (Label::scrap): no icon, as the game's.
+    std::wstring out = (icon && !label.scrap() ? hd_icon(label.glyph) : std::wstring()) + first;
     if (!first_line && !label.who.empty()) out += L'\n' + hd_case(at_, label.who);
     return out;
 }
@@ -800,14 +802,28 @@ std::string Game::disorient(BYTE* p) {
 std::string Game::run_item_event(uint8_t item) {
     // The item's pickup event, run as the pickup does, its record and every event it runs
     // checked first (docs/re/memory.md, "Received Energy Shields" and "Received scrap").
+    BYTE* ev = nullptr;
+    BYTE* handler = nullptr;
+    const std::string why = item_event_ready(item, ev, handler);
+    if (!why.empty()) return why;
+    BYTE* p = player();
+    uint8_t row = at<uint8_t>(p, kPlayerCellRow), column = at<uint8_t>(p, kPlayerCellColumn);
+    if (row >= kMapSide || column >= kMapSide) return "off the map";  // the raw cell can be -1
+    reinterpret_cast<EventFn>(handler)(static_cast<char>(row), static_cast<char>(column), ev);
+    return "";
+}
+
+std::string Game::item_event_ready(uint8_t item, BYTE*& ev, BYTE*& handler) {
     const ItemEvent* traced = item_event(item);
     if (traced == nullptr) return "no event traced";
     BYTE* rec = record(item);
     if (rec == nullptr) return "no item record";
     // The stand-ins' records read -1 while the helper restyles them (apitem.cpp, which restyles
-    // only a record holding the game's own event).
+    // only a record holding the game's own event), or Scrap Metal's event while named after a
+    // cell labeled this player's own Scrap Metal (ApItems::watch).
     int16_t named = at<int16_t>(rec, record::kEvent);
-    if (named != traced->event && !(stand_in_index(item) >= 0 && named == -1)) {
+    if (named != traced->event &&
+        !(stand_in_index(item) >= 0 && (named == -1 || named == kScrapMetalEvent))) {
         return "event not as traced";
     }
     const int16_t event = traced->event;
@@ -817,7 +833,7 @@ std::string Game::run_item_event(uint8_t item) {
         traced->next >= events) {
         return "no event";
     }
-    BYTE* ev = table + static_cast<ptrdiff_t>(event) * event::kSize;
+    ev = table + static_cast<ptrdiff_t>(event) * event::kSize;
     BYTE copy[event::kSize];
     if (!safe_read(ev, copy, sizeof(copy))) return "no event";
     BYTE want[event::kSize];
@@ -826,7 +842,7 @@ std::string Game::run_item_event(uint8_t item) {
     std::memcpy(want + kEventNext, &traced->next, sizeof(int16_t));
     std::memcpy(want + event::kSelf, &event, sizeof(int16_t));
     if (std::memcmp(copy, want, sizeof(copy)) != 0) return "event not as traced";
-    BYTE* handler = pointer_at(at_.event_handlers, kSpawnEventType * sizeof(void*));
+    handler = pointer_at(at_.event_handlers, kSpawnEventType * sizeof(void*));
     if (handler == nullptr) return "no handler";
     if (!in_image_code(reinterpret_cast<HMODULE>(base_), handler)) {
         return "handler not in the game's code";
@@ -844,10 +860,6 @@ std::string Game::run_item_event(uint8_t item) {
             return "handler not in the game's code";
         }
     }
-    BYTE* p = player();
-    uint8_t row = at<uint8_t>(p, kPlayerCellRow), column = at<uint8_t>(p, kPlayerCellColumn);
-    if (row >= kMapSide || column >= kMapSide) return "off the map";  // the raw cell can be -1
-    reinterpret_cast<EventFn>(handler)(static_cast<char>(row), static_cast<char>(column), ev);
     return "";
 }
 
@@ -1398,7 +1410,8 @@ void Game::watch_map_marks() {
     if (map_seed_passes_ < 2) return;
     // Before the raise, so an item on screen stays raised.
     seen_marker_.watch(at_.seen_marker_code);
-    mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0);
+    mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0,
+                   ap_items_.labels());
 }
 
 void Game::watch_title() {
@@ -1557,7 +1570,18 @@ void Game::watch_ap_items() {
                                   at<double>(player(), kY), cell, ap_items_.labels(), cells,
                                   stand_in_near_);
         if (touching >= 0) width_cell = cells[touching];
-        ap_items_.watch(at_.item_records, cells);
+        // A stand-in named after this player's own Scrap Metal names Scrap Metal's pickup
+        // event, if that event is the one traced (checked only where such a label names one).
+        bool scrap_event = false;
+        for (int c : cells) {
+            auto named = ap_items_.labels().find(c);
+            if (named == ap_items_.labels().end() || !named->second.scrap()) continue;
+            BYTE* ev = nullptr;
+            BYTE* handler = nullptr;
+            scrap_event = item_event_ready(kScrapMetal, ev, handler).empty();
+            break;
+        }
+        ap_items_.watch(at_.item_records, cells, scrap_event);
         // Each record's translated name (watch_translation), centered where the spaces fit the
         // entry's room, else as it is so no name is cut (native/README.md, "Translations").
         FontMetrics metrics;

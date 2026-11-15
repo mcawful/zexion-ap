@@ -585,6 +585,9 @@ private:
     IconSheets icon_sheets_;  // the helper's icons in the translations' fonts
     // Runs a received item's pickup event (the Energy Shield's, a scrap's): "" or why not.
     std::string run_item_event(uint8_t item);
+    // Why `item`'s pickup event cannot be run ("": it can): its record, the event and the one
+    // it runs next as traced on B1, their handlers in the game's code. Sets `ev` and `handler`.
+    std::string item_event_ready(uint8_t item, BYTE*& ev, BYTE*& handler);
     int play_cell_ = -1;
     uint64_t play_since_ms_ = 0;
     int popup_width_ = -1;  // what the game holds, once read; -1 before

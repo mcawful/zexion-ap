@@ -119,6 +119,57 @@ void test_restyle_and_names() {
     check(!items.restyled() && items.active(), "and keeps the labels");
 }
 
+// A stand-in named after a cell labeled this player's own Scrap Metal names Scrap Metal's
+// pickup event (its drops), only while the caller says that event is the one traced; named
+// after any other cell it names none again, and it is still the helper's to put back.
+void test_own_scrap_metal_names_scrap_metals_event() {
+    reset_records();
+    zap::ApItems items;
+    const int scrap_cell = 2 * 54 + 5, other_cell = 2 * 54 + 6;
+    zap::Label scrap;
+    scrap.item = 46;
+    scrap.first = "Scrap Metal";
+    scrap.lay_out();
+    check(scrap.scrap() && scrap.name == "SCRAP METAL", "its name alone: no icon, as the game's");
+    zap::Label theirs = scrap;  // another Zexion player's Scrap Metal
+    theirs.who = "for Bob";
+    theirs.lay_out();
+    check(!theirs.scrap() && theirs.name.find('\xEE') != std::string::npos,
+          "another player's keeps the logo");
+    zap::Label named_one = scrap;
+    named_one.item_name = "x";
+    zap::Label trap = scrap;
+    trap.pickup = "Disorient Trap";
+    zap::Label disk = scrap;
+    disk.item = 44;
+    check(!named_one.scrap() && !trap.scrap() && !disk.scrap(), "only @46 alone, for no one");
+    std::map<int, zap::Label> labels = named(other_cell, "MASTER SWORD FOR ALICE");
+    labels[scrap_cell] = scrap;
+    items.set_labels(labels);
+    auto name_of = [](const BYTE* r) { return std::string(reinterpret_cast<const char*>(r) + 0x0A); };
+
+    const int at_scrap[2] = {scrap_cell, other_cell};
+    items.watch(holder(), at_scrap, true);
+    check(get<int16_t>(g_scrap, 0x40) == 3548, "Scrap Metal's event while named after it");
+    check(get<int16_t>(g_chunk, 0x40) == -1, "the other stand-in names none");
+    check(name_of(g_scrap) == "SCRAP METAL", "and its name");
+    const int away[2] = {other_cell, other_cell};
+    items.watch(holder(), away, true);
+    check(get<int16_t>(g_scrap, 0x40) == -1, "none again, named after another cell");
+    check(name_of(g_scrap) == "MASTER SWORD FOR ALICE", "still the helper's to name");
+    items.watch(holder(), at_scrap, false);
+    check(get<int16_t>(g_scrap, 0x40) == -1, "not while the event is not the one traced");
+    items.watch(holder(), at_scrap, true);
+    zap::ApItems other;  // a helper loaded again finds the record so: still its own to restyle
+    other.set_labels(labels);
+    other.watch(holder(), away, true);
+    check(get<int16_t>(g_scrap, 0x40) == -1, "adopted with Scrap Metal's event in it");
+    items.watch(holder(), at_scrap, true);
+    items.release(holder());
+    check(get<int16_t>(g_scrap, 0x40) == 3549 && get<int16_t>(g_chunk, 0x40) == 3550,
+          "put back: the game's own events");
+}
+
 void test_one_record_not_as_expected_leaves_the_other_restyled() {
     reset_records();
     put<int16_t>(g_chunk, 0x40, 3551);  // not as traced
@@ -576,6 +627,7 @@ int main() {
     test_an_image_in_colors();
     test_one_readback_for_every_painter();
     test_restyle_and_names();
+    test_own_scrap_metal_names_scrap_metals_event();
     test_one_record_not_as_expected_leaves_the_other_restyled();
     test_records_not_as_expected_are_left_alone();
     test_a_record_left_restyled_is_adopted_and_put_back();
