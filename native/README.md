@@ -1065,11 +1065,20 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   scrap's drop goes through); back to none when the record is named after another cell, and
   to the game's own event with the rest. Its map square is a minor's: item 48's there is not
   raised, and one raised before the label came is lowered to what it was raised from
-  (`minor_value`, `src/mapmarks.cpp`; under Obscure Minors alone, in an unfinished game, a
-  shown major is left, the raise there not being one to one). While the item is on screen the
-  game's patched write still gives a square of item 48 a major's class ("The map"), lowered
-  again within 16 frame calls. Another Zexion player's Scrap Metal (`@46` and whom it is for)
-  stays their item: the logo, no event. A fourth run (2026-11-15, B1, slot 6, a new game of
+  (`minor_value`, `src/mapmarks.cpp`). Two values are left as they are: an obscured major
+  under Obscure Class, which the game writes for a minor there too; and a shown major under
+  Obscure Minors alone in an unfinished game, the raise there not being one to one. While
+  the item is on screen the game's patched write still gives a square of item 48 a major's
+  class each frame ("The map"), lowered again within 16 frame calls, so a save made with the
+  item in view may hold the major's value, lowered again after its load while the label
+  holds; under Obscure Minors alone it stays a shown major until the item is picked up.
+  Another Zexion player's Scrap Metal (`@46` and whom it is for) stays their item: the logo,
+  no event. A stand-in of another cell taken while its record is named after the scrap cell
+  (two of one record within reach, or one taken in the frame call after the player's cell
+  named it) gets Scrap Metal's name and drops, nothing else: its inventory byte, its map
+  square and its check are the pickup's own. A record left naming 3548 by a helper that went
+  without a frame call is restyled again by this helper, but is not known to one built
+  before this change, which leaves it so until the game starts again. A fourth run (2026-11-15, B1, slot 6, a new game of
   `lab/ap/live65`, the client with R'Talva X34 Y51 unmarked, the helper of PR #145's 399f57e,
   before this change; the owner's report, `lab/ingame-collected-checks.md`): R'Talva X34
   Y51's reward showed as scrap, its popup read Scrap Metal with the AP symbol, nothing
@@ -1077,8 +1086,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   tests (`tests/apitem_tests.cpp`, `test_own_scrap_metal_names_scrap_metals_event`;
   `tests/game_tests.cpp`, `test_own_scrap_metal_is_picked_up_as_the_games`;
   `tests/mapmarks_tests.cpp`, `test_own_scrap_metals_square_is_a_minors`; each failing with
-  `Label::scrap` false); not run in game. Assumed: that the pickup reads the record's event
-  when the item is taken, as it reads its name.
+  `Label::scrap` false); not run in game. The pickup reads the record's event when the item
+  is taken, as it reads its name (`docs/re/memory.md`, "What a scrap's pickup runs").
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen), and its pickup event; and Scrap Energy in another seed's save would
   look the same, so the

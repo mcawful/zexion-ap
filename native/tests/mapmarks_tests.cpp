@@ -99,7 +99,9 @@ void test_own_scrap_metals_square_is_a_minors() {
              Row{0x15, kMajorsOnly, false, 0x0D, "majors only: a hinted minor is shown"},
              Row{0x0E, kMinorsOnly, false, 0x0E, "minors only: not one to one, left"},
              Row{0x0E, kMinorsOnly, true, 0x0D, "minors only, finished game: shown"},
-             Row{0x15, kClass, false, 0x13, "class: obscured stays obscured"},
+             Row{0x15, kClass, false, 0x15, "class: the game's own value for a minor, left"},
+             Row{0x15, kAll, false, 0x15, "all three: left too"},
+             Row{0x0E, kClass, false, 0x0D, "class: a shown major -> a shown minor"},
              Row{0x19, kPresets, false, 0x19, "a minor is left"},
              Row{0x1B, kNone, false, 0x1B, "collected is left"},
              Row{0x26, kNone, false, 0x26, "a value above the classes is left"},
@@ -109,7 +111,9 @@ void test_own_scrap_metals_square_is_a_minors() {
     // What important_value raises, minor_value lowers again, where the raise is one to one.
     for (zap::Obscure o : {kNone, kPresets, kClass, kAll, kMajorsAndClass}) {
         for (BYTE v : std::vector<BYTE>{0x01, 0x0D, 0x19, 0x07, 0x13, 0x1F}) {
-            if (v % 12 == 7 && !o.majors && !o.by_class) continue;  // raised to a shown major
+            // An obscured minor: raised to a shown major with majors shown, and under Obscure
+            // Class to the value left as it is.
+            if (v % 12 == 7 && (!o.majors || o.by_class)) continue;
             check(zap::minor_value(zap::important_value(v, o, false), o, false) == v, "and back");
         }
     }

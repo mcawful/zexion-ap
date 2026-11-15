@@ -39,8 +39,9 @@ uint8_t important_value(uint8_t value, Obscure obscure, bool ended);
 // One square's value lowered from the major class to the minor one: what important_value
 // raised it from under `obscure` (a shown major from a shown minor, an obscured major from an
 // obscured minor, or from a shown one under Obscure Majors alone, where no minor is obscured).
-// Under Obscure Minors alone in an unfinished game a shown major is left: the raise there is
-// not one to one. Any other value unchanged.
+// Left as they are: an obscured major under Obscure Class, which is what the game writes for a
+// minor there too; and a shown major under Obscure Minors alone in an unfinished game, where
+// the raise is not one to one. Any other value unchanged.
 uint8_t minor_value(uint8_t value, Obscure obscure, bool ended);
 
 // The item update's write of the square under an item on screen in a randomizer game (0x19E5A5

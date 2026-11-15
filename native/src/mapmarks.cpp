@@ -55,7 +55,9 @@ uint8_t minor_value(uint8_t value, Obscure obscure, bool ended) {
             if (!ended && obscure.minors && !obscure.majors && !obscure.by_class) return value;
             return static_cast<uint8_t>(base + kMinorShown);
         case kMajorObscured: {
-            const bool majors_only = obscure.majors && !obscure.minors && !obscure.by_class;
+            // Under Obscure Class the game writes this value for a minor too: left.
+            if (obscure.by_class) return value;
+            const bool majors_only = obscure.majors && !obscure.minors;
             return static_cast<uint8_t>(base + (majors_only ? kMinorShown : kMinorObscured));
         }
         default:
