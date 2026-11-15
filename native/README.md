@@ -489,7 +489,9 @@ server's console came up and was read as up.
   cell it is run from, and a received one has no square of its own: `docs/re/memory.md`,
   "Intel Chips"), an Energy Shield (the client's `shield`) or a notice, nor for a
   stand-in found in the world (its record names no event while restyled: the item is another
-  player's).
+  player's), but for one in a cell labeled this player's own Scrap Metal, whose record names
+  Scrap Metal's event so that the game's own pickup spawns the drops ("Other players'
+  items", "This player's own Scrap Metal").
 - **When:** as `shield`: once the player has been in play in one cell for a second with no
   transition counting down (the load at a TELEPORT TO's end rebuilds the room: stand-in tests only,
   `test_received_things_wait_out_a_teleport`), and not from RETURN HOME WITH THE DISKS?'s fade
@@ -1131,7 +1133,9 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   (its `+0x32C`: then it is the pickup, whatever the map says); it is shown again when the
   cell no longer reads collected (a reload from before the mark), when the stand-ins are put
   back and on an unload. A pickup of the game's own ends the object, so nothing is hidden
-  then. A boss's reward is left showing: its touch is what turns the warp gate on. The
+  then. A boss's reward over a marked square is left showing, as its touch is what turns
+  the warp gate on: R'Talva X34 Y51's is never marked by the client since (`ids.PICKUP_ROOMS`),
+  so that is left for a save marked before then. The
   hidden object can still be touched, which does what it did shown: it ends, giving nothing.
   Stand-in test (`tests/game_tests.cpp`,
   `test_a_collected_item_in_a_reversed_gravity_room_is_hidden`, failing with the hiding taken

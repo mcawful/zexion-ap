@@ -1,8 +1,9 @@
 // The map in AP saves: item 48's squares drawn as important, and the cursor's name for stand-in
 // squares (docs/re/memory.md, "Map markers"; native/README.md, "The map"). The game picks a
 // square's class by item ID where it writes it (0x7E980 and eleven other places), so item 48
-// shows as minor; mark_important raises it as the game would. The grid is saved, so nothing is
-// put back.
+// shows as minor; mark_important raises it as the game would, but for a square labeled this
+// player's own Scrap Metal, which it lowers to a minor's. The grid is saved, so nothing is put
+// back.
 #pragma once
 
 #include <windows.h>
