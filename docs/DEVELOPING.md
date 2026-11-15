@@ -158,7 +158,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   once its item is checked, whose pickup starts the fight; and a marked boss reward, arena
   and reversed-gravity room played with no harm (the first and the last still show the item
   as a picture that gives nothing): 2026-11-15 (the same branch at a17904b). The helper
-  hiding that picture in a reversed-gravity room: stand-in tests only. Not run in game: a
+  hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at 399f57e).
+  Not run in game: a
   death, another save of the seed, `!release`, a reload beside an item ("Other players'
   items", "Kept collected"; "What decides whether an item appears").
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28

@@ -267,7 +267,7 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   a boss, a checked reward still shows; touching it gives you nothing and opens the warp
   gate, as picking up the reward does. An enemy that would have dropped a checked item drops
   nothing (both checked in the game). In an upside-down room the mod hides a checked item
-  (not yet checked in the game; without the mod it shows, and touching it gives you nothing).
+  (checked in the game; without the mod it shows, and touching it gives you nothing).
   Your own items aren't touched: they follow your save, so after a death or a reload they're
   back in their rooms. This needs the client connected (a death, another save and `!release`
   are not yet checked in the game). A save keeps what was marked: played against a
