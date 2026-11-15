@@ -36,6 +36,15 @@ around the change.
    (`Game.set_item`, no helper) must compare-and-set, read the byte back and treat a mismatch
    as not delivered. Either way, nothing counts a grant as kept: the next poll gives again
    whatever the inventory still lacks (`client/reconcile.py`).
+   The client's other writes mark other players' items collected (`client/session.py`, `mark`;
+   `Game.set_item_collected` and `set_map_collected`): the cell's item state, then its map
+   cell. Each must be compare-and-set and read back, made only in play in this seed's save
+   with the save checked again right before the writes, for a location the server has as
+   checked that is never this world's own (its disks and traps follow the save), and never
+   under an item that is, or may be, in the loaded rooms (the game's loaded byte, an item
+   object of the cell, an item an object holds or has dropped): marked under a live item, the
+   save would count its pickup twice (`native/README.md`, "Kept collected";
+   `docs/re/memory.md`, "What decides whether an item appears").
 4. **Unsafe timing.** Delivering items or reading checks while the game is loading, in a menu,
    on the title screen, dead, or in a cutscene. Writes must be gated on
    `Game.settled_state() == IN_PLAY`, not a single `state()`: loading a save (and respawning)
