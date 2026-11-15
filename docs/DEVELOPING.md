@@ -148,8 +148,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   branch at 79bee7a). That run also found a soft-lock at Exodia X20 Y0, marked from afar
   (its pickup starts the boss fight): that room is left unmarked since and shows Scrap Metal
   once its item is checked, whose pickup starts the fight; and a marked boss reward, arena
-  and reversed-gravity room played with no harm (the last two kinds still show the item as a
-  picture that gives nothing): 2026-11-15 (the same branch at a17904b). Not run in game: a
+  and reversed-gravity room played with no harm (the first and the last still show the item
+  as a picture that gives nothing): 2026-11-15 (the same branch at a17904b). Not run in game: a
   death, another save of the seed, `!release`, a reload beside an item ("Other players'
   items", "Kept collected"; "What decides whether an item appears").
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
