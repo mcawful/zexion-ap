@@ -1102,7 +1102,11 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   hidden object can still be touched, which does what it did shown: it ends, giving nothing.
   Stand-in test (`tests/game_tests.cpp`,
   `test_a_collected_item_in_a_reversed_gravity_room_is_hidden`, failing with the hiding taken
-  out); not run in game. The marker can show
+  out). Working in game, 2026-11-15 (B1, `zexion_ap.dll` `5ef5eeb1…`, the build of PR #145's
+  branch at 399f57e, slot 5, a new game of the seed `lab/ap/live65` with the other player's
+  items all checked; the owner's report, `lab/ingame-collected-checks.md`): nothing showed at
+  Exodia X22 Y1 over its marked square, as entered in play and after a RELOAD FROM SAVE
+  beside it. The marker can show
   the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame
   in a hit's blink. Hiding it by that byte worked in game
   (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: working in game
