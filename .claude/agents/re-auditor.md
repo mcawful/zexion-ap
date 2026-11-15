@@ -45,8 +45,10 @@ around the change.
    update then ends that object); the map cell never under one still there (the save would
    count its pickup twice), and neither for a cell whose item may be there as another kind of
    object (the game's loaded byte or the margin around the player with no item object, an
-   item an object holds or has dropped) (`native/README.md`, "Kept collected";
-   `docs/re/memory.md`, "What decides whether an item appears").
+   item an object holds or has dropped), nor ever for a cell with an after-pickup event in
+   the game's per-cell table (`Game.cell_events`: marked from afar, such a room soft-locked
+   in game) (`native/README.md`, "Kept collected"; `docs/re/memory.md`, "What decides whether
+   an item appears").
 4. **Unsafe timing.** Delivering items or reading checks while the game is loading, in a menu,
    on the title screen, dead, or in a cutscene. Writes must be gated on
    `Game.settled_state() == IN_PLAY`, not a single `state()`: loading a save (and respawning)

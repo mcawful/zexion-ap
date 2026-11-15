@@ -86,7 +86,7 @@ def test_the_client_does_not_locate_the_targets_only_the_tools_read() -> None:
     assert {"pickup_counter"} == TOOL_TARGETS
     assert {t.name for t in CLIENT_TARGETS} == {t.name for t in TARGETS} - TOOL_TARGETS
     # The per-cell state is the client's alone: read and written by it, not sent to the helper.
-    assert {"cell_state"} == CLIENT_ONLY_TARGETS <= {t.name for t in CLIENT_TARGETS}
+    assert {"cell_state", "cell_table"} == CLIENT_ONLY_TARGETS <= {t.name for t in CLIENT_TARGETS}
     assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS, None)
 
 
@@ -226,6 +226,27 @@ def test_each_cells_loaded_byte_is_read_from_right_after_the_states() -> None:
     g.pm.memory[after + 25 * 54 + 24] = 1
     loaded = g.loaded_cells()
     assert len(loaded) == 54 * 54 and loaded[25 * 54 + 24] == 1 and loaded.count(0) == 54 * 54 - 1
+
+
+def test_each_cells_after_pickup_event_is_read_once_from_the_per_cell_table() -> None:
+    table_at = 0xC0000
+    size = table_at + 54 * 54 * game.CELL_RECORD
+    g = fake_game(size, map_grid=GRID_AT, cell_table=table_at)
+    g.pm.memory[table_at:size] = b"\xff" * (size - table_at)  # -1 everywhere: no event
+
+    def put(x: int, y: int, event: int) -> None:
+        at = table_at + (y * 54 + x) * game.CELL_RECORD + game.CELL_EVENT
+        g.pm.memory[at : at + 2] = struct.pack("<h", event)
+
+    put(0, 20, 1246)  # Exodia X20 Y0: this repo's (x, y) = (0, 20)
+    put(53, 53, 7)
+    events = g.cell_events()
+    assert len(events) == 54 * 54 and events[20 * 54 + 0] == 1246 and events[-1] == 7
+    assert events.count(game.NO_EVENT) == 54 * 54 - 2
+    put(1, 1, 99)  # the game's own data, fixed once loaded: read once an attach
+    assert g.cell_events() is events
+    with pytest.raises(game.PatternError, match="cell_table was not found"):
+        fake_game(map_grid=GRID_AT).cell_events()
 
 
 def test_the_item_objects_in_use_give_their_cells() -> None:
