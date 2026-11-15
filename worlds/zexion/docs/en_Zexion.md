@@ -259,12 +259,13 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   disappears a moment later (checked in the game when its owner collects; after a reload,
   where you may see it for a second, not yet). One room is left out: Exodia 20,0, where
   picking the item up starts the boss fight. Once that item is checked, a Scrap Metal lies
-  there instead, and you still pick it up to start the fight (not yet checked in the game).
-  An item an enemy or a boss holds, or one in an upside-down room, may still show after it
-  is checked. Your own items aren't touched: they follow your save, so after a death or a
-  reload they're back in their rooms. This needs the client connected (a death, another save
-  and `!release` are not yet checked in the game). A save keeps what was marked: played
-  against a
+  there instead, and you still pick it up to start the fight (checked in the game). In an
+  upside-down room, and after a boss, a checked item still shows; touching it gives you
+  nothing, and after a boss it opens the warp gate, as picking up the reward does. An enemy
+  that would have dropped a checked item drops nothing (all checked in the game). Your own
+  items aren't touched: they follow your save, so after a death or a reload they're back in
+  their rooms. This needs the client connected (a death, another save and `!release` are not
+  yet checked in the game). A save keeps what was marked: played against a
   new room of the same seed, or after the server went back to an older state, it sends those
   locations as found.
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy

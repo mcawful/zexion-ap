@@ -941,7 +941,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   owner's decision, 2026-11-15). That room is the only one listed, by the owner's judgment of
   the game: 51 other location squares have an after-pickup event in the game's per-cell table
   (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
-  which of them a mark would break was not sorted out. **An item the game has made already**
+  a boss's reward, an arena and one more event square were played marked with no harm
+  (below), the rest not. **An item the game has made already**
   (a reload at a save point beside it, its owner collecting while the player stands by it)
   goes too: the item's own update ends its object once its cell's state reads collected, with
   the writes a pickup ends it with (`docs/re/memory.md`, "What decides whether an item
@@ -954,7 +955,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   loaded byte, in the array right after the per-cell state) or within two map squares of the
   player's (a margin on top of the loaded cells, which are the squares next to the one the
   game tracks): an object of another kind may be the item there, as in a reversed-gravity
-  room, and what a written state does to that was not read. That one stays to pick up as
+  room, which a written state does not end (marked from afar, such a room still shows the
+  item, as a picture that gives nothing: the third run below). That one stays to pick up as
   usual, and is marked once its room is unloaded and the player is three squares away. Right
   before the writes the client checks the save again (in play, a randomizer save, the slot's
   stamp as at the look) and reads the states, the loaded cells, the item objects and the
@@ -994,9 +996,22 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   one of that player's squares); the rooms looked at held nothing where an item was. That
   build still marked squares with an after-pickup event: Exodia X20 Y0 was the soft-lock
   above, and at Exodia X22 Y1, a reversed-gravity room, an Energy Tank still showed over a
-  marked square (whether it could be picked up was not seen). Not run in game: what came of
-  it (Exodia X20 Y0 left unmarked and shown as Scrap Metal once checked), an arena's drops
-  and a boss's reward.
+  marked square. A third run (2026-11-15, B1, slot 5, a new game of the same seed with every
+  one of that player's items checked on the server already; the client of PR #144's branch at
+  a17904b, the same helper; the owner's reports and read-only looks, same record), with
+  Exodia X20 Y0 left unmarked and labeled Scrap Metal: the client marked the other 78 a
+  second after the save loaded; at Exodia X20 Y0 the item was scrap, its pickup started the
+  boss fight, and the fight could be won and the way on taken. What marking leaves behind,
+  each harmless: in a reversed-gravity room (Exodia X22 Y1) the item still shows over its
+  marked square until touched, and touching it gives nothing (no popup or sound; the
+  inventory and the pickup counter read the same after), while a marked item drawn the usual
+  way in that area (Exodia X27 Y0) was gone; a boss's reward (R'Talva X34 Y51) still shows
+  after the fight, gives nothing when touched, and that touch is what turns the warp gate on
+  and brings the area's music back, so the room does wait for it; in the arena (Guardia X51
+  Y10 and Y11 marked) the enemies holding the two marked items dropped nothing, those holding
+  this world's own two dropped them, and the room was left as usual; Kresezoa X23 Y21, an
+  event square of Exodia X20 Y0's kind, marked, showed nothing unusual. Not run in game: a
+  death, another save of the seed, `!release`, and a reload beside an item.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.

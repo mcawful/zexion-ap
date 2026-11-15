@@ -56,7 +56,7 @@ COLLECTED = 0x1B  # a map cell's value once its item is collected (docs/re/memor
 # Exodia X20 Y0: the pickup starts its boss fight; marked from afar, the fight never began and
 # the room could not be left (in game, 2026-11-14: docs/re/memory.md, "What decides whether an
 # item appears"). The only one listed, by the owner's judgment of the game (2026-11-15); the
-# other squares with an after-pickup event are marked as any other, which is not measured
-# for each.
+# other squares with an after-pickup event are marked as any other (a boss's reward, an arena
+# and one more event square played marked with no harm that day; not each of them).
 PICKUP_ROOMS = frozenset({(0, 20)})
 SECTION_SIZE = 0x908  # the randomizer section, as loaded and in each slot's copy
