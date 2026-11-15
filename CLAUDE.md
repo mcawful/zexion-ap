@@ -37,9 +37,10 @@ Where things are:
   its `install` (an empty slot, after a verified backup) and `restore` write the save folder.
   The client never writes it.
 - **Ask first, every time,** before anything that changes the running game or the saves:
-  `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run that may load
-  the helper, the client's `/reload_mod`, and `save_lab.py install` and `restore`. Grants and
-  memory writes go only into a lab slot; grants only while the player stands still in play.
+  `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run (it may load
+  the helper, and with or without it writes the game's map: "The client"), the client's
+  `/reload_mod`, and `save_lab.py install` and `restore`. Grants and memory writes go only
+  into a lab slot; grants only while the player stands still in play.
 - **Branches and releases.** `main` holds released code; `develop` holds code ready for the next
   release. Work on a short-lived topic branch cut from `develop`, merged into `develop` by pull
   request, then deleted. `develop` and `main` take changes only through pull requests with every CI
@@ -116,8 +117,12 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - From source it needs `.ap/` with the world linked in (`ap_checkout.py`): AP's
   client looks up its game's data at startup. From the Launcher it uses the Launcher's AP.
   `ZEXION_AP_DIR` points it at another AP folder.
-- `--verbose` also logs what it sets up in the game for the seed. `--keep-randomizer` leaves
-  RANDOMIZER on the menu instead of offering ARCHIPELAGO.
+- `--verbose` also logs what it sets up in the game for the seed, and each marking below
+  ("Marked collected in this save (...)"). `--keep-randomizer` leaves RANDOMIZER on the menu
+  instead of offering ARCHIPELAGO.
+- While this seed's save is in play it marks other players' items the server has as checked
+  collected in the game's memory (the cell's item state and its map cell), with the helper or
+  without: [`native/README.md`](native/README.md), "Other players' items", "Kept collected".
 - On attaching it uses or loads the helper (which one: [`native/README.md`](native/README.md),
   "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written
   directly with no popup and no seed can be started. `/reload_mod` unloads it and loads it
