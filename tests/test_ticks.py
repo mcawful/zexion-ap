@@ -76,6 +76,7 @@ class Ctx:
         self.player_names = {1: "Me", 2: "Bob"}
         self.slot_info: dict = {}
         self.locations_info: dict = {}
+        self.checked_locations: set[int] = set()  # the server's
         self.unlocked = False
         self.deaths_sent: list[str] = []
 
@@ -340,6 +341,36 @@ def dressed_save(**changes) -> Ctx:
     assert ctx.told.discs.sent == discs.request(0, 3, told=True)
     ctx.helper.requests.clear()
     return ctx
+
+
+def test_a_pickup_rooms_item_shows_as_scrap_once_the_server_has_it_checked(monkeypatch) -> None:
+    # A room that waits for its item's pickup is never marked collected (client/session.py):
+    # once its item is checked, what is left there is shown as the game's Scrap Metal.
+    ctx = dressed_save(**HUNT)
+    ctx.conn.items_listed = True
+    i = ctx.conn.foreign[0]
+    cell = ctx.conn.plan.cells[i]
+    before, _ = ticks.foreign_labels(ctx)
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset({cell}))
+    run(ticks.labels_tick(ctx))
+    assert ctx.helper.requests == [], "not checked: the labels as they were"
+    ctx.checked_locations = {ids.LOCATION_ID_BASE + i}
+    labels, own = ticks.foreign_labels(ctx)
+    assert labels[cell] == "@46" and {c: t for c, t in labels.items() if c != cell} == {
+        c: t for c, t in before.items() if c != cell
+    }
+    run(ticks.labels_tick(ctx))
+    assert ctx.helper.firsts() == ["ap_labels"] and ctx.told.labels_sent == labels
+    assert ctx.helper.requests[0] == aplabels.labels_request(labels)
+    run(ticks.labels_tick(ctx))
+    assert len(ctx.helper.requests) == 1, "sent once a change"
+    # Any other checked item keeps its label (it is marked collected instead), and so does
+    # this one while the items are not listed yet (a dropped connection).
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset())
+    assert ticks.foreign_labels(ctx)[0] == before
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset({cell}))
+    ctx.conn.items_listed = False
+    assert ticks.foreign_labels(ctx)[0] == before
 
 
 def reconnect(ctx: Ctx, same_seed: bool) -> None:

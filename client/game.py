@@ -22,7 +22,6 @@ import struct
 import time
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
-from dataclasses import field as kept
 
 from . import ids, pe, process
 from .ids import LOCATIONS, MAP_SIZE, SECRET_SHUFFLE, SECTION_SIZE, WRITABLE_ITEMS
@@ -63,10 +62,6 @@ ITEM_THERE, ITEM_COLLECTED = 0, 1  # 2: held by an object of the cell; 3: droppe
 # The live item objects (item_pool): in use while the dword at +0x1D8 is not 0, the item's map
 # cell at +0x3AC (the game's X, this repo's y) and +0x3AD (docs/re/memory.md, "Live item
 # objects").
-# The per-cell table (patterns' cell_table): 154 bytes a map cell, in the map grid's order; at
-# +0x46 the 16-bit number of the event an object of the cell runs once its item reads
-# collected, -1 for none (docs/re/memory.md, "What decides whether an item appears").
-CELL_RECORD, CELL_EVENT, NO_EVENT = 0x9A, 0x46, -1
 ITEM_OBJECTS, ITEM_OBJECT_SIZE = 128, 0x3B0
 ITEM_OBJECT_CELL = 0x3AC
 
@@ -289,8 +284,6 @@ class Game:
     rva: dict[str, int]
     pid: int
     build: Build
-    # cell_events' read of the per-cell table, kept.
-    _cell_events: tuple[int, ...] | None = kept(default=None, init=False, repr=False, compare=False)
 
     @classmethod
     def attach(
@@ -413,19 +406,6 @@ class Game:
         the cell holds the item or has dropped it), in the map grid's order, from one read."""
         cells = MAP_SIZE * MAP_SIZE
         return self._read("cell_state", 0, cells * CELL_STRIDE)[CELL_ITEM::CELL_STRIDE]
-
-    def cell_events(self) -> tuple[int, ...]:
-        """Each map cell's after-pickup event (NO_EVENT for none), in the map grid's order,
-        from one read of the per-cell table, kept for this attach: the table is the game's own
-        data, loaded with the game."""
-        if self._cell_events is None:
-            cells = MAP_SIZE * MAP_SIZE
-            table = self._read("cell_table", 0, cells * CELL_RECORD)
-            self._cell_events = tuple(
-                struct.unpack_from("<h", table, cell * CELL_RECORD + CELL_EVENT)[0]
-                for cell in range(cells)
-            )
-        return self._cell_events
 
     def loaded_cells(self) -> bytes:
         """Each map cell's loaded byte, in the map grid's order: not 0 while the game has the

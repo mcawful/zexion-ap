@@ -34,7 +34,6 @@ class FakeGame:
         self.items = bytearray(54 * 54)  # each cell's item state (game.Game.cell_items)
         self.live: set[tuple[int, int]] = set()  # the cells of the item objects in the rooms
         self.loaded = bytearray(54 * 54)  # each cell's loaded byte (game.Game.loaded_cells)
-        self.events = [game.NO_EVENT] * (54 * 54)  # each cell's after-pickup event
         # The game ends an item object once its cell's state reads collected or held (its
         # update, each frame); False: not yet, as between two of the game's updates.
         self.ends_items = True
@@ -89,9 +88,6 @@ class FakeGame:
 
     def loaded_cells(self) -> bytes:
         return bytes(self.loaded)
-
-    def cell_events(self) -> tuple[int, ...]:
-        return tuple(self.events)
 
     def set_item_collected(self, cell: tuple[int, int]) -> None:
         x, y = cell
@@ -1136,15 +1132,15 @@ def test_nothing_is_marked_while_the_slots_stamp_does_not_read(others) -> None:
     assert session.step(g, [], gap=0, gone={3}).marked == {3}
 
 
-def test_a_square_with_an_after_pickup_event_is_never_marked(others) -> None:
+def test_a_room_that_waits_for_its_pickup_is_never_marked(others, monkeypatch) -> None:
     session, g = others
     # Exodia X20 Y0, in game 2026-11-14: marked from afar, the boss fight its pickup starts
-    # never began and the room could not be left. Such a square keeps its item, to pick up.
-    g.events[at(3)] = 1246
+    # never began and the room could not be left. Its item stays, to pick up.
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset({CELLS[3]}))
     for _ in range(3):
         session.step(g, [], gap=0, gone={3, 5})
     assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "nothing written"
-    assert marked(g, 5), "a square with no event is marked as before"
+    assert marked(g, 5), "any other square is marked as before"
     # Nor with its item made already in the room around the player.
     in_the_room(g, 3)
     for _ in range(3):
@@ -1158,12 +1154,19 @@ def test_a_square_with_an_after_pickup_event_is_never_marked(others) -> None:
     assert g.inv[ids.SCRAP_METAL] == scrap + 1
 
 
-def test_only_event_squares_to_keep_collected_reads_no_cell_state(others) -> None:
+def test_only_a_pickup_rooms_item_to_keep_collected_reads_no_cell_state(
+    others, monkeypatch
+) -> None:
     session, g = others
-    g.events[at(3)] = 7
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset({CELLS[3]}))
     g.cell_items = None  # not read: nothing of what is gone can be marked
     for _ in range(3):
         assert not session.step(g, [], gap=0, gone={3}).marked
+
+
+def test_the_room_listed_is_exodia_x20_y0() -> None:
+    # The map grid's order: this repo's (x, y) is the game's (Y, X).
+    assert {(0, 20)} == ids.PICKUP_ROOMS
 
 
 def test_a_mark_a_load_cut_in_two_is_finished(others) -> None:

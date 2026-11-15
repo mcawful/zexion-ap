@@ -24,8 +24,7 @@ Safety, in order:
   item owed.
 - Other players' items the server has as checked are kept collected in the save (``mark``):
   only in play, only those two polls in a row found still to mark, as compare-and-set writes,
-  and never on a square with an after-pickup event (``plain``: its room may wait for the
-  pickup).
+  and never in a room that waits for its item's pickup (``plain``, ids.PICKUP_ROOMS).
   An item object in the loaded rooms is ended by the game once its state is written, and the
   map cell is never written under one still there; a cell whose item may be there as another
   kind of object is left. A read or write of it that fails is said once and never holds back
@@ -142,17 +141,10 @@ def near(cell: tuple[int, int], player: tuple[int, int]) -> bool:
     return abs(cell[0] - player[1]) <= NEAR_CELLS and abs(cell[1] - player[0]) <= NEAR_CELLS
 
 
-def plain(cells: Sequence[tuple[int, int]], events: Sequence[int], gone: Iterable[int]) -> set[int]:
-    """Those of ``gone`` (location indices) whose cell has no after-pickup event
-    (game.Game.cell_events): the only ones ever marked. Where a cell has one, the room may wait
-    for the pickup itself (Exodia X20 Y0, in game 2026-11-14: marked from afar, the boss fight
-    its pickup starts never began and the room could not be left), so its item stays to be
-    picked up, as any item does with no client."""
-    return {
-        i
-        for i in gone
-        if 0 <= i < len(cells) and events[cells[i][1] * ids.MAP_SIZE + cells[i][0]] == game.NO_EVENT
-    }
+def plain(cells: Sequence[tuple[int, int]], gone: Iterable[int]) -> set[int]:
+    """Those of ``gone`` (location indices) that may be marked: every one but those in a room
+    that waits for its item's pickup (ids.PICKUP_ROOMS), whose item stays to be picked up."""
+    return {i for i in gone if 0 <= i < len(cells) and cells[i] not in ids.PICKUP_ROOMS}
 
 
 def to_mark(
@@ -503,7 +495,7 @@ class Session:
             self._to_mark = set()
             return set()
         cells = self.plan.cells
-        gone = plain(cells, g.cell_events(), gone)
+        gone = plain(cells, gone)
         if not gone:
             self._to_mark = set()
             return set()

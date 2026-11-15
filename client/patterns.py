@@ -78,11 +78,6 @@ TARGETS = (
         rip("48 8D 0D ?? ?? ?? ?? 49 6B C2 36 49 03 C0 4C 69 D8 9A 00 00 00", 3, 7),
         rip("48 8D 05 ?? ?? ?? ?? 44 8B C2 4B 8D 0C D2 48 69 D5 E6 01 00 00", 3, 7, -0x8),
     )),
-    Target("cell_table", "the per-cell table, 154 bytes a map cell: its objects, its location at +0x3A, and at +0x46 the event an object of the cell runs once its item reads collected (-1: none)", {"B1": 0x361C10}, (
-        rip("48 8D 0D ?? ?? ?? ?? 49 69 C0 9A 00 00 00 4C 0F BE CE 49 69 D1 7C 20 00 00 48 03 C8 66 44 39 3C 11 75 64", 3, 7, -0x48),
-        rip("48 8D 0D ?? ?? ?? ?? 49 69 C0 9A 00 00 00 4C 0F BE CE 49 69 D1 7C 20 00 00 48 03 C8 66 44 39 3C 11 75 67", 3, 7, -0x48),
-        rip("48 8D 1D ?? ?? ?? ?? 48 8B B4 24 C8 00 00 00 48 69 F8 7C 20 00 00", 3, 7, -0x48),
-    )),
     Target("inventory", "the live inventory, one byte per item ID (inside the player state)", {"B1": 0x3ED47E}, (
         rip("C6 05 ?? ?? ?? ?? 01 44 89 25 ?? ?? ?? ?? 44 88 25 ?? ?? ?? ?? C7 05 ?? ?? ?? ?? 00 00 03 00", 2, 7, -0x2),
         rip("48 8B 05 ?? ?? ?? ?? 48 89 90 30 01 00 00 48 8B 05 ?? ?? ?? ?? 48 89 88 38 01 00 00 48 8B 05 ?? ?? ?? ?? 4C 89 80 40 01 00 00", 3, 7, 0x71E),
@@ -534,4 +529,4 @@ CLIENT_TARGETS = tuple(t for t in TARGETS if t.name not in TOOL_TARGETS)
 # refused until the client runs again. The client attaches without one whose patterns no
 # longer match (game.Game.attach): only what reads it stops, the marking of other players'
 # items (client/session.py, ``mark``), which says so once, while items and checks go on.
-CLIENT_ONLY_TARGETS = frozenset({"cell_state", "cell_table"})
+CLIENT_ONLY_TARGETS = frozenset({"cell_state"})
