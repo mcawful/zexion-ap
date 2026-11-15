@@ -1093,10 +1093,14 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   marks its square collected, so it is left showing a picture that gives nothing when touched
   (in game, 2026-11-15, Exodia X22 Y1; the owner's request to hide it). While the stand-ins
   are restyled and the object's map cell reads collected (`0x1B`), every frame call clears
-  its shown byte; it is shown again when the cell no longer reads collected (a reload from
-  before the mark), when the stand-ins are put back and on an unload. A pickup of the game's
-  own ends the object, so nothing is hidden then. A boss's reward is left showing: its touch
-  is what turns the warp gate on. Stand-in test (`tests/game_tests.cpp`,
+  its shown byte, on whatever frame it shows (one made while the stand-ins were not restyled,
+  a load from a menu, shows the game's scrap, not a logo) and unless it holds its cell's item
+  (its `+0x32C`: then it is the pickup, whatever the map says); it is shown again when the
+  cell no longer reads collected (a reload from before the mark), when the stand-ins are put
+  back and on an unload. A pickup of the game's own ends the object, so nothing is hidden
+  then. A boss's reward is left showing: its touch is what turns the warp gate on. The
+  hidden object can still be touched, which does what it did shown: it ends, giving nothing.
+  Stand-in test (`tests/game_tests.cpp`,
   `test_a_collected_item_in_a_reversed_gravity_room_is_hidden`, failing with the hiding taken
   out); not run in game. The marker can show
   the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame

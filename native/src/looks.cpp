@@ -25,14 +25,23 @@ constexpr int16_t kMarkerFirstState = 8210;  // type 1146's first state (Enemies
 // reversed-gravity room (docs/re/memory.md, "Live item objects").
 constexpr int16_t kFlippedFirstState = 13867;
 
-// A reversed-gravity room's item object (`seen`: its copy) over a map cell that reads collected:
-// what is left of another player's item the client marked collected, a picture that gives
-// nothing when touched (docs/re/memory.md, "What decides whether an item appears"). A pickup of
+// A live reversed-gravity room's item object (`o`: its copy), whatever frame it shows: it is
+// dressed once, when made, from its item's record as that reads then, so one made while the
+// stand-ins were not restyled (a load from a menu) shows the game's scrap, not a logo.
+bool flipped_item(const BYTE* o) {
+    return field<int32_t>(o, obj::kSpawn) != 0 &&
+           field<int16_t>(o, obj::kFirstState) == kFlippedFirstState;
+}
+
+// A reversed-gravity room's item object (`seen`: its copy) that holds no item, over a map cell
+// that reads collected: what is left of another player's item the client marked collected, a
+// picture that gives nothing when touched (docs/re/memory.md, "What decides whether an item
+// appears"). One that holds its cell's item is the pickup, whatever the map says. A pickup of
 // the game's own ends the object, so none is left to hide then.
 bool collected_flipped(const BYTE* seen, const GameAddresses& at) {
     const uint8_t row = seen[obj::kGeneralRow], column = seen[obj::kGeneralColumn];
-    return field<int16_t>(seen, obj::kFirstState) == kFlippedFirstState &&
-           at.map_grid != nullptr && row < kMapSide && column < kMapSide &&
+    return flipped_item(seen) && seen[obj::kHoldsItem] == 0 && at.map_grid != nullptr &&
+           row < kMapSide && column < kMapSide &&
            at.map_grid[row * kMapSide + column] == kCollectedCell;
 }
 constexpr int kMarkerFlag = 154;             // its wait ends once set (state 8210's branch)
@@ -353,9 +362,10 @@ void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
     objects_.resize(obj::kGeneralSize * kObjectSlots);
     if (safe_read(at.object_pool, objects_.data(), objects_.size())) {
         for (int slot = 0; slot < kObjectSlots; ++slot) {
-            if (shows_stand_in(objects_.data() + slot * obj::kGeneralSize, base)) {
-                flipped_slots_.push_back(slot);
-            }
+            const BYTE* o = objects_.data() + slot * obj::kGeneralSize;
+            // A reversed-gravity room's item too, on any frame (hide_marker hides one over a
+            // collected cell); each use of the list checks what it needs again.
+            if (shows_stand_in(o, base) || flipped_item(o)) flipped_slots_.push_back(slot);
         }
     }
     // Any dressed, hidden or colored earlier and not found now is put back if it is still ours.
@@ -392,10 +402,9 @@ void ItemLooks::hide_marker(const GameAddresses& at, BYTE* base) {
         // hid is left to the game); shown again otherwise, whatever its frame. A reversed-gravity
         // room's item over a collected cell is hidden the same way, for as long as the cell
         // reads collected (a reload that takes the mark back shows it again).
-        const bool marker =
-            is_marker(slot, seen, at) && stand_in >= 0 && ours[stand_in] && waits;
-        if (base != nullptr && shows_stand_in(seen, base) &&
-            (marker || collected_flipped(seen, at))) {
+        const bool marker = base != nullptr && shows_stand_in(seen, base) &&
+                            is_marker(slot, seen, at) && stand_in >= 0 && ours[stand_in] && waits;
+        if (marker || collected_flipped(seen, at)) {
             if (h.spawn != 0 || seen[sprite::kVisible] != 0) {
                 if (seen[sprite::kVisible] != 0) put<BYTE>(object, sprite::kVisible, 0);
                 h = {spawn};

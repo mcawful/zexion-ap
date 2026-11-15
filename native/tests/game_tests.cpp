@@ -1082,8 +1082,26 @@ void test_a_collected_item_in_a_reversed_gravity_room_is_hidden() {
     g_map_grid[cell] = 0x1B;
     game.watch_ap_items();
     check(shown(21) == 0, "hidden");
+    general_slot(21)[0x32C] = 1;  // it holds its cell's item: the pickup, whatever the map says
+    game.watch_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0, "one holding the item is shown");
+    general_slot(21)[0x32C] = 0;
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again");
     game.restore_ap_items();
     check(shown(21) == 1 && game.looks().hidden_markers() == 0, "restore shows it again");
+
+    // One made while the stand-ins were not restyled (a load from a menu) shows the game's
+    // scrap, frame 134, not a logo: hidden all the same.
+    game.set_labels(labels);
+    put_flipped(25, 604, 134, 6, 2);
+    put<int16_t>(general_slot(25), 0x32E, 13867);
+    general_slot(25)[0x120] = 1;
+    for (int i = 0; i < 31; ++i) game.watch_ap_items();
+    check(shown(25) == 0 && general_ptr(25, 0x1B0) == g_frames + 134 * 0x38,
+          "hidden on the game's own frame too, its frame left as it is");
+    game.restore_ap_items();
+    check(shown(25) == 1, "and shown again on restore");
     g_map_grid[cell] = g_map_grid[other] = 0;
 }
 
