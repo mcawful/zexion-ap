@@ -945,7 +945,21 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   save once the game saves: such a save played against another room of the same seed sends
   its marked locations as checks. With no client connected nothing is marked, and a failing
   read or write of the marking is said once while items and checks go on. Stand-in tests
-  (`tests/test_session.py`); not run in game.
+  (`tests/test_session.py`). Working in game, 2026-11-14 (B1, slot 6, the seed
+  `lab/ap/live64` with a second Zexion player; the client of PR #144's branch at bbaf3c5,
+  which holds this marking unchanged, with the helper `zexion_ap.dll` `5f19e4d4…`; the owner's
+  reports and the client's log, `lab/ingame-collected-checks.md`): another player's item
+  picked up, then RELOAD FROM SAVE without saving, was gone from its room, its square
+  collected on the map (marked 3 s after the check was sent; marked twice more in the next two
+  minutes, a load before each being the likely cause, not confirmed); its owner's `!collect`
+  while the player stood beside one of the items marked 81 in one pass 4 s later, left the two
+  within two squares until the player had walked away (then marked them, and they were gone on
+  coming back), and the rest were gone from rooms not yet visited and found on the map; all 84
+  of the other player's items were marked by the end, and none was marked again while the
+  owner walked and used the map; the marks were in the save file once the game saved (a lab
+  copy: item state 1 and `0x1B`). Each marked cell gave its one Scrap Metal: 82 after the
+  collect. Not run in game: a death, another save of the seed, `!release`, a cell whose item
+  an object holds, and the client connecting with locations already checked.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
