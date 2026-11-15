@@ -171,10 +171,13 @@ async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
 def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int] | None:
     """The label of each map cell holding another player's item (or this player's own disk or
     trap), and how many are this player's own disks; None until the server has said what each
-    holds."""
+    holds. Another player's item the server has as checked, in a room that waits for its
+    pickup (ids.PICKUP_ROOMS: never marked collected, client/session.py), is labeled as the
+    game's Scrap Metal, for no one: what is left there is only the pickup the room needs."""
     conn = ctx.conn
     if conn is None:
         return None
+    checked = state.others_gone(conn, ctx.checked_locations) if conn.items_listed else set()
     infos = [ctx.locations_info.get(LOCATION_ID_BASE + i) for i in conn.foreign]
     if any(info is None for info in infos):
         return None
@@ -188,7 +191,9 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
             info.player == ctx.slot or (slot is not None and slot.game == ctx.game)
         )
         look = conn.trap_looks.get(i)
-        if zexion_trap and look is None:
+        if i in checked and conn.plan.cells[i] in ids.PICKUP_ROOMS:
+            text = aplabels.own_label(ids.SCRAP_METAL)
+        elif zexion_trap and look is None:
             # A seed made before the world drew looks (only development builds of the traps' PR:
             # 1.1.0 has no traps).
             text = aplabels.label(True, player)
@@ -322,24 +327,25 @@ async def labels_tick(ctx: ZexionContext) -> None:
         else:
             told.labels_retry_at = time.monotonic() + REFUSED_RETRY_SECONDS  # asked again later
         return
-    if (
-        told.labels_for is seed
-        or told.labels_refused
-        or not conn.foreign
-        or time.monotonic() < told.labels_retry_at
-    ):
+    if told.labels_refused or not conn.foreign or time.monotonic() < told.labels_retry_at:
         return
     built = foreign_labels(ctx)
     if built is None:
         return  # the server has not answered yet
     labels, own = built
+    again = told.labels_for is seed
+    if again and labels == told.labels_sent:
+        return  # sent again only when one changes (a pickup room's item, now checked)
     reply = await asyncio.to_thread(helper.request, aplabels.labels_request(labels))
     if reply.startswith("labeled"):
         told.labels_held = True  # held whatever happened meanwhile, so taken back if not wanted
     if conn is not ctx.conn:
         return  # a disconnect or reconnect meanwhile: the next tick sends what is current
     if reply.startswith("labeled"):
-        told.labels_for = seed
+        told.labels_for, told.labels_sent = seed, labels
+        if again:
+            detail("An item the server has as checked now shows as Scrap Metal in its room.")
+            return
         detail(
             f"Other players' items show as Archipelago items, named at pickup "
             f"({len(labels) - own})"

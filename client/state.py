@@ -303,6 +303,7 @@ class HelperState:
     # seed and slot whose labels it holds, whether it refused them (not asked again).
     labels_held: bool = True
     labels_for: SeedState | None = None
+    labels_sent: dict[tuple[int, int], str] | None = None  # those it took for labels_for
     labels_refused: bool = False
     labels_retry_at: float = 0.0
     client_back_sent: bool = False  # asked once (client_back_tick)

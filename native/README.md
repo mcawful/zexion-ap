@@ -963,14 +963,17 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   the game makes no item there when it loads the room, then its map cell to `0x1B`, as a pickup
   leaves both (`client/session.py`, `mark`; `docs/re/memory.md`, "What decides whether an item
   appears"): compare-and-set writes, only for a location two polls in a row (in the same save
-  slot, seconds apart at most) found still to mark. **Never a square with an after-pickup
-  event**: where the game's per-cell table names an event to run once the square's item reads
-  collected (52 of the 155 location squares on B1, every boss room, arena and reversed-gravity
-  room among them), the room may wait for the pickup itself. In game, 2026-11-14, Exodia X20
-  Y0 marked from afar was a soft-lock: its item gone, the boss fight its pickup starts never
-  began, and the room could not be left. The client reads those events from the running game
-  (`cell_table`, `Game.cell_events`) and leaves such a square's item in its room, to pick up
-  as with no client (`client/session.py`, `plain`). **An item the game has made already**
+  slot, seconds apart at most) found still to mark. **Never in a room that waits for its
+  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0). In game, 2026-11-14, that square
+  marked from afar was a soft-lock: its item gone, the boss fight its pickup starts never
+  began, and the room could not be left. There the item stays, and once the server has it as
+  checked the client labels it as the game's Scrap Metal, for no one (`@46`: `client/ticks.py`,
+  `foreign_labels`; the labels are sent again when one changes), so what is left looks like
+  what it is, a pickup the room needs, and gives its Scrap Metal as any stand-in does (the
+  owner's decision, 2026-11-15). That room is the only one listed, by the owner's judgment of
+  the game: 51 other location squares have an after-pickup event in the game's per-cell table
+  (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
+  which of them a mark would break was not sorted out. **An item the game has made already**
   (a reload at a save point beside it, its owner collecting while the player stands by it)
   goes too: the item's own update ends its object once its cell's state reads collected, with
   the writes a pickup ends it with (`docs/re/memory.md`, "What decides whether an item
@@ -1014,7 +1017,7 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   collect. Not run in game: a death, another save of the seed, `!release`, a cell whose item
   an object holds, and the client connecting with locations already checked; nor, added after
   that run (c77879d and after) and stand-in tested only, the loaded-cell test, the checks
-  right before the writes and the attach without `cell_state` or `cell_table`. A second run
+  right before the writes and the attach without `cell_state`. A second run
   (2026-11-14, B1, slot 5, the seed `lab/ap/live65`, the client and helper of PR #144's
   branch at 79bee7a; the owner's reports and read-only looks, same record): with the player
   beside another player's item at Kresezoa X22 Y13, its owner's `!collect` marked all 79 of
@@ -1023,8 +1026,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   one of that player's squares); the rooms looked at held nothing where an item was. That
   build still marked squares with an after-pickup event: Exodia X20 Y0 was the soft-lock
   above, and at Exodia X22 Y1, a reversed-gravity room, an Energy Tank still showed over a
-  marked square (whether it could be picked up was not seen). Not run in game: the rule that
-  came of it (event squares left alone), an arena's drops and a boss's reward.
+  marked square (whether it could be picked up was not seen). Not run in game: what came of
+  it (Exodia X20 Y0 left unmarked and shown as Scrap Metal once checked), an arena's drops
+  and a boss's reward.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.

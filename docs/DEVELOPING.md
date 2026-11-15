@@ -46,9 +46,10 @@ worlds/zexion/ → generation → slot data → client
   given again. Another player's item in this world stays collected once the server has its
   location as checked (found before a death or a reload, or in another save of the seed;
   collected by its owner; released): the client marks it collected in the loaded save, so it
-  is not there to pick up again. Never on a square with an after-pickup event (about a third
-  of them: the room may wait for the pickup), whose item stays in its room. An item the game
-  has made already is ended by the game itself once its state is written; one that may be
+  is not there to pick up again. Never in a room that waits for its item's pickup (Exodia
+  X20 Y0, where the pickup starts the boss fight): there the item stays and shows as Scrap
+  Metal once it is checked. An item the game has made already is ended by the game itself
+  once its state is written; one that may be
   there as another kind of object (in a room the game has loaded or within two map squares
   of the player) stays until the player is farther from it
   ([`native/README.md`](../native/README.md), "Other players' items").
@@ -152,10 +153,11 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
   the player has left, as the client then left it alone): 2026-11-14 (PR #144's branch at
   bbaf3c5); an item beside the player gone when its owner collects: 2026-11-14 (the same
-  branch at 79bee7a). That run also found a soft-lock at a square with an after-pickup
-  event, marked from afar (Exodia X20 Y0): such squares are left alone since, which is not
-  run in game. Nor are a death, another save of the seed and `!release` ("Other players'
-  items", "Kept collected"; "What decides whether an item appears").
+  branch at 79bee7a). That run also found a soft-lock at Exodia X20 Y0, marked from afar
+  (its pickup starts the boss fight): that room is left unmarked since and shows Scrap Metal
+  once its item is checked, which is not run in game. Nor are a death, another save of the
+  seed and `!release` ("Other players' items", "Kept collected"; "What decides whether an
+  item appears").
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
