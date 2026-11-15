@@ -46,9 +46,11 @@ worlds/zexion/ → generation → slot data → client
   given again. Another player's item in this world stays collected once the server has its
   location as checked (found before a death or a reload, or in another save of the seed;
   collected by its owner; released): the client marks it collected in the loaded save, so it
-  is not there to pick up again, but for one in a room the game has loaded or within two map
-  squares of the player, which stays until the player is farther from it
-  ([`native/README.md`](../native/README.md), "Other players' items"). With `--verbose` each
+  is not there to pick up again. An item the game has made already is ended by the game
+  itself once its state is written; one that may be there as another kind of object (in a
+  room the game has loaded or within two map squares of the player) stays until the player
+  is farther from it ([`native/README.md`](../native/README.md), "Other players' items").
+  With `--verbose` each
   marking is logged ("Marked collected in this save (...)"). This world's own items follow
   the save. Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
   count up: any other item's byte is written as 1 at most, so a second copy (a server console's
@@ -138,9 +140,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   players' items, as themselves"; its Scrap Energy not run in game).
 - Other players' items kept collected once the server has them as checked: after a pickup and
   a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
-  the player has left): 2026-11-14 (PR #144's branch at bbaf3c5, which holds the marking
-  unchanged). Not run in game: a death, another save of the seed, `!release` ("Other players'
-  items", "Kept collected"; "What decides whether an item appears").
+  the player has left, as the client then left it alone): 2026-11-14 (PR #144's branch at
+  bbaf3c5). Not run in game: a death, another save of the seed, `!release`, and, as it is
+  since, an item beside the player ended by its state ("Other players' items", "Kept
+  collected"; "What decides whether an item appears").
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
