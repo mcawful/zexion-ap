@@ -116,8 +116,10 @@ With the client closed, your other saves play as normal.
 - To update: download the new release from the Releases page, close Zexion, then replace all
   three files with the new release's. Install the new `zexion.apworld`, and copy the new
   `zexion_ap.dll` and `version.dll` into Zexion's folder.
-- Then connect the client once with Zexion running. Until you do, the mod's taller messages may
-  flicker as they open and close while the client is closed.
+- Then connect the client once with Zexion running. It gives the mod what it needs to play your
+  seed's saves with the client closed, such as where your own traps are, which go off at their
+  pickup only once it has. (If you update from 1.0.0, the mod's taller messages may flicker as
+  they open and close until you have.)
 
 ## When Steam updates Zexion
 
@@ -162,6 +164,9 @@ play as normal.
 | The client says that new game couldn't be made this seed. | Start another new game in an empty save slot. |
 | The client says the mod couldn't fully turn off Feats and Steam achievements, or doesn't recognize this save as an Archipelago save. | Feats and Steam achievements may be earned in that save. Report it (below), with the client's log. |
 | The client says it can't find what it needs in this version of Zexion. | Report it (below), with the client's log. |
+| The client says it can't mark other players' items collected right now. | Items and checks still work, but other players' items you found, or that their owners collected, may show again in their rooms. Reconnect the client; if the message comes back, report it (below), with the client's log. |
+| The client says it can't mark other players' items collected in this build of the game. | The same, for this version of Zexion: items and checks still work, and the items stay unmarked. Report it (below), with the client's log. |
+| The client says that without the mod, traps sent to you or your own traps do nothing. | Traps go off only with the mod loaded. Install it or turn it back on (the rows above); a trap that came while it was missing does not go off later. |
 | `version.dll` disappears, or your antivirus warns about it. | The mod isn't signed, so an antivirus may flag it. Windows Security may name it, for example, `Program:Win32/Contebrew.A!ml`: a false alarm. If Windows Security removed it, restore it: Windows Security, Virus & threat protection, Protection history, then open the entry and choose Restore. Check that the file is back in Zexion's folder, or copy it there again. |
 | Nothing is sent or received. | Check that the client is connected and the loaded save is from this seed. |
 

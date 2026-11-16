@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "addresses.h"
+#include "cell_watch.h"
 #include "game_mem.h"
 #include "menu.h"
 #include "apitem.h"
@@ -273,7 +274,7 @@ public:
     void pump_traps(uint64_t now_ms);
     // Game thread, every frame (watch_all), with a client or none: this world's own traps, as
     // the loaded save's seed file lists them (offline.h, `traps`), each queued for pump_traps
-    // when its map cell turns collected after kOwnTrapPlayLooks looks in play in a row: its
+    // when its map cell turns collected after kCellWatchPlayLooks looks in play in a row: its
     // pickup, every time, so again after a reload that put the item back. The look that sees it
     // may be of a menu or a death (a pause taken on the pickup's frame). A load is never taken
     // for a pickup: it comes from a menu, a death or no save, and the first looks in play after
@@ -473,7 +474,6 @@ private:
     // The file select's counts, each save's own (offline.h, offline_disk_count), with a client
     // or none.
     std::map<int, int> offline_file_counts_;
-    void apply_file_counts();
     std::deque<Popup> popups_;
     uint32_t batches_ = 0;  // the last `apply`'s number (Popup::batch)
     // Received scraps whose popup has shown, their drop not spawned yet (pump_drops), each with
@@ -493,18 +493,11 @@ private:
         int slot = -1;  // and the save slot it was picked up in (0-based)
     };
     std::deque<QueuedTrap> traps_;
-    // watch_own_traps: the seed's own traps as last looked at, each one's cell collected or not
-    // (own_traps_looked_: in the save loaded now), and how many looks in a row before this one
-    // were in play.
-    std::vector<OfflineSeed::OwnTrap> own_traps_seen_;
-    std::vector<bool> own_traps_collected_;
-    bool own_traps_looked_ = false;
-    int own_traps_play_looks_ = 0;
-    // watch_own_disks: the same for the seed's own disks' cells, while no client is attached.
-    std::vector<int> own_disks_seen_;
-    std::vector<bool> own_disks_collected_;
-    bool own_disks_looked_ = false;
-    int own_disks_play_looks_ = 0;
+    // watch_own_traps: the seed's own traps as last looked at (cell_watch.h), in the save loaded
+    // now.
+    CellWatch<OfflineSeed::OwnTrap> own_traps_watch_;
+    // watch_own_disks: the same for the seed's own disks' cells.
+    CellWatch<int> own_disks_watch_;
     std::string trap_status_ = "none";
     // Sets off trap `item` now: "set" or "nothing" (trap_status).
     std::string run_trap(uint8_t item);

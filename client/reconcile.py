@@ -14,11 +14,9 @@ right: an item the save lost is given again, and one the game handed out is neve
 An inventory above what the player should own is left alone. A cell the client marked collected
 itself (another player's item the server has as checked: session.Session.mark) was never picked
 up and gives nothing: the one Scrap Metal a stand-in's pickup gives is counted only for those
-picked up, which the game's pickup counter tells apart (``marked_count``). A save marked before
-this rule keeps the Scrap Metal it was given: nothing is ever taken away, and that surplus then
-stands in for as many Scrap Metal, Area Maps or Energy Shields received later (their popups
-show, the byte stays). A stand-in picked up and then lost to a death or a reload is marked once
-the save is back, and owes nothing then either: its Scrap Metal went with the load.
+picked up, which the game's pickup counter tells apart (``marked_count``). Nothing is ever taken
+away. A stand-in picked up and then lost to a death or a reload is marked once the save is back,
+and owes nothing then either: its Scrap Metal went with the load.
 
 Only the supplies and Scrap Metal are counts (``COUNTED``; docs/re/save-format.md, "Inventory:
 one byte per item ID at 0x92F3"). Every other item is held once, as the game's own seeds hold it
@@ -83,7 +81,7 @@ def marked_count(
     pickup_counter) does not account for. Every pickup of a location's item raises the counter
     by one, but for the items it leaves out, and a mark leaves it alone (docs/re/memory.md,
     "The pickup counter and the collected cells"). 0 with no counter read (None): every
-    collected cell then counts as picked up, as before the counter was read."""
+    collected cell then counts as picked up."""
     if pickups is None:
         return 0
     counted = sum(1 for i in collected if location_items[i] not in UNCOUNTED_PICKUPS)

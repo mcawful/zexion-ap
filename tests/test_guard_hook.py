@@ -730,6 +730,291 @@ def test_every_shells_env_var_spelling_expands(spelling: str, monkeypatch) -> No
     assert protected.normalize(f"{spelling}/x") == "c:/users/someone/appdata/roaming/x"
 
 
+# The mod's offline files, %LOCALAPPDATA%\ZexionAP: only the helper writes them.
+LOCAL = "C:/Users/someone/AppData/Local"
+OFFLINE = f"{LOCAL}/ZexionAP"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"{OFFLINE}/config-B1.txt",
+        f"{OFFLINE}/seeds/Player1.txt",
+        f"{OFFLINE}/labels/x.txt",
+        OFFLINE.replace("/", "\\") + "\\seeds\\Player1.txt",
+        "%LOCALAPPDATA%\\ZexionAP\\config-B1.txt",
+        "$env:LOCALAPPDATA\\ZexionAP\\seeds\\x.txt",
+        "C:/Users/someone/AppData/Local/zexionap/x",
+        "C:/Users/someone/AppData/Local/ZexionAP./x",
+        "C:/Users/someone/AppData/Local/Other/../ZexionAP/x",
+    ],
+)
+def test_file_tools_blocked_in_the_offline_folder(path: str) -> None:
+    for tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+        assert run(tool, file_path=path), (tool, path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"{LOCAL}/Temp/x.txt",
+        f"{LOCAL}/Claude-Data/x.txt",
+        f"{LOCAL}/ZexionAPnotes/x.txt",
+        f"{LOCAL}/ZexionAP-old/x.txt",
+        "C:/Users/someone/AppData/Roaming/ZexionAP/x",
+        "D:/code/zexion-ap/client/offline.py",
+        "D:/code/zexion-ap/docs/ZexionAP.md",
+    ],
+)
+def test_file_tools_allowed_beside_the_offline_folder(path: str) -> None:
+    assert run("Write", file_path=path) is None
+
+
+OFFLINE_BLOCKED = [
+    f'cp lab/a "{OFFLINE}/seeds/Player1.txt"',
+    f'echo x > "{OFFLINE}/config-B1.txt"',
+    f'echo x >> "{OFFLINE}/seeds/Player1.txt"',
+    f'rm "{OFFLINE}/seeds/Player1.txt"',
+    f'rm -rf "{OFFLINE}"',
+    f'mv "{OFFLINE}/config-B1.txt" lab/',
+    f'touch "{OFFLINE}/x"',
+    f'cat lab/a | tee "{OFFLINE}/x"',
+    f'sed -i s/a/b/ "{OFFLINE}/config-B1.txt"',
+    f'find "{OFFLINE}" -name "*.txt" -delete',
+    f"python -c \"open(r'{OFFLINE}/x', 'w')\"",
+    f'ls "{OFFLINE}" && $(rm -rf "{OFFLINE}")',
+    'rm -rf "$LOCALAPPDATA/ZexionAP"',
+    'rm -rf "${LOCALAPPDATA}/ZexionAP/seeds"',
+    'echo x > "$LOCALAPPDATA/ZexionAP/x"',
+    'rm -rf "$LOCALAPPDATA"/Zexion*',
+    'rm -rf "$LOCALAPPDATA/Z*/seeds"',
+    "rm -rf ~/AppData/Local/ZexionAP",
+    'rm -rf "$LOCALAPPDATA"',  # the parent: deleting it deletes the folder
+    'cp -r lab/x "$LOCALAPPDATA"',
+    "python -c \"import os; os.remove(os.environ['LOCALAPPDATA'] + '/ZexionAP/x')\"",
+    "python -c \"import os; open(os.path.join(os.environ['LOCALAPPDATA'], 'ZexionAP', 'x'), 'w')\"",
+    "python -c \"import os; d = os.environ['LOCALAPPDATA']; open(d + '/' + 'ZexionAP', 'w')\"",
+    'python -c "from pathlib import Path; import os; '
+    "Path(os.environ['LOCALAPPDATA']).joinpath('ZexionAP', 'x').unlink()\"",
+]
+OFFLINE_PS_BLOCKED = [
+    f'Remove-Item "{OFFLINE}\\seeds\\Player1.txt"',
+    f'Copy-Item lab\\a "{OFFLINE}\\config-B1.txt"',
+    'Remove-Item -Recurse "$env:LOCALAPPDATA\\ZexionAP"',
+    'Set-Content -Path "$env:LOCALAPPDATA\\ZexionAP\\x" -Value 1',
+    'Remove-Item -Recurse -Force "${env:LOCALAPPDATA}\\ZexionAP"',
+    'Remove-Item -Recurse "%LOCALAPPDATA%\\ZexionAP"',
+    "Remove-Item -Recurse $env:LOCALAPPDATA\\Zexion*",
+    "Remove-Item -Recurse (Join-Path $env:LOCALAPPDATA 'ZexionAP')",
+    "$d = $env:LOCALAPPDATA; Remove-Item -Recurse (Join-Path $d 'ZexionAP')",
+    "Remove-Item -Recurse "
+    "([IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'ZexionAP'))",
+    'echo x > "$env:LOCALAPPDATA\\ZexionAP\\x"',
+    'Remove-Item -Recurse "$env:LOCALAPPDATA"',
+]
+OFFLINE_ALLOWED = [
+    f'ls "{OFFLINE}"',
+    f'cat "{OFFLINE}/config-B1.txt"',
+    f'head -5 "{OFFLINE}/seeds/Player1.txt" | cat',
+    f'xxd "{OFFLINE}/config-B1.txt" | head',
+    f'grep -rn address "{OFFLINE}"',
+    f'find "{OFFLINE}" -name "*.txt"',
+    f'wc -c "{OFFLINE}"/seeds/*.txt',
+    f'xxd "{OFFLINE}/x" > lab/x.hex',
+    f'ls -la "{LOCAL}"',
+    'ls "$LOCALAPPDATA/ZexionAP"',
+    'cat "$LOCALAPPDATA/ZexionAP/config-B1.txt"',
+    'du -sh "$LOCALAPPDATA"/Zexion*',
+    # Elsewhere in LOCALAPPDATA, and the repo's own names.
+    f'rm -rf "{LOCAL}/Temp/x"',
+    f'echo x > "{LOCAL}/Temp/x.txt"',
+    f'cp lab/a "{LOCAL}/Temp/x.txt"',
+    'rm -rf "$LOCALAPPDATA/Temp/x"',
+    'rm -f "$LOCALAPPDATA/Temp/"*',
+    'echo x > "$LOCALAPPDATA/Temp/x.txt"',
+    'cp lab/a "$LOCALAPPDATA/Temp/claude/x.txt"',
+    "python -c \"import os; open(os.environ['LOCALAPPDATA'] + '/Temp/x', 'w')\"",
+    "rm -rf native/build/* lab/ap/*",
+    "cat client/offline.py",
+    'git commit -m "Docs: the offline files in %LOCALAPPDATA%\\ZexionAP"',
+    "git commit -m \"$(cat <<'EOF'\nGuard: protect %LOCALAPPDATA%\\ZexionAP\nEOF\n)\"",
+    'gh pr create --title "Guard" --body "Blocks writes to %LOCALAPPDATA%\\ZexionAP"',
+    'grep -rn "ZexionAP" docs/ client/ native/src',
+    f"cat > lab/notes.md <<'EOF'\n{OFFLINE}\nEOF",
+    ".venv/Scripts/python tools/build_id.py",
+]
+OFFLINE_PS_ALLOWED = [
+    f'Get-ChildItem "{OFFLINE}"',
+    'Get-ChildItem "$env:LOCALAPPDATA\\ZexionAP"',
+    'Get-Content "$env:LOCALAPPDATA\\ZexionAP\\config-B1.txt" -TotalCount 5',
+    'Get-ChildItem "$env:LOCALAPPDATA\\ZexionAP" | Select-Object Name, Length',
+    'Test-Path "$env:LOCALAPPDATA\\ZexionAP\\seeds"',
+    "(Get-Item $env:LOCALAPPDATA\\ZexionAP\\config-B1.txt).Length",
+    'Remove-Item -Recurse "$env:LOCALAPPDATA\\Temp\\x"',
+    'Set-Content -Path "$env:LOCALAPPDATA\\Temp\\x" -Value 1',
+    'Copy-Item lab\\a "$env:LOCALAPPDATA\\Temp\\claude\\x.txt"',
+    "git commit -m @'\nDocs: %LOCALAPPDATA%\\ZexionAP\n'@",
+]
+
+
+@pytest.fixture
+def local_appdata(monkeypatch):
+    """LOCALAPPDATA set the way Windows sets it, so the env var spellings expand."""
+    monkeypatch.setenv("LOCALAPPDATA", LOCAL)
+
+
+@pytest.mark.usefixtures("local_appdata")
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [("Bash", c) for c in OFFLINE_BLOCKED] + [("PowerShell", c) for c in OFFLINE_PS_BLOCKED],
+)
+def test_writes_into_the_offline_folder_blocked(tool: str, command: str) -> None:
+    assert run(tool, command=command)
+
+
+@pytest.mark.usefixtures("local_appdata")
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [("Bash", c) for c in OFFLINE_ALLOWED] + [("PowerShell", c) for c in OFFLINE_PS_ALLOWED],
+)
+def test_reads_of_the_offline_folder_and_other_local_paths_allowed(tool: str, command: str) -> None:
+    assert run(tool, command=command) is None
+
+
+@pytest.mark.parametrize("spelling", ["%LOCALAPPDATA%", "$env:LOCALAPPDATA", "${LOCALAPPDATA}"])
+def test_the_offline_folder_is_blocked_with_the_variable_missing(
+    spelling: str, monkeypatch
+) -> None:
+    # Linux and macOS, or a stripped environment: nothing to expand, nothing may crash or pass.
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    assert protected.normalize(f"{spelling}/x") == f"{spelling.lower()}/x"
+    assert run("Write", file_path=f"{spelling}/ZexionAP/x")
+    assert run("Bash", command=f'rm -rf "{spelling}/ZexionAP"')
+    assert run("PowerShell", command=f'Remove-Item -Recurse "{spelling}\\ZexionAP\\seeds"')
+    assert run("Bash", command=f'ls "{spelling}/ZexionAP"') is None
+    assert run("Bash", command=f'rm -rf "{spelling}/Temp/x"') is None
+
+
+@pytest.mark.parametrize("name", ["TEMP", "TMP"])
+def test_the_offline_folder_through_temp_blocked(name: str, monkeypatch) -> None:
+    # TEMP and TMP are AppData\Local\Temp: one ``..`` leads to the folder.
+    monkeypatch.setenv(name, f"{LOCAL}/Temp")
+    for spelling in (f"${name}", f"${{{name}}}", f"%{name}%"):
+        assert run("Bash", command=f'rm -rf "{spelling}/../ZexionAP"'), spelling
+        assert run("Bash", command=f'echo x > "{spelling}/../ZexionAP/x"'), spelling
+        assert run("Write", file_path=f"{spelling}/../ZexionAP/x"), spelling
+    assert run("PowerShell", command=f'Remove-Item -Recurse "$env:{name}\\..\\ZexionAP"')
+    assert run("PowerShell", command=f'Remove-Item -Recurse "${{env:{name}}}\\..\\ZexionAP"')
+    # Writes under it, and a read of the folder through it, stay allowed.
+    assert run("Bash", command=f'rm -rf "${name}/x"') is None
+    assert run("Bash", command=f'echo x > "${name}/x.txt"') is None
+    assert run("Bash", command=f'ls "${name}/../ZexionAP"') is None
+    assert run("PowerShell", command=f'Remove-Item -Recurse "$env:{name}\\x"') is None
+    assert run("Write", file_path=f"${name}/x.txt") is None
+
+
+def test_reading_the_offline_folder_through_a_folder_number_allowed() -> None:
+    get = "[Environment]::GetFolderPath(28)"
+    assert run("PowerShell", command=f"Get-ChildItem (Join-Path ({get}) 'ZexionAP')") is None
+
+
+@pytest.mark.parametrize("name", ["TEMP", "APPDATA"])
+def test_a_variable_the_command_sets_itself_is_not_the_environments(name: str, monkeypatch) -> None:
+    # Else ``$TEMP`` would be read as the real Temp folder and the redirect let through.
+    monkeypatch.setenv(name, f"{LOCAL}/Temp")
+    for folder in (SAVES, OFFLINE):
+        assert run("Bash", command=f'{name}="{folder}"; ls lab > "${name}/x"')
+        assert run("Bash", command=f'export {name}="{folder}"; echo x >> "${{{name}}}/x"')
+
+
+@pytest.mark.parametrize("number", ["28", "0x1c", "0x1C", " 28 "])
+def test_the_offline_folder_through_a_folder_number_blocked(number: str) -> None:
+    # GetFolderPath(28) is LocalApplicationData.
+    get = f"[Environment]::GetFolderPath({number})"
+    assert run("PowerShell", command=f"Remove-Item -Recurse (Join-Path ({get}) 'ZexionAP')")
+    assert run("PowerShell", command=f'Remove-Item -Recurse "$({get})\\ZexionAP"')
+    assert run("PowerShell", command=f"$d = {get}; Remove-Item -Recurse (Join-Path $d 'ZexionAP')")
+    assert run("PowerShell", command=f"Set-Content -Path ({get} + '\\ZexionAP\\x') -Value 1")
+    other = "[Environment]::GetFolderPath(26)"  # ApplicationData: not this folder
+    assert (
+        run("PowerShell", command=f"Remove-Item -Recurse (Join-Path ({other}) 'ZexionAP')") is None
+    )
+    assert run("PowerShell", command=f"Remove-Item -Recurse (Join-Path ({get}) 'Temp\\x')") is None
+
+
+def test_the_offline_folder_with_a_different_local_appdata(monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", "D:/Profiles/someone/Local")
+    assert run("Bash", command='rm -rf "$LOCALAPPDATA/ZexionAP"')
+    assert run("Write", file_path="%LOCALAPPDATA%/ZexionAP/config-B1.txt")
+    assert run("Write", file_path="D:/Profiles/someone/Local/ZexionAP/config-B1.txt")
+    assert run("Bash", command='rm -rf "$LOCALAPPDATA"/Zexion*')
+    assert protected.word_may_name_protected("D:/Profiles/someone/Local/Zex*/x")
+    assert run("Bash", command='rm -rf "$LOCALAPPDATA/Temp/x"') is None
+    assert run("Bash", command='ls "$LOCALAPPDATA/ZexionAP"') is None
+
+
+@pytest.mark.parametrize(
+    ("cwd", "blocked"),
+    [
+        (OFFLINE, True),
+        (f"{OFFLINE}/seeds", True),
+        (LOCAL, True),  # a parent: relative paths reach the folder
+        ("C:/Users/someone/AppData", True),
+        (f"{LOCAL}/Temp", False),
+        (f"{LOCAL}/Claude-Data/x", False),
+        ("D:/code/zexion-ap", False),
+    ],
+)
+def test_the_offline_folder_as_the_working_folder(cwd: str, blocked: bool) -> None:
+    rm = {"command": "rm -rf ZexionAP"}
+    assert bool(guard_protected.check("Bash", rm, protected, session_cwd=cwd)) is blocked
+
+
+@pytest.mark.parametrize(
+    ("word", "expected"),
+    [
+        (f"{OFFLINE}/x", True),
+        (f"{LOCAL}/ZexionAP", True),
+        (f"{LOCAL}/Zexion*/x", True),
+        (f"{LOCAL}/ZEXIONAP/x", True),
+        (f"{LOCAL}/Other/../ZexionAP/x", True),
+        (f"{LOCAL}/Temp/x", False),
+        (f"{LOCAL}/Zexions/x", False),
+        ("C:/Users/someone/AppData/Roaming/ZexionAP/x", False),
+        ("/usr/local/*", False),
+        ("native/build/*", False),
+    ],
+)
+def test_word_may_name_the_offline_folder(word: str, expected: bool) -> None:
+    assert protected.word_may_name_protected(word) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (OFFLINE, True),
+        ("%LOCALAPPDATA%\\ZexionAP\\seeds", True),
+        ("$env:LOCALAPPDATA\\ZexionAP", True),
+        ("os.path.join(os.environ['LOCALAPPDATA'], 'ZexionAP')", True),
+        ("Path(os.environ['LOCALAPPDATA']) / 'ZexionAP' / 'x'", True),
+        ("[Environment]::GetFolderPath('LocalApplicationData') + '\\ZexionAP'", True),
+        ("%LOCALAPPDATA%\\ZexionAP-notes", False),
+        ("%LOCALAPPDATA%\\ZexionAP.md", False),
+        ("%LOCALAPPDATA%\\Temp", False),
+        ("D:/code/zexion-ap/client/offline.py", False),
+        ("ZexionAP", False),  # the name alone, away from LOCALAPPDATA, is prose
+    ],
+)
+def test_mentions_the_offline_folder(text: str, expected: bool) -> None:
+    assert protected.mentions_protected(text) is expected
+
+
+def test_assert_writable_refuses_the_offline_folder() -> None:
+    with pytest.raises(protected.ProtectedPathError):
+        protected.assert_writable(f"{OFFLINE}/seeds/x.txt")
+    assert protected.assert_writable(f"{LOCAL}/Temp/x.txt") == Path(f"{LOCAL}/Temp/x.txt")
+
+
 TERMINAL = "mcp__terminal__run_in_terminal"
 SLOTS_PS = f'.venv\\Scripts\\python.exe tools\\save_lab.py slots --save-dir "{SAVES}"'
 
@@ -837,6 +1122,7 @@ def _crashing_payload(tool_input: dict) -> str:
         # everything, only a failure on a call naming the saves.
         (_crashing_payload({"file_path": "D:/code/zexion-ap/tools/x.py"}), 0),
         (_crashing_payload({"file_path": f"{SAVES}/x.sav"}), 2),
+        (_crashing_payload({"file_path": f"{OFFLINE}/config-B1.txt"}), 2),
     ],
 )
 def test_the_hook_process_blocks_with_exit_2(payload: str, code: int) -> None:

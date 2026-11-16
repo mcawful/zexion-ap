@@ -304,7 +304,7 @@ void test_another_transition_first_is_asked_again() {
     set_fade(-1, static_cast<int8_t>(0xFE), 12);
     m.cancel(a);
     check(g_fn == reinterpret_cast<void*>(&door_routine) && g_fades.size() == 2 && !m.holds_hook(),
-          "cancelled under a door: its routine and fade left alone");
+          "canceled under a door: its routine and fade left alone");
 }
 
 void test_unload_puts_back() {
@@ -357,7 +357,7 @@ void test_cancel_drops_it_for_another_save() {
     m.request();
     m.cancel(a);  // the save changed before it was idle
     m.watch(a, true);
-    check(g_fn == kIdle, "asked, then cancelled: never set");
+    check(g_fn == kIdle, "asked, then canceled: never set");
 
     m.request();
     m.watch(a, true);  // the opener set, the screen fading

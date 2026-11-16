@@ -5,9 +5,9 @@ x64 exe on SDL2 and FMOD with no modding API: its mod folders are for sprites an
 only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
 Everything here comes from reverse engineering, hence the evidence rules below.
 
-**Status:** 1.1.0; played in game on build B1 only. Releases (the version: "Releases and
-versions") are published from `main` on GitHub's
-[Releases page](https://github.com/mcawful/zexion-ap/releases).
+**Status:** played in game on build B1 only. Releases (the version: "Releases and versions")
+are published from `main` on GitHub's [Releases page](https://github.com/mcawful/zexion-ap/releases);
+the current version is `world_version` in `worlds/zexion/archipelago.json`.
 
 Where things are:
 
@@ -35,7 +35,9 @@ Where things are:
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
   its `install` (an empty slot, after a verified backup) and `restore` write the save folder.
-  The client never writes it.
+  The client never writes it. The same hooks block writes to the mod's offline files,
+  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts): only the helper writes
+  them, and they change what the mod does with no client running.
 - **Ask first, every time,** before anything that changes the running game or the saves:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run (it may load
   the helper, and with or without it writes the game's map: "The client"), the client's
@@ -250,8 +252,9 @@ release's.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
   a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
-  must agree on (version, builds, `config` keys, the flags and layouts both read), and the
-  world's `world_version`.
+  must agree on (version, builds, `config` keys, the request names and the replies the client
+  branches on, the offline seed's header and keys, the label separator, the font's punctuation,
+  the item record count, the flags and layouts both read), and the world's `world_version`.
   `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
   `test_release_notes.py` and `test_release_footer.py` test the release builder, the data
   generator, the release gate, the release's message and the install guide in it.
@@ -263,11 +266,13 @@ release's.
 Committed under `.claude/`, so they apply to anyone working here:
 
 - `.claude/settings.json`: the hook `guard_protected.py` blocks writes into the game install,
-  the save folder and Steam's cloud cache for the game (rules: its docstring; cases:
+  the save folder, Steam's cloud cache for the game and the mod's offline files
+  (`%LOCALAPPDATA%\ZexionAP`) (rules: its docstring; cases:
   `tests/test_guard_hook.py`). The guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
-  `deny` rules for Edit and Write back it up; only the game-install one has been seen to fire.
+  `deny` rules for Edit and Write back it up for the save folder, the game install and the cloud
+  cache (not the offline files); only the game-install one has been seen to fire.
   `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist runs `git status`, `diff`,
   `log` and `show`, the read-only forms of `git branch` (bare, `-a`, `-r`, `-v`, `-vv`,
   `--show-current`, `--list`), `ruff check`, `ruff format --check`, pytest, `build_id.py` and
@@ -279,8 +284,8 @@ Committed under `.claude/`, so they apply to anyone working here:
   on Debian, Ubuntu and macOS, the Microsoft Store stub on some Windows machines, or Python 2,
   and a hook that fails that way lets the call through. It runs the hook with the first Python
   3.11 or later that can run it (the repo's `.venv`, then `python3`, `python`, `py -3`) and,
-  with none, blocks a guard call whose payload mentions the saves or a Steam folder, as the
-  guard does when it breaks (cases: `tests/test_hook_runner.py`).
+  with none, blocks a guard call whose payload mentions the saves, a Steam folder or `ZexionAP`,
+  as the guard does when it breaks (cases: `tests/test_hook_runner.py`).
 - Skills: `/preflight` (the checks; without the toolchain a change is unverified), `/save-lab`
   (Steam Cloud, backups, copies, diffs, patches, install, restore), `/find-address` (a value in
   memory to a byte pattern, recorded with evidence).

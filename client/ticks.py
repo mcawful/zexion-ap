@@ -80,14 +80,18 @@ async def attach_helper(ctx: ZexionContext) -> bool:
         if ctx.said("helper detail", str(exc)):
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
+        if exc.old_gone:
+            ctx.swap_pending = False  # nothing left to wait for: the old helper is gone
         # One that didn't unload (a menu open, a trap waiting or running) may on a later try:
         # worth waiting for, as for a helper lost, but asked only every REFUSED_RETRY_SECONDS
         # (each try has the old helper put back what a client going away does).
         if isinstance(exc, native.NotUnloaded):
             ctx.attach_again_at = time.monotonic() + REFUSED_RETRY_SECONDS
+            ctx.swap_pending = True  # stays until a helper attaches or the game closes
             return True
         return not isinstance(exc, (native.ModFixable, native.ModDisabled))
     ctx.said.clear("helper", "helper detail")
+    ctx.swap_pending = False
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
     # again, and told the client is back if the save was played offline.
@@ -201,10 +205,6 @@ def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int]
         look = conn.trap_looks.get(i)
         if i in checked and conn.plan.cells[i] in ids.PICKUP_ROOMS:
             text = aplabels.own_label(ids.SCRAP_METAL)
-        elif zexion_trap and look is None:
-            # A seed made before the world drew looks (only development builds of the traps' PR:
-            # 1.1.0 has no traps).
-            text = aplabels.label(True, player)
         elif zexion_trap and info.player == ctx.slot:
             text = aplabels.trap_label(look, code)  # this player's own trap, disguised
         elif info.player == ctx.slot and code in ids.GAME_ITEMS:

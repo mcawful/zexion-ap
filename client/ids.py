@@ -53,16 +53,8 @@ COLLECTED = 0x1B  # a map cell's value once its item is collected (docs/re/memor
 # Map cells (x, y) whose room waits for its item's pickup. There another player's item is never
 # marked collected (client/session.py, ``plain``) and, once the server has it as checked, shows
 # as the game's Scrap Metal, to pick up for the room's sake (client/ticks.py, foreign_labels).
-# Exodia X20 Y0: the pickup starts its boss fight; marked from afar, the fight never began and
-# the room could not be left (in game, 2026-11-14: docs/re/memory.md, "What decides whether an
-# item appears"). R'Talva X34 Y51: the boss's reward, whose pickup turns the warp gate on;
-# marked, the reward still showed after the fight as the item it had been, gave nothing, and
-# the gate waited for its touch (in game, 2026-11-15, the same record). The first two listed were
-# the owner's judgment of the game (2026-11-15); the other squares with an after-pickup event are
-# marked as any other (an arena and one more event square played marked with no harm that day;
-# not each of them).
-# Kresezoa X5 Y23: a 3 x 3 arena whose boss drops the cell's item; marked from afar, the boss still
-# dropped the collected item's picture, and its pickup gave nothing (in game, 2026-11-16: the same
-# record, "The type-28 events").
+# Exodia X20 Y0: the pickup starts the boss fight. R'Talva X34 Y51: the pickup of the boss's
+# reward turns the warp gate on. Kresezoa X5 Y23: its boss drops the cell's item. The evidence,
+# and the rooms not listed: docs/re/memory.md, "What decides whether an item appears".
 PICKUP_ROOMS = frozenset({(0, 20), (51, 34), (23, 5)})
 SECTION_SIZE = 0x908  # the randomizer section, as loaded and in each slot's copy

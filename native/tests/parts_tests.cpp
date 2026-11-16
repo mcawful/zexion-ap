@@ -9,9 +9,11 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "check.h"
 #include "build.h"
+#include "cell_watch.h"
 #include "game_mem.h"
 #include "iat.h"
 #include "pipe.h"
@@ -326,6 +328,58 @@ void test_pipe() {
     check(served.load(), "serve_pipe reports a clean stop");
 }
 
+
+// CellWatch (cell_watch.h): what each look tells of the cells since the look before.
+void test_cell_watch() {
+    zap::CellWatch<int> watch;
+    std::vector<char> cells(3, 0);
+    auto read = [&](size_t i) { return cells[i] != 0; };
+    const std::vector<int> keys = {10, 20, 30};
+
+    check(!watch.looked(), "nothing looked at yet");
+    check(!watch.look(keys, read, true) && watch.looked(), "the first look is of no list before it");
+    cells[1] = 1;
+    check(watch.look(keys, read, true) && watch.found().empty(),
+          "a cell turning collected on the second look in play: one look in play is not enough");
+    cells[0] = 1;  // two looks in play have come before this one
+    check(watch.look(keys, read, true) && watch.found() == std::vector<size_t>{0},
+          "then it is told, once");
+    check(watch.look(keys, read, true) && watch.found().empty() && watch.undone().empty(),
+          "and not again");
+    cells[1] = 0;
+    cells[2] = 1;
+    check(watch.look(keys, read, true) && watch.found() == std::vector<size_t>{2} &&
+              watch.undone() == std::vector<size_t>{1},
+          "one found and another put back in a look");
+
+    // Looks not in play start the count over; a put-back cell is told without waiting.
+    check(watch.look(keys, read, false), "a look in a menu");
+    cells[0] = 0;
+    cells[1] = 1;
+    check(watch.look(keys, read, true) && watch.found().empty() &&
+              watch.undone() == std::vector<size_t>{0},
+          "the first look in play after it: a cell put back is told, one found is not");
+    cells[1] = 0;
+    check(watch.look(keys, read, true) && watch.undone() == std::vector<size_t>{1},
+          "still told");
+    cells[1] = 1;
+    check(watch.look(keys, read, true) && watch.found() == std::vector<size_t>{1},
+          "two looks in play since the menu: told");
+
+    // Another list is no look of the same one; a reset likewise.
+    const std::vector<int> other = {10, 20};
+    cells[0] = 0;
+    check(!watch.look(other, read, true) && watch.found().empty() && watch.undone().empty() &&
+              watch.looked(),
+          "another list: that look takes the cells as they are");
+    cells[0] = 1;
+    check(watch.look(other, read, true) && watch.found() == std::vector<size_t>{0},
+          "the look after it compares with that one (the looks in play still count)");
+    watch.reset();
+    check(!watch.looked() && !watch.look(other, read, true) && watch.found().empty(),
+          "after a reset the next look is the first");
+}
+
 }  // namespace
 
 int main() {
@@ -337,5 +391,6 @@ int main() {
     test_code_patches();
     test_build_check();
     test_pipe();
+    test_cell_watch();
     return report("parts tests");
 }
