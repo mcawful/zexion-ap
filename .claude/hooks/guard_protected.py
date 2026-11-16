@@ -964,11 +964,12 @@ def _names_app_id(text: str, words: list[Word], protected) -> bool:
 def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     """Whether words may build a protected path from pieces: the app id as a path component
     (``_names_app_id``); a ``ZexionAP`` piece in a command that mentions ``LOCALAPPDATA`` (or
-    ``AppData/Local``, or ``GetFolderPath(28)``), however far apart; or, in a command that
-    mentions ``gallant`` or ``steamapps``, a ``Zexion`` piece that starts a word or a quoted or
-    comma-separated piece of one, or follows a variable or a ``…Leaf`` or ``…common`` piece
-    (``base = join(…, 'Gallant Leaf'); join(base, 'Zexion')``), or a ``common`` component after
-    a variable."""
+    ``AppData/Local``, or ``GetFolderPath(28)``), however far apart, or that names ``TEMP`` or
+    ``TMP`` and takes its parent (a ``..`` piece, ``dirname``, ``Split-Path``, ``.Parent``); or,
+    in a command that mentions ``gallant`` or ``steamapps``, a ``Zexion`` piece that starts a word
+    or a quoted or comma-separated piece of one, or follows a variable or a ``…Leaf`` or
+    ``…common`` piece (``base = join(…, 'Gallant Leaf'); join(base, 'Zexion')``), or a ``common``
+    component after a variable."""
     low = protected.normalize(text)
     if _names_app_id(text, words, protected):
         return True
@@ -987,7 +988,16 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
         r"|getfolderpath\([^)]*?\b(?:28|0x1c)\b",
         low,
     )
-    if local and any(c == "zexionap" for p in parts for c in p):
+    names_folder = any(c == "zexionap" for p in parts for c in p)
+    if local and names_folder:
+        return True
+    # The TEMP and TMP folders are ``AppData/Local/Temp``: their parent is the folder. A command
+    # that names one and takes its parent, with a ``..`` piece (``'..'``, ``TMP=..``) or a
+    # parent function (``dirname``, ``Split-Path``, ``.Parent``, ``GetParent``), builds it.
+    temp = re.search(r"\b(?:temp|tmp)\b|gettempdir|tempfile", low)
+    dotdot = any(re.fullmatch(r"(?:[^=]*=)?\.\.[;&|]*", c) for p in parts for c in p)
+    parent = re.search(r"dirname|split-path|\.parent\b|getparent|\bparent\b", low)
+    if temp and (dotdot or parent) and names_folder:
         return True
     if "gallant" not in low and "steamapps" not in low:
         return False

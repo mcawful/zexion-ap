@@ -978,6 +978,47 @@ def test_a_scratch_path_beside_the_word_is_not_the_offline_folder(command: str) 
         ("Bash", 'rm "$LOCALAPPDATA/ZexionAP/seeds.txt"'),
         ("PowerShell", "$d = $env:LOCALAPPDATA; Remove-Item -Recurse (Join-Path $d 'ZexionAP')"),
         ("PowerShell", 'Remove-Item -Recurse "$env:TEMP\\..\\ZexionAP"'),
+        # TEMP's parent is the folder: a ``..`` piece or a parent function takes it.
+        ("PowerShell", "Remove-Item -Recurse (Join-Path $env:TEMP '..\\ZexionAP')"),
+        ("Bash", 'TMP=..; cd "$LOCALAPPDATA/Temp" && rm -rf $TMP/ZexionAP'),
+        ("PowerShell", "Remove-Item -Recurse (Join-Path $env:TEMP '..' 'ZexionAP')"),
+        ("PowerShell", "Remove-Item -Recurse (Join-Path (Split-Path $env:TEMP) 'ZexionAP')"),
+        (
+            "PowerShell",
+            "Remove-Item -Recurse (Join-Path (Split-Path $env:TEMP -Parent) 'ZexionAP')",
+        ),
+        ("PowerShell", '$d = Split-Path $env:TEMP; Remove-Item -Recurse "$d\\ZexionAP"'),
+        (
+            "PowerShell",
+            "Remove-Item -Recurse ([IO.Path]::Combine($env:TEMP, '..', 'ZexionAP'))",
+        ),
+        (
+            "PowerShell",
+            "Remove-Item -Recurse ((Get-Item $env:TEMP).Parent.FullName + '\\ZexionAP')",
+        ),
+        ("Bash", 'rm -rf "$(dirname "$TEMP")/ZexionAP"'),
+        ("Bash", 'd=$(dirname "$TEMP"); rm -rf "$d/ZexionAP"'),
+        ("Bash", 'p=..; rm -rf "$TEMP/$p/ZexionAP"'),
+        (
+            "Bash",
+            'python -c "import os,shutil; '
+            "shutil.rmtree(os.path.join(os.environ['TEMP'], '..', 'ZexionAP'))\"",
+        ),
+        (
+            "Bash",
+            'python -c "import os,shutil; '
+            "shutil.rmtree(os.path.join(os.path.dirname(os.environ['TEMP']), 'ZexionAP'))\"",
+        ),
+        (
+            "Bash",
+            'python -c "import os,shutil,tempfile; '
+            "shutil.rmtree(os.path.join(os.path.dirname(tempfile.gettempdir()), 'ZexionAP'))\"",
+        ),
+        (
+            "Bash",
+            'python -c "import shutil,tempfile,pathlib; '
+            "shutil.rmtree(pathlib.Path(tempfile.gettempdir()).parent / 'ZexionAP')\"",
+        ),
     ],
 )
 def test_the_offline_folder_built_from_pieces_still_blocked(tool: str, command: str) -> None:
