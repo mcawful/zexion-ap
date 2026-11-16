@@ -163,11 +163,15 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - Other players' items kept collected once the server has them as checked: 2026-11-14 (PR
   #144's branch at bbaf3c5 and 79bee7a: a reload, `!collect`), 2026-11-15 (PR #144's a17904b,
   PR #145's 399f57e, PR #146's fe4fe1b and c7186e9: the two rooms left unmarked, the hidden
-  picture, a mark giving no Scrap Metal), B1. What each run showed and what is not run (a
+  picture, a mark giving no Scrap Metal), 2026-11-16 (develop 0b01d41: 14 squares with a type-28
+  event marked from afar, Kresezoa X5 Y23's boss drop, PR #153), B1. What each run showed and what is not run (a
   death, another save of the seed, `!release`, a reload beside an item, an arena's item marked
   with the player in its room, a type-715 room such as Guardia X22 Y7, the marking's wait
-  through a TELEPORT TO, the map square under the other Obscure settings, and a scrap-labeled
-  square of item 48 that the game's on-screen write raises): `native/README.md`, "Other players' items"
+  through a TELEPORT TO, the map square under the other Obscure settings, a scrap-labeled
+  square of item 48 that the game's on-screen write raises, nine of the 14 type-28 squares
+  (Guardia X41 Y10 and X22 Y9, Pulsava X51 Y12 and X46 Y13, Phobyss X18 Y41, Kresezoa X22 Y26,
+  Crysmoon X49 Y32, X52 Y38 and X53 Y20), Fijedar X5 Y39's enemy's drop, and the other squares
+  where a boss holds the item): `native/README.md`, "Other players' items"
   ("Kept collected", "This player's own Scrap Metal", "Run in game after the review rounds");
   `docs/re/memory.md`, "What decides whether an item appears".
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28

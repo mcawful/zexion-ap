@@ -54,7 +54,7 @@ COLLECTED = 0x1B  # a map cell's value once its item is collected (docs/re/memor
 # marked collected (client/session.py, ``plain``) and, once the server has it as checked, shows
 # as the game's Scrap Metal, to pick up for the room's sake (client/ticks.py, foreign_labels).
 # Exodia X20 Y0: the pickup starts the boss fight. R'Talva X34 Y51: the pickup of the boss's
-# reward turns the warp gate on. The evidence, and the rooms not listed: docs/re/memory.md,
-# "What decides whether an item appears".
-PICKUP_ROOMS = frozenset({(0, 20), (51, 34)})
+# reward turns the warp gate on. Kresezoa X5 Y23: its boss drops the cell's item. The evidence,
+# and the rooms not listed: docs/re/memory.md, "What decides whether an item appears".
+PICKUP_ROOMS = frozenset({(0, 20), (51, 34), (23, 5)})
 SECTION_SIZE = 0x908  # the randomizer section, as loaded and in each slot's copy

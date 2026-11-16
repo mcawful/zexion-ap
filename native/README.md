@@ -1011,18 +1011,27 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   leaves both (`client/session.py`, `mark`; `docs/re/memory.md`, "What decides whether an item
   appears"): compare-and-set writes, only for a location two polls in a row (in the same save
   slot, seconds apart at most) found still to mark. **Never in a room that waits for its
-  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0 and R'Talva X34 Y51): marked from afar,
-  Exodia's was a soft-lock (its item gone, the boss fight its pickup starts never began, and the
-  room could not be left), and R'Talva's reward, whose pickup turns the warp gate on, still
-  showed after the fight and gave nothing while the gate waited for its touch (the runs below).
+  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0, R'Talva X34 Y51 and Kresezoa X5 Y23): marked
+  from afar, Exodia's was a soft-lock (its item gone, the boss fight its pickup starts never began,
+  and the room could not be left), R'Talva's reward, whose pickup turns the warp gate on, still
+  showed after the fight and gave nothing while the gate waited for its touch, and Kresezoa X5
+  Y23's boss, which holds the cell's item, still dropped the collected item's picture, whose
+  pickup gave nothing (the runs below).
   There the item stays, and once the server has it as
   checked the client labels it as the game's Scrap Metal, for no one (`@46`: `client/ticks.py`,
   `foreign_labels`; the labels are sent again when one changes), so what is left looks like
   what it is, a pickup the room needs, and gives its Scrap Metal as any stand-in does (the
   owner's decision, 2026-11-15); with the helper it is picked up as the game's own Scrap
-  Metal ("This player's own Scrap Metal" below). Those
-  two rooms are the ones listed, by the owner's judgment of
-  the game: 50 other location squares have an after-pickup event in the game's per-cell table
+  Metal ("This player's own Scrap Metal" below). Kresezoa X5 Y23 was listed on 2026-11-16: left
+  unmarked, the boss's drop shows as scrap and is an actual Scrap Metal (B1, `zexion_ap.dll`
+  `ca19c141…`, the owner's reports, `lab/ingame-event-rooms-checks.md`; `docs/re/memory.md`,
+  "What decides whether an item appears", "The type-28 events"). That run marked the 14 squares
+  of the seed `lab/event-rooms/live66` from afar: Fijedar X5 Y39, Guardia X25 Y11, Vallahar X9
+  Y14 and Machinus X27 Y24 played with no soft-lock; **not run:** nine (Guardia X41 Y10 and X22
+  Y9, Pulsava X51 Y12 and X46 Y13, Phobyss X18 Y41, Kresezoa X22 Y26, Crysmoon X49 Y32, X52 Y38
+  and X53 Y20), whether Fijedar X5 Y39's enemy drops anything, and the other squares where a
+  boss holds the item (the scan for them missed this one). The three listed are the ones found
+  so far: 49 other location squares have an after-pickup event in the game's per-cell table
   (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
   an arena and one more event square were played marked with no harm
   (below), the rest not. **An item the game has made already**
