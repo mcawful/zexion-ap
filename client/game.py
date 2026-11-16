@@ -3,8 +3,10 @@
 ``attach`` refuses a build not in ``patterns.KNOWN_BUILDS`` and locates each target
 (``patterns.CLIENT_TARGETS``; the RE tools ask for all of ``patterns.TARGETS``) by scanning
 .text; every pattern must match exactly once and a target's patterns must agree, else
-``PatternError`` and nothing is touched. Every read and write first checks the process is
-alive (``GameNotRunning`` only once it has exited).
+``PatternError`` and nothing is touched; but for the client's optional targets
+(``patterns.CLIENT_ONLY_TARGETS``), which may be missing: only a read or write of one then
+raises. Every read and write first checks the process is alive (``GameNotRunning`` only once
+it has exited).
 
 Item writes are compare-and-set and read back, as are the two that mark a location collected
 (``set_item_collected``, ``set_map_collected``: docs/re/memory.md, "What decides whether an item

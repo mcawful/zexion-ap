@@ -232,6 +232,8 @@ def test_a_mismatch_the_session_found_is_said_once_not_as_a_lost_helper(caplog) 
 class Helper:
     """An attached helper: requests answered as taken, and how often it was closed."""
 
+    loaded_here = False  # native.Helper's: already in the game when attached
+
     def __init__(self) -> None:
         self.closed = 0
 
@@ -897,6 +899,26 @@ def test_a_disk_picked_up_in_an_outage_longer_than_a_poll_is_counted_once(monkey
     look({12, 40})
     assert helper.notices == [], "counted by the helper's own notice: not again"
     look({12})  # a reload, then the pickup again
+    look({12, 40})
+    assert helper.notices == ["notice 44 OS Install Disk 3"]
+
+
+def test_a_disk_picked_up_with_no_helper_in_the_game_is_the_clients_to_count(monkeypatch) -> None:
+    # The helper gone from the game (/reload_mod's few seconds, a load that failed): nothing
+    # there counted a disk picked up meanwhile, so once the client has loaded the helper again
+    # it shows that disk's count itself.
+    ctx, look = disks_poll(monkeypatch)
+    look({12})
+    look({12})
+    helper = ctx.helper
+    ctx.drop_helper()
+    look({12})  # a poll without it
+    helper.loaded_here = True  # native.attach loaded it into the game itself
+    monkeypatch.setattr(native, "attach", lambda g, dll, notes=None: helper)
+    ctx.helper_retry_at = 0.0
+    look({12, 40})  # picked up with no helper in the game; this poll loads it again
+    assert ctx.helper is helper and ctx.load.disks_counted == {12}
+    ctx.told.client_back_sent = True
     look({12, 40})
     assert helper.notices == ["notice 44 OS Install Disk 3"]
 

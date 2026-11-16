@@ -129,13 +129,13 @@ def game_saved(g: game.Game) -> int | None:
 
 
 def pickup_counter(g: game.Game) -> int | None:
-    """game.Game.pickup_counter, or None if it could not be read (its patterns no longer
-    match: patterns.CLIENT_ONLY_TARGETS)."""
+    """game.Game.pickup_counter, or None on a game build where it was not found (its patterns
+    no longer match: patterns.CLIENT_ONLY_TARGETS). Any other failed read fails the poll, as
+    the snapshot's other reads do: taken for "no counter", it would count every marked cell
+    as picked up and give its Scrap Metal for good."""
     try:
         return g.pickup_counter()
-    except game.GameNotRunning:
-        raise
-    except game.GameError:
+    except game.PatternError:
         return None
 
 

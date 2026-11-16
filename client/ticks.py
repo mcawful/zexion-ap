@@ -94,11 +94,14 @@ async def attach_helper(ctx: ZexionContext) -> bool:
     ctx.helper = helper
     ctx.told = state.HelperState()
     ctx.load.return_home = discs.ReturnHome()  # and any reminder or prompt of the one before
-    # A disk picked up while the helper had no client was the helper's to count (its own
-    # notice), however many polls ran without it meanwhile: the next look takes the disks the
-    # save holds for counted (ZexionContext.drop_helper's reset lasts one poll only, as a poll
-    # with no helper fills the set again).
-    ctx.load.disks_counted = None
+    # A disk picked up while a helper in the game had no client was that helper's to count
+    # (its own notice), however many polls ran without it meanwhile: the next look takes the
+    # disks the save holds for counted (ZexionContext.drop_helper's reset lasts one poll only,
+    # as a poll with no helper fills the set again). Not when this attach loaded the helper
+    # itself (after /reload_mod, or a load that failed before): none was in the game to count,
+    # so a disk picked up meanwhile is still the client's to show.
+    if not helper.loaded_here:
+        ctx.load.disks_counted = None
     for note in notes:
         # Where the helper came from is a detail; a copy to update is not.
         (detail if note.startswith("The helper was loaded with the game") else logger.info)(note)
@@ -309,8 +312,12 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
                 raise  # side_tick drops the helper before this poll's step gives through it
             except native.HelperError as exc:
                 reply = f"error {exc}"
-        if reply in ("stored", "unchanged"):
+        # A seed the helper took for its own use but cannot keep (no folder for it, or too
+        # large) is not put again every few seconds: the same text would be refused the same.
+        taken = kind == "seed" and reply in ("error too large", "error no LOCALAPPDATA")
+        if reply in ("stored", "unchanged") or taken:
             told.offline_sent[kind] = text
+        if reply in ("stored", "unchanged"):
             ctx.said.clear("offline")
         elif ctx.said("offline", "failed"):  # said once until a file is kept again
             logger.warning(OFFLINE_FAILED)

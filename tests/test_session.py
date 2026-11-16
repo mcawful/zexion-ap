@@ -871,6 +871,38 @@ def test_a_stand_in_picked_up_still_counts_beside_the_marked_ones(others) -> Non
     assert g.inv[ids.SCRAP_METAL] == scrap + 1
 
 
+def test_a_counter_that_fails_to_read_fails_the_poll_and_is_not_no_counter(others) -> None:
+    # Only a counter not found in this build reads as None. A read that fails in a running
+    # game must not: every marked cell would count as picked up, and its Scrap Metal be given.
+    session, g = others
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3})
+    assert marked(g, 3)
+
+    def failing() -> int:
+        raise game.GameError("read at 0x1234 failed in a running game")
+
+    g.pickup_counter = failing
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(3):
+        with pytest.raises(game.GameError, match="failed in a running game"):
+            session.step(g, [], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap
+
+
+def test_a_stand_in_picked_up_then_lost_to_a_death_is_marked_and_gives_none(others) -> None:
+    session, g = others
+    g.collect(3)  # picked up: the game gives its Scrap Metal, and the check is sent
+    assert session.step(g, [], gap=0, gone=set()).checked == {3}
+    scrap = g.inv[ids.SCRAP_METAL]
+    # A death before the game saved: the cell, the byte and the counter are the save's again.
+    g.grid[at(3)], g.items[at(3)], g.pickups = 0, game.ITEM_THERE, 0
+    g.inv[ids.SCRAP_METAL] = scrap - 1
+    for _ in range(4):
+        session.step(g, [], gap=0, gone={3})  # the server has it as checked
+    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap - 1, "marked: no Scrap Metal"
+
+
 def test_a_save_marked_under_the_old_rule_keeps_its_scrap_metal(others) -> None:
     session, g = others
     g.grid[at(3)], g.items[at(3)] = 0x1B, game.ITEM_COLLECTED  # marked by an older client,
@@ -879,6 +911,10 @@ def test_a_save_marked_under_the_old_rule_keeps_its_scrap_metal(others) -> None:
     for _ in range(3):
         assert not session.step(g, [], gap=0, gone={3}).granted
     assert g.inv[ids.SCRAP_METAL] == scrap, "nothing is taken away, and nothing given again"
+    # That surplus stands in for a Scrap Metal received later: the byte stays.
+    for _ in range(3):
+        assert not session.step(g, [ids.SCRAP_METAL], gap=0, gone={3}).granted
+    assert g.inv[ids.SCRAP_METAL] == scrap
 
 
 def test_nothing_is_marked_while_the_pickup_counter_cannot_be_read(others, caplog) -> None:

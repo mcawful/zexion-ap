@@ -68,7 +68,9 @@ worlds/zexion/ → generation → slot data → client
   goal", "Traps"). A failing
   side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
   and the goal go on, and so is a failing marking of other players' items ("Can't mark other
-  players' items collected right now"), which is part of the poll's step, not a side task.
+  players' items collected right now"; or, on a game build where the pickup counter's
+  patterns no longer match, "Can't mark other players' items collected in this build of the
+  game", after which nothing is marked), which is part of the poll's step, not a side task.
   With no server connection, while a save it has not dressed is loaded and
   no ending is on its way, it lets the helper go, so the helper gives AP saves their look as
   with no client, and attaches it again on connecting
@@ -145,8 +147,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
 - This world's own OS Install Disks and traps following the save: 2026-11-14. With the
-  client: a disk's count dropping after a RELOAD FROM SAVE and the disk counted again at its
-  next pickup; an own trap set off by the helper at its pickup and back in its room after a
+  client: a disk's count dropping after a RELOAD FROM SAVE (the disk counted again at its
+  next pickup by the owner's "worked as expected" alone); an own trap set off by the helper at its pickup and back in its room after a
   reload (set off again at the second pickup by the owner's word alone). With none: the
   helper's own count popup at a disk's pickup; an own trap set off at its pickup and again
   after a RELOAD FROM SAVE. Not run in game: the count dropping with no client, the file
