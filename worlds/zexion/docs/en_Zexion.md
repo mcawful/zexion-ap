@@ -260,7 +260,7 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
   when you pick it up. The Scrap Metal left in the three rooms that wait for their pickup
   (below) is a minor item on the map: UNKNOWN ITEM before you have seen it (checked in the
-  game under the preset modes' Obscure settings only).
+  game under the preset modes' Obscure settings, for two of the three rooms).
 - Whether such an item stays found after you pick it up: "Do other players' items stay found?"
   below.
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
@@ -282,17 +282,19 @@ adds".
 
 - **What stays collected:** if you die or reload without saving after picking one up, or play
   another save of your seed, it's still gone. An item in a room around you disappears a moment
-  later, and an enemy that would have dropped a checked item drops nothing. A save keeps what was marked: played against a new room of the same seed, or after the
-  server went back to an older state, it sends those locations as found.
+  later, and an enemy that would have dropped a checked item drops nothing. A save keeps what was
+  marked: played against a new room of the same seed, or after the server went back to an older
+  state, it sends those locations as found.
 - **What it gives:** nothing. Picking one up gives you one Scrap Metal, but an item kept
   collected this way gives none, also one you picked up and then lost to a death or a reload, or
   picked up in another save.
 - **What isn't kept:** three rooms where picking the item up is what moves the game on or where the
-  game still drops an item: Exodia 20,0 (it starts the boss fight), R'Talva 34,51 (the boss's reward,
-  which opens the warp gate) and Kresezoa 5,23 (its boss drops the item; marked collected, the
-  drop was still a picture that gave nothing). Once such an item is checked, Scrap Metal lies there instead and you still pick it up: with the mod,
-  as the game's own Scrap Metal. Your own items aren't touched either: they follow your save, so
-  after a death or a reload they're back in their rooms.
+  game still drops an item: Exodia 20,0 (it starts the boss fight), R'Talva 34,51 (the boss's
+  reward, which opens the warp gate) and Kresezoa 5,23 (its boss drops the item; marked collected,
+  the drop was still a picture that gave nothing). Once such an item is checked, Scrap Metal lies
+  there instead and you still pick it up: with the mod, as the game's own Scrap Metal. Your own
+  items aren't touched either: they follow your save, so after a death or a reload they're back in
+  their rooms.
 - **What needs the client:** all of the above. With it closed, an item you found before a death or a
   reload is back in its room.
 - **What the mod adds:** in an upside-down room the mod hides a checked item (without the mod it
@@ -300,13 +302,12 @@ adds".
   pickup the game's own.
 
 Checked in the game: an item gone after a reload, and one in a room around you gone when its owner
-collects; a kept item giving no Scrap Metal, for a reload and for an owner's collect; the first two left-out
-rooms (the fight at Exodia 20,0; the gate and the music at R'Talva 34,51), and the boss's drop at
-Kresezoa 5,23 as Scrap Metal; enemy drops; the hidden
-item in an upside-down room. Not yet checked in the game: a death, another save of your seed,
-`!release`, a save played against a new room of the same seed or an older server state, seeing an
-item for a second after a reload beside it, and no Scrap Metal for one lost to a death or picked up
-in another save.
+collects; a kept item giving no Scrap Metal, for a reload and for an owner's collect; the first two
+left-out rooms (the fight at Exodia 20,0; the gate and the music at R'Talva 34,51), and the boss's
+drop at Kresezoa 5,23 as Scrap Metal; enemy drops; the hidden item in an upside-down room. Not yet
+checked in the game: a death, another save of your seed, `!release`, a save played against a new
+room of the same seed or an older server state, seeing an item for a second after a reload beside
+it, and no Scrap Metal for one lost to a death or picked up in another save.
 
 ## What do Area Maps and Intel Chips do?
 
@@ -381,9 +382,11 @@ world, with their look and pickup popups; with Hints Revealed, a key-look trap h
 marker; a trap sent just after an OS Install Disk; and one sent while paused, then TELEPORT TO
 START, RELOAD FROM CHECKPOINT or RELOAD FROM SAVE. Not checked in the game: a trap through RETURN
 HOME or the ending, a key-look trap after the scanner has shown your keys, other popups showing
-first while a trap waits for one of its kind to end, a trap's popup in a translation, and the mod
-refusing to reload while a trap waits to go off. Every run is recorded in `native/README.md`
-("Traps") in the repository.
+first while a trap waits for one of its kind to end, a trap's popup in a translation, the mod
+refusing to reload while a trap waits to go off, a trap sent while the mod is being replaced
+by a new version (kept until the new one starts), and a big batch of items sent at once (its
+popups come in several batches). Every run is recorded in `native/README.md` ("Traps") in the
+repository.
 
 ## Can I use the assist menu?
 

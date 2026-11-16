@@ -3,8 +3,11 @@
 Each value has one home on either side and a copy on the other: the helper's version (the
 client refuses another), the game builds both identify, the addresses the client sends in
 ``config``, the proxy's off switch, and the game's flags and layouts both read (the goal's and
-the scanner's flags, the randomizer section, the save slots). These read the C++ as text, so
-they run without a native build. Also the world's ``world_version``, the same release number.
+the scanner's flags, the randomizer section, the save slots), the request names the client
+sends and the replies it branches on, the offline seed file's header and keys, the label
+separator and the font's punctuation, and the item record count. These read the C++ as text,
+so they run without a native build. Also the world's ``world_version``, the same release
+number.
 """
 
 from __future__ import annotations

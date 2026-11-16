@@ -47,10 +47,10 @@ around the change.
    object (the game's loaded byte or the margin around the player with no item object, an
    item an object holds or has dropped), nor ever in a room that waits for its item's
    pickup (`ids.PICKUP_ROOMS`: marked from afar, Exodia X20 Y0 soft-locked in game, and
-   R'Talva X34 Y51's warp gate waited for the touch of a reward that gave nothing, and Kresezoa X5 Y23's
-   boss still dropped the item's picture, which gave nothing), whose
-   checked item is labeled Scrap Metal instead (`native/README.md`, "Kept collected";
-   `docs/re/memory.md`, "What decides whether an item appears").
+   R'Talva X34 Y51's warp gate waited for the touch of a reward that gave nothing, and Kresezoa X5
+   Y23's boss still dropped the item's picture, which gave nothing), whose checked item is labeled
+   Scrap Metal instead (`native/README.md`, "Kept collected"; `docs/re/memory.md`, "What decides
+   whether an item appears").
 4. **Unsafe timing.** Delivering items or reading checks while the game is loading, in a menu,
    on the title screen, dead, or in a cutscene. Writes must be gated on
    `Game.settled_state() == IN_PLAY`, not a single `state()`: loading a save (and respawning)
@@ -86,9 +86,9 @@ around the change.
 7. **Writes to protected folders.** Anything in `client/` or `tools/` that opens the game
    install, the save folder, Steam's cloud cache or the mod's offline files
    (`%LOCALAPPDATA%\ZexionAP`; only the helper writes them) for writing, other than
-   `save_lab.py install` and `restore` (the client writes neither of the first two). The tools' paths must go through
-   `tools/protected.py` (`assert_writable`). Also flag any new path around the backup checks
-   in those two.
+   `save_lab.py install` and `restore` (the client writes neither of the first two). The tools'
+   paths must go through `tools/protected.py` (`assert_writable`). Also flag any new path around the
+   backup checks in those two.
 8. **Patterns that won't survive a patch.** Patterns with few fixed bytes, patterns over data
    rather than code, or wildcards missing over `rel32`/`disp32` bytes.
 9. **Native helper safety** (`native/`). Code that runs inside the game: anything done in

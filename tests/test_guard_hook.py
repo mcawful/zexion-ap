@@ -733,6 +733,7 @@ def test_every_shells_env_var_spelling_expands(spelling: str, monkeypatch) -> No
 # The mod's offline files, %LOCALAPPDATA%\ZexionAP: only the helper writes them.
 LOCAL = "C:/Users/someone/AppData/Local"
 OFFLINE = f"{LOCAL}/ZexionAP"
+SCRATCH = f"{LOCAL}/Temp/claude/2745d331536e48bf/7c00b8f6-7f48-4f26-95c9-decf1adcccd1/scratchpad"
 
 
 @pytest.mark.parametrize(
@@ -951,6 +952,89 @@ def test_the_offline_folder_with_a_different_local_appdata(monkeypatch) -> None:
     assert protected.word_may_name_protected("D:/Profiles/someone/Local/Zex*/x")
     assert run("Bash", command='rm -rf "$LOCALAPPDATA/Temp/x"') is None
     assert run("Bash", command='ls "$LOCALAPPDATA/ZexionAP"') is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f'cmake --build "{LOCAL}/Temp/scratch/build" --config Release # ZexionAP',
+        f'ctest --test-dir "{LOCAL}/Temp/scratch/b" -C Release -R offline # ZexionAP',
+        f'pytest tests -k ZexionAP --basetemp "{LOCAL}/Temp/scratch/pt"',
+        f'Q="{LOCAL}/Temp/scratch"; grep -rn ZexionAP . > "$Q/hits.txt"',
+        f'python -c "print(1)" > "{LOCAL}/Temp/scratch/out.txt" # ZexionAP',
+        # A ``..`` or a parent word beside a scratch path is not TEMP's parent.
+        "mkdir -p /tmp/x && ls .. > /tmp/x/l # ZexionAP",
+        f'python tools/x.py "{SCRATCH}/../x" ZexionAP',
+        f'cd "{SCRATCH}/b" && ctest -C Release -R ZexionAP && cd ..',
+        f'python -m pytest tests -k ZexionAP --basetemp "{SCRATCH}/pt" && cd ..',
+        f'cd native && cmake -S . -B "{SCRATCH}/b" && cmake --build "{SCRATCH}/b" '
+        "&& cd .. # ZexionAP",
+        f'cp "{SCRATCH}/../x.txt" lab/ # ZexionAP',
+        f'python "{SCRATCH}/p.py" --root "{SCRATCH}/.." ZexionAP',
+        f'python -c "import os; print(os.path.dirname(\'a/b\'))" > "{SCRATCH}/o.txt" # ZexionAP',
+        f'rm -rf "{SCRATCH}/r155/old" # ZexionAP notes in ../',
+    ],
+)
+def test_a_scratch_path_beside_the_word_is_not_the_offline_folder(command: str) -> None:
+    # ``AppData/Local/Temp/…`` holds every scratch, TEMP and test folder: the word alone is
+    # no build of ``AppData/Local/ZexionAP``.
+    assert run("Bash", command=command) is None
+
+
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [
+        ("Bash", f'Q="{LOCAL}"; rm -rf "$Q/ZexionAP"'),
+        ("Bash", f'Q="{LOCAL}"; rm -rf "$Q/Temp/../ZexionAP"'),
+        ("Bash", 'cd "$LOCALAPPDATA" && rm -rf ZexionAP'),
+        ("Bash", 'rm "$LOCALAPPDATA/ZexionAP/seeds.txt"'),
+        ("PowerShell", "$d = $env:LOCALAPPDATA; Remove-Item -Recurse (Join-Path $d 'ZexionAP')"),
+        ("PowerShell", 'Remove-Item -Recurse "$env:TEMP\\..\\ZexionAP"'),
+        # TEMP's parent is the folder: a ``..`` piece or a parent function takes it.
+        ("PowerShell", "Remove-Item -Recurse (Join-Path $env:TEMP '..\\ZexionAP')"),
+        ("Bash", 'TMP=..; cd "$LOCALAPPDATA/Temp" && rm -rf $TMP/ZexionAP'),
+        ("PowerShell", "Remove-Item -Recurse (Join-Path $env:TEMP '..' 'ZexionAP')"),
+        ("PowerShell", "Remove-Item -Recurse (Join-Path (Split-Path $env:TEMP) 'ZexionAP')"),
+        (
+            "PowerShell",
+            "Remove-Item -Recurse (Join-Path (Split-Path $env:TEMP -Parent) 'ZexionAP')",
+        ),
+        ("PowerShell", '$d = Split-Path $env:TEMP; Remove-Item -Recurse "$d\\ZexionAP"'),
+        (
+            "PowerShell",
+            "Remove-Item -Recurse ([IO.Path]::Combine($env:TEMP, '..', 'ZexionAP'))",
+        ),
+        (
+            "PowerShell",
+            "Remove-Item -Recurse ((Get-Item $env:TEMP).Parent.FullName + '\\ZexionAP')",
+        ),
+        ("Bash", 'rm -rf "$(dirname "$TEMP")/ZexionAP"'),
+        ("Bash", 'd=$(dirname "$TEMP"); rm -rf "$d/ZexionAP"'),
+        ("Bash", 'p=..; rm -rf "$TEMP/$p/ZexionAP"'),
+        (
+            "Bash",
+            'python -c "import os,shutil; '
+            "shutil.rmtree(os.path.join(os.environ['TEMP'], '..', 'ZexionAP'))\"",
+        ),
+        (
+            "Bash",
+            'python -c "import os,shutil; '
+            "shutil.rmtree(os.path.join(os.path.dirname(os.environ['TEMP']), 'ZexionAP'))\"",
+        ),
+        (
+            "Bash",
+            'python -c "import os,shutil,tempfile; '
+            "shutil.rmtree(os.path.join(os.path.dirname(tempfile.gettempdir()), 'ZexionAP'))\"",
+        ),
+        (
+            "Bash",
+            'python -c "import shutil,tempfile,pathlib; '
+            "shutil.rmtree(pathlib.Path(tempfile.gettempdir()).parent / 'ZexionAP')\"",
+        ),
+    ],
+)
+def test_the_offline_folder_built_from_pieces_still_blocked(tool: str, command: str) -> None:
+    assert run(tool, command=command), command
 
 
 @pytest.mark.parametrize(
