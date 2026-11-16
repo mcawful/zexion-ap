@@ -258,7 +258,7 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   one reads as the game's own important items do under your seed's Obscure settings: UNKNOWN
   ITEM, as every item does, with Obscure Class on; otherwise ADVANCED TECH with Obscure Majors
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
-  when you pick it up. The Scrap Metal left in the two rooms that wait for their pickup
+  when you pick it up. The Scrap Metal left in the three rooms that wait for their pickup
   (below) is a minor item on the map: UNKNOWN ITEM before you have seen it (checked in the
   game under the preset modes' Obscure settings only).
 - Whether such an item stays found after you pick it up: "Do other players' items stay found?"
@@ -287,20 +287,22 @@ adds".
 - **What it gives:** nothing. Picking one up gives you one Scrap Metal, but an item kept
   collected this way gives none, also one you picked up and then lost to a death or a reload, or
   picked up in another save.
-- **What isn't kept:** two rooms where picking the item up is what moves the game on, Exodia 20,0
-  (it starts the boss fight) and R'Talva 34,51 (the boss's reward, which opens the warp gate). Once
-  such an item is checked, Scrap Metal lies there instead and you still pick it up: with the mod,
+- **What isn't kept:** three rooms where picking the item up is what moves the game on or where the
+  game still drops an item: Exodia 20,0 (it starts the boss fight), R'Talva 34,51 (the boss's reward,
+  which opens the warp gate) and Kresezoa 5,23 (its boss drops the item; marked collected, the
+  drop was still a picture that gave nothing). Once such an item is checked, Scrap Metal lies there instead and you still pick it up: with the mod,
   as the game's own Scrap Metal. Your own items aren't touched either: they follow your save, so
   after a death or a reload they're back in their rooms.
 - **What needs the client:** all of the above. With it closed, an item you found before a death or a
   reload is back in its room.
 - **What the mod adds:** in an upside-down room the mod hides a checked item (without the mod it
-  shows, and touching it gives nothing), and in the two rooms above it makes the Scrap Metal's
+  shows, and touching it gives nothing), and in the three rooms above it makes the Scrap Metal's
   pickup the game's own.
 
 Checked in the game: an item gone after a reload, and one in a room around you gone when its owner
-collects; a kept item giving no Scrap Metal, for a reload and for an owner's collect; both left-out
-rooms (the fight at Exodia 20,0; the gate and the music at R'Talva 34,51); enemy drops; the hidden
+collects; a kept item giving no Scrap Metal, for a reload and for an owner's collect; the first two left-out
+rooms (the fight at Exodia 20,0; the gate and the music at R'Talva 34,51), and the boss's drop at
+Kresezoa 5,23 as Scrap Metal; enemy drops; the hidden
 item in an upside-down room. Not yet checked in the game: a death, another save of your seed,
 `!release`, a save played against a new room of the same seed or an older server state, seeing an
 item for a second after a reload beside it, and no Scrap Metal for one lost to a death or picked up

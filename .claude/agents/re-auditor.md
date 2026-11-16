@@ -47,7 +47,8 @@ around the change.
    object (the game's loaded byte or the margin around the player with no item object, an
    item an object holds or has dropped), nor ever in a room that waits for its item's
    pickup (`ids.PICKUP_ROOMS`: marked from afar, Exodia X20 Y0 soft-locked in game, and
-   R'Talva X34 Y51's warp gate waited for the touch of a reward that gave nothing), whose
+   R'Talva X34 Y51's warp gate waited for the touch of a reward that gave nothing, and Kresezoa X5 Y23's
+   boss still dropped the item's picture, which gave nothing), whose
    checked item is labeled Scrap Metal instead (`native/README.md`, "Kept collected";
    `docs/re/memory.md`, "What decides whether an item appears").
 4. **Unsafe timing.** Delivering items or reading checks while the game is loading, in a menu,
