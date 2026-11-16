@@ -982,7 +982,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   names carry no icon: working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`: the owner's
   screenshot of the pickup popup, not kept in `lab/`, the logo, then Progression Item over for
   AneziaDS2, both lines centered; the map cursor's AP Item, "The map").
-- **Kept collected** (the client alone; the helper has no part): another player's item (not
+- **Kept collected** (the client; the helper's one part is to hide what is left of such an
+  item in a reversed-gravity room: "The marker", below): another player's item (not
   this world's own disks and traps, which follow the save) stays collected once the server has
   its location as checked, whoever checked it: found in any save of the seed, or before a death
   or a reload without saving, collected by its owner (`!collect`), or released (`!release`).
@@ -1002,7 +1003,11 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   Metal ("This player's own Scrap Metal" below). R'Talva X34 Y51, a boss's reward whose
   pickup turns the warp gate on, was listed the same day: marked, the reward still showed
   after the fight as the item it had been and gave nothing, while the gate waited for its
-  touch; left unmarked, it showed as scrap in game (2026-11-15, the fourth run below). Those
+  touch; left unmarked, it showed as scrap in game (2026-11-15, B1, slot 6, a new game of
+  the seed `lab/ap/live65`, the client with the room listed and the helper of PR #145's
+  399f57e; the owner's report, `lab/ingame-collected-checks.md`, "Check J": its popup read
+  Scrap Metal with the logo, as a stand-in's does; whether the gate turned on at that
+  pickup was not said; the fourth run below). Those
   two rooms are the ones listed, by the owner's judgment of
   the game: 50 other location squares have an after-pickup event in the game's per-cell table
   (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
@@ -1014,7 +1019,16 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   appears": found by the re-auditor, 2026-11-14, in place of a helper request written for
   it), so for a cell with an item object in the loaded rooms the client writes the state,
   waits a moment, and writes the map cell once no such object is left, never under one still
-  there. After a reload beside it the item shows until the second poll and is gone. **Left
+  there. After a reload beside it the item shows until the second poll and is gone (by the
+  code: not run in game). The state written under a live item object also lets an object of
+  the cell run the cell's after-pickup event then, with the player in the room
+  (`docs/re/memory.md`, "A cell's event after its item is collected"): the one cell run this
+  way in game, Kresezoa X22 Y13, has no such event, so an arena's or another event square's
+  item marked while the player stands in its room is not run. And a cell once seen with an
+  item object is marked without the loaded and near tests for the rest of that load
+  (`mark_collected`, `ended`), which is what lets its map cell follow; a room that shows its
+  item as an object of another kind beside the item-pool object (type 715: Guardia X22 Y7)
+  was not run marked. **Left
   out** is a cell whose item may be in the loaded rooms as something else: one an object
   holds or has dropped, and, with no item object of its own, one the game has loaded (its
   loaded byte, in the array right after the per-cell state) or within two map squares of the
@@ -1051,7 +1065,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   in for as many Scrap Metal, Area Maps or Energy Shields received later (their popups show,
   the count stays; only the lab's saves predate the rule). A stand-in picked up and then
   lost to a death or a reload is marked once the save is back, and gives none then either:
-  its Scrap Metal went with the load. A marked square reads explored on the map. A mark
+  its Scrap Metal went with the load; the same for one picked up in another save of the
+  seed, marked in this one. A marked square reads explored on the map. A mark
   stays in the
   save once the game saves: such a save played against another room of the same seed sends
   its marked locations as checks. With no client connected nothing is marked, and a failing
@@ -1070,8 +1085,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   owner walked and used the map; the marks were in the save file once the game saved (a lab
   copy: item state 1 and `0x1B`). By that day's rule each marked cell gave one Scrap Metal:
   82 after the collect, which that save keeps. Not run in game: a death, another save of the
-  seed, `!release`, a cell whose item an object holds, and the client connecting with
-  locations already checked; nor, added after that run (c77879d and after) and stand-in
+  seed, `!release`, and a cell whose item an object holds while its room is loaded (the
+  client connecting with locations already checked is the third run below); nor, added
+  after that run (c77879d and after) and stand-in
   tested only, the loaded-cell test (the loaded byte itself was not read live in any run),
   the checks right before the writes, the attach without `cell_state` or `pickup_counter`,
   a marked cell giving no Scrap Metal, the transition timer's test and the look after the
@@ -1200,15 +1216,21 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   its shown byte, on whatever frame it shows (one made while the stand-ins were not restyled,
   a load from a menu, shows the game's scrap, not a logo) and unless it holds its cell's item
   (its `+0x32C`: then it is the pickup, whatever the map says); it is shown again when the
-  cell no longer reads collected (a reload from before the mark), when the stand-ins are put
-  back and on an unload. A pickup of the game's own ends the object, so nothing is hidden
-  then. A boss's reward over a marked square is left showing, as its touch is what turns
-  the warp gate on: R'Talva X34 Y51's is never marked by the client since (`ids.PICKUP_ROOMS`),
-  so that is left for a save marked before then. The
+  cell no longer reads collected (a reload from before the mark), when a client goes and on
+  an unload. Under a menu, where the records and every other look are put back for the
+  menu's own screens, it stays hidden while it is still that object over a collected cell
+  (`ItemLooks::restore`, `keep_collected`; the third review's finding, 2026-11-15: it would
+  have shown under the pause or map screen), and an unload waits for a frame to show it
+  again (`ap_items_restyled`). A pickup of the game's own ends the object, so nothing is
+  hidden then. A boss's reward over a marked square is left showing, as its touch is what
+  turns the warp gate on: R'Talva X34 Y51's is never marked by the client since
+  (`ids.PICKUP_ROOMS`), so that is left for a save marked before then. The
   hidden object can still be touched, which does what it did shown: it ends, giving nothing.
+  A new object of the kind (the room made again by a RELOAD FROM SAVE beside it) shows until
+  the next scan of the general pool, up to 30 frame calls.
   Stand-in test (`tests/game_tests.cpp`,
   `test_a_collected_item_in_a_reversed_gravity_room_is_hidden`, failing with the hiding taken
-  out). Working in game, 2026-11-15 (B1, `zexion_ap.dll` `5ef5eeb1…`, the build of PR #145's
+  out, and its part under a menu with that kept out; the menu not run in game). Working in game, 2026-11-15 (B1, `zexion_ap.dll` `5ef5eeb1…`, the build of PR #145's
   branch at 399f57e, slot 5, a new game of the seed `lab/ap/live65` with the other player's
   items all checked; the owner's report, `lab/ingame-collected-checks.md`): nothing showed at
   Exodia X22 Y1 over its marked square, as entered in play and after a RELOAD FROM SAVE
@@ -2137,7 +2159,10 @@ unload.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill
   (an AP save's only, each icon once, by item ID, up to 26), R'Talva X34 Y51's marker hidden
   (every frame while flag 154 is clear, by its shown byte; shown again on the flag, off the logo
-  frame and on restore; no stand-in for names; another type left alone), the stand-ins drawn
+  frame and on restore; no stand-in for names; another type left alone), a reversed-gravity
+  room's item hidden over a collected square
+  (`test_a_collected_item_in_a_reversed_gravity_room_is_hidden`: shown again when the square
+  no longer reads collected, or it holds the item; kept hidden under a menu), the stand-ins drawn
   in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
   world's items left alone; put back when not restyled and on restore),
   the popup queue, the text window's cut repaired and put back (and a model of the game's

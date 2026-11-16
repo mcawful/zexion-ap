@@ -1091,6 +1091,47 @@ void test_a_collected_item_in_a_reversed_gravity_room_is_hidden() {
     game.restore_ap_items();
     check(shown(21) == 1 && game.looks().hidden_markers() == 0, "restore shows it again");
 
+    // A menu over the save releases the records, and with them every other look; the hidden
+    // picture stays hidden under the menu, and an unload waits for a frame to show it again.
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again with the labels back");
+    g_menu = 2;  // the pause menu
+    for (int i = 0; i < 3; ++i) game.watch_ap_items();
+    check(shown(21) == 0 && game.looks().hidden_markers() == 1,
+          "kept hidden while a menu is open");
+    check(game.ap_items_restyled(), "and still the helper's to put back: an unload waits");
+    general_slot(21)[0x120] = 1;  // shown by the game under the menu
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again under the menu");
+    g_map_grid[cell] = 0x19;  // RELOAD FROM SAVE from that menu, from before the mark
+    game.watch_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0,
+          "shown once its cell no longer reads collected, menu or not");
+    g_map_grid[cell] = 0x1B;
+    g_menu = 0;
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again in play");
+    g_menu = 2;
+    game.watch_ap_items();
+    put<int32_t>(general_slot(21), 0x1D8, 0);  // the object freed under the menu (a load)
+    put_flipped(21, 777, 63, 6, 2);  // and its slot another object's
+    put<int16_t>(general_slot(21), 0x32E, 13609);
+    general_slot(21)[0x120] = 0;
+    game.watch_ap_items();
+    check(shown(21) == 0 && game.looks().hidden_markers() == 0,
+          "another object in its slot is not this helper's to show");
+    g_menu = 0;
+    flipped(21, 602, 6, 2, 13867);
+    game.watch_ap_items();
+    g_menu = 2;
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden under a menu once more");
+    game.restore_ap_items();  // a client gone, or an unload, with the menu still open
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0 && !game.ap_items_restyled(),
+          "put back for a client gone or an unload, menu or not");
+    g_menu = 0;
+
     // One made while the stand-ins were not restyled (a load from a menu) shows the game's
     // scrap, frame 134, not a logo: hidden all the same.
     game.set_labels(labels);

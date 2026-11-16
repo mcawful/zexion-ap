@@ -322,11 +322,12 @@ public:
     // "refused <why>".
     std::string kill(uint64_t now_ms);
 
-    // An item record restyled (the stand-ins, the Area Map), an object dressed, or the pickup
-    // popup's line width changed: unload must wait for a frame to put them back.
+    // An item record restyled (the stand-ins, the Area Map), an object dressed or hidden (one
+    // kept hidden through a menu, the records released), or the pickup popup's line width
+    // changed: unload must wait for a frame to put them back.
     bool ap_items_restyled() const {
         return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth) ||
-               looks_.dressed() || intel_.restyled();
+               looks_.dressed() || looks_.hidden_markers() > 0 || intel_.restyled();
     }
     int popup_width() const { return popup_width_; }  // tests
     // The first thing an unload must wait a frame to put back, as its refusal names it; or null.

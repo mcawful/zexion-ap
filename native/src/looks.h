@@ -43,7 +43,11 @@ public:
     int colored() const;  // objects drawn in palette 26 now (tests)
 
     // Game thread: puts back each object it dressed, hid or colored still that spawn; forgets all.
-    void restore(const GameAddresses& at);
+    // With `keep_collected` (a menu open over the save, the records released for it), a
+    // reversed-gravity room's item hidden over a collected cell stays hidden, and counted
+    // (hidden_markers), while it is still that object over a cell that reads collected: it
+    // would show under the menu otherwise, and nothing else of it was changed.
+    void restore(const GameAddresses& at, bool keep_collected = false);
     bool dressed() const;
     // General objects showing a stand-in's logo at the last scan (slots of the pool); each
     // still to be checked with shows_stand_in, as the list can be 30 frames old.
@@ -55,7 +59,8 @@ public:
     // marker, not a stand-in: type 1146's first state, in a palette other than a stand-in's (after
     // the boss it shows location 81's item, a stand-in in palette 8), not dressed by this helper.
     bool is_marker(int slot, const BYTE* object, const GameAddresses& at) const;
-    // Markers this helper has hidden, still to be put back (tests).
+    // Objects this helper has hidden, still to be put back: the marker, and reversed-gravity
+    // rooms' items over collected cells (an unload waits for them: Game::ap_items_restyled).
     int hidden_markers() const;
     // The item sprites' frame list (every item object's base, the template's), or null.
     static BYTE* item_frame_base(const GameAddresses& at);

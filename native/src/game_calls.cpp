@@ -1620,7 +1620,10 @@ void Game::watch_ap_items() {
         looks_.apply(at_, pool, base);
         looks_.own_colors(at_, pool, base);
     } else {
-        looks_.restore(at_);
+        // Released for a menu over the save: a reversed-gravity room's item hidden over a
+        // collected cell stays hidden under the menu (the rest is put back with the records);
+        // put_back_ap_items, for a client gone or an unload, shows it again.
+        looks_.restore(at_, *at_.save_loaded != kNoSaveLoaded && *at_.menu_state != 0);
     }
 }
 

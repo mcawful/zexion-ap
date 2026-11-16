@@ -268,18 +268,22 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   item up is what moves the game on: Exodia 20,0 (it starts the boss fight) and R'Talva
   34,51 (the boss's reward, which opens the warp gate). Once such an item is checked, a
   Scrap Metal lies there instead, and you still pick it up (checked in the game at Exodia
-  20,0, where it started the fight; the gate at R'Talva 34,51 is not yet checked). With the
-  mod it is picked up as the game's own Scrap Metal, drops and all (checked in the game in
-  both rooms). An enemy that would have dropped a checked item drops nothing (checked in the
+  20,0, where it started the fight, before the mod made its pickup the game's own; the gate
+  at R'Talva 34,51 is not yet checked). With the mod it is picked up as the game's own Scrap
+  Metal: in the game, both rooms gave the regular Scrap Metal and the pickups it drops
+  (whether the fight and the gate still follow with this mod is not yet checked). An enemy
+  that would have dropped a checked item drops nothing (checked in the
   game). In an upside-down room the mod hides a checked item
   (checked in the game; without the mod it shows, and touching it gives you nothing). An
   item kept collected this way gives you nothing, not the Scrap Metal you get for picking
-  one up (not yet checked in the game; a save from before this keeps the Scrap Metal it
-  got). Your own items aren't touched: they follow your save, so after a death or a reload they're
+  one up: that goes for one you picked up and then lost to a death or a reload, and for one
+  you picked up in another save, too (not yet checked in the game; a save from before this
+  keeps the Scrap Metal it got). Your own items aren't touched: they follow your save, so
+  after a death or a reload they're
   back in their rooms. This needs the client connected (a death, another save and `!release`
   are not yet checked in the game). A save keeps what was marked: played against a
   new room of the same seed, or after the server went back to an older state, it sends those
-  locations as found.
+  locations as found (not yet checked in the game).
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
   Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
   does, after its popup, once you have stayed on one map square for a second. Both, and the
@@ -330,11 +334,11 @@ after it don't wait for it meanwhile). It waits through the pause menu, other me
 load, and through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load
 then). It also waits through a teleport from the pause menu, such as TELEPORT TO START (the other
 TELEPORT TO entries work the same way but were not tried), and goes off once you arrive. Each trap
-sent to you happens at most once, including one sent while your client was closed, or before you first connected
-(it comes when you connect); if the client closes just as a trap goes off, it may come again; a trap
-still waiting for its popup is lost if the game closes, or if the mod is reloaded while it waits for
-a save that isn't loaded; and with no mod running a trap does nothing, your own when you pick it up
-as much as one sent to you (the client says so). A second trap of
+sent to you happens at most once, including one sent while your client was closed, or before you
+first connected (it comes when you connect); if the client closes just as a trap goes off, it may
+come again; a trap still waiting for its popup is lost if the game closes, or if the mod is reloaded
+while it waits for a save that isn't loaded; and with no mod running a trap does nothing: not one
+sent to you, and not your own when you pick it up (the client says so). A second trap of
 the same kind waits for the first to end and then goes off, so each lasts its full 12 seconds. The
 game's AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change
 traps: while one runs, it is left out for that effect, so an enemy's touch of the same kind during a
