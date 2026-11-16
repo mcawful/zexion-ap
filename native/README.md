@@ -653,7 +653,11 @@ dealt on the next load ("DeathLink").
   its kind was not logged); that it went off again at a second pickup is the owner's word
   alone ("that happened as expected"). Not run in game: a death, a trap queued behind one
   of its kind, a pause on the pickup's frame, a queued one through a TELEPORT TO or carried
-  to another slot, a load from the file select traced frame by frame, and no helper.
+  to another slot, a load from the file select over a different map (the two traced on
+  2026-11-15 were over a map that already held the save's cells, which left the question
+  open), and no helper; the second review round's fixes here (one pickup queued once, a
+  queued one dropped in another slot's save, the seed handed over before the file's checks)
+  are stand-in tested only.
 - **When:** one a frame call (`pump_traps`, after the watches, so never while an unload runs), once
   the player has been in play for a quarter of a second in any cell with no transition counting down
   (the game's transition timer above 0, `transition_queued`: a TELEPORT TO's 60 frames before its
@@ -1532,7 +1536,9 @@ count popup at the pickup (silent then); the disk was picked up a second time af
 RELOAD FROM SAVE, by the watcher, and what showed then was not said. Not run in game: the
 count dropping with no client (the pause row, the file select), the file select's count as
 it is now, the goal sent from a save's count, RETURN HOME WITH THE DISKS?, the equipment
-screen's count after a reload, a death, and a disk received right after a reload.
+screen's count after a reload, a death, and a disk received right after a reload; nor the
+second review round's fix (the counted set started over when the helper is attached again,
+unless that attach loaded it), stand-in tested only.
 
 Put back: `discs` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way

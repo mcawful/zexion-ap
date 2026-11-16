@@ -271,8 +271,9 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   34,51 (the boss's reward, which opens the warp gate). Once such an item is checked, a
   Scrap Metal lies there instead, and you still pick it up. With the mod it is picked up as
   the game's own Scrap Metal (checked in the game: both rooms gave the regular Scrap Metal
-  and the pickups from it; at Exodia 20,0 the fight started, and at R'Talva 34,51 the gate
-  opened and the music came back; without the mod, only Exodia 20,0's fight is checked). An enemy
+  and its drops; at Exodia 20,0 the fight started, and at R'Talva 34,51 the gate opened and
+  the music came back; before the mod made its pickup the game's own, only Exodia 20,0's
+  fight had been checked). An enemy
   that would have dropped a checked item drops nothing (checked in the
   game). In an upside-down room the mod hides a checked item
   (checked in the game; without the mod it shows, and touching it gives you nothing). An

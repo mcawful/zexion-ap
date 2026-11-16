@@ -162,8 +162,13 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   WITH THE DISKS?, the equipment screen's count after a reload, a disk received right after
   a reload, a death, and the sound of the count popup the helper shows with no client; for
   the traps: a death, one queued behind one of its kind, a pause on the pickup's frame, one
-  queued through a TELEPORT TO or carried to another slot, a load from the file select
-  traced frame by frame, and no helper ("The OS Install Disks goal", "Traps").
+  queued through a TELEPORT TO or carried to another slot, a load from the file select over
+  a different map (two were traced on 2026-11-15 over a map that already held the save's
+  cells, which left the question open), and no helper. The second review round's fixes (the
+  disk count's reset when the helper is attached again, a queued own trap dropped in
+  another slot's save and queued once a pickup, the offline seed handed to the helper
+  before the folder and size checks) are stand-in tested only ("The OS Install Disks goal",
+  "Traps").
 - Other players' items kept collected once the server has them as checked: after a pickup and
   a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
   the player has left, as the client then left it alone): 2026-11-14 (PR #144's branch at
