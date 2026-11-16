@@ -6,8 +6,9 @@ only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/
 Everything here comes from reverse engineering, hence the evidence rules below.
 
 **Status:** played in game on build B1 only. Releases (the version: "Releases and versions")
-are published from `main` on GitHub's [Releases page](https://github.com/mcawful/zexion-ap/releases);
-the current version is `world_version` in `worlds/zexion/archipelago.json`.
+are published from `main` on GitHub's
+[Releases page](https://github.com/mcawful/zexion-ap/releases); the current version is
+`world_version` in `worlds/zexion/archipelago.json`.
 
 Where things are:
 
@@ -187,9 +188,10 @@ release's.
   `kVersion` in `native/src/dllmain.cpp` and `world_version` in
   `worlds/zexion/archipelago.json`. Raise all three together before a release:
   `tests/test_cross_checks.py` and `build_apworld.py` check they match, and the release gate
-  (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last release and the version on `main`. The
-  helper shows it on the title screen. The sample YAMLs name it too: run
-  `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py` check).
+  (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last
+  release and the version on `main`. The helper shows it on the title screen. The sample YAMLs name
+  it too: run `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py`
+  check).
 - **The release notes** are written in the pull request that raises the version, drafted from
   the pull requests merged since the last release; the owner approves the wording there. Copy
   `docs/releases/TEMPLATE.md` to `docs/releases/<version>.md`; how they read, with 1.1.0's as

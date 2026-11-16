@@ -954,6 +954,37 @@ def test_the_offline_folder_with_a_different_local_appdata(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        f'cmake --build "{LOCAL}/Temp/scratch/build" --config Release # ZexionAP',
+        f'ctest --test-dir "{LOCAL}/Temp/scratch/b" -C Release -R offline # ZexionAP',
+        f'pytest tests -k ZexionAP --basetemp "{LOCAL}/Temp/scratch/pt"',
+        f'Q="{LOCAL}/Temp/scratch"; grep -rn ZexionAP . > "$Q/hits.txt"',
+        f'python -c "print(1)" > "{LOCAL}/Temp/scratch/out.txt" # ZexionAP',
+    ],
+)
+def test_a_scratch_path_beside_the_word_is_not_the_offline_folder(command: str) -> None:
+    # ``AppData/Local/Temp/…`` holds every scratch, TEMP and test folder: the word alone is
+    # no build of ``AppData/Local/ZexionAP``.
+    assert run("Bash", command=command) is None
+
+
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [
+        ("Bash", f'Q="{LOCAL}"; rm -rf "$Q/ZexionAP"'),
+        ("Bash", f'Q="{LOCAL}"; rm -rf "$Q/Temp/../ZexionAP"'),
+        ("Bash", 'cd "$LOCALAPPDATA" && rm -rf ZexionAP'),
+        ("Bash", 'rm "$LOCALAPPDATA/ZexionAP/seeds.txt"'),
+        ("PowerShell", "$d = $env:LOCALAPPDATA; Remove-Item -Recurse (Join-Path $d 'ZexionAP')"),
+        ("PowerShell", 'Remove-Item -Recurse "$env:TEMP\\..\\ZexionAP"'),
+    ],
+)
+def test_the_offline_folder_built_from_pieces_still_blocked(tool: str, command: str) -> None:
+    assert run(tool, command=command), command
+
+
+@pytest.mark.parametrize(
     ("cwd", "blocked"),
     [
         (OFFLINE, True),

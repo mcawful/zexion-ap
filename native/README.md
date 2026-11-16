@@ -36,10 +36,10 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   attach (up to 30 s, then given with no popup: "AP saves without the client"; the traps
   received then are kept for the helper that replaces it, whatever it refuses for next, until
   one attaches, the old one is gone and the new fails to load, or the game closes: "Traps",
-  "Once"), also when the client attaches first with the game already running. That hold is only for a helper that may
-  still come (no reply, no frame yet, a failed load, one refusing to unload): with the mod
-  missing, not matching, or turned off by `zexion_ap.disabled`, items are given at once with no
-  popup (`client/ticks.py`, `attach_helper`; stand-in tests, `tests/test_zexion_client.py`).
+  "Once"), also when the client attaches first with the game already running. That hold is only for
+  a helper that may still come (no reply, no frame yet, a failed load, one refusing to unload): with
+  the mod missing, not matching, or turned off by `zexion_ap.disabled`, items are given at once with
+  no popup (`client/ticks.py`, `attach_helper`; stand-in tests, `tests/test_zexion_client.py`).
 - A file that loads as another version is not loaded again until it changes; the client says to
   rebuild `native/` or copy this release's DLLs.
 - A helper whose `hello` the client can't read counts as another version. Without a build it is
@@ -640,27 +640,25 @@ dealt on the next load ("DeathLink").
   does nothing. A seed's file merged with another list of traps starts the two looks over,
   so a pickup in those two frames is missed (neither seen). With no helper attached an own
   trap does nothing, and nothing makes it up later: the client says so once.
-  The client sends nothing for an own trap and keeps no record of one. A seed file written before the `traps` line lists none: its traps do nothing
-  with no client until a client has connected once (only development builds made such files:
-  1.1.0 has no traps). Stand-in tests (`tests/game_tests.cpp`,
-  `test_own_traps_go_off_at_each_pickup`; `tests/apply_test.cpp`, through the frame hook and
-  the pipe: each fails with the watch taken out of `watch_all`). Working in game, 2026-11-14
-  (B1, slot 6, the seed `lab/ap/live64`, `zexion_ap.dll` `5f19e4d4…` built from bbaf3c5; the
-  owner's reports, `lab/ingame-collected-checks.md`). With no client: this world's own
-  Disorient Trap at Kresezoa 26,26 set off at its pickup, back in its room after a RELOAD
-  FROM SAVE, and set off again at the next pickup (the owner: "that trap also went as
-  expected"; a read-only watcher timed the two pickups and the reload between, through the
-  menu in 1.3 s). With the client running: its own Disruption Trap at Kresezoa 25,25 set off
-  at its pickup (the client's log has the find), and its cell read not collected again 41 s
-  later, after a reload made in game (nothing in the client's log of a return to the title;
-  its kind was not logged); that it went off again at a second pickup is the owner's word
-  alone ("that happened as expected"). Not run in game: a death, a trap queued behind one
-  of its kind, a pause on the pickup's frame, a queued one through a TELEPORT TO or carried
-  to another slot, a load from the file select over a different map (the two traced on
-  2026-11-15 were over a map that already held the save's cells, which left the question
-  open), and no helper; the second review round's fixes here (one pickup queued once, a
-  queued one dropped in another slot's save, the seed handed over before the file's checks)
-  are stand-in tested only.
+  The client sends nothing for an own trap and keeps no record of one. A seed file written before
+  the `traps` line lists none: its traps do nothing with no client until a client has connected once
+  (only development builds made such files: 1.1.0 has no traps). Stand-in tests
+  (`tests/game_tests.cpp`, `test_own_traps_go_off_at_each_pickup`; `tests/apply_test.cpp`, through
+  the frame hook and the pipe: each fails with the watch taken out of `watch_all`). Working in game,
+  2026-11-14 (B1, slot 6, the seed `lab/ap/live64`, `zexion_ap.dll` `5f19e4d4…` built from bbaf3c5;
+  the owner's reports, `lab/ingame-collected-checks.md`). With no client: this world's own Disorient
+  Trap at Kresezoa 26,26 set off at its pickup, back in its room after a RELOAD FROM SAVE, and set
+  off again at the next pickup (the owner: "that trap also went as expected"; a read-only watcher
+  timed the two pickups and the reload between, through the menu in 1.3 s). With the client running:
+  its own Disruption Trap at Kresezoa 25,25 set off at its pickup (the client's log has the find),
+  and its cell read not collected again 41 s later, after a reload made in game (nothing in the
+  client's log of a return to the title; its kind was not logged); that it went off again at a
+  second pickup is the owner's word alone ("that happened as expected"). Not run in game: a death, a
+  trap queued behind one of its kind, a pause on the pickup's frame, a queued one through a TELEPORT
+  TO or carried to another slot, a load from the file select over a different map (the two traced on
+  2026-11-15 were over a map that already held the save's cells, which left the question open), and
+  no helper; the second review round's fixes here (one pickup queued once, a queued one dropped in
+  another slot's save, the seed handed over before the file's checks) are stand-in tested only.
 - **When:** one a frame call (`pump_traps`, after the watches, so never while an unload runs), once
   the player has been in play for a quarter of a second in any cell with no transition counting down
   (the game's transition timer above 0, `transition_queued`: a TELEPORT TO's 60 frames before its
@@ -817,17 +815,16 @@ shows; stand-in tests `test_a_trap_popup_takes_its_turn` and
 paused, an OS Install Disk then a Disorient Trap sent; on unpausing the disk's popup and its count
 came first, then the trap's popup with the trap ("those came in the right order"). That run was on
 932411b; keeping a popup's own follow-ups ahead of a trap it passed ("When") was added after it, in
-the fixes from the review of 1ead60c, and has stand-in tests only. **Not run in game:** a trap's popup
-in a translation (the name in the translation's case: by the code, `layout_popup`); received
-traps kept through a refused version swap, and a big release's popups split into batches under
-the pipe's 64 KB; an unload
-refused while a trap waits (the client hands a trap over only in play, and a menu's refusal comes
-first: tried with one received in the pause, refused for the menu, the trap then going off at full
-length); a trap through the ending or RETURN HOME; a key-look trap's missing marker after the
-scanner (only a map revealed in full was run); a trap's popup passed by others while it waits for
-one of its kind, one held through the game's ending, and RETURN HOME not held by one; a connection's
-first held-traps record beside another client's (the `default` operation); and the restart doubles
-above.
+the fixes from the review of 1ead60c, and has stand-in tests only. **Not run in game:** a trap's
+popup in a translation (the name in the translation's case: by the code, `layout_popup`); received
+traps kept through a refused version swap, and a big release's popups split into batches under the
+pipe's 64 KB; an unload refused while a trap waits (the client hands a trap over only in play, and a
+menu's refusal comes first: tried with one received in the pause, refused for the menu, the trap
+then going off at full length); a trap through the ending or RETURN HOME; a key-look trap's missing
+marker after the scanner (only a map revealed in full was run); a trap's popup passed by others
+while it waits for one of its kind, one held through the game's ending, and RETURN HOME not held by
+one; a connection's first held-traps record beside another client's (the `default` operation); and
+the restart doubles above.
 
 ### The assist menu
 
@@ -1036,108 +1033,98 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   so far: 49 other location squares have an after-pickup event in the game's per-cell table
   (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
   an arena, one more event square and four more of the type-28 squares (Fijedar X5 Y39, Guardia X25
-  Y11, Vallahar X9 Y14, Machinus X27 Y24, above) were played marked with no harm, the rest not. **An item the game has made already**
-  (a reload at a save point beside it, its owner collecting while the player stands by it)
-  goes too: the item's own update ends its object once its cell's state reads collected, with
-  the writes a pickup ends it with (`docs/re/memory.md`, "What decides whether an item
-  appears"), so for a cell with an item object in the loaded rooms the client writes the state,
-  waits a moment, and writes the map cell once no such object is left, never under one still
-  there. After a reload beside it the item shows until the second poll and is gone (by the
-  code: not run in game). The state written under a live item object also lets an object of
-  the cell run the cell's after-pickup event then, with the player in the room
-  (`docs/re/memory.md`, "A cell's event after its item is collected"): the one cell run this
-  way in game on 2026-11-14, Kresezoa X22 Y13, has no such event; an event square's,
-  Kresezoa X23 Y21's (event 879), was run so on 2026-11-15: the item went, and nothing else
-  was reported; an arena's is not run. And a cell once seen with an
+  Y11, Vallahar X9 Y14, Machinus X27 Y24, above) were played marked with no harm, the rest not. **An
+  item the game has made already** (a reload at a save point beside it, its owner collecting while
+  the player stands by it) goes too: the item's own update ends its object once its cell's state
+  reads collected, with the writes a pickup ends it with (`docs/re/memory.md`, "What decides whether
+  an item appears"), so for a cell with an item object in the loaded rooms the client writes the
+  state, waits a moment, and writes the map cell once no such object is left, never under one still
+  there. After a reload beside it the item shows until the second poll and is gone (by the code: not
+  run in game). The state written under a live item object also lets an object of the cell run the
+  cell's after-pickup event then, with the player in the room (`docs/re/memory.md`, "A cell's event
+  after its item is collected"): the one cell run this way in game on 2026-11-14, Kresezoa X22 Y13,
+  has no such event; an event square's, Kresezoa X23 Y21's (event 879), was run so on 2026-11-15:
+  the item went, and nothing else was reported; an arena's is not run. And a cell once seen with an
   item object is marked without the loaded and near tests for the rest of that load
-  (`mark_collected`, `ended`), which is what lets its map cell follow; a room that shows its
-  item as an object of another kind beside the item-pool object (type 715: Guardia X22 Y7)
-  was not run marked. **Left
-  out** is a cell whose item may be in the loaded rooms as something else: one an object
-  holds or has dropped, and, with no item object of its own, one the game has loaded (its
+  (`mark_collected`, `ended`), which is what lets its map cell follow; a room that shows its item as
+  an object of another kind beside the item-pool object (type 715: Guardia X22 Y7) was not run
+  marked. **Left out** is a cell whose item may be in the loaded rooms as something else: one an
+  object holds or has dropped, and, with no item object of its own, one the game has loaded (its
   loaded byte, in the array right after the per-cell state) or within two map squares of the
-  player's (a margin on top of the loaded cells, which are the squares next to the one the
-  game tracks): an object of another kind may be the item there, as in a reversed-gravity
-  room, which a written state does not end (marked from afar, such a room still shows the
-  item, as a picture that gives nothing: the third run below; with the helper that picture is
-  hidden, "The marker" below). That one stays to pick up as
-  usual, and is marked once its room is unloaded and the player is three squares away. Right
-  before the writes the client checks the save again (in play, a randomizer save, the slot's
-  stamp as at the look) and reads the states, the loaded cells, the item objects and the
-  player's cell afresh; the save, the loaded cells and the item objects once more before the
-  map cell. No write starts while a transition counts down (the game's transition timer not
-  0): a TELEPORT TO reads as play, under the same stamp, for the second before its load,
-  which takes back what was written since its entry was chosen. After the last write the
-  client looks once more, and reports as marked only what still reads so: nothing if the
-  game does not read as in play with no transition counting, and not a cell whose item
-  state reads there again, which the next polls finish. That look sees less than happened
-  both ways: a pause or a death right after the writes leaves them in place unreported, and
-  a load that begins after it takes back marks it reported; the next polls read the bytes
-  again either way. `cell_state` and `pickup_counter`, the two targets the marking alone
-  needs, may be missing: on a game build where the patterns of either no longer match, the
-  client still attaches and only the marking stops, said once
+  player's (a margin on top of the loaded cells, which are the squares next to the one the game
+  tracks): an object of another kind may be the item there, as in a reversed-gravity room, which a
+  written state does not end (marked from afar, such a room still shows the item, as a picture that
+  gives nothing: the third run below; with the helper that picture is hidden, "The marker" below).
+  That one stays to pick up as usual, and is marked once its room is unloaded and the player is
+  three squares away. Right before the writes the client checks the save again (in play, a
+  randomizer save, the slot's stamp as at the look) and reads the states, the loaded cells, the item
+  objects and the player's cell afresh; the save, the loaded cells and the item objects once more
+  before the map cell. No write starts while a transition counts down (the game's transition timer
+  not 0): a TELEPORT TO reads as play, under the same stamp, for the second before its load, which
+  takes back what was written since its entry was chosen. After the last write the client looks once
+  more, and reports as marked only what still reads so: nothing if the game does not read as in play
+  with no transition counting, and not a cell whose item state reads there again, which the next
+  polls finish. That look sees less than happened both ways: a pause or a death right after the
+  writes leaves them in place unreported, and a load that begins after it takes back marks it
+  reported; the next polls read the bytes again either way. `cell_state` and `pickup_counter`, the
+  two targets the marking alone needs, may be missing: on a game build where the patterns of either
+  no longer match, the client still attaches and only the marking stops, said once
   (`patterns.CLIENT_ONLY_TARGETS`). **A marked cell gives nothing** (the owner's decision,
-  2026-11-15: no Scrap Metal for marks). The one Scrap Metal a stand-in's pickup gives is
-  the game's own, at the pickup, and the client's sum counts a stand-in's only for the cells
-  picked up (so one a death took back is given again, and a Scrap Metal received is still
-  owed on top). It tells them by the game's ITEMS count, which a pickup raises and a mark
-  leaves alone: the collected cells that count does not account for are the marked ones
-  (`client/reconcile.py`, `marked_count`; `docs/re/memory.md`, "The pickup counter and the
-  collected cells": the count equals the collected cells in every lab save copy looked at
-  but the marked one, short by its marks). Nothing is ever taken away. A stand-in picked up and then
-  lost to a death or a reload is marked once the save is back, and gives none then either:
-  its Scrap Metal went with the load; the same for one picked up in another save of the
-  seed, marked in this one. A marked square reads explored on the map. A mark
-  stays in the
-  save once the game saves: such a save played against another room of the same seed sends
-  its marked locations as checks. With no client connected nothing is marked, and a failing
+  2026-11-15: no Scrap Metal for marks). The one Scrap Metal a stand-in's pickup gives is the game's
+  own, at the pickup, and the client's sum counts a stand-in's only for the cells picked up (so one
+  a death took back is given again, and a Scrap Metal received is still owed on top). It tells them
+  by the game's ITEMS count, which a pickup raises and a mark leaves alone: the collected cells that
+  count does not account for are the marked ones (`client/reconcile.py`, `marked_count`;
+  `docs/re/memory.md`, "The pickup counter and the collected cells": the count equals the collected
+  cells in every lab save copy looked at but the marked one, short by its marks). Nothing is ever
+  taken away. A stand-in picked up and then lost to a death or a reload is marked once the save is
+  back, and gives none then either: its Scrap Metal went with the load; the same for one picked up
+  in another save of the seed, marked in this one. A marked square reads explored on the map. A mark
+  stays in the save once the game saves: such a save played against another room of the same seed
+  sends its marked locations as checks. With no client connected nothing is marked, and a failing
   read or write of the marking is said once while items and checks go on. Stand-in tests
-  (`tests/test_session.py`). Working in game, 2026-11-14 (B1, slot 6, the seed
-  `lab/ap/live64` with a second Zexion player; the client of PR #144's branch at bbaf3c5,
-  which holds this marking unchanged, with the helper `zexion_ap.dll` `5f19e4d4…`; the owner's
-  reports and the client's log, `lab/ingame-collected-checks.md`): another player's item
-  picked up, then RELOAD FROM SAVE without saving, was gone from its room, its square
-  collected on the map (marked 3 s after the check was sent; marked twice more in the next two
-  minutes, a load before each being the likely cause, not confirmed); its owner's `!collect`
-  while the player stood beside one of the items marked 81 in one pass 4 s later, left the two
-  within two squares until the player had walked away (then marked them, and they were gone on
-  coming back), and the rest were gone from rooms not yet visited and found on the map; all 84
-  of the other player's items were marked by the end, and none was marked again while the
-  owner walked and used the map; the marks were in the save file once the game saved (a lab
-  copy: item state 1 and `0x1B`). By that day's rule each marked cell gave one Scrap Metal:
-  82 after the collect, which that save keeps. Not run in game: a death, another save of the
-  seed, `!release`, and a cell whose item an object holds while its room is loaded (the
-  client connecting with locations already checked is the third run below); nor, in that
-  run, what was added after it (c77879d and after): the loaded-cell test, the checks right
-  before the writes, the attach without `cell_state` or `pickup_counter`, a marked cell
-  giving no Scrap Metal, the transition timer's test and the look after the writes (a
-  marked cell giving none and the loaded bytes read live are in the run after the review
-  rounds, below; the rest is stand-in tested only). A second run
-  (2026-11-14, B1, slot 5, the seed `lab/ap/live65`, the client and helper of PR #144's
-  branch at 79bee7a; the owner's reports and read-only looks, same record): with the player
-  beside another player's item at Kresezoa X22 Y13, its owner's `!collect` marked all 79 of
-  that player's items in one pass a second later, the item object beside the player gone
-  from the pool and its square collected (the owner: it disappeared, and the map marked every
-  one of that player's squares); the rooms looked at held nothing where an item was. That
-  build still marked squares with an after-pickup event: Exodia X20 Y0 was the soft-lock
-  above, and at Exodia X22 Y1, a reversed-gravity room, an Energy Tank still showed over a
-  marked square. A third run (2026-11-15, B1, slot 5, a new game of the same seed with every
-  one of that player's items checked on the server already; the client of PR #144's branch at
-  a17904b, the same helper; the owner's reports and read-only looks, same record), with
-  Exodia X20 Y0 left unmarked and labeled Scrap Metal: the client marked the other 78 a
-  second after the save loaded; at Exodia X20 Y0 the item was scrap, its pickup started the
-  boss fight, and the fight could be won and the way on taken. What marking leaves behind,
-  each harmless but the boss reward's, which is why that room is listed since: in a
-  reversed-gravity room (Exodia X22 Y1) the item still shows over its
-  marked square until touched, and touching it gives nothing (no popup or sound; the
-  inventory and the pickup counter read the same after), while a marked item drawn the usual
-  way in that area (Exodia X27 Y0) was gone; a boss's reward (R'Talva X34 Y51) still shows
-  after the fight, gives nothing when touched, and that touch is what turns the warp gate on
-  and brings the area's music back, so the room does wait for it; in the arena (Guardia X51
-  Y10 and Y11 marked) the enemies holding the two marked items dropped nothing, those holding
-  this world's own two dropped them, and the room was left as usual; Kresezoa X23 Y21, an
-  event square of Exodia X20 Y0's kind, marked, showed nothing unusual. Not run in game: a
-  death, another save of the seed, `!release`, and a reload beside an item.
+  (`tests/test_session.py`). Working in game, 2026-11-14 (B1, slot 6, the seed `lab/ap/live64` with
+  a second Zexion player; the client of PR #144's branch at bbaf3c5, which holds this marking
+  unchanged, with the helper `zexion_ap.dll` `5f19e4d4…`; the owner's reports and the client's log,
+  `lab/ingame-collected-checks.md`): another player's item picked up, then RELOAD FROM SAVE without
+  saving, was gone from its room, its square collected on the map (marked 3 s after the check was
+  sent; marked twice more in the next two minutes, a load before each being the likely cause, not
+  confirmed); its owner's `!collect` while the player stood beside one of the items marked 81 in one
+  pass 4 s later, left the two within two squares until the player had walked away (then marked
+  them, and they were gone on coming back), and the rest were gone from rooms not yet visited and
+  found on the map; all 84 of the other player's items were marked by the end, and none was marked
+  again while the owner walked and used the map; the marks were in the save file once the game saved
+  (a lab copy: item state 1 and `0x1B`). By that day's rule each marked cell gave one Scrap Metal:
+  82 after the collect, which that save keeps. Not run in game: a death, another save of the seed,
+  `!release`, and a cell whose item an object holds while its room is loaded (the client connecting
+  with locations already checked is the third run below); nor, in that run, what was added after it
+  (c77879d and after): the loaded-cell test, the checks right before the writes, the attach without
+  `cell_state` or `pickup_counter`, a marked cell giving no Scrap Metal, the transition timer's test
+  and the look after the writes (a marked cell giving none and the loaded bytes read live are in the
+  run after the review rounds, below; the rest is stand-in tested only). A second run (2026-11-14,
+  B1, slot 5, the seed `lab/ap/live65`, the client and helper of PR #144's branch at 79bee7a; the
+  owner's reports and read-only looks, same record): with the player beside another player's item at
+  Kresezoa X22 Y13, its owner's `!collect` marked all 79 of that player's items in one pass a second
+  later, the item object beside the player gone from the pool and its square collected (the owner:
+  it disappeared, and the map marked every one of that player's squares); the rooms looked at held
+  nothing where an item was. That build still marked squares with an after-pickup event: Exodia X20
+  Y0 was the soft-lock above, and at Exodia X22 Y1, a reversed-gravity room, an Energy Tank still
+  showed over a marked square. A third run (2026-11-15, B1, slot 5, a new game of the same seed with
+  every one of that player's items checked on the server already; the client of PR #144's branch at
+  a17904b, the same helper; the owner's reports and read-only looks, same record), with Exodia X20
+  Y0 left unmarked and labeled Scrap Metal: the client marked the other 78 a second after the save
+  loaded; at Exodia X20 Y0 the item was scrap, its pickup started the boss fight, and the fight
+  could be won and the way on taken. What marking leaves behind, each harmless but the boss
+  reward's, which is why that room is listed since: in a reversed-gravity room (Exodia X22 Y1) the
+  item still shows over its marked square until touched, and touching it gives nothing (no popup or
+  sound; the inventory and the pickup counter read the same after), while a marked item drawn the
+  usual way in that area (Exodia X27 Y0) was gone; a boss's reward (R'Talva X34 Y51) still shows
+  after the fight, gives nothing when touched, and that touch is what turns the warp gate on and
+  brings the area's music back, so the room does wait for it; in the arena (Guardia X51 Y10 and Y11
+  marked) the enemies holding the two marked items dropped nothing, those holding this world's own
+  two dropped them, and the room was left as usual; Kresezoa X23 Y21, an event square of Exodia X20
+  Y0's kind, marked, showed nothing unusual. Not run in game: a death, another save of the seed,
+  `!release`, and a reload beside an item.
 - **This player's own Scrap Metal** (`@46` alone, for no one; `Label::scrap`, `src/text.h`):
   the label the client gives another player's checked item in a room that waits for its
   pickup (above). The square still holds the stand-in, so the helper makes its pickup the
@@ -1173,37 +1160,36 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   `lab/ap/live65`, the client with R'Talva X34 Y51 unmarked, the helper of PR #145's 399f57e,
   before this change; the owner's report, `lab/ingame-collected-checks.md`, "Check J"):
   R'Talva X34 Y51's reward showed as scrap, its popup read Scrap Metal with the AP symbol, nothing
-  dropped (whether the gate turned on at that pickup was not said), and the map showed the square as a major's (ADVANCED TECH); hence this. Stand-in
-  tests (`tests/apitem_tests.cpp`, `test_own_scrap_metal_names_scrap_metals_event`;
-  `tests/game_tests.cpp`, `test_own_scrap_metal_is_picked_up_as_the_games`;
-  `tests/mapmarks_tests.cpp`, `test_own_scrap_metals_square_is_a_minors`, and
-  `tests/game_tests.cpp`, `test_a_scrap_square_is_left_while_its_item_is_live` and
-  `test_scrap_squares_are_held_while_the_item_pool_cannot_be_read`; each failing with
-  `Label::scrap` false). The pickup reads the record's event when the item is taken, as it
-  reads its name (`docs/re/memory.md`, "What a scrap's pickup runs"). Working in game,
-  2026-11-15 (B1, `zexion_ap.dll` `8c4202ad…`, PR #146's fe4fe1b, slot 6 of `lab/ap/live65`,
-  the owner's report, `lab/ingame-collected-checks.md`, "Check K"): the scrap at R'Talva X34
-  Y51 and the one at Exodia X20 Y0 were each picked up as the game's regular Scrap Metal,
-  with "the pickups from it" (the owner's words). The client was connected for the first minute after the save's load and
-  then stopped (its session ended), the helper running on alone; which of the two each
-  pickup ran under is not known. The map square, the same day and helper (a new game of
-  that seed in slot 5, the client connected, the presets' Obscure Majors and Minors; "Check
-  L"): R'Talva X34 Y51's square, of item 48 (another player's trap), read `0x13`, an
-  obscured minor's, and the cursor named it UNKNOWN ITEM where it had said ADVANCED TECH
-  before this change (the owner's report, and the grid read live); Exodia X20 Y0's, of item
-  47, the same. Run again 2026-11-15 with the helper of c7186e9 (`zexion_ap.dll`
-  `fdd42c43…`; slot 5, a new game against a server with nothing checked, then the items'
-  owner's collect; the owner's reports and read-only looks, "Check O"): Exodia X20 Y0's
-  scrap gave its popup "with the pickups", the fight started, was won and the room left
-  normally; R'Talva X34 Y51's "same thing as before", and its pickup turned the warp gate
-  on and brought the area's music back. R'Talva's square read `0x15` before its item was
-  checked and `0x13` once it was labeled; the owner saw both rooms as minor items on the
-  map. With each item on screen its square held one value in every sample of a read-only
-  watch (Exodia's `0x0D` over 6 s, R'Talva's `0x1F` over 8 s, some 400,000 and 590,000
-  samples): no flip. Not run in game: the square under the other Obscure settings; and a
-  scrap-labeled square of item 48 that the game's on-screen write does raise (R'Talva's was
-  not raised with its reward on screen, and Exodia X20 Y0 held item 47 in this seed), so
-  the hold under a live item object is stand-in tested only.
+  dropped (whether the gate turned on at that pickup was not said), and the map showed the square as
+  a major's (ADVANCED TECH); hence this. Stand-in tests (`tests/apitem_tests.cpp`,
+  `test_own_scrap_metal_names_scrap_metals_event`; `tests/game_tests.cpp`,
+  `test_own_scrap_metal_is_picked_up_as_the_games`; `tests/mapmarks_tests.cpp`,
+  `test_own_scrap_metals_square_is_a_minors`, and `tests/game_tests.cpp`,
+  `test_a_scrap_square_is_left_while_its_item_is_live` and
+  `test_scrap_squares_are_held_while_the_item_pool_cannot_be_read`; each failing with `Label::scrap`
+  false). The pickup reads the record's event when the item is taken, as it reads its name
+  (`docs/re/memory.md`, "What a scrap's pickup runs"). Working in game, 2026-11-15 (B1,
+  `zexion_ap.dll` `8c4202ad…`, PR #146's fe4fe1b, slot 6 of `lab/ap/live65`, the owner's report,
+  `lab/ingame-collected-checks.md`, "Check K"): the scrap at R'Talva X34 Y51 and the one at Exodia
+  X20 Y0 were each picked up as the game's regular Scrap Metal, with "the pickups from it" (the
+  owner's words). The client was connected for the first minute after the save's load and then
+  stopped (its session ended), the helper running on alone; which of the two each pickup ran under
+  is not known. The map square, the same day and helper (a new game of that seed in slot 5, the
+  client connected, the presets' Obscure Majors and Minors; "Check L"): R'Talva X34 Y51's square, of
+  item 48 (another player's trap), read `0x13`, an obscured minor's, and the cursor named it UNKNOWN
+  ITEM where it had said ADVANCED TECH before this change (the owner's report, and the grid read
+  live); Exodia X20 Y0's, of item 47, the same. Run again 2026-11-15 with the helper of c7186e9
+  (`zexion_ap.dll` `fdd42c43…`; slot 5, a new game against a server with nothing checked, then the
+  items' owner's collect; the owner's reports and read-only looks, "Check O"): Exodia X20 Y0's scrap
+  gave its popup "with the pickups", the fight started, was won and the room left normally; R'Talva
+  X34 Y51's "same thing as before", and its pickup turned the warp gate on and brought the area's
+  music back. R'Talva's square read `0x15` before its item was checked and `0x13` once it was
+  labeled; the owner saw both rooms as minor items on the map. With each item on screen its square
+  held one value in every sample of a read-only watch (Exodia's `0x0D` over 6 s, R'Talva's `0x1F`
+  over 8 s, some 400,000 and 590,000 samples): no flip. Not run in game: the square under the other
+  Obscure settings; and a scrap-labeled square of item 48 that the game's on-screen write does raise
+  (R'Talva's was not raised with its reward on screen, and Exodia X20 Y0 held item 47 in this seed),
+  so the hold under a live item object is stand-in tested only.
 - **Run in game after the review rounds** (2026-11-15, B1, slot 5, a new game of the seed
   `lab/ap/live65` against a server with none of the other player's items checked; the client
   and helper of PR #146's branch at c7186e9, which holds this marking; the owner's reports,
@@ -1411,74 +1397,74 @@ the helper:
   waits only for a menu to close, a popup of the helper's already up and the gap after it; counted from the
   game's frame clock, `frame_clock`, which stands still while a menu has the game paused, so frames
   with a menu open, the pause, which saves the fade and puts it back, don't count), and when the
-  prompt is canceled (the save left, `discs` off, the client gone); asked for with a menu open, the fade back waits until it has closed and put its
-  saved black back. Another fade since (a death's) is left alone, and an unload is refused while the
-  screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade) drops
-  it. `mission_black` says how the last black ended (`kept black` while it lasts; `ended: the
-  ending, faded in from black`, `ended: kDarkFrames in play with no ending, faded back in`,
-  `ended: canceled…`, `ended: the save left`, or another `ended: …` note:
-  another fade, the ending not faded in or with the fade no longer the helper's), for a live check.
-  Two things could end the black before the ending, by disassembly: the limit above (when it counted
-  the helper's frame calls, which a fast monitor runs out first, a run's numbers fit that as the
-  cause: `docs/re/memory.md`, "The mission prompt"), and the ending routine itself, which sets the
-  level to 4 as it warps the player to the ending's first scene, in a frame the game draws before
-  the helper's frame call (not seen in game: the wrapper hides it). For that one the helper starts
-  the ending through a wrapper of its own, set as the transition with timer 1 in the routine's
-  place: the game runs it, it runs the game's routine, and, while the black is still the helper's,
-  it sets the level back to black at once (event 3667 aimed from −1 to 4, a step every 8 frames,
-  `kEndingFadeStep`) before that frame is drawn: the ending fades in from black, at the normal level
-  40 frames in. The black ends there. A wrapper still the transition after the routine (not as
-  traced) becomes the idle routine; one an unload finds not yet run becomes the game's routine (the
-  ending then comes without the fade in). Anything else in the wrapper's place before it ran (a save
-  at the save point, which sets the pause opener back and leaves the fade alone; a door, timer 70; a
-  death): the ending is asked for again, the black kept while it is still the helper's (with its 240
-  game frames), else the other transition's fade left alone. From the frame the helper sets the
-  ending's wrapper until another save is loaded (`save_loaded` changes, as at MISSION COMPLETE) or
-  another transition takes its place as above, `mission_status` says `ending started`, a
-  `mission_prompt` is ignored (the ending's cutscenes read as play and its own save as a save at the
-  pod), `apply`, `shield` and `die` are refused (`RETURN HOME WITH THE DISKS? ending`: the client
-  gives them in the save's next load), and popups already queued wait for the seed's next load.
-  Stand-in tests (`native/tests/mission_tests.cpp`, `game_tests.cpp`). Working in game: black from
-  YES until the ending, which fades in from it, 2026-11-02 (B1, `zexion_ap.dll` `d179d32d…` on a
-  first ending and a replay, then `28ab9954…` with the ending starting under GAME SAVED, on a
-  replay), and on a first ending on the 1.0.0 RC, 2026-11-03 (`fce9e73b…`, develop 76df074,
-  English(HD), the owner's report); the ending played again on a save past it, with nothing new sent
-  and the Feats note shown, the goal sent on a save before it, items received during either held and
-  their popups shown on the next load, a death received during the first ending dropped, and the
-  pause opened in the black after YES with EXIT GAME going to the title with no black left and
-  `/reload_mod` not refused after that, 2026-11-02 (`946b08a1…`) (`docs/re/memory.md`, "The mission
-  prompt"); two received items' popups waiting at YES, the ending straight after it and both popups
-  at the next load, 2026-11-04 (`a7469024…`, develop 345fea7, English(HD)). Not run in game: a door
-  or a death right after YES, and the prompt asked for again. If
-  event 3667 or its handler is not as traced, the prompt opens at once with no fade, as before. A
-  request not yet opened lapses (`lapsed: the player left the landing pod`) once the player is in
-  play outside home's cell (the request's row / 20 and column / 14 against the player state's cell,
-  as the client tests a save at the pod: `docs/re/memory.md`, "The mission prompt"; a cell off the
-  map, as the raw cell reads for a moment, counts as not known), as when popups held it while the
-  player walked on; the client offers it again after the next save there. Until 1.0.0 home was the
-  seed's start cell, read from the loaded section's start record; the in-game runs from 2026-10-27
-  and earlier all started at the Landing Pod, where the two are the same. Home given by the request,
-  from a seed started elsewhere: working in game 2026-11-02 (an OHKO seed started at Open Cave, B1,
-  `zexion_ap.dll` `1c286c57…`: "The mission prompt"). Once its opener is set, it opens where the
-  player is when its 60 frames are up. An opener the helper takes back before it runs (the save
-  left, `discs` off, an unload) turns the fade back to the normal level; so does one the game runs
-  with the player not in play (a death during the fade: asked again), but only while the fade is
-  still event 3667's, as below, not a fade the death set. One another transition took the place of
-  (a save at the save point again, which sets the pause opener back and brings no fade; a door; a
-  death) is asked again once idle (and lapses if the player is then outside home's cell), and its
-  fade is turned back only while the game's fade (the `fade` and `fade_level` targets) is still
-  event 3667's: target −1, a step every 8 frames from level 4, or done at −1, and no further back
-  than the helper last saw it with its opener in place, nor the transition timer higher (a save
-  leaves it counting). Anything else, another transition's fade even with 3667's own values (it
-  starts again from level 4, its timer at 70), is left alone. The same when `discs` turns off after
-  such a save. Working in game, 2026-10-27 (0.30.0, the owner's reports: "The mission prompt"): the
-  fade turned back after saves at the pod during it; a request lapsing once the player left the
-  pod's cell while twelve received items' popups held it, and one left during GAME SAVED alone, each
-  offered again after the next save there; the ending after YES waiting for five received items'
-  popups, then starting (since changed: popups waiting at YES now wait for the save's next load,
-  working in game 2026-11-04, above). Stand-in tests only: the fade turned back when the helper takes its opener
-  back, another transition's fade left alone, a death's own fade left alone, and `discs` turned off
-  after such a save.
+  prompt is canceled (the save left, `discs` off, the client gone); asked for with a menu open, the
+  fade back waits until it has closed and put its saved black back. Another fade since (a death's)
+  is left alone, and an unload is refused while the screen is kept black (below, "Unloading");
+  leaving the save (the title, which owns the fade) drops it. `mission_black` says how the last
+  black ended (`kept black` while it lasts; `ended: the ending, faded in from black`, `ended:
+  kDarkFrames in play with no ending, faded back in`, `ended: canceled…`, `ended: the save left`, or
+  another `ended: …` note: another fade, the ending not faded in or with the fade no longer the
+  helper's), for a live check. Two things could end the black before the ending, by disassembly: the
+  limit above (when it counted the helper's frame calls, which a fast monitor runs out first, a
+  run's numbers fit that as the cause: `docs/re/memory.md`, "The mission prompt"), and the ending
+  routine itself, which sets the level to 4 as it warps the player to the ending's first scene, in a
+  frame the game draws before the helper's frame call (not seen in game: the wrapper hides it). For
+  that one the helper starts the ending through a wrapper of its own, set as the transition with
+  timer 1 in the routine's place: the game runs it, it runs the game's routine, and, while the black
+  is still the helper's, it sets the level back to black at once (event 3667 aimed from −1 to 4, a
+  step every 8 frames, `kEndingFadeStep`) before that frame is drawn: the ending fades in from
+  black, at the normal level 40 frames in. The black ends there. A wrapper still the transition
+  after the routine (not as traced) becomes the idle routine; one an unload finds not yet run
+  becomes the game's routine (the ending then comes without the fade in). Anything else in the
+  wrapper's place before it ran (a save at the save point, which sets the pause opener back and
+  leaves the fade alone; a door, timer 70; a death): the ending is asked for again, the black kept
+  while it is still the helper's (with its 240 game frames), else the other transition's fade left
+  alone. From the frame the helper sets the ending's wrapper until another save is loaded
+  (`save_loaded` changes, as at MISSION COMPLETE) or another transition takes its place as above,
+  `mission_status` says `ending started`, a `mission_prompt` is ignored (the ending's cutscenes read
+  as play and its own save as a save at the pod), `apply`, `shield` and `die` are refused (`RETURN
+  HOME WITH THE DISKS? ending`: the client gives them in the save's next load), and popups already
+  queued wait for the seed's next load. Stand-in tests (`native/tests/mission_tests.cpp`,
+  `game_tests.cpp`). Working in game: black from YES until the ending, which fades in from it,
+  2026-11-02 (B1, `zexion_ap.dll` `d179d32d…` on a first ending and a replay, then `28ab9954…` with
+  the ending starting under GAME SAVED, on a replay), and on a first ending on the 1.0.0 RC,
+  2026-11-03 (`fce9e73b…`, develop 76df074, English(HD), the owner's report); the ending played
+  again on a save past it, with nothing new sent and the Feats note shown, the goal sent on a save
+  before it, items received during either held and their popups shown on the next load, a death
+  received during the first ending dropped, and the pause opened in the black after YES with EXIT
+  GAME going to the title with no black left and `/reload_mod` not refused after that, 2026-11-02
+  (`946b08a1…`) (`docs/re/memory.md`, "The mission prompt"); two received items' popups waiting at
+  YES, the ending straight after it and both popups at the next load, 2026-11-04 (`a7469024…`,
+  develop 345fea7, English(HD)). Not run in game: a door or a death right after YES, and the prompt
+  asked for again. If event 3667 or its handler is not as traced, the prompt opens at once with no
+  fade, as before. A request not yet opened lapses (`lapsed: the player left the landing pod`) once
+  the player is in play outside home's cell (the request's row / 20 and column / 14 against the
+  player state's cell, as the client tests a save at the pod: `docs/re/memory.md`, "The mission
+  prompt"; a cell off the map, as the raw cell reads for a moment, counts as not known), as when
+  popups held it while the player walked on; the client offers it again after the next save there.
+  Until 1.0.0 home was the seed's start cell, read from the loaded section's start record; the
+  in-game runs from 2026-10-27 and earlier all started at the Landing Pod, where the two are the
+  same. Home given by the request, from a seed started elsewhere: working in game 2026-11-02 (an
+  OHKO seed started at Open Cave, B1, `zexion_ap.dll` `1c286c57…`: "The mission prompt"). Once its
+  opener is set, it opens where the player is when its 60 frames are up. An opener the helper takes
+  back before it runs (the save left, `discs` off, an unload) turns the fade back to the normal
+  level; so does one the game runs with the player not in play (a death during the fade: asked
+  again), but only while the fade is still event 3667's, as below, not a fade the death set. One
+  another transition took the place of (a save at the save point again, which sets the pause opener
+  back and brings no fade; a door; a death) is asked again once idle (and lapses if the player is
+  then outside home's cell), and its fade is turned back only while the game's fade (the `fade` and
+  `fade_level` targets) is still event 3667's: target −1, a step every 8 frames from level 4, or
+  done at −1, and no further back than the helper last saw it with its opener in place, nor the
+  transition timer higher (a save leaves it counting). Anything else, another transition's fade even
+  with 3667's own values (it starts again from level 4, its timer at 70), is left alone. The same
+  when `discs` turns off after such a save. Working in game, 2026-10-27 (0.30.0, the owner's
+  reports: "The mission prompt"): the fade turned back after saves at the pod during it; a request
+  lapsing once the player left the pod's cell while twelve received items' popups held it, and one
+  left during GAME SAVED alone, each offered again after the next save there; the ending after YES
+  waiting for five received items' popups, then starting (since changed: popups waiting at YES now
+  wait for the save's next load, working in game 2026-11-04, above). Stand-in tests only: the fade
+  turned back when the helper takes its opener back, another transition's fade left alone, a death's
+  own fade left alone, and `discs` turned off after such a save.
 
 For every seed it has a file for, with a client or none, it shows
 each save's own count on the file select, COPY FILE and DELETE FILE in place of the keys
@@ -1718,32 +1704,31 @@ disconnected.
   locations (154, or 155 with Secret Shuffle; one labeled this player's own Scrap Metal is
   lowered to a minor's instead: "Other players' items") (this player's OS
   Install Disks and own traps, and other players' progression items and any game's traps, but
-  not a Zexion player's supplies: `worlds/zexion/world.py`, `important_elsewhere`) from the game's basic marker to its
-  important one (`src/mapmarks.cpp`), obscured or shown as the game's own majors are under
-  the seed's Obscure Majors, Obscure Minors and Obscure Class. Under Majors on with Minors and
-  Class off a stand-in shown as a minor in a square a hint, a map room or Hints Revealed
-  revealed becomes an obscured major and one seen directly a shown major; the value cannot tell
-  an Area Map's reveal (shown) from a hint's ("Map markers"). While an item is on screen the
-  game writes its square every frame as a shown item of its ID's class, which took a stand-in
-  back to a minor (measured live), and its minimap dot's border was seen to flash (assumed to be
-  this); so the helper also patches that
-  write (`seen_marker_code`, 50 bytes) to give item 48 a major's class, as an item on screen
-  of IDs 3 to 35 gets (`0x1A`, or `0x0E` in a square a hint revealed). The patch is the game's
-  code with one more compare: it calls and reads nothing of the helper's. While the map is open,
-  a wrapper on the map's per-frame handler writes the square's label's name over SCRAP ENERGY
-  or SCRAP CHUNK after the game writes the cursor's name, in the same frame; in a translation it
-  builds the cursor's translated text again as the label's first line ("Translations";
-  working in game 2026-11-02 in English(HD): AP ITEM); since, without the logo, and in
-  English(HD) in the case the client sent it (AP Item, Progression Item, OS Install Disk) or,
-  for another Zexion player's item, the translation's own name for it (working in game
-  2026-11-03, B1, `zexion_ap.dll` `12f090c6…` ("Map markers"): AP Item on a DLCQuest
-  player's square, its translated glyphs read back with a read-only probe as A, P, I, t, e, m,
-  shown, no logo among them, the pixel ones hidden; another Zexion player's items by the game's
-  names, the owner's look; Progression Item and OS Install Disk, first line only and no logo:
-  2026-11-04, B1, `zexion_ap.dll` `a7469024…`, develop 345fea7, the owner's report). Since
-  2026-11-04 another Zexion player's item takes the translation's own name in every translation,
-  not only English(HD): on its pickup popup in French, working in game 2026-11-04 (the same build:
-  Wall Jump Boots as BOTTES DE SAUT MURAL, the owner's report); on the map cursor, not run in game.
+  not a Zexion player's supplies: `worlds/zexion/world.py`, `important_elsewhere`) from the game's
+  basic marker to its important one (`src/mapmarks.cpp`), obscured or shown as the game's own majors
+  are under the seed's Obscure Majors, Obscure Minors and Obscure Class. Under Majors on with Minors
+  and Class off a stand-in shown as a minor in a square a hint, a map room or Hints Revealed
+  revealed becomes an obscured major and one seen directly a shown major; the value cannot tell an
+  Area Map's reveal (shown) from a hint's ("Map markers"). While an item is on screen the game
+  writes its square every frame as a shown item of its ID's class, which took a stand-in back to a
+  minor (measured live), and its minimap dot's border was seen to flash (assumed to be this); so the
+  helper also patches that write (`seen_marker_code`, 50 bytes) to give item 48 a major's class, as
+  an item on screen of IDs 3 to 35 gets (`0x1A`, or `0x0E` in a square a hint revealed). The patch
+  is the game's code with one more compare: it calls and reads nothing of the helper's. While the
+  map is open, a wrapper on the map's per-frame handler writes the square's label's name over SCRAP
+  ENERGY or SCRAP CHUNK after the game writes the cursor's name, in the same frame; in a translation
+  it builds the cursor's translated text again as the label's first line ("Translations"; working in
+  game 2026-11-02 in English(HD): AP ITEM); since, without the logo, and in English(HD) in the case
+  the client sent it (AP Item, Progression Item, OS Install Disk) or, for another Zexion player's
+  item, the translation's own name for it (working in game 2026-11-03, B1, `zexion_ap.dll`
+  `12f090c6…` ("Map markers"): AP Item on a DLCQuest player's square, its translated glyphs read
+  back with a read-only probe as A, P, I, t, e, m, shown, no logo among them, the pixel ones hidden;
+  another Zexion player's items by the game's names, the owner's look; Progression Item and OS
+  Install Disk, first line only and no logo: 2026-11-04, B1, `zexion_ap.dll` `a7469024…`, develop
+  345fea7, the owner's report). Since 2026-11-04 another Zexion player's item takes the
+  translation's own name in every translation, not only English(HD): on its pickup popup in French,
+  working in game 2026-11-04 (the same build: Wall Jump Boots as BOTTES DE SAUT MURAL, the owner's
+  report); on the map cursor, not run in game.
 - **When:** the markers every 16th frame call while labels are set, once two of those looks in a
   row have found the seed's save loaded (a precaution: the load routine writes the section, the
   marker and the grid in one game call, `docs/re/memory.md`, "The loaded save's randomizer section
@@ -2215,11 +2200,10 @@ Most ctest tests run against **the stand-in game**: the test program's own data 
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
 configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
 (`apply_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for `apply_in_frames`,
-`unload_under_load` and `proxy`). They share `tests/check.h` (with one test of a code patch on a page of its own, `check_code_patch`,
-that `game` and `mapmarks` run on theirs); `tests/fake_gl.h` is the fake
-OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe client of `parts`,
-`apply_in_frames` and `unload_under_load`, and the last two's busy threads and wait for an
-unload.
+`unload_under_load` and `proxy`). They share `tests/check.h` (with one test of a code patch on a
+page of its own, `check_code_patch`, that `game` and `mapmarks` run on theirs); `tests/fake_gl.h` is
+the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe client of `parts`,
+`apply_in_frames` and `unload_under_load`, and the last two's busy threads and wait for an unload.
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), `game_mem.h`'s menu, panel and label readers, its handler-slot swap, its memory check
@@ -2227,42 +2211,40 @@ unload.
   (one that fails held), the build check, the pipe and `CellWatch` (cell_watch.h: a pickup
   needs two looks in play, a list that changed or a reset starts over, a cell put back is told).
 - `requests`: the request parsers, the popup text's layout and the mailbox.
-- `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill
-  (an AP save's only, each icon once, by item ID, up to 26), R'Talva X34 Y51's marker hidden
-  (every frame while flag 154 is clear, by its shown byte; shown again on the flag, off the logo
-  frame and on restore; no stand-in for names; another type left alone), this player's own
-  Scrap Metal (`test_own_scrap_metal_is_picked_up_as_the_games`: a stand-in's record naming
-  Scrap Metal's event while named after such a cell, its popup with no icon;
+- `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill (an
+  AP save's only, each icon once, by item ID, up to 26), R'Talva X34 Y51's marker hidden (every
+  frame while flag 154 is clear, by its shown byte; shown again on the flag, off the logo frame and
+  on restore; no stand-in for names; another type left alone), this player's own Scrap Metal
+  (`test_own_scrap_metal_is_picked_up_as_the_games`: a stand-in's record naming Scrap Metal's event
+  while named after such a cell, its popup with no icon;
   `test_a_scrap_square_is_left_while_its_item_is_live`; `mapmarks` has
-  `test_own_scrap_metals_square_is_a_minors`), a reversed-gravity
-  room's item hidden over a collected square
-  (`test_a_collected_item_in_a_reversed_gravity_room_is_hidden`: shown again when the square
-  no longer reads collected, or it holds the item; kept hidden under a menu), the stand-ins drawn
-  in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
-  world's items left alone; put back when not restyled and on restore),
-  the popup queue, the text window's cut repaired and put back (and a model of the game's
-  update and window, its lines flashing without the repair), the
-  new-game watch, a whole ARCHIPELAGO press, what an unload's put back keeps while putting the game's memory back
-  (and a refused unload's watches apply again, a client gone drops), the received shield, scraps' drops, traps and death, this
-  world's own traps and disks watched by their map cells (a pickup, a load that is none, a
-  pickup a load undid, made again before play settled, or carried to another slot's save,
-  and a TELEPORT TO's countdown and load; an own disk's count with no client), the ASSIST watch and the scanner's text, and RETURN HOME
-  WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
-  request lapsing outside home's cell, at a start that is not home too, the `mission_prompt`
-  parser, a death's own fade left alone, the helper's own popup holding the fade while it is the
-  game's last message, however many frame calls pass, the ending after YES
-  starting with a message of the game's still up but waiting for the helper's own popup, and the ending's wait that an unload refuses for; the screen
-  kept black after YES into the ending with a popup waiting (shown at the next load), and the
-  same popup wait after a YES not kept black, received
-  deaths refused (`RETURN
-  HOME WITH THE DISKS? ending`), and no prompt, popup or death while the ending started runs,
-  until another save is loaded). `mission` covers the black after YES on its own: kept, not
-  kept for a fade not as NO leaves it, ended by kDarkFrames game frames in play (from a stand-in
-  frame clock, with frame calls coming faster than game frames, as at 165 Hz), another fade or
-  cancel, and what `mission_black` then says; and
-  the ending out of it through the helper's wrapper, in a stand-in main loop that draws each frame
-  after the transition and the stepper: the routine's frame drawn black, then the fade in, and the
-  wrapper never left as the transition (unload, a routine not as traced, none in the table).
+  `test_own_scrap_metals_square_is_a_minors`), a reversed-gravity room's item hidden over a
+  collected square (`test_a_collected_item_in_a_reversed_gravity_room_is_hidden`: shown again when
+  the square no longer reads collected, or it holds the item; kept hidden under a menu), the
+  stand-ins drawn in palette 26 at style 34 (their first style kept; a dressed one, one not as
+  expected and this world's items left alone; put back when not restyled and on restore), the popup
+  queue, the text window's cut repaired and put back (and a model of the game's update and window,
+  its lines flashing without the repair), the new-game watch, a whole ARCHIPELAGO press, what an
+  unload's put back keeps while putting the game's memory back (and a refused unload's watches apply
+  again, a client gone drops), the received shield, scraps' drops, traps and death, this world's own
+  traps and disks watched by their map cells (a pickup, a load that is none, a pickup a load undid,
+  made again before play settled, or carried to another slot's save, and a TELEPORT TO's countdown
+  and load; an own disk's count with no client), the ASSIST watch and the scanner's text, and RETURN
+  HOME WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
+  request lapsing outside home's cell, at a start that is not home too, the `mission_prompt` parser,
+  a death's own fade left alone, the helper's own popup holding the fade while it is the game's last
+  message, however many frame calls pass, the ending after YES starting with a message of the game's
+  still up but waiting for the helper's own popup, and the ending's wait that an unload refuses for;
+  the screen kept black after YES into the ending with a popup waiting (shown at the next load), and
+  the same popup wait after a YES not kept black, received deaths refused (`RETURN HOME WITH THE
+  DISKS? ending`), and no prompt, popup or death while the ending started runs, until another save
+  is loaded). `mission` covers the black after YES on its own: kept, not kept for a fade not as NO
+  leaves it, ended by kDarkFrames game frames in play (from a stand-in frame clock, with frame calls
+  coming faster than game frames, as at 165 Hz), another fade or cancel, and what `mission_black`
+  then says; and the ending out of it through the helper's wrapper, in a stand-in main loop that
+  draws each frame after the transition and the stepper: the routine's frame drawn black, then the
+  fade in, and the wrapper never left as the transition (unload, a routine not as traced, none in
+  the table).
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order, the options menu built again after
   Video, GENERAL or the assist menu with another widget in the locked ASSIST's place).
@@ -2273,54 +2255,51 @@ unload.
   row's disc and the file select's logo in its colors painted through a fake OpenGL, the
   translations' icon sheets painted and cleared (and left alone where not as traced; each
   sheet's icons made once), the label parser.
-- `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of
-  that name (`files`: the disk count and the AP logo; `title`: also its two lines built in
-  English(HD)'s font and back to pixels, hidden there under a menu (Option, the file select,
-  a client connecting meanwhile, English(HD) picked there), none made under a menu, with
-  `menu_state` unreadable and
-  with the game's line gone, and the default English's
-  lines following the © whatever the menu; `offline`: the seed file, its match and
-  disk count, the folder, the cache check, `offline_put`, a stand-in game dressed and
-  undressed, the look held through a menu (the files read again, a read of no known seed, a
-  client going away, ASSIST locked again in the same frame call), a notice withdrawn with its save, the not-connected warning again after a client
-  came and went, a seed put with a client, the AP saves' slots, and the file select's logo
-  through the frame call: painted, whitened through a new game's fade, and cleared by
-  `put_back_files`, and a cache missing a key refused).
-- `translation`: the translations, on a stand-in English(HD) (its tables as the game's parser
-  leaves them): the text helpers, the tables' entries and their room, the popups in the borrowed
-  areas (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the
-  slot's mark cleared; the same with the tables unreadable, while unloading and with text in
-  the run's entry 68: no split), a language
-  change mid-popup and between a name's write and its put-back (the old tables left alone), the scanner's line, ARCHIPELAGO built again and back on the
-  panel (not where the game first built it), a label with no first pixel glyph or too little
-  room left alone, the locked ASSIST's translated text with its padlock (no space before it in
-  English(HD), one in a pixel font; left out at a narrow box, built again over the game's, its
-  style 0x15 and alpha 0.45 pinned, back when unlocked at full alpha), the map cursor's name
-  without the logo, the helper's icons as characters and
-  through the game (painted while a translation shows, cleared when the default English is
-  picked and before an unload, a sheet the game uses left alone), the popups' layout (measured
-  widths, centering, the cap, the fallback, the suffix's case, a stand-in's name's lines
-  centered, and through the game into ItemNames, not where the spaces would pass its room, and
-  held while its pickup message shows (another cell, paused; not with no save loaded; another
-  of its record within reach takes it, even with one of the other nearer; a newer message of
-  its record named, then held; the game's name while the map is open; a language change keeps
-  it);
-  the mixed case in English(HD) and capitals in French and the default English for a client's
-  notice, the helper's own, a label and the scanner's line; a popup through the game measured
-  with its icon's width, a long notice wrapped), and
-  the default English (the flag clear, or nothing loaded) left as it was (`mission`, `equip`,
-  `pause` and `feats` cover RETURN HOME WITH THE DISKS?'s question, centered, the equipment
-  screen's disk, its description wrapped, the pause row's count and the Feats title with the
-  note in a translation; `apitem` the icon sheets' painting and the HD padlock's place in its
-  cell).
+- `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of that
+  name (`files`: the disk count and the AP logo; `title`: also its two lines built in English(HD)'s
+  font and back to pixels, hidden there under a menu (Option, the file select, a client connecting
+  meanwhile, English(HD) picked there), none made under a menu, with `menu_state` unreadable and
+  with the game's line gone, and the default English's lines following the © whatever the menu;
+  `offline`: the seed file, its match and disk count, the folder, the cache check, `offline_put`, a
+  stand-in game dressed and undressed, the look held through a menu (the files read again, a read of
+  no known seed, a client going away, ASSIST locked again in the same frame call), a notice
+  withdrawn with its save, the not-connected warning again after a client came and went, a seed put
+  with a client, the AP saves' slots, and the file select's logo through the frame call: painted,
+  whitened through a new game's fade, and cleared by `put_back_files`, and a cache missing a key
+  refused).
+- `translation`: the translations, on a stand-in English(HD) (its tables as the game's parser leaves
+  them): the text helpers, the tables' entries and their room, the popups in the borrowed areas
+  (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the slot's
+  mark cleared; the same with the tables unreadable, while unloading and with text in the run's
+  entry 68: no split), a language change mid-popup and between a name's write and its put-back (the
+  old tables left alone), the scanner's line, ARCHIPELAGO built again and back on the panel (not
+  where the game first built it), a label with no first pixel glyph or too little room left alone,
+  the locked ASSIST's translated text with its padlock (no space before it in English(HD), one in a
+  pixel font; left out at a narrow box, built again over the game's, its style 0x15 and alpha 0.45
+  pinned, back when unlocked at full alpha), the map cursor's name without the logo, the helper's
+  icons as characters and through the game (painted while a translation shows, cleared when the
+  default English is picked and before an unload, a sheet the game uses left alone), the popups'
+  layout (measured widths, centering, the cap, the fallback, the suffix's case, a stand-in's name's
+  lines centered, and through the game into ItemNames, not where the spaces would pass its room, and
+  held while its pickup message shows (another cell, paused; not with no save loaded; another of its
+  record within reach takes it, even with one of the other nearer; a newer message of its record
+  named, then held; the game's name while the map is open; a language change keeps it); the mixed
+  case in English(HD) and capitals in French and the default English for a client's notice, the
+  helper's own, a label and the scanner's line; a popup through the game measured with its icon's
+  width, a long notice wrapped), and the default English (the flag clear, or nothing loaded) left as
+  it was (`mission`, `equip`, `pause` and `feats` cover RETURN HOME WITH THE DISKS?'s question,
+  centered, the equipment screen's disk, its description wrapped, the pause row's count and the
+  Feats title with the note in a translation; `apitem` the icon sheets' painting and the HD
+  padlock's place in its cell).
 - `feats`: Feats and achievements in AP saves. It covers the AP-save test in each case (no config, a
   plain randomizer save, a normal save, a put seed, a seed file with no client and with a client of
   another seed, the labels' seed), the guard on and off, and a stand-in ending run with and without
   the patch. It also covers the Steam import hooked and passed through, the stub's test while an AP
-  save loads (by slot, marker and context, kept and dropped, off with `release_steam`), the refusals, putting back with and without a frame, and the Feats of Natu
-  screen's note (on a stand-in screen, after an AP ending only). The program imports
-  `SteamInternal_ContextInit` by name from a stand-in `steam_api64.dll` (`tests/steam_stub.cpp`), as
-  the game does. Both are built into `build/feats/`, apart from the helper.
+  save loads (by slot, marker and context, kept and dropped, off with `release_steam`), the
+  refusals, putting back with and without a frame, and the Feats of Natu screen's note (on a
+  stand-in screen, after an AP ending only). The program imports `SteamInternal_ContextInit` by name
+  from a stand-in `steam_api64.dll` (`tests/steam_stub.cpp`), as the game does. Both are built into
+  `build/feats/`, apart from the helper.
 - `proxy`: its exports give what Windows' own give, and it loads no helper outside Zexion.
 - `apply_in_frames`: through the real pipe and hook in a busy host (a batch and its popup,
   a batch no frame took, an unload refused while something else is hooked over the

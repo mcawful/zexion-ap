@@ -977,9 +977,15 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     pieces = [s for w in words for s in re.split(r"[\"'\s,+()]+", protected.normalize(w))]
     parts = [[c for c in s.split("/") if c] for s in pieces if s]
     # The offline folder built from a variable: ``d = $LOCALAPPDATA; join(d, 'ZexionAP')``.
-    # ``GetFolderPath(28)`` (or ``0x1c``) is LocalApplicationData by number.
+    # ``GetFolderPath(28)`` (or ``0x1c``) is LocalApplicationData by number. The folder counts
+    # only where it ends (or a ``..`` follows): ``AppData/Local/Temp/…``, every scratch, TEMP and
+    # test-folder path, is not the folder itself, and the word ``ZexionAP`` beside one is no
+    # build of the protected path.
+    end = r"(?=/\.\.|(?![/\w]))"
     local = re.search(
-        r"local(?:app(?:lication)?)?data|appdata/local|getfolderpath\([^)]*?\b(?:28|0x1c)\b", low
+        rf"local(?:app(?:lication)?)?data{end}|appdata/local{end}"
+        r"|getfolderpath\([^)]*?\b(?:28|0x1c)\b",
+        low,
     )
     if local and any(c == "zexionap" for p in parts for c in p):
         return True

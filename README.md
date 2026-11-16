@@ -71,7 +71,8 @@ build of the game, and nothing is called working in game until it has run in the
 played by the maintainer. The maintainer decides what goes in, and reviews and merges every change.
 
 The Claude Code setup used here (review subagents, skills, and a hook that blocks writes to the
-game and save folders and the mod's offline files) is committed in `.claude/`; [`CLAUDE.md`](CLAUDE.md) describes it.
+game and save folders and the mod's offline files) is committed in `.claude/`;
+[`CLAUDE.md`](CLAUDE.md) describes it.
 
 ## Contributing
 

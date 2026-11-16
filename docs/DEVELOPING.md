@@ -18,7 +18,7 @@ release build has run from Archipelago 0.6.8's Launcher since 2026-10-25
 builds on 2026-11-03 and 04, the 1.1.0 candidate's on 2026-11-08 (develop 5597753) and 09
 (develop 88bebfb), `develop` 4205871's Area Maps on 2026-11-09, and `develop` e500ab9's traps on
 2026-11-11. The runs since, of the checkpoint checks, own disks and traps following the save and
-other players' items kept collected (2026-11-13 to 15), are in "Features, and when each was working
+other players' items kept collected (2026-11-13 to 16), are in "Features, and when each was working
 in game", below.
 
 ## How it fits together
@@ -52,10 +52,12 @@ worlds/zexion/ → generation → slot data → client
   collected by its owner; released): the client marks it collected in the loaded save, so it
   is not there to pick up again. Never in a room that waits for its item's pickup (Exodia
   X20 Y0, where the pickup starts the boss fight, R'Talva X34 Y51, the boss's reward,
-  whose pickup turns the warp gate on, and Kresezoa X5 Y23, whose boss drops the item): there the item stays and shows as Scrap Metal once
-  it is checked, and with the helper it is picked up as the game's own Scrap Metal: in
-  game, the first two rooms gave "the regular scrap metal and the pickups from it" (the owner's
-  words), and Kresezoa X5 Y23's boss dropped an actual Scrap Metal (the owner's report, 2026-11-16), and its map square showed as a minor's under the presets' Obscure settings. An
+  whose pickup turns the warp gate on, and Kresezoa X5 Y23, whose boss drops the item): there
+  the item stays and shows as Scrap Metal once it is checked, and with the helper it is picked
+  up as the game's own Scrap Metal: in game, the first two rooms gave "the regular scrap metal
+  and the pickups from it" (the owner's words), and Kresezoa X5 Y23's boss dropped an actual
+  Scrap Metal (the owner's report, 2026-11-16), and the first two rooms' squares showed as a
+  minor's under the presets' Obscure settings. An
   item the game has made already is ended by the game itself once its state is written; one
   that may be there as another kind of object (in a room the game has loaded or within two
   map squares of the player) stays until the player is farther from it
@@ -164,16 +166,16 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   #144's branch at bbaf3c5 and 79bee7a: a reload, `!collect`), 2026-11-15 (PR #144's a17904b,
   PR #145's 399f57e, PR #146's fe4fe1b and c7186e9: the two rooms left unmarked, the hidden
   picture, a mark giving no Scrap Metal), 2026-11-16 (develop 0b01d41: 14 squares with a type-28
-  event marked from afar, Kresezoa X5 Y23's boss drop, PR #153), B1. What each run showed and what is not run (a
-  death, another save of the seed, `!release`, a reload beside an item, an arena's item marked
-  with the player in its room, a type-715 room such as Guardia X22 Y7, the marking's wait
-  through a TELEPORT TO, the map square under the other Obscure settings, a scrap-labeled
-  square of item 48 that the game's on-screen write raises, nine of the 14 type-28 squares
-  (Guardia X41 Y10 and X22 Y9, Pulsava X51 Y12 and X46 Y13, Phobyss X18 Y41, Kresezoa X22 Y26,
-  Crysmoon X49 Y32, X52 Y38 and X53 Y20), Fijedar X5 Y39's enemy's drop, and the other squares
-  where a boss holds the item): `native/README.md`, "Other players' items"
-  ("Kept collected", "This player's own Scrap Metal", "Run in game after the review rounds");
-  `docs/re/memory.md`, "What decides whether an item appears".
+  event marked from afar, Kresezoa X5 Y23's boss drop, PR #153), B1. What each run showed and what
+  is not run (a death, another save of the seed, `!release`, a reload beside an item, an arena's
+  item marked with the player in its room, a type-715 room such as Guardia X22 Y7, the marking's
+  wait through a TELEPORT TO, the map square under the other Obscure settings, a scrap-labeled
+  square of item 48 that the game's on-screen write raises, nine of the 14 type-28 squares (Guardia
+  X41 Y10 and X22 Y9, Pulsava X51 Y12 and X46 Y13, Phobyss X18 Y41, Kresezoa X22 Y26, Crysmoon X49
+  Y32, X52 Y38 and X53 Y20), Fijedar X5 Y39's enemy's drop, and the other squares where a boss holds
+  the item): `native/README.md`, "Other players' items" ("Kept collected", "This player's own Scrap
+  Metal", "Run in game after the review rounds"); `docs/re/memory.md`, "What decides whether an item
+  appears".
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
@@ -376,9 +378,10 @@ To release:
    GitHub Release of the files below. Its message is the one `tools/release_notes.py` builds:
    the version's notes, then the install-and-update guide in `.github/release-footer.md`, then
    the compare link from the latest release; if the notes are missing or unfinished, nothing is
-   built into the release or published (the helper and proxy are built and tested first). A version already released from this same commit is skipped (a re-run).
-   The job fails instead if that version's release is a draft (a publish that failed part-way:
-   publish or delete it on GitHub, then re-run) or was released from another commit.
+   built into the release or published (the helper and proxy are built and tested first). A version
+   already released from this same commit is skipped (a re-run). The job fails instead if that
+   version's release is a draft (a publish that failed part-way: publish or delete it on GitHub,
+   then re-run) or was released from another commit.
 4. If the approval is rejected or times out, or the job fails, `main` holds the version with no
    release: re-run the workflow from the Actions page, or fix the cause on a topic branch into
    `develop`, raise the version (the gate wants it above `main`'s), and merge `develop` into
