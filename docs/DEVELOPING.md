@@ -51,11 +51,11 @@ worlds/zexion/ → generation → slot data → client
   location as checked (found before a death or a reload, or in another save of the seed;
   collected by its owner; released): the client marks it collected in the loaded save, so it
   is not there to pick up again. Never in a room that waits for its item's pickup (Exodia
-  X20 Y0, where the pickup starts the boss fight, and R'Talva X34 Y51, the boss's reward,
-  whose pickup turns the warp gate on): there the item stays and shows as Scrap Metal once
+  X20 Y0, where the pickup starts the boss fight, R'Talva X34 Y51, the boss's reward,
+  whose pickup turns the warp gate on, and Kresezoa X5 Y23, whose boss drops the item): there the item stays and shows as Scrap Metal once
   it is checked, and with the helper it is picked up as the game's own Scrap Metal: in
-  game, both rooms gave "the regular scrap metal and the pickups from it" (the owner's
-  words), and its map square showed as a minor's under the presets' Obscure settings. An
+  game, the first two rooms gave "the regular scrap metal and the pickups from it" (the owner's
+  words), and Kresezoa X5 Y23's boss dropped an actual Scrap Metal (the owner's report, 2026-11-16), and its map square showed as a minor's under the presets' Obscure settings. An
   item the game has made already is ended by the game itself once its state is written; one
   that may be there as another kind of object (in a room the game has loaded or within two
   map squares of the player) stays until the player is farther from it
