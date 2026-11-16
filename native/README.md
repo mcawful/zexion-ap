@@ -599,7 +599,11 @@ dealt on the next load ("DeathLink").
   with no popup of the helper's, to go off at once, whatever popups wait. Two frames is
   chosen: that a load fills the map grid within one frame call is assumed, and not measured
   for a load from the file select; a load that took longer while reading as play would set
-  off every own trap the save holds (a read-only trace is still to make). It follows the
+  off every own trap the save holds. A read-only trace of 2026-11-15 did not settle it: at
+  a RELOAD FROM SAVE the grid was the save's by the first sample that read in play (0.3 ms
+  after the last that read menu), and two loads from the file select were over a map that
+  held the save's cells already, which shows nothing (`lab/ingame-collected-checks.md`,
+  "Check P"). It follows the
   save, as this world's other items do
   (the owner's decision, 2026-11-14): after a death or a reload without saving, the item lies in
   its room again, and picking it up again sets the trap off again. No load is taken for a
