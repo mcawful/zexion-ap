@@ -266,7 +266,9 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   there instead, and you still pick it up to start the fight (checked in the game). In an
   upside-down room, and after a boss, a checked item still shows; touching it gives you
   nothing, and after a boss it opens the warp gate, as picking up the reward does. An enemy
-  that would have dropped a checked item drops nothing (all checked in the game). Your own
+  that would have dropped a checked item drops nothing (all checked in the game). An item
+  kept collected this way gives you nothing, not the Scrap Metal you get for picking one
+  up (not yet checked in the game; a save from before this keeps the Scrap Metal it got). Your own
   items aren't touched: they follow your save, so after a death or a reload they're back in
   their rooms. This needs the client connected (a death, another save and `!release` are not
   yet checked in the game). A save keeps what was marked: played against a

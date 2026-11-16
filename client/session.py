@@ -28,7 +28,9 @@ Safety, in order:
   An item object in the loaded rooms is ended by the game once its state is written, and the
   map cell is never written under one still there; a cell whose item may be there as another
   kind of object is left. A read or write of it that fails is said once and never holds back
-  the checks, the goal or the grants.
+  the checks, the goal or the grants. A marked cell gives no Scrap Metal: the grants count a
+  stand-in's only where it was picked up, by the game's pickup counter
+  (reconcile.marked_count), and nothing is marked while that counter cannot be read.
 
 With the helper attached (``step``'s ``helper``) the grants go as one batch the helper applies
 between frames, re-checking each byte, with the game's popup for each item not yet
@@ -72,6 +74,7 @@ class Snapshot:
     stamp: bytes = b""  # game.Game.save_stamp, b"" if it could not be read
     cell: tuple[int, int] = (-1, -1)  # game.PlayerState.cell
     game_saved: int | None = None  # game.Game.game_saved, None if it could not be read
+    pickups: int | None = None  # game.Game.pickup_counter, None if it could not be read
 
 
 # The flags a poll reads, in one read from the first.
@@ -100,6 +103,7 @@ def read_once(g: game.Game) -> Snapshot:
         stamp,
         player.cell,
         game_saved(g),  # after the stamp (game.Game.game_saved)
+        pickup_counter(g),
     )
 
 
@@ -118,6 +122,17 @@ def game_saved(g: game.Game) -> int | None:
     left behind)."""
     try:
         return g.game_saved()
+    except game.GameNotRunning:
+        raise
+    except game.GameError:
+        return None
+
+
+def pickup_counter(g: game.Game) -> int | None:
+    """game.Game.pickup_counter, or None if it could not be read (its patterns no longer
+    match: patterns.CLIENT_ONLY_TARGETS)."""
+    try:
+        return g.pickup_counter()
     except game.GameNotRunning:
         raise
     except game.GameError:
@@ -166,12 +181,17 @@ def to_mark(
 
 def same_load(g: game.Game, stamp: bytes) -> bool:
     """Whether the game is in play in the randomizer save a look found, by its slot's stamp
-    (new after each save, death and reload): read again right before the marking's writes."""
+    (new after each save, death and reload), with no transition counting down: read again
+    right before the marking's writes. A TELEPORT TO is the one load that reads as play under
+    an unchanged stamp: it copies the play state as its entry is chosen and loads that copy a
+    second later, the transition timer counting meanwhile (game.Game.transition_timer), so a
+    write in that second would be taken back by the load."""
     return (
         len(stamp) >= 4
         and g.state() == game.IN_PLAY
         and g.rando_marker() == 1
         and g.save_stamp() == stamp
+        and g.transition_timer() == 0
     )
 
 
@@ -197,9 +217,14 @@ def mark_collected(
     cell is marked once it had an item object here (``ended`` keeps those across polls of one
     load, so the map cell follows even if the object goes between two polls). One whose map
     cell could not be written this time (the game changed it since the look) is left for a
-    later poll. Nothing counts as marked if the game is not in play after the last write (a
-    load began: the next polls look again). GameNotRunning is raised; another GameError leaves
-    that location for a later poll."""
+    later poll. What is reported as marked is what a last look still finds so: nothing if the
+    game does not read as in play with no transition counting after the last write, and not a
+    cell whose item state reads there again (a load took it back under a map cell written
+    since: the next polls write the state again, ``to_mark``). That look sees less than
+    happened, both ways: a pause or a death right after the writes leaves them in place, though
+    nothing is reported; and a load that begins after the look (a TELEPORT TO chosen then)
+    takes back marks that were reported. Either way the next polls look at the bytes again.
+    GameNotRunning is raised; another GameError leaves that location for a later poll."""
     if not same_load(g, stamp):
         return set()
     ended = set() if ended is None else ended
@@ -247,10 +272,21 @@ def mark_collected(
             logger.info(f"Not marked collected this time: {exc}")
             continue
         marked.add(i)
-    if marked and g.state() != game.IN_PLAY:
-        logger.info("A load began during the marking; the next polls look again.")
+    if not marked:
+        return marked
+    if g.state() != game.IN_PLAY or g.transition_timer() != 0:
+        logger.info("The game left play during the marking; the next polls look again.")
         return set()
-    return marked
+    states = g.cell_items()
+    undone = {
+        i for i in marked if states[cells[i][1] * ids.MAP_SIZE + cells[i][0]] == game.ITEM_THERE
+    }
+    if undone:
+        logger.info(
+            f"A load took back {len(undone)} item state(s) during the marking; the next polls "
+            "write them again."
+        )
+    return marked - undone
 
 
 def read_settled(g: game.Game, gap: float = game.SETTLE_SECONDS) -> Snapshot | None:
@@ -485,11 +521,12 @@ class Session:
         within NEAR_CELLS of the player's cell (an object of another kind may be the item, in
         a reversed-gravity room, say). All of it is read again right before the writes, with
         the save and the state (mark_collected). The map cell is never written under an item
-        object still there: the save would count a pickup of it twice. The Scrap
-        Metal a stand-in's pickup gives comes with the next polls' grants (reconcile.should_own
-        counts a marked cell as collected), so a save reads the same marked or picked up, but
-        for the game's pickup counter (ITEMS on the pause screen), which marking leaves
-        alone."""
+        object still there: the save would count a pickup of it twice. A marked cell gives
+        nothing: not the Scrap Metal a stand-in's pickup gives (reconcile.should_own leaves the
+        marked ones out), nor a count on the game's pickup counter (ITEMS on the pause
+        screen), which marking leaves alone and by which the marked cells are told from those
+        picked up (reconcile.marked_count). So nothing is marked while the counter cannot be
+        read (``snap.pickups`` None): a cell marked then would be taken for one picked up."""
         gone = set(gone)
         if not gone:
             self._to_mark = set()
@@ -498,6 +535,14 @@ class Session:
         gone = plain(cells, gone)
         if not gone:
             self._to_mark = set()
+            return set()
+        if snap.pickups is None:
+            self._to_mark = set()
+            self.say_once(
+                "mark counter",
+                "Can't mark other players' items collected in this build of the game (its "
+                "pickup counter was not found); items and checks still work.",
+            )
             return set()
         states = g.cell_items()
         want = to_mark(snap.grid, states, cells, gone)
@@ -529,8 +574,9 @@ class Session:
     ) -> dict[int, int]:
         plan = self.plan
         guns_first = plan.guns_first
+        marked = reconcile.marked_count(plan.location_items, collected, snap.pickups)
         target = reconcile.should_own(
-            plan.start_items, plan.location_items, collected, received, guns_first
+            plan.start_items, plan.location_items, collected, received, guns_first, marked
         )
         result = reconcile.grants(snap.inventory, target, guns_first)
         for item, missing in result.not_grantable.items():
