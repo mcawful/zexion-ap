@@ -16,8 +16,8 @@
 # file it cannot open. Any other code (not found, a stub, a SyntaxError) moves on to the next
 # candidate, its stderr dropped.
 #
-# With none, a call to guard_protected.py whose payload mentions the saves or a Steam folder is
-# blocked (exit 2), as the guard does when it breaks; anything else goes ahead with a hook
+# With none, a call to guard_protected.py whose payload mentions the saves, a Steam folder or the
+# mod's offline files (ZexionAP) is blocked (exit 2), as the guard does when it breaks; anything else goes ahead with a hook
 # error notice (exit 1) naming the fix.
 
 CDPATH=
@@ -63,8 +63,9 @@ printf "Create .venv as CLAUDE.md's Setup shows, or put Python 3.11 or later on 
 # Windows' grep -i with several -e patterns aborts (exit 134, seen 2026-10-26).
 if [ "$script" = guard_protected.py ]; then
     case $input in
-        *[Gg][Aa][Ll][Ll][Aa][Nn][Tt]* | *[Ss][Tt][Ee][Aa][Mm][Aa][Pp][Pp][Ss]* | *3392510*)
-            echo "This call mentions the saves or a Steam folder, so it is blocked." >&2
+        *[Gg][Aa][Ll][Ll][Aa][Nn][Tt]* | *[Ss][Tt][Ee][Aa][Mm][Aa][Pp][Pp][Ss]* | *3392510* \
+            | *[Zz][Ee][Xx][Ii][Oo][Nn][Aa][Pp]*)
+            echo "This call mentions the saves, a Steam folder or the mod's offline files, so it is blocked." >&2
             exit 2
             ;;
     esac

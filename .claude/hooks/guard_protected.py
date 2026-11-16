@@ -1,4 +1,6 @@
-"""PreToolUse hook: block writes into the game install, the real saves, and Steam's cloud cache.
+"""PreToolUse hook: block writes into the game install, the real saves, Steam's cloud cache for
+the game, and the mod's offline files (``%LOCALAPPDATA%\\ZexionAP``: the seed list, labels and
+disk counts the helper keeps; only the helper writes them).
 
 Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows stderr to Claude.
 
@@ -65,7 +67,7 @@ set with ``env`` before a command that is otherwise allowed, or set in PowerShel
 without checking that it is a checkout of this repo. The joined reading may take
 prose such as ``print('Gallant Leaf, Zexion')`` for the folder; that blocks only in a
 command that is not read-only. It fails closed: if the guard itself breaks while looking at a
-call that mentions the saves or a Steam folder, the call is blocked.
+call that mentions the saves, a Steam folder or ``ZexionAP``, the call is blocked.
 """
 
 from __future__ import annotations
@@ -83,8 +85,9 @@ _TOOLS_DIR = Path(__file__).resolve().parent.parent.parent / "tools"
 
 BLOCK_HINT = (
     "Blocked by .claude/hooks/guard_protected.py: this would write into the Zexion install, the "
-    "real save folder, or Steam's cloud cache for the game. Read-only commands are fine. Save "
-    "experiments go through tools/save_lab.py (see /save-lab), which backs up first."
+    "real save folder, Steam's cloud cache for the game, or the mod's offline files "
+    "(%LOCALAPPDATA%\\ZexionAP). Read-only commands are fine. Save experiments go through "
+    "tools/save_lab.py (see /save-lab), which backs up first."
 )
 
 # The tools that run a shell command, and whether it is read as PowerShell.
@@ -960,10 +963,11 @@ def _names_app_id(text: str, words: list[Word], protected) -> bool:
 
 def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     """Whether words may build a protected path from pieces: the app id as a path component
-    (``_names_app_id``); or, in a command that mentions ``gallant`` or ``steamapps``, a
-    ``Zexion`` piece that starts a word or a quoted or comma-separated piece of one, or follows
-    a variable or a ``…Leaf`` or ``…common`` piece (``base = join(…, 'Gallant Leaf');
-    join(base, 'Zexion')``), or a ``common`` component after a variable."""
+    (``_names_app_id``); a ``ZexionAP`` piece in a command that mentions ``LOCALAPPDATA`` (or
+    ``AppData/Local``), however far apart; or, in a command that mentions ``gallant`` or
+    ``steamapps``, a ``Zexion`` piece that starts a word or a quoted or comma-separated piece
+    of one, or follows a variable or a ``…Leaf`` or ``…common`` piece (``base = join(…,
+    'Gallant Leaf'); join(base, 'Zexion')``), or a ``common`` component after a variable."""
     low = protected.normalize(text)
     if _names_app_id(text, words, protected):
         return True
@@ -971,6 +975,10 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     # (code: join(base, 'Zexion', …)), then each piece's path components.
     pieces = [s for w in words for s in re.split(r"[\"'\s,+()]+", protected.normalize(w))]
     parts = [[c for c in s.split("/") if c] for s in pieces if s]
+    # The offline folder built from a variable: ``d = $LOCALAPPDATA; join(d, 'ZexionAP')``.
+    local = re.search(r"local(?:app(?:lication)?)?data|appdata/local", low)
+    if local and any(c == "zexionap" for p in parts for c in p):
+        return True
     if "gallant" not in low and "steamapps" not in low:
         return False
     for p in parts:
@@ -1184,7 +1192,7 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
 
 def _mentions_sensitive(text: str) -> bool:
     low = text.lower()
-    return any(s in low for s in ("gallant", "steamapps", "3392510"))
+    return any(s in low for s in ("gallant", "steamapps", "3392510", "zexionap"))
 
 
 def read_payload() -> str:

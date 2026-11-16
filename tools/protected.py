@@ -1,10 +1,12 @@
 """The folders this project must never write to directly, and where to find them.
 
-Three places are protected:
+Four places are protected:
 
 - the game install (any ``steamapps/common/Zexion``, in any Steam library),
 - the real save folder (``%APPDATA%/Gallant Leaf/Zexion``),
-- Steam's cloud cache for the game (``Steam/userdata/<account>/3392510``).
+- Steam's cloud cache for the game (``Steam/userdata/<account>/3392510``),
+- the mod's offline files (``%LOCALAPPDATA%/ZexionAP``: the seed list, labels and disk counts
+  the helper keeps for play without the client). Only the helper writes them.
 
 Matching is by pattern rather than by this machine's paths, so the same rules hold on any PC.
 The write-guard hook (``.claude/hooks/guard_protected.py``) and the tools in this folder share
@@ -32,6 +34,13 @@ _PROTECTED = [
     re.compile(r"steamapps/common/zexion(?![\w-])"),
     re.compile(r"gallant leaf/zexion(?![\w-])"),
     re.compile(rf"(?<![\w-])userdata/\d+/{STEAM_APP_ID}(?![\w-])"),
+    # The offline folder: ``ZexionAP`` after ``AppData/Local`` or ``LOCALAPPDATA`` (or
+    # ``LocalApplicationData``), with at most a few characters between, so an env var that is
+    # not set here, or ``os.environ['LOCALAPPDATA'], 'ZexionAP'``, still counts. A longer name
+    # (``ZexionAP-notes``, ``ZexionAP.md``) does not.
+    re.compile(
+        r"(?:appdata\W{0,8}local|local(?:app(?:lication)?)?data)\W{0,8}zexionap(?![\w-]|\.\w)"
+    ),
 ]
 # The same folders as path components, for ``word_may_name_protected``. ``_DIGITS`` stands for
 # the Steam account id.
@@ -40,6 +49,8 @@ _PROTECTED_PARTS: list[tuple] = [
     ("steamapps", "common", "zexion"),
     ("gallant leaf", "zexion"),
     ("userdata", _DIGITS, str(STEAM_APP_ID)),
+    ("appdata", "local", "zexionap"),
+    ("localappdata", "zexionap"),  # the variable left unexpanded (``$env:LOCALAPPDATA``)
 ]
 
 # Environment variables that commonly prefix a path to the saves or the Steam library.
@@ -71,6 +82,30 @@ def normalize(text: str) -> str:
     text = text.replace("\\ ", " ").replace("\\", "/")
     text = re.sub(r"/{2,}", "/", text)
     return text.lower()
+
+
+def _local_appdata() -> str:
+    """``LOCALAPPDATA`` as ``normalize`` reads a path, without a trailing slash. "" when it is
+    not set (Linux and macOS), so nothing more is protected there and nothing fails."""
+    return normalize(os.environ.get("LOCALAPPDATA") or "").rstrip("/")
+
+
+def _offline_patterns() -> list[re.Pattern]:
+    """The offline folder where this machine's ``LOCALAPPDATA`` puts it, for a value that is
+    not the usual ``AppData/Local`` (the fixed pattern in ``_PROTECTED`` covers that and the
+    unexpanded variable)."""
+    base = _local_appdata()
+    if not base:
+        return []
+    return [re.compile(re.escape(base + "/zexionap") + r"(?![\w-]|\.\w)")]
+
+
+def _offline_parts() -> list[tuple]:
+    """The same folder as path components, for ``word_may_name_protected``."""
+    parts = _path_parts(_local_appdata())
+    if not parts or any(re.search(r"[*?\[{]", p) for p in parts):
+        return []
+    return [(*parts, "zexionap")]
 
 
 def _plain(text: str) -> str:
@@ -124,7 +159,8 @@ def mentions_protected(text: str) -> bool:
     joined = re.sub(r"[\"'\s,+/()$]+", _join_run, joined)  # one pass per run: stays linear
     plain = _plain(norm)
     readings = (norm, plain, _fold_up(plain), _plain(joined))
-    return any(p.search(t) for t in readings for p in _PROTECTED)
+    patterns = _PROTECTED + _offline_patterns()
+    return any(p.search(t) for t in readings for p in patterns)
 
 
 def word_may_name_protected(word: str) -> bool:
@@ -137,7 +173,7 @@ def word_may_name_protected(word: str) -> bool:
     also match another folder.
     """
     parts = _path_parts(word)
-    for names in _PROTECTED_PARTS:
+    for names in _PROTECTED_PARTS + _offline_parts():
         last = len(names) - 1
         for start in range(len(parts) - last):
             if all(
@@ -258,7 +294,8 @@ def assert_writable(path: str | os.PathLike[str]) -> Path:
     if is_protected_path(path):
         raise ProtectedPathError(
             f"refusing to write {path}: it is inside a protected folder (the game install, the "
-            "saves, or Steam's cloud cache). Work on a copy in lab/ (see /save-lab)."
+            "saves, Steam's cloud cache, or the mod's offline files). Work on a copy in lab/ "
+            "(see /save-lab)."
         )
     return Path(path)
 
