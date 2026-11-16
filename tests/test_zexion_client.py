@@ -528,9 +528,50 @@ def test_traps_are_kept_after_the_hold_while_a_swap_is_pending_whatever_refuses_
         assert ctx.swap_pending, order
     ctx.attach_again_at, ctx.helper_back_by = 0.0, 1.0  # the hold is over
     ctx.helper_lost = True
-    monkeypatch.setattr(native, "attach", lambda *a: (_ for _ in ()).throw(native.NotUnloaded("x")))
+    errors = iter([native.ReplyLost("no reply within 3.0 s")])  # still not a helper attached
+    monkeypatch.setattr(native, "attach", lambda *a: (_ for _ in ()).throw(next(errors)))
     asyncio.run(zc.poll(ctx))
-    assert order[-1] == "step, keep True"
+    assert ctx.swap_pending and order[-1] == "step, keep True"
+
+
+def test_a_swap_no_longer_waits_once_the_old_helper_is_gone(monkeypatch, tmp_path) -> None:
+    # The old helper unloaded, then the new one failed to load: no helper is coming to show the
+    # traps, so they are not held (for hours) behind it.
+    ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll", native.NotUnloaded)
+    session_ = ctx.seed_state.session
+    gone = native.HelperError("loading zexion_ap.dll into the game failed")
+    gone.old_gone = True
+    errors = iter([native.NotUnloaded("a menu is open"), gone, gone])
+
+    def attach(*args) -> None:
+        order.append("attach")
+        raise next(errors)
+
+    def step(g, received, **kwargs):
+        order.append(f"step, keep {session_.keep_traps}")
+        return session.Step(state=game.IN_PLAY)
+
+    monkeypatch.setattr(native, "attach", attach)
+    monkeypatch.setattr(session_, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert ctx.swap_pending
+    ctx.attach_again_at = 0.0
+    asyncio.run(zc.poll(ctx))
+    assert not ctx.swap_pending
+    ctx.attach_again_at, ctx.helper_back_by = 0.0, 1.0  # the hold is over
+    asyncio.run(zc.poll(ctx))
+    assert order[-1] == "step, keep False"
+
+
+def test_a_swap_is_over_when_a_helper_attaches_or_the_game_closes(monkeypatch) -> None:
+    ctx = context(connection(), Closed())
+    ctx.swap_pending = True
+    monkeypatch.setattr(native, "attach", lambda *a: Helper())
+    assert asyncio.run(ticks.attach_helper(ctx)) and ctx.helper is not None
+    assert not ctx.swap_pending
+    ctx.swap_pending = True
+    zc.game_closed(ctx, ctx.seed_state)
+    assert not ctx.swap_pending
 
 
 def test_traps_are_not_kept_with_no_swap_to_wait_for(monkeypatch, tmp_path) -> None:

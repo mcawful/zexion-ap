@@ -455,6 +455,26 @@ def test_a_mod_of_another_version_that_wont_unload_says_they_dont_match(
     assert "(a menu is open)" in str(caught.value), "the refusal's reason, for the player"
 
 
+def test_an_error_after_the_old_helper_unloaded_says_it_is_gone(tmp_path, monkeypatch) -> None:
+    # The client holds the traps it receives for the helper to come (Session.keep_traps) only
+    # while the old one is loaded: ``old_gone`` is how attach tells the two apart.
+    built = tmp_path / "zexion_ap.dll"
+    built.write_bytes(b"")
+    game = stand_in_attach(monkeypatch, loaded="0.29.0", stays=True)
+    with pytest.raises(native.NotUnloaded) as caught:
+        native.attach(game, built)
+    assert not caught.value.old_gone, "still loaded"
+    game.stays = False
+
+    def fail(*args, **kwargs) -> bool:
+        raise native.HelperError("loading zexion_ap.dll into the game failed")
+
+    monkeypatch.setattr(native, "load", fail)
+    with pytest.raises(native.HelperError, match="loading") as caught:
+        native.attach(game, built)
+    assert game.unloads == 1 and caught.value.old_gone
+
+
 @pytest.mark.parametrize(
     ("error", "said"),
     [

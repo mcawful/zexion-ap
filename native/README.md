@@ -32,7 +32,8 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   unload ("Unloading": a menu open, a trap waiting or running) is asked again every 5 s, and the
   client's line says why (`native.NotUnloaded`); meanwhile items are held back as after a failed
   attach (up to 30 s, then given with no popup: "AP saves without the client"; the traps
-  received then are kept for the helper that replaces it, whatever it refuses for next: "Traps",
+  received then are kept for the helper that replaces it, whatever it refuses for next, until
+  one attaches, the old one is gone and the new fails to load, or the game closes: "Traps",
   "Once"), also when the client attaches first with the game already running. That hold is only for a helper that may
   still come (no reply, no frame yet, a failed load, one refusing to unload): with the mod
   missing, not matching, or turned off by `zexion_ap.disabled`, items are given at once with no

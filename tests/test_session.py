@@ -795,6 +795,36 @@ def test_direct_writes_drop_the_waiting_traps_and_say_so(setup, caplog) -> None:
     assert "do nothing: Disorient Trap, Disruption Trap." in caplog.text
 
 
+def test_direct_writes_name_a_trap_once_when_it_is_held_and_past_the_count(setup, caplog) -> None:
+    # After a restart between the record and the count stores, the trap is in both.
+    session, g = setup
+    session.announced_read = True
+    received = [17, ids.DISRUPTION_TRAP]
+    session.announced, session.held_traps = 1, [1]
+    with caplog.at_level(logging.INFO, logger="Zexion"):
+        give(session, g, received)
+    assert "do nothing: Disruption Trap." in caplog.text
+
+
+def test_a_lost_reply_part_way_clears_only_the_held_traps_it_may_have_handed_over(
+    with_helper,
+) -> None:
+    session, g, helper, _ = with_helper
+    received, senders = [ids.DISORIENT_TRAP] * 300, ["x" * 400] * 300
+
+    def apply(text: str) -> str:
+        helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    helper.apply = apply
+    session.announced, session.held_traps = len(received), list(range(len(received)))
+    session.step(g, received, gap=0, senders=senders)
+    session.step(g, received, gap=0, senders=senders)
+    first = helper.requests[0].count("popup")
+    assert 0 < first < len(received), "split in two"
+    assert session.held_traps == list(range(first, len(received)))
+
+
 def test_direct_writes_keep_the_waiting_traps_for_a_helper_about_to_replace_the_old(
     setup, caplog
 ) -> None:

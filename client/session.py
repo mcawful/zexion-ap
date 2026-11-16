@@ -621,10 +621,12 @@ class Session:
                     }
                 )
             else:
-                waiting = [received[i] for i in self.held_traps if i < len(received)]
-                waiting += [c for c in received[self.announced :] if c in ids.TRAPS]
+                waiting = sorted(
+                    {i for i in self.held_traps if i < len(received)}
+                    | {i for i in range(self.announced, len(received)) if received[i] in ids.TRAPS}
+                )  # by index: a held trap past the count (a restart) is in both
                 if waiting:
-                    names = ", ".join(ids.TRAP_NAMES[c] for c in waiting)
+                    names = ", ".join(ids.TRAP_NAMES[received[i]] for i in waiting)
                     logger.info(f"Without the mod, these traps sent to you do nothing: {names}.")
                 self.held_traps = []
             self.announced = len(received)

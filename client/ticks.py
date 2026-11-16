@@ -80,6 +80,8 @@ async def attach_helper(ctx: ZexionContext) -> bool:
         if ctx.said("helper detail", str(exc)):
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
+        if exc.old_gone:
+            ctx.swap_pending = False  # nothing left to wait for: the old helper is gone
         # One that didn't unload (a menu open, a trap waiting or running) may on a later try:
         # worth waiting for, as for a helper lost, but asked only every REFUSED_RETRY_SECONDS
         # (each try has the old helper put back what a client going away does).
