@@ -176,9 +176,12 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   So R'Talva X34 Y51 is left unmarked too since, and showed as scrap in game: 2026-11-15
   (the client of PR #145's branch at 399f57e with the room listed on top).
   In those runs each mark gave one Scrap Metal; a mark gives none since (the second review
-  round, 2026-11-15), which, with the marking's wait through a TELEPORT TO, is tested only.
+  round, 2026-11-15): run in game the same day with the client of PR #146's branch at
+  c7186e9 (a pickup lost to a reload, then marked, and 74 marked at their owner's collect
+  gave none; a received Scrap Metal counted on top; an event square's item marked with the
+  player in its room). The marking's wait through a TELEPORT TO is tested only.
   Not run in game: a death, another save of the seed, `!release`, a reload beside an item,
-  an item with an after-pickup event (an arena's, say) marked while the player stands in its
+  an arena's item marked while the player stands in its
   room, and a room that shows its item as an object of another kind beside the item object
   (Guardia X22 Y7) marked ("Other players' items", "Kept collected"; "What decides whether
   an item appears").

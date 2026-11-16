@@ -599,7 +599,11 @@ dealt on the next load ("DeathLink").
   with no popup of the helper's, to go off at once, whatever popups wait. Two frames is
   chosen: that a load fills the map grid within one frame call is assumed, and not measured
   for a load from the file select; a load that took longer while reading as play would set
-  off every own trap the save holds (a read-only trace is still to make). It follows the
+  off every own trap the save holds. A read-only trace of 2026-11-15 did not settle it: at
+  a RELOAD FROM SAVE the grid was the save's by the first sample that read in play (0.3 ms
+  after the last that read menu), and two loads from the file select were over a map that
+  held the save's cells already, which shows nothing (`lab/ingame-collected-checks.md`,
+  "Check P"). It follows the
   save, as this world's other items do
   (the owner's decision, 2026-11-14): after a death or a reload without saving, the item lies in
   its room again, and picking it up again sets the trap off again. No load is taken for a
@@ -1019,8 +1023,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   code: not run in game). The state written under a live item object also lets an object of
   the cell run the cell's after-pickup event then, with the player in the room
   (`docs/re/memory.md`, "A cell's event after its item is collected"): the one cell run this
-  way in game, Kresezoa X22 Y13, has no such event, so an arena's or another event square's
-  item marked while the player stands in its room is not run. And a cell once seen with an
+  way in game on 2026-11-14, Kresezoa X22 Y13, has no such event; an event square's,
+  Kresezoa X23 Y21's (event 879), was run so on 2026-11-15: the item went, and nothing else
+  was reported; an arena's is not run. And a cell once seen with an
   item object is marked without the loaded and near tests for the rest of that load
   (`mark_collected`, `ended`), which is what lets its map cell follow; a room that shows its
   item as an object of another kind beside the item-pool object (type 715: Guardia X22 Y7)
@@ -1082,12 +1087,12 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   copy: item state 1 and `0x1B`). By that day's rule each marked cell gave one Scrap Metal:
   82 after the collect, which that save keeps. Not run in game: a death, another save of the
   seed, `!release`, and a cell whose item an object holds while its room is loaded (the
-  client connecting with locations already checked is the third run below); nor, added
-  after that run (c77879d and after) and stand-in
-  tested only, the loaded-cell test (the loaded byte itself was not read live in any run),
-  the checks right before the writes, the attach without `cell_state` or `pickup_counter`,
-  a marked cell giving no Scrap Metal, the transition timer's test and the look after the
-  writes. A second run
+  client connecting with locations already checked is the third run below); nor, in that
+  run, what was added after it (c77879d and after): the loaded-cell test, the checks right
+  before the writes, the attach without `cell_state` or `pickup_counter`, a marked cell
+  giving no Scrap Metal, the transition timer's test and the look after the writes (a
+  marked cell giving none and the loaded bytes read live are in the run after the review
+  rounds, below; the rest is stand-in tested only). A second run
   (2026-11-14, B1, slot 5, the seed `lab/ap/live65`, the client and helper of PR #144's
   branch at 79bee7a; the owner's reports and read-only looks, same record): with the player
   beside another player's item at Kresezoa X22 Y13, its owner's `!collect` marked all 79 of
@@ -1113,6 +1118,22 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   this world's own two dropped them, and the room was left as usual; Kresezoa X23 Y21, an
   event square of Exodia X20 Y0's kind, marked, showed nothing unusual. Not run in game: a
   death, another save of the seed, `!release`, and a reload beside an item.
+- **Run in game after the review rounds** (2026-11-15, B1, slot 5, a new game of the seed
+  `lab/ap/live65` against a server with none of the other player's items checked; the client
+  and helper of PR #146's branch at c7186e9, which holds this marking; the owner's reports,
+  read-only looks and a read-only trace, `lab/ingame-collected-checks.md`, "Check M" to
+  "Check P"): another player's item picked up gave its one Scrap Metal; one picked up and
+  then lost to a RELOAD FROM SAVE was marked 0.76 s after the load, gone from its room and
+  collected on the map, and gave none; a Scrap Metal received after that was given on top;
+  its owner's `!collect`, with the player standing in an event square's room (Kresezoa X23
+  Y21), marked 74 in one pass 1.3 s later, the item in that room among them (it
+  disappeared; nothing else was reported there), and gave none. The Scrap Metal count read
+  1, 1, 2, 4 and 4 at those steps, and the game's pickup count equaled the collected cells
+  less the marks at every read. The loaded bytes, read live for the first time, were the
+  3 x 3 cells around the player's. Not run in game: a death, another save of the seed,
+  `!release`, a reload beside an item, an arena's item marked with the player in its room,
+  a type-715 room marked, and the marking's wait through a TELEPORT TO with a mark pending
+  (three teleports were made, none with one).
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.
