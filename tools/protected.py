@@ -54,7 +54,16 @@ _PROTECTED_PARTS: list[tuple] = [
 ]
 
 # Environment variables that commonly prefix a path to the saves or the Steam library.
-_ENV_NAMES = ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME", "PROGRAMFILES(X86)", "PROGRAMFILES")
+_ENV_NAMES = (
+    "APPDATA",
+    "LOCALAPPDATA",
+    "USERPROFILE",
+    "HOME",
+    "TEMP",  # %LOCALAPPDATA%\Temp: ``$TEMP/../ZexionAP`` is the offline folder
+    "TMP",
+    "PROGRAMFILES(X86)",
+    "PROGRAMFILES",
+)
 
 
 class ProtectedPathError(RuntimeError):

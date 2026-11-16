@@ -964,10 +964,11 @@ def _names_app_id(text: str, words: list[Word], protected) -> bool:
 def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     """Whether words may build a protected path from pieces: the app id as a path component
     (``_names_app_id``); a ``ZexionAP`` piece in a command that mentions ``LOCALAPPDATA`` (or
-    ``AppData/Local``), however far apart; or, in a command that mentions ``gallant`` or
-    ``steamapps``, a ``Zexion`` piece that starts a word or a quoted or comma-separated piece
-    of one, or follows a variable or a ``…Leaf`` or ``…common`` piece (``base = join(…,
-    'Gallant Leaf'); join(base, 'Zexion')``), or a ``common`` component after a variable."""
+    ``AppData/Local``, or ``GetFolderPath(28)``), however far apart; or, in a command that
+    mentions ``gallant`` or ``steamapps``, a ``Zexion`` piece that starts a word or a quoted or
+    comma-separated piece of one, or follows a variable or a ``…Leaf`` or ``…common`` piece
+    (``base = join(…, 'Gallant Leaf'); join(base, 'Zexion')``), or a ``common`` component after
+    a variable."""
     low = protected.normalize(text)
     if _names_app_id(text, words, protected):
         return True
@@ -976,7 +977,10 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     pieces = [s for w in words for s in re.split(r"[\"'\s,+()]+", protected.normalize(w))]
     parts = [[c for c in s.split("/") if c] for s in pieces if s]
     # The offline folder built from a variable: ``d = $LOCALAPPDATA; join(d, 'ZexionAP')``.
-    local = re.search(r"local(?:app(?:lication)?)?data|appdata/local", low)
+    # ``GetFolderPath(28)`` (or ``0x1c``) is LocalApplicationData by number.
+    local = re.search(
+        r"local(?:app(?:lication)?)?data|appdata/local|getfolderpath\([^)]*?\b(?:28|0x1c)\b", low
+    )
     if local and any(c == "zexionap" for p in parts for c in p):
         return True
     if "gallant" not in low and "steamapps" not in low:
@@ -1164,6 +1168,11 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     for target in targets:
         if target.startswith("&") or target.lower() in HARMLESS_TARGETS:
             continue
+        # A variable the command sets itself (``TEMP="<folder>"; … > $TEMP/x``) is not the one
+        # in the hook's environment, which ``protected.normalize`` would put in its place.
+        refs = {next(g for g in m.groups() if g).lower() for m in _ENV_REF.finditer(target)}
+        if refs & assigned:
+            return f"{BLOCK_HINT}\nRedirect target: {target}"
         expanded = protected.normalize(_expand_env(target, assigned))
         if (
             protected.is_protected_path(expanded)  # also by its words: Gallant*, GALLAN~1

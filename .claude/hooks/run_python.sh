@@ -17,8 +17,8 @@
 # candidate, its stderr dropped.
 #
 # With none, a call to guard_protected.py whose payload mentions the saves, a Steam folder or the
-# mod's offline files (ZexionAP) is blocked (exit 2), as the guard does when it breaks; anything else goes ahead with a hook
-# error notice (exit 1) naming the fix.
+# mod's offline files (ZexionAP) is blocked (exit 2), as the guard does when it breaks; anything
+# else goes ahead with a hook error notice (exit 1) naming the fix.
 
 CDPATH=
 hooks=$(cd "$(dirname "$0")" && pwd)
@@ -65,7 +65,8 @@ if [ "$script" = guard_protected.py ]; then
     case $input in
         *[Gg][Aa][Ll][Ll][Aa][Nn][Tt]* | *[Ss][Tt][Ee][Aa][Mm][Aa][Pp][Pp][Ss]* | *3392510* \
             | *[Zz][Ee][Xx][Ii][Oo][Nn][Aa][Pp]*)
-            echo "This call mentions the saves, a Steam folder or the mod's offline files, so it is blocked." >&2
+            echo "This call mentions the saves, a Steam folder or the mod's offline files," \
+                "so it is blocked." >&2
             exit 2
             ;;
     esac

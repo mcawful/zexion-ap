@@ -895,6 +895,53 @@ def test_the_offline_folder_is_blocked_with_the_variable_missing(
     assert run("Bash", command=f'rm -rf "{spelling}/Temp/x"') is None
 
 
+@pytest.mark.parametrize("name", ["TEMP", "TMP"])
+def test_the_offline_folder_through_temp_blocked(name: str, monkeypatch) -> None:
+    # TEMP and TMP are AppData\Local\Temp: one ``..`` leads to the folder.
+    monkeypatch.setenv(name, f"{LOCAL}/Temp")
+    for spelling in (f"${name}", f"${{{name}}}", f"%{name}%"):
+        assert run("Bash", command=f'rm -rf "{spelling}/../ZexionAP"'), spelling
+        assert run("Bash", command=f'echo x > "{spelling}/../ZexionAP/x"'), spelling
+        assert run("Write", file_path=f"{spelling}/../ZexionAP/x"), spelling
+    assert run("PowerShell", command=f'Remove-Item -Recurse "$env:{name}\\..\\ZexionAP"')
+    assert run("PowerShell", command=f'Remove-Item -Recurse "${{env:{name}}}\\..\\ZexionAP"')
+    # Writes under it, and a read of the folder through it, stay allowed.
+    assert run("Bash", command=f'rm -rf "${name}/x"') is None
+    assert run("Bash", command=f'echo x > "${name}/x.txt"') is None
+    assert run("Bash", command=f'ls "${name}/../ZexionAP"') is None
+    assert run("PowerShell", command=f'Remove-Item -Recurse "$env:{name}\\x"') is None
+    assert run("Write", file_path=f"${name}/x.txt") is None
+
+
+def test_reading_the_offline_folder_through_a_folder_number_allowed() -> None:
+    get = "[Environment]::GetFolderPath(28)"
+    assert run("PowerShell", command=f"Get-ChildItem (Join-Path ({get}) 'ZexionAP')") is None
+
+
+@pytest.mark.parametrize("name", ["TEMP", "APPDATA"])
+def test_a_variable_the_command_sets_itself_is_not_the_environments(name: str, monkeypatch) -> None:
+    # Else ``$TEMP`` would be read as the real Temp folder and the redirect let through.
+    monkeypatch.setenv(name, f"{LOCAL}/Temp")
+    for folder in (SAVES, OFFLINE):
+        assert run("Bash", command=f'{name}="{folder}"; ls lab > "${name}/x"')
+        assert run("Bash", command=f'export {name}="{folder}"; echo x >> "${{{name}}}/x"')
+
+
+@pytest.mark.parametrize("number", ["28", "0x1c", "0x1C", " 28 "])
+def test_the_offline_folder_through_a_folder_number_blocked(number: str) -> None:
+    # GetFolderPath(28) is LocalApplicationData.
+    get = f"[Environment]::GetFolderPath({number})"
+    assert run("PowerShell", command=f"Remove-Item -Recurse (Join-Path ({get}) 'ZexionAP')")
+    assert run("PowerShell", command=f'Remove-Item -Recurse "$({get})\\ZexionAP"')
+    assert run("PowerShell", command=f"$d = {get}; Remove-Item -Recurse (Join-Path $d 'ZexionAP')")
+    assert run("PowerShell", command=f"Set-Content -Path ({get} + '\\ZexionAP\\x') -Value 1")
+    other = "[Environment]::GetFolderPath(26)"  # ApplicationData: not this folder
+    assert (
+        run("PowerShell", command=f"Remove-Item -Recurse (Join-Path ({other}) 'ZexionAP')") is None
+    )
+    assert run("PowerShell", command=f"Remove-Item -Recurse (Join-Path ({get}) 'Temp\\x')") is None
+
+
 def test_the_offline_folder_with_a_different_local_appdata(monkeypatch) -> None:
     monkeypatch.setenv("LOCALAPPDATA", "D:/Profiles/someone/Local")
     assert run("Bash", command='rm -rf "$LOCALAPPDATA/ZexionAP"')
