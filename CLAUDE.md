@@ -250,8 +250,9 @@ release's.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
   a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
-  must agree on (version, builds, `config` keys, the flags and layouts both read), and the
-  world's `world_version`.
+  must agree on (version, builds, `config` keys, the request names and the replies the client
+  branches on, the offline seed's header and keys, the label separator, the font's punctuation,
+  the item record count, the flags and layouts both read), and the world's `world_version`.
   `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
   `test_release_notes.py` and `test_release_footer.py` test the release builder, the data
   generator, the release gate, the release's message and the install guide in it.

@@ -173,7 +173,6 @@ class _Game:
     folder: str = "0"
     build: str = "B1"  # the build the helper knows the game as
     stays: bool = False  # the helper refuses to unload
-    refusal: str = "a menu is open"  # its reason
     loads: int = 0
     unloads: int = 0
     rva: dict[str, int] = field(default_factory=dict)
@@ -214,7 +213,7 @@ def stand_in_attach(monkeypatch, **fields) -> _Game:
         def request(self, text: str, *args: object) -> str:
             assert text == "unload"
             if game.stays:
-                raise native.HelperError(f"{game.refusal}; not unloading")
+                raise native.HelperError("a menu is open; not unloading")
             game.unloads += 1
             game.loaded = None
             return "bye"
@@ -454,18 +453,6 @@ def test_a_mod_of_another_version_that_wont_unload_says_they_dont_match(
         native.attach(game, built)
     assert "restart Zexion" in str(caught.value) and game.loads == 0
     assert "(a menu is open)" in str(caught.value), "the refusal's reason, for the player"
-
-
-@pytest.mark.parametrize("refusal", [*native.TRAP_REFUSALS, "a menu is open"])
-def test_only_a_trap_refusal_is_marked_as_one(tmp_path, monkeypatch, refusal) -> None:
-    # The client keeps the traps received meanwhile for the helper that replaces this one
-    # (Session.keep_traps) only while a trap is why it stays.
-    built = tmp_path / "zexion_ap.dll"
-    built.write_bytes(b"")
-    game = stand_in_attach(monkeypatch, loaded="0.29.0", stays=True, refusal=refusal)
-    with pytest.raises(native.NotUnloaded) as caught:
-        native.attach(game, built)
-    assert caught.value.trap == (refusal in native.TRAP_REFUSALS)
 
 
 @pytest.mark.parametrize(

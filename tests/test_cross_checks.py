@@ -215,7 +215,7 @@ def test_the_replies_the_client_branches_on_are_ones_the_helper_gives() -> None:
         "unknown line ", "missing ", "; not unloading", "bye", "ok", "applied", "refused ",
         "stored", "unchanged", "labeled", "spawned", "died", "armed", "shown", "unknown", "idle",
         "queued", "on:", "refused the new game is not this seed", discs.ENDING_STARTED,
-        *native.TRAP_REFUSALS, "a menu is open", "free", "locked", "intel on", "intel off",
+        "a menu is open", "free", "locked", "intel on", "intel off",
         "discs on", "discs off",
     )  # fmt: skip
     for reply in replies:

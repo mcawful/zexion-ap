@@ -1090,7 +1090,7 @@ def test_requests_that_never_reached_the_helper_are_not_misses(why, monkeypatch)
     assert ctx.helper.requests == ["shield"] and counts_sent(ctx)
 
 
-def test_a_request_cancelled_on_its_way_stays_looked_for(monkeypatch) -> None:
+def test_a_request_canceled_on_its_way_stays_looked_for(monkeypatch) -> None:
     # Its thread may still deliver it: dropping it would ask for it twice.
     world = ShieldWorld()
     ctx = shield_ctx(world)

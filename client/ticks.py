@@ -85,12 +85,11 @@ async def attach_helper(ctx: ZexionContext) -> bool:
         # (each try has the old helper put back what a client going away does).
         if isinstance(exc, native.NotUnloaded):
             ctx.attach_again_at = time.monotonic() + REFUSED_RETRY_SECONDS
-            ctx.trap_blocks_unload = exc.trap
+            ctx.swap_pending = True  # stays until a helper attaches or the game closes
             return True
-        ctx.trap_blocks_unload = False
         return not isinstance(exc, (native.ModFixable, native.ModDisabled))
     ctx.said.clear("helper", "helper detail")
-    ctx.trap_blocks_unload = False
+    ctx.swap_pending = False
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
     # again, and told the client is back if the save was played offline.

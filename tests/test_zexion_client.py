@@ -6,7 +6,6 @@ installed here, so the parts of it the module imports are stand-ins."""
 from __future__ import annotations
 
 import asyncio
-import functools
 import logging
 import math
 import os
@@ -497,14 +496,45 @@ def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
     assert len(order) == 3 and order[2] != "step, retry at inf"
 
 
-@pytest.mark.parametrize("trap", [True, False])
-def test_traps_are_kept_after_the_hold_only_while_a_trap_refuses_the_unload(
-    monkeypatch, tmp_path, trap
+def test_traps_are_kept_after_the_hold_while_a_swap_is_pending_whatever_refuses_it(
+    monkeypatch, tmp_path
 ) -> None:
     # The step goes on without a helper once the hold is over; a trap received then rides on no
-    # popup, unless the old helper is only waiting for one to end: kept for the new helper.
-    error = functools.partial(native.NotUnloaded, trap=trap)
-    ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll", error)
+    # popup, unless an old helper is still to be replaced: kept for the new one, through every
+    # refusal after the first (a trap, then a menu opened by pausing, then no answer).
+    ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll", native.NotUnloaded)
+    session_ = ctx.seed_state.session
+    errors = iter(
+        [
+            native.NotUnloaded("a trap is running"),
+            native.NotUnloaded("a menu is open"),
+            native.ReplyLost("no reply within 3.0 s"),
+        ]
+    )
+
+    def attach(*args) -> None:
+        order.append("attach")
+        raise next(errors)
+
+    def step(g, received, **kwargs):
+        order.append(f"step, keep {session_.keep_traps}")
+        return session.Step(state=game.IN_PLAY)
+
+    monkeypatch.setattr(native, "attach", attach)
+    monkeypatch.setattr(session_, "step", step)
+    for _ in range(3):
+        ctx.attach_again_at = 0.0
+        asyncio.run(zc.poll(ctx))
+        assert ctx.swap_pending, order
+    ctx.attach_again_at, ctx.helper_back_by = 0.0, 1.0  # the hold is over
+    ctx.helper_lost = True
+    monkeypatch.setattr(native, "attach", lambda *a: (_ for _ in ()).throw(native.NotUnloaded("x")))
+    asyncio.run(zc.poll(ctx))
+    assert order[-1] == "step, keep True"
+
+
+def test_traps_are_not_kept_with_no_swap_to_wait_for(monkeypatch, tmp_path) -> None:
+    ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll")
     session_ = ctx.seed_state.session
 
     def step(g, received, **kwargs):
@@ -513,10 +543,7 @@ def test_traps_are_kept_after_the_hold_only_while_a_trap_refuses_the_unload(
 
     monkeypatch.setattr(session_, "step", step)
     asyncio.run(zc.poll(ctx))
-    assert order == ["attach"] and ctx.trap_blocks_unload is trap
-    ctx.attach_again_at, ctx.helper_back_by = 0.0, 1.0  # the hold is over
-    asyncio.run(zc.poll(ctx))
-    assert order[-1] == f"step, keep {trap}"
+    assert not ctx.swap_pending and order[-1] == "step, keep False"
 
 
 @pytest.mark.parametrize(

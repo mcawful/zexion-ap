@@ -501,17 +501,46 @@ def test_a_big_batch_goes_in_requests_under_the_pipes_limit(with_helper) -> None
     # A release received while the client was closed: the helper drops a request over 64 KB,
     # which the client would take for a lost reply and count every popup as shown.
     session, g, helper, _ = with_helper
-    received = [17] * 600 + [ids.DISORIENT_TRAP]
+    received = [ids.DISORIENT_TRAP] + [17] * 600
     senders = ["x" * 400] * len(received)
-    session.announced, session.held_traps = 0, [600]
+    session.announced, session.held_traps = 1, [0]
     assert give(session, g, received, senders=senders) == {17: 1}
     assert len(helper.requests) > 2, "more than one batch"
     assert all(len(r.encode()) <= offline.MAX_REQUEST for r in helper.requests)
     assert [r for r in helper.requests if "cas " in r] == helper.requests[:1], "writes go first"
     popups = [line for r in helper.requests for line in r.splitlines() if line.startswith("popup")]
     assert popups[0] == f"popup {ids.DISORIENT_TRAP} from {'x' * 400}", "the held trap first"
-    assert len(popups) == 1 + len(received)
+    assert len(popups) == 1 + 600
     assert session.announced == len(received) and session.held_traps == []
+
+
+def test_a_held_trap_the_count_has_not_reached_is_sent_once(with_helper) -> None:
+    # The record of the held traps is stored before the count: a client stopped between the two
+    # finds the trap in the record and past the count, and sends its popup with the rest.
+    session, g, helper, _ = with_helper
+    received = [17, ids.DISORIENT_TRAP]
+    session.announced, session.held_traps = 1, [1]
+    give(session, g, received, senders=["Ann", "Bob"])
+    assert helper.popups() == [f"popup {ids.DISORIENT_TRAP} from Bob"]
+    assert session.announced == 2 and session.held_traps == []
+
+
+def test_held_traps_in_later_batches_are_kept_until_their_batch_is_applied(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    received = [ids.DISORIENT_TRAP] * 300
+    senders = ["x" * 400] * len(received)
+    session.announced, session.held_traps = len(received), list(range(len(received)))
+    real = helper.apply
+
+    def apply(text: str) -> str:
+        helper.reply = "refused not in play" if len(helper.requests) == 1 else "applied"
+        return real(text)
+
+    helper.apply = apply
+    give(session, g, received, senders=senders)
+    first = helper.requests[0].count("popup")
+    assert 0 < first < len(received), "split in two"
+    assert session.held_traps == list(range(first, len(received))), "the second batch is still owed"
 
 
 def test_a_batch_refused_part_way_keeps_the_rest_for_the_next_poll(with_helper) -> None:

@@ -242,7 +242,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   record named RELOAD FROM CHECKPOINT, but it was TELEPORT TO START: the owner, 2026-11-14), and
   through RELOAD FROM CHECKPOINT, RELOAD FROM SAVE and a death's respawn: 2026-11-13 (907abfd,
   `lab/ap/live62`, `lab/ingame-checkpoint-checks.md`). Not run in game: the ending or RETURN HOME, a
-  key-look trap after the scanner, an unload refused while a trap waits, a trap's popup passed by
+  key-look trap after the scanner, received traps kept through a refused version swap, a big
+  release's popups split into batches, an unload refused while a trap waits, a trap's popup passed by
   others while it waits for one of its kind, a connection's first held-traps record beside another
   client's (the `default` operation), and the restart doubles ("Traps").
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25

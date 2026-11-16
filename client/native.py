@@ -40,10 +40,6 @@ ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0
 LOAD_SECONDS = 10.0
 UNLOAD_SECONDS = CONNECT_SECONDS = 3.0
-# The helper's reasons (game_calls.h kTrapRefusal, kTrapWaitingRefusal) for refusing an unload
-# because of a trap: one a received trap would be lost to, as the helper that replaces it is the
-# one that sets it off.
-TRAP_REFUSALS = ("a trap is running", "a trap is waiting to go off")
 UNLOAD_REFUSED = "; not unloading"  # the end of the helper's refusal: "error <why>; not unloading"
 
 
@@ -73,12 +69,7 @@ class ModMismatch(ModFixable):
 
 class NotUnloaded(ModMismatch):
     """A helper of another version that didn't unload to make way for the client's (a menu
-    open, say): a later try may unload it. ``trap``: only because a trap is running or waiting
-    to go off (TRAP_REFUSALS), which a received trap would join."""
-
-    def __init__(self, message: str, trap: bool = False):
-        super().__init__(message)
-        self.trap = trap
+    open, say): a later try may unload it."""
 
 
 class UnreadableHello(ModMismatch):
@@ -572,8 +563,7 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                         f"the mod loaded in Zexion is {_shown(version)}, this client "
                         f"{VERSION}, and it didn't unload to make way for the client's build "
                         f"({why}); the client tries again, and if it keeps failing, restart "
-                        "Zexion",
-                        trap=why in TRAP_REFUSALS,
+                        "Zexion"
                     )
                 if in_folder and notes is not None:
                     notes.append(

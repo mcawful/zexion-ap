@@ -32,9 +32,12 @@ Safety, in order:
   stand-in's only where it was picked up, by the game's pickup counter
   (reconcile.marked_count), and nothing is marked while that counter cannot be read.
 
-With the helper attached (``step``'s ``helper``) the grants go as one batch the helper applies
+With the helper attached (``step``'s ``helper``) the grants go as a batch the helper applies
 between frames, re-checking each byte, with the game's popup for each item not yet
-``announced`` (nothing goes through the helper until this connection has read that count). A
+``announced`` (nothing goes through the helper until this connection has read that count). The
+writes are in the first batch; the popups of a big release are split over more, each under the
+pipe's limit, and the first can stand while a later one is refused or its reply lost (what had
+its popup is counted as it goes: ``give_through_helper``). A
 helper that fails gives nothing this poll: the step keeps its checks and goal and names the
 error (``Step.helper_error``), and the client attaches the helper again before the next step.
 """
@@ -49,6 +52,10 @@ from dataclasses import astuple, dataclass, field
 from . import discs, game, ids, native, offline, reconcile, save_patch
 
 logger = logging.getLogger("Zexion")
+
+# A run of popups handed over together (Session.give_through_helper): the held trap's index or
+# None, the received index handed over up to once it is shown or None, and the popups.
+Unit = tuple[int | None, int | None, list[tuple[int, str] | tuple[int, str, bool]]]
 
 # The goal: flag 250 with flag 211 clear, the ending begun. The game's own escape skip sets 250
 # with 211 still set, so the goal waits for the ending at the ship (docs/re/memory.md, "The
@@ -354,9 +361,9 @@ class Session:
         # of old popups, but each still gets its popup, and so its effect, once, through the
         # helper (give_through_helper); dropped with direct writes, as received traps are.
         self.held_traps: list[int] = []
-        # Set by the poll while the helper to replace refuses to unload only because a trap runs
-        # or waits (native.NotUnloaded.trap): the traps received meanwhile join held_traps
-        # instead of being dropped with the direct writes, for the helper that replaces it.
+        # Set by the poll while an old helper has refused to unload and none is attached since
+        # (ZexionContext.swap_pending): the traps received meanwhile join held_traps instead of
+        # being dropped with the direct writes, for the helper that replaces it.
         self.keep_traps = False
         # Whether this session has taken the server's record of the waiting held traps: only its
         # first read does (a client restarted keeps them); later reads keep the session's own,
@@ -402,8 +409,8 @@ class Session:
         """One poll. ``senders`` names who sent each of ``received`` (for popups); ``followups``
         adds a notice straight after the popup of some of them (an Intel Chip's hint,
         client/hints.py; an OS Install Disk's count, client/discs.py). Grants go through
-        ``helper`` when one is attached, else directly; a HelperError from it gives nothing and
-        is kept in the step (``helper_error``). Without ``give`` (a helper lost earlier in the
+        ``helper`` when one is attached, else directly; a HelperError from it gives nothing more
+        and is kept in the step (``helper_error``). Without ``give`` (a helper lost earlier in the
         poll, to be attached again first) nothing is given, and the rest is read as usual.
         ``gone`` are the locations to keep collected in the save (``mark``): other players'
         items the server has as checked."""
@@ -655,11 +662,16 @@ class Session:
         senders: list[str] | None,
         followups: dict[int, str] | None = None,
     ) -> dict[int, int]:
-        # Units of popups, each ending at the received index it counts as handed over up to
-        # (None: a trap held from the slot's first connection, which counts no index). The
-        # traps held at the slot's first connection go first: they came before the rest.
-        units: list[tuple[int | None, list[tuple[int, str] | tuple[int, str, bool]]]] = [
+        start = self.announced
+        # A held trap at or past the count was not handed over (the client stopped between
+        # storing the record and the count): it goes with the rest, once.
+        self.held_traps = [i for i in self.held_traps if i < start]
+        # Units of popups: (the held trap's index, or None; the received index it counts as
+        # handed over up to, or None; the popups). The traps held at the slot's first connection
+        # go first: they came before the rest.
+        units: list[Unit] = [
             (
+                i,
                 None,
                 [
                     (
@@ -671,7 +683,6 @@ class Session:
             for i in self.held_traps
             if i < len(received)
         ]
-        start = self.announced
         # With Guns First, a progressive weapon received while its weapon is owned arrives as
         # the upgrade, so its popup names the upgrade; an upgrade received as itself (sent from
         # the server console) is a copy of its weapon too (reconcile.should_own). Without it,
@@ -692,7 +703,7 @@ class Session:
             followup = (followups or {}).get(index)
             if followup:
                 popups.append((item, followup, True))  # a notice after it: a hint, a count
-            units.append((index + 1, popups))
+            units.append((None, index + 1, popups))
         if not owed and not units:
             before = reconcile.Supplies(*snap.supplies)
             if reconcile.supplies_after(snap.inventory, before) != before:
@@ -704,9 +715,9 @@ class Session:
         room = offline.MAX_REQUEST - len(
             native.batch_text(cas, [], intel=self.intel_chips).encode()
         )
-        batches: list[list[tuple[int | None, list]]] = [[]]
+        batches: list[list[Unit]] = [[]]
         for unit in units:
-            size = len(native.batch_text([], unit[1]).encode()) - len("apply")
+            size = len(native.batch_text([], unit[2]).encode()) - len("apply")
             if size > room and batches[-1]:
                 batches.append([])
                 room = offline.MAX_REQUEST - len(
@@ -717,24 +728,23 @@ class Session:
         for number, batch in enumerate(batches):
             text = native.batch_text(
                 cas if number == 0 else [],
-                [popup for _, popups in batch for popup in popups],
+                [popup for _, _, popups in batch for popup in popups],
                 intel=self.intel_chips,
             )
-            counted = [end for end, _ in batch if end is not None]
+            counted = [end for _, end, _ in batch if end is not None]
+            handed = {held for held, _, _ in batch if held is not None}
             try:
                 reply = helper.apply(text)
             except native.ReplyLost:
                 # The batch may have been applied and its popups shown: none shown again.
                 if counted:
                     self.announced = counted[-1]
-                if number == 0:
-                    self.held_traps = []
+                self.held_traps = [i for i in self.held_traps if i not in handed]
                 raise
             if reply != "applied":
                 logger.info(f"Not given this time: {reply}")
                 return dict(owed) if number else {}  # the writes went in the first batch
             if counted:
                 self.announced = counted[-1]
-            if number == 0:
-                self.held_traps = []
+            self.held_traps = [i for i in self.held_traps if i not in handed]
         return dict(owed)
