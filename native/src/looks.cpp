@@ -452,7 +452,7 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
     }
 }
 
-void ItemLooks::restore(const GameAddresses& at) {
+void ItemLooks::restore(const GameAddresses& at, bool keep_collected) {
     // The colors first: an object dressed as a Zexion item keeps its style until it is undressed
     // below, and its palette is then the game's already.
     if (colored() > 0) {
@@ -479,11 +479,21 @@ void ItemLooks::restore(const GameAddresses& at) {
     frames_to_scan_ = 0;
     if (hidden_markers() > 0) {
         for (int slot = 0; slot < kObjectSlots; ++slot) {
+            Hidden& h = hidden_[slot];
             if (at.object_pool == nullptr) {
-                hidden_[slot] = {};
-            } else {
-                unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot]);
+                h = {};
+                continue;
             }
+            if (h.spawn == 0) continue;
+            BYTE* object = at.object_pool + slot * obj::kGeneralSize;
+            BYTE seen[obj::kGeneralSize];
+            // Kept hidden through a menu: still that object, still over a collected cell.
+            if (keep_collected && safe_read(object, seen, sizeof(seen)) &&
+                field<int32_t>(seen, obj::kSpawn) == h.spawn && collected_flipped(seen, at)) {
+                if (seen[sprite::kVisible] != 0) put<BYTE>(object, sprite::kVisible, 0);
+                continue;
+            }
+            unhide_live(object, h);
         }
     }
     if (at.item_pool == nullptr || !dressed()) {
