@@ -33,8 +33,10 @@ mutex `Local\zexion-ap-load-<pid>`, which the proxy takes too.
   copy with no build to replace it is refused: the player updates it there. One that refuses to
   unload ("Unloading": a menu open, a trap waiting or running) is asked again every 5 s, and the
   client's line says why (`native.NotUnloaded`); meanwhile items are held back as after a failed
-  attach (up to 30 s, then given with no popup: "AP saves without the client"), also when the
-  client attaches first with the game already running. That hold is only for a helper that may
+  attach (up to 30 s, then given with no popup: "AP saves without the client"; the traps
+  received then are kept for the helper that replaces it, whatever it refuses for next, until
+  one attaches, the old one is gone and the new fails to load, or the game closes: "Traps",
+  "Once"), also when the client attaches first with the game already running. That hold is only for a helper that may
   still come (no reply, no frame yet, a failed load, one refusing to unload): with the mod
   missing, not matching, or turned off by `zexion_ap.disabled`, items are given at once with no
   popup (`client/ticks.py`, `attach_helper`; stand-in tests, `tests/test_zexion_client.py`).
@@ -107,7 +109,9 @@ second waits; the client reports the pipe busy).
   another process holds it. Only the current user can open it, and only locally.
 - The client opens it at the identification level only, so the server cannot act as the user,
   and checks that the process serving it is the game.
-- A request over 64 KB drops the connection, which counts as the client going away.
+- A request over 64 KB drops the connection, which counts as the client going away. The client
+  splits the popups of a big release into `apply` batches under it, the writes in the first
+  (`Session.give_through_helper`; stand-in tests only, not run in game).
 
 The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thread, below):
 
@@ -701,7 +705,10 @@ dealt on the next load ("DeathLink").
   once (its count in the server's data storage), and the helper queues the popup as the `apply`
   takes it and runs the trap once, in the frame it shows the popup and takes it off the queue. So
   one received while disconnected, or out of play, runs once at the next load; one written with no
-  helper (no popup) never runs. At a slot's first connection (no count stored yet), every item
+  helper (no popup) never runs, unless an old helper of another version refused to unload (for
+  whatever reason, however its later refusals change): those received then are kept as held
+  traps for the helper that replaces it (`Session.keep_traps`; stand-in tests only, not run in
+  game). At a slot's first connection (no count stored yet), every item
   already received counts as handed over with no popup, so as not to flood the player with old ones,
   but the traps among them still get their popup, and so run, once (`client/state.py`, `held_traps`;
   `Session.held_traps`): unlike received scrap's drops, which those first items do not get
@@ -811,7 +818,9 @@ paused, an OS Install Disk then a Disorient Trap sent; on unpausing the disk's p
 came first, then the trap's popup with the trap ("those came in the right order"). That run was on
 932411b; keeping a popup's own follow-ups ahead of a trap it passed ("When") was added after it, in
 the fixes from the review of 1ead60c, and has stand-in tests only. **Not run in game:** a trap's popup
-in a translation (the name in the translation's case: by the code, `layout_popup`); an unload
+in a translation (the name in the translation's case: by the code, `layout_popup`); received
+traps kept through a refused version swap, and a big release's popups split into batches under
+the pipe's 64 KB; an unload
 refused while a trap waits (the client hands a trap over only in play, and a menu's refusal comes
 first: tried with one received in the pause, refused for the menu, the trap then going off at full
 length); a trap through the ending or RETURN HOME; a key-look trap's missing marker after the
@@ -1645,7 +1654,8 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   and at the title, where after a drop an armed new game stays armed until a save is loaded. It
   attaches again on connecting, before it gives any item; an attach that fails, for a helper that
   may still come ("Getting in"), holds the items back for up to 30 s (counted afresh at each
-  connection: a drop during it starts it over), then they are given as with no helper
+  connection: a drop during it starts it over), then they are given as with no helper, but for
+  the traps while an old helper's unload was refused ("Getting in"; "Traps", "Once")
   (`client/zexion_client.py`, `leave_helper_tick` and `poll`; stand-in tests,
   `tests/test_zexion_client.py`). Working in game 2026-10-29 (the Launcher's client): a save
   loaded during a drop and a Disconnect in play, each given this look and its notice, then the

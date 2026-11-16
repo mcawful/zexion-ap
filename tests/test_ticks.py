@@ -266,9 +266,6 @@ def test_traps_look_important() -> None:
         ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + code, loc, player, 0b100)}
         labels, own = ticks.foreign_labels(ctx)
         assert labels == {cell: text} and own == 0, (player, game_name)
-    ctx.conn.trap_looks = {}  # a seed from before the drawn looks: a progression item
-    ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + ids.DISRUPTION_TRAP, loc, 1, 0b100)}
-    assert ticks.foreign_labels(ctx)[0] == {cell: aplabels.label(True, "Me")}
 
 
 def test_an_own_trap_is_the_helpers_to_set_off() -> None:
@@ -1093,7 +1090,7 @@ def test_requests_that_never_reached_the_helper_are_not_misses(why, monkeypatch)
     assert ctx.helper.requests == ["shield"] and counts_sent(ctx)
 
 
-def test_a_request_cancelled_on_its_way_stays_looked_for(monkeypatch) -> None:
+def test_a_request_canceled_on_its_way_stays_looked_for(monkeypatch) -> None:
     # Its thread may still deliver it: dropping it would ask for it twice.
     world = ShieldWorld()
     ctx = shield_ctx(world)

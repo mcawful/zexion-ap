@@ -44,7 +44,11 @@ UNLOAD_REFUSED = "; not unloading"  # the end of the helper's refusal: "error <w
 
 
 class HelperError(RuntimeError):
-    """The helper could not be loaded, reached or unloaded."""
+    """The helper could not be loaded, reached or unloaded. ``old_gone``: raised by ``attach``
+    after a loaded helper of another version unloaded to make way, so nothing is left to
+    replace (the client's helper failed to load or configure)."""
+
+    old_gone = False
 
 
 class ReplyLost(HelperError):
@@ -517,6 +521,16 @@ def _hello(helper: Helper) -> dict[str, str]:
 
 
 def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
+    """``_attach``, its HelperErrors marked ``old_gone`` once the old helper has unloaded."""
+    unloaded: list[bool] = []
+    try:
+        return _attach(g, dll, notes, unloaded)
+    except HelperError as exc:
+        exc.old_gone = bool(unloaded)
+        raise
+
+
+def _attach(g, dll: Path, notes: list[str] | None, unloaded: list[bool]) -> Helper:
     """The helper in game ``g``, loaded if absent, and configured. A loaded helper of another
     version is replaced by the built ``dll`` if there is one; a game-folder copy with no build
     to replace it, or a ``dll`` known to load as another version (_STALE), is refused; with
@@ -565,6 +579,7 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                         f"({why}); the client tries again, and if it keeps failing, restart "
                         "Zexion"
                     )
+                unloaded.append(True)
                 if in_folder and notes is not None:
                     notes.append(
                         f"The mod in Zexion's folder is {_shown(version)}, and this client is "

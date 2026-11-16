@@ -189,8 +189,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   trap waiting out RELOAD FROM CHECKPOINT, RELOAD FROM SAVE, a death's respawn and a TELEPORT TO,
   2026-11-13 (907abfd); this world's own traps set off at their pickup by
   the helper, 2026-11-14 (the line above); B1. What each run showed and what is not run (the
-  ending or RETURN HOME, a key-look trap after the scanner, an unload refused while a trap
-  waits, a trap's popup passed by others, a connection's first held-traps record beside
+  ending or RETURN HOME, a key-look trap after the scanner, received traps kept through a
+  refused version swap, a big release's popups split into batches, an unload refused while a
+  trap waits, a trap's popup passed by others, a connection's first held-traps record beside
   another client's, the restart doubles, and a trap's popup in a translation):
   `native/README.md`, "Traps"; the Ailments' record: `docs/re/memory.md`, "Ailments: the script
   step that sets them".

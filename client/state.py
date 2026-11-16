@@ -61,7 +61,7 @@ class Connection:
     # for a seed from before the traps.
     traps: dict[int, int] = field(default_factory=dict)
     # The item each Zexion trap in this world's locations is shown as, by location index (the
-    # world's draw: client/aplabels.py, trap_label). Empty for a seed from before it.
+    # world's draw: client/aplabels.py, trap_label).
     trap_looks: dict[int, int] = field(default_factory=dict)
     # This world's locations whose item belongs to another player (or an item link's group):
     # the stand-ins but this player's own OS Install Disks and traps. Kept collected in the
