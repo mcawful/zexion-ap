@@ -46,7 +46,7 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import astuple, dataclass, field
 
-from . import discs, game, ids, native, reconcile, save_patch
+from . import discs, game, ids, native, offline, reconcile, save_patch
 
 logger = logging.getLogger("Zexion")
 
@@ -354,6 +354,10 @@ class Session:
         # of old popups, but each still gets its popup, and so its effect, once, through the
         # helper (give_through_helper); dropped with direct writes, as received traps are.
         self.held_traps: list[int] = []
+        # Set by the poll while the helper to replace refuses to unload only because a trap runs
+        # or waits (native.NotUnloaded.trap): the traps received meanwhile join held_traps
+        # instead of being dropped with the direct writes, for the helper that replaces it.
+        self.keep_traps = False
         # Whether this session has taken the server's record of the waiting held traps: only its
         # first read does (a client restarted keeps them); later reads keep the session's own,
         # which a lost emptying store would otherwise bring back (storage.announced_tick).
@@ -590,25 +594,33 @@ class Session:
         if helper is not None:
             if not self.announced_read:
                 return {}  # which items have had their popup is not known yet
-            try:
-                return self.give_through_helper(
-                    helper, snap, result.inventory, received, senders, followups
-                )
-            except native.ReplyLost:
-                # The batch may have been applied and its popups shown: none shown again.
-                self.announced = len(received)
-                self.held_traps = []
-                raise
+            return self.give_through_helper(
+                helper, snap, result.inventory, received, senders, followups
+            )
         if self.announced_read:
             # Direct writes show no popups, and a trap rides on its popup: those waiting do
-            # nothing (said, so a lost trap is not a mystery).
-            waiting = [received[i] for i in self.held_traps if i < len(received)]
-            waiting += [c for c in received[self.announced :] if c in ids.TRAPS]
-            if waiting:
-                names = ", ".join(ids.TRAP_NAMES[c] for c in waiting)
-                logger.info(f"Without the mod, these traps sent to you do nothing: {names}.")
+            # nothing (said, so a lost trap is not a mystery), unless the helper that will
+            # replace the old one is only waiting for a trap to end (keep_traps): they are kept
+            # for its popups.
+            if self.keep_traps:
+                self.held_traps = sorted(
+                    {
+                        *(i for i in self.held_traps if i < len(received)),
+                        *(
+                            i
+                            for i in range(self.announced, len(received))
+                            if received[i] in ids.TRAPS
+                        ),
+                    }
+                )
+            else:
+                waiting = [received[i] for i in self.held_traps if i < len(received)]
+                waiting += [c for c in received[self.announced :] if c in ids.TRAPS]
+                if waiting:
+                    names = ", ".join(ids.TRAP_NAMES[c] for c in waiting)
+                    logger.info(f"Without the mod, these traps sent to you do nothing: {names}.")
+                self.held_traps = []
             self.announced = len(received)
-            self.held_traps = []
         granted: dict[int, int] = {}
         try:
             for item, value in result.inventory.items():
@@ -643,11 +655,18 @@ class Session:
         senders: list[str] | None,
         followups: dict[int, str] | None = None,
     ) -> dict[int, int]:
-        # The traps held at the slot's first connection first: they came before the rest.
-        popups: list[tuple[int, str] | tuple[int, str, bool]] = [
+        # Units of popups, each ending at the received index it counts as handed over up to
+        # (None: a trap held from the slot's first connection, which counts no index). The
+        # traps held at the slot's first connection go first: they came before the rest.
+        units: list[tuple[int | None, list[tuple[int, str] | tuple[int, str, bool]]]] = [
             (
-                received[i],
-                f"from {senders[i]}" if senders and i < len(senders) and senders[i] else "",
+                None,
+                [
+                    (
+                        received[i],
+                        f"from {senders[i]}" if senders and i < len(senders) and senders[i] else "",
+                    )
+                ],
             )
             for i in self.held_traps
             if i < len(received)
@@ -667,20 +686,55 @@ class Session:
                 # The weapon is owned from now on, whichever byte this one set.
                 weapons.add(weapon)
             sender = senders[index] if senders and index < len(senders) else ""
-            popups.append((item, f"from {sender}" if sender else ""))
+            popups: list[tuple[int, str] | tuple[int, str, bool]] = [
+                (item, f"from {sender}" if sender else "")
+            ]
             followup = (followups or {}).get(index)
             if followup:
                 popups.append((item, followup, True))  # a notice after it: a hint, a count
-        if not owed and not popups:
+            units.append((index + 1, popups))
+        if not owed and not units:
             before = reconcile.Supplies(*snap.supplies)
             if reconcile.supplies_after(snap.inventory, before) != before:
                 helper.apply(native.batch_text([], [], refresh=True))
             return {}
         cas = [(item, snap.inventory[item], value) for item, value in sorted(owed.items())]
-        reply = helper.apply(native.batch_text(cas, popups, intel=self.intel_chips))
-        if reply != "applied":
-            logger.info(f"Not given this time: {reply}")
-            return {}
-        self.announced = len(received)
-        self.held_traps = []
+        # A request over the pipe's limit ends the connection (the helper drops it), so the
+        # popups go in batches under it, the writes in the first.
+        room = offline.MAX_REQUEST - len(
+            native.batch_text(cas, [], intel=self.intel_chips).encode()
+        )
+        batches: list[list[tuple[int | None, list]]] = [[]]
+        for unit in units:
+            size = len(native.batch_text([], unit[1]).encode()) - len("apply")
+            if size > room and batches[-1]:
+                batches.append([])
+                room = offline.MAX_REQUEST - len(
+                    native.batch_text([], [], intel=self.intel_chips).encode()
+                )
+            batches[-1].append(unit)
+            room -= size
+        for number, batch in enumerate(batches):
+            text = native.batch_text(
+                cas if number == 0 else [],
+                [popup for _, popups in batch for popup in popups],
+                intel=self.intel_chips,
+            )
+            counted = [end for end, _ in batch if end is not None]
+            try:
+                reply = helper.apply(text)
+            except native.ReplyLost:
+                # The batch may have been applied and its popups shown: none shown again.
+                if counted:
+                    self.announced = counted[-1]
+                if number == 0:
+                    self.held_traps = []
+                raise
+            if reply != "applied":
+                logger.info(f"Not given this time: {reply}")
+                return dict(owed) if number else {}  # the writes went in the first batch
+            if counted:
+                self.announced = counted[-1]
+            if number == 0:
+                self.held_traps = []
         return dict(owed)

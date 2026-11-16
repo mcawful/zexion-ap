@@ -12,7 +12,6 @@ from client.patterns import (
     CLIENT_ONLY_TARGETS,
     CLIENT_TARGETS,
     TARGETS,
-    TOOL_TARGETS,
     Build,
     Pattern,
     Target,
@@ -81,11 +80,10 @@ def test_patterns_that_disagree_are_refused() -> None:
     assert found["t"] == 0x40 + 7 + 0x100
 
 
-def test_the_client_does_not_locate_the_targets_only_the_tools_read() -> None:
-    # None now: the client reads the pickup counter too, as an optional target, so a pattern
-    # of it breaking with an update still cannot stop the client attaching.
-    assert not TOOL_TARGETS
-    assert {t.name for t in CLIENT_TARGETS} == {t.name for t in TARGETS} - TOOL_TARGETS
+def test_the_client_locates_every_target_and_two_are_its_alone() -> None:
+    # The pickup counter is optional like the cell state, so a pattern of it breaking with an
+    # update still cannot stop the client attaching.
+    assert CLIENT_TARGETS is TARGETS
     # The per-cell state and the pickup counter are the client's alone: not sent to the helper.
     client_only = {"cell_state", "pickup_counter"}
     assert client_only == CLIENT_ONLY_TARGETS <= {t.name for t in CLIENT_TARGETS}

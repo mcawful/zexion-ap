@@ -1,9 +1,9 @@
 """Find and access Zexion's game state in the running process, by byte pattern.
 
 ``attach`` refuses a build not in ``patterns.KNOWN_BUILDS`` and locates each target
-(``patterns.CLIENT_TARGETS``; the RE tools ask for all of ``patterns.TARGETS``) by scanning
-.text; every pattern must match exactly once and a target's patterns must agree, else
-``PatternError`` and nothing is touched; but for the client's optional targets
+(``patterns.CLIENT_TARGETS``, all of ``patterns.TARGETS``) by scanning .text; every pattern
+must match exactly once and a target's patterns must agree, else ``PatternError`` and nothing
+is touched; but for the client's optional targets
 (``patterns.CLIENT_ONLY_TARGETS``), which may be missing: only a read or write of one then
 raises. Every read and write first checks the process is alive (``GameNotRunning`` only once
 it has exited).

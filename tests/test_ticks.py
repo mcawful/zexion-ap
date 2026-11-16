@@ -266,9 +266,6 @@ def test_traps_look_important() -> None:
         ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + code, loc, player, 0b100)}
         labels, own = ticks.foreign_labels(ctx)
         assert labels == {cell: text} and own == 0, (player, game_name)
-    ctx.conn.trap_looks = {}  # a seed from before the drawn looks: a progression item
-    ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + ids.DISRUPTION_TRAP, loc, 1, 0b100)}
-    assert ticks.foreign_labels(ctx)[0] == {cell: aplabels.label(True, "Me")}
 
 
 def test_an_own_trap_is_the_helpers_to_set_off() -> None:

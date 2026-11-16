@@ -9,7 +9,7 @@ import struct
 import pytest
 from fakes import CELLS, SECRET_CELLS, SECRET_LIST, plan, secret_plan, section
 
-from client import game, ids, native, reconcile
+from client import game, ids, native, offline, reconcile
 from client import save_patch as sp
 from client import session as ss
 
@@ -497,6 +497,63 @@ def test_a_lost_reply_counts_the_held_traps_handed_over(with_helper) -> None:
     assert helper.popups() == ["popup 103 from Alice"] and session.held_traps == []
 
 
+def test_a_big_batch_goes_in_requests_under_the_pipes_limit(with_helper) -> None:
+    # A release received while the client was closed: the helper drops a request over 64 KB,
+    # which the client would take for a lost reply and count every popup as shown.
+    session, g, helper, _ = with_helper
+    received = [17] * 600 + [ids.DISORIENT_TRAP]
+    senders = ["x" * 400] * len(received)
+    session.announced, session.held_traps = 0, [600]
+    assert give(session, g, received, senders=senders) == {17: 1}
+    assert len(helper.requests) > 2, "more than one batch"
+    assert all(len(r.encode()) <= offline.MAX_REQUEST for r in helper.requests)
+    assert [r for r in helper.requests if "cas " in r] == helper.requests[:1], "writes go first"
+    popups = [line for r in helper.requests for line in r.splitlines() if line.startswith("popup")]
+    assert popups[0] == f"popup {ids.DISORIENT_TRAP} from {'x' * 400}", "the held trap first"
+    assert len(popups) == 1 + len(received)
+    assert session.announced == len(received) and session.held_traps == []
+
+
+def test_a_batch_refused_part_way_keeps_the_rest_for_the_next_poll(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    received, senders = [17] * 300, ["x" * 400] * 300
+    real = helper.apply
+
+    def apply(text: str) -> str:
+        helper.reply = "refused not in play" if len(helper.requests) == 1 else "applied"
+        return real(text)
+
+    helper.apply = apply
+    assert give(session, g, received, senders=senders) == {17: 1}, "the first batch went in"
+    assert 0 < session.announced < len(received)
+    sent = session.announced
+    for _ in range(2):  # the second poll agrees with the first
+        session.step(g, received, gap=0, senders=senders)
+    assert session.announced == len(received) > sent
+    applied = helper.requests[:1] + helper.requests[2:]  # the second was refused: not shown
+    popups = [line for r in applied for line in r.splitlines() if line.startswith("popup")]
+    assert len(popups) == len(received), "none twice, none lost"
+
+
+def test_a_lost_reply_part_way_counts_only_the_batches_sent(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    received, senders = [17] * 600, ["x" * 400] * 600
+    real = helper.apply
+
+    def apply(text: str) -> str:
+        if len(helper.requests) == 1:
+            helper.requests.append(text)
+            raise native.ReplyLost("no reply within 3.0 s")
+        return real(text)
+
+    helper.apply = apply
+    session.step(g, received, gap=0, senders=senders)
+    step = session.step(g, received, gap=0, senders=senders)
+    assert isinstance(step.helper_error, native.ReplyLost)
+    shown = sum(line.startswith("popup") for r in helper.requests for line in r.splitlines())
+    assert session.announced == shown < len(received), "the batches unsent are still to show"
+
+
 def test_a_helper_that_doesnt_match_is_kept_for_the_poll_to_say(with_helper) -> None:
     session, g, helper, writes = with_helper
     mismatch = native.ModMismatch("both are version 0, but from different builds")
@@ -707,6 +764,31 @@ def test_direct_writes_drop_the_waiting_traps_and_say_so(setup, caplog) -> None:
         give(session, g, received)
     assert session.held_traps == [] and session.announced == 3 and g.inv[17] == 1
     assert "do nothing: Disorient Trap, Disruption Trap." in caplog.text
+
+
+def test_direct_writes_keep_the_waiting_traps_for_a_helper_about_to_replace_the_old(
+    setup, caplog
+) -> None:
+    # The old helper refuses to unload only because a trap is running (keep_traps): the traps
+    # received while the step goes on without a helper are held, not dropped, and the helper
+    # that replaces it shows their popups first.
+    session, g = setup
+    session.announced_read, session.keep_traps = True, True
+    received = [ids.DISORIENT_TRAP, 17, ids.DISRUPTION_TRAP]
+    session.announced, session.held_traps = 2, [0]
+    with caplog.at_level(logging.INFO, logger="Zexion"):
+        give(session, g, received, senders=["Ann", "Bob", "Cy"])
+    assert session.held_traps == [0, 2] and session.announced == 3 and g.inv[17] == 1
+    assert "do nothing" not in caplog.text
+    helper = FakeHelper(g)
+    through(session, helper)
+    session.keep_traps = False
+    give(session, g, received, senders=["Ann", "Bob", "Cy"])
+    assert helper.popups() == [
+        f"popup {ids.DISORIENT_TRAP} from Ann",
+        f"popup {ids.DISRUPTION_TRAP} from Cy",
+    ]
+    assert session.held_traps == [] and session.announced == 3
 
 
 def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:

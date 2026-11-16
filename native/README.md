@@ -105,7 +105,9 @@ second waits; the client reports the pipe busy).
   another process holds it. Only the current user can open it, and only locally.
 - The client opens it at the identification level only, so the server cannot act as the user,
   and checks that the process serving it is the game.
-- A request over 64 KB drops the connection, which counts as the client going away.
+- A request over 64 KB drops the connection, which counts as the client going away. The client
+  splits the popups of a big release into `apply` batches under it, the writes in the first
+  (`Session.give_through_helper`).
 
 The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thread, below):
 
@@ -702,7 +704,9 @@ dealt on the next load ("DeathLink").
   once (its count in the server's data storage), and the helper queues the popup as the `apply`
   takes it and runs the trap once, in the frame it shows the popup and takes it off the queue. So
   one received while disconnected, or out of play, runs once at the next load; one written with no
-  helper (no popup) never runs. At a slot's first connection (no count stored yet), every item
+  helper (no popup) never runs, unless an old helper being replaced refuses to unload only
+  because a trap runs or waits: those received then are kept as held traps for the helper that
+  replaces it (`Session.keep_traps`). At a slot's first connection (no count stored yet), every item
   already received counts as handed over with no popup, so as not to flood the player with old ones,
   but the traps among them still get their popup, and so run, once (`client/state.py`, `held_traps`;
   `Session.held_traps`): unlike received scrap's drops, which those first items do not get

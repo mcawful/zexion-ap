@@ -6,6 +6,7 @@ installed here, so the parts of it the module imports are stand-ins."""
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import math
 import os
@@ -494,6 +495,28 @@ def test_an_old_helper_that_did_not_unload_is_tried_again_without_a_build(
     ctx.attach_again_at, ctx.helper_back_by = 0.0, 1.0  # both long past: given up
     asyncio.run(zc.poll(ctx))
     assert len(order) == 3 and order[2] != "step, retry at inf"
+
+
+@pytest.mark.parametrize("trap", [True, False])
+def test_traps_are_kept_after_the_hold_only_while_a_trap_refuses_the_unload(
+    monkeypatch, tmp_path, trap
+) -> None:
+    # The step goes on without a helper once the hold is over; a trap received then rides on no
+    # popup, unless the old helper is only waiting for one to end: kept for the new helper.
+    error = functools.partial(native.NotUnloaded, trap=trap)
+    ctx, order = mismatched_reattach(monkeypatch, tmp_path / "zexion_ap.dll", error)
+    session_ = ctx.seed_state.session
+
+    def step(g, received, **kwargs):
+        order.append(f"step, keep {session_.keep_traps}")
+        return session.Step(state=game.IN_PLAY)
+
+    monkeypatch.setattr(session_, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert order == ["attach"] and ctx.trap_blocks_unload is trap
+    ctx.attach_again_at, ctx.helper_back_by = 0.0, 1.0  # the hold is over
+    asyncio.run(zc.poll(ctx))
+    assert order[-1] == f"step, keep {trap}"
 
 
 @pytest.mark.parametrize(

@@ -141,6 +141,10 @@ class ZexionContext(CommonContext):
         # A helper of another version refused to unload (native.NotUnloaded): not asked again
         # before then, as each try has it put things back (attach_helper).
         self.attach_again_at = 0.0
+        # That refusal was only because a trap is running or waiting (native.NotUnloaded.trap):
+        # the traps received meanwhile are kept for the helper that replaces it, not dropped
+        # with the direct writes once HELPER_RETRY_SECONDS have passed.
+        self.trap_blocks_unload = False
         # The last step in play that had a helper found it failing, or waited for one lost just
         # before it (poll): one failing again is not attached again before the next step.
         self.step_failed = False
@@ -221,7 +225,13 @@ class ZexionContext(CommonContext):
                 name="scout labels",
             )
         if conn.hunt is not None:
-            detail(f"The goal is {conn.hunt.required} of {conn.hunt.placed} OS Install Disks.")
+            # What the slot data says, not a total: the OS Install Disks option, and how many
+            # of the disks start with the player (those moved out of the pool among them).
+            hunt = conn.hunt
+            detail(
+                f"The goal is {hunt.required} OS Install Disks (the OS Install Disks option is "
+                f"{hunt.placed}; {hunt.start} start with you)."
+            )
         detail(f"Seed for Zexion's {conn.mode} mode.")
 
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
@@ -408,6 +418,7 @@ def game_closed(ctx: ZexionContext, seed: state.SeedState) -> None:
     # The next game's is attached with it.
     ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
     ctx.attach_again_at = 0.0
+    ctx.trap_blocks_unload = False
     ctx.step_failed = False
     # The next game's failures are news, and its language is told again.
     ctx.said.clear("read", "read detail", "mismatch", "language")
@@ -567,6 +578,7 @@ async def poll(ctx: ZexionContext) -> None:
         waiting = ctx.helper is None and ctx.helper_lost
         if waiting and ctx.step_failed:
             waiting = ctx.helper_lost = False
+        current.keep_traps = ctx.helper is None and ctx.trap_blocks_unload
         step = await asyncio.to_thread(
             current.step,
             ctx.game_conn,
