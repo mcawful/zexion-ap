@@ -69,10 +69,12 @@ around the change.
    game's pickup counter does not account for (`reconcile.marked_count`; `docs/re/memory.md`,
    "The pickup counter and the collected cells"), so that is not a lost grant; a mark that
    gives Scrap Metal, or anything that takes Scrap Metal away, is a finding, and nothing may
-   be marked while the counter cannot be read. The one stored index is the
-   popup count in the server's data storage (`announced_tick`, `client/storage.py`): check that
-   it cannot replay or skip a popup across reconnects, client restarts, game restarts and
-   reloads of an older save. Measured on B1: a grant is lost when the player dies before the
+   be marked while the counter cannot be read. The stored indexes are the
+   popup count in the server's data storage (`announced_tick`, `client/storage.py`) and the
+   held-traps record beside it (`held_key`, `held_stored`): a trap rides on its popup, so a
+   record lost or counted twice runs a trap twice or never. Check that neither can replay or
+   skip a popup or a trap across reconnects, client restarts, game restarts and reloads of an
+   older save. Measured on B1: a grant is lost when the player dies before the
    game saves, and kept once it saves (`docs/re/memory.md`, "Granting each kind of item"); the
    next poll must give it again. Counted items (Energy Tanks, Missile Containers, Mega Bombs)
    need their player-state fields written too; a grant of the byte alone is incomplete.
@@ -81,8 +83,9 @@ around the change.
    not this seed's, or before the flag's meaning is recorded in `docs/re/`. Also checks that are
    never re-sent after a disconnect.
 7. **Writes to protected folders.** Anything in `client/` or `tools/` that opens the game
-   install, the save folder, or Steam's cloud cache for writing, other than `save_lab.py
-   install` and `restore` (the client writes neither). The tools' paths must go through
+   install, the save folder, Steam's cloud cache or the mod's offline files
+   (`%LOCALAPPDATA%\ZexionAP`; only the helper writes them) for writing, other than
+   `save_lab.py install` and `restore` (the client writes neither of the first two). The tools' paths must go through
    `tools/protected.py` (`assert_writable`). Also flag any new path around the backup checks
    in those two.
 8. **Patterns that won't survive a patch.** Patterns with few fixed bytes, patterns over data

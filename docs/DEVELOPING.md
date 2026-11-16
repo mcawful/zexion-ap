@@ -1,21 +1,25 @@
 # Developing zexion-ap
 
 For contributors. Players start at the [README](../README.md). The project's rules (evidence,
-no hard-coded addresses, the game and save folders read-only, what never gets committed) are in
-[`CLAUDE.md`](../CLAUDE.md), "Rules": read them before changing anything.
+no hard-coded addresses, the game and save folders and the mod's offline files read-only, what
+never gets committed) are in [`CLAUDE.md`](../CLAUDE.md), "Rules": read them before changing
+anything.
 
 Zexion has no modding API, so everything here rests on reverse engineering, recorded with its
 evidence in [`docs/re/`](re/README.md).
 
 ## Status
 
-1.1.0; the first release, 1.0.0, was published on 2026-11-05 (UTC). Every in-game run was on game
-build B1. A release build has run from Archipelago 0.6.8's Launcher since 2026-10-25
+The first release, 1.0.0, was published on 2026-11-05 (UTC), 1.1.0 after it (the current version is
+`world_version` in `worlds/zexion/archipelago.json`). Every in-game run was on game build B1. A
+release build has run from Archipelago 0.6.8's Launcher since 2026-10-25
 ([`docs/re/memory.md`](re/memory.md), "The client in a live game"), the 1.0.0 client from it on
 2026-10-29 (`native/README.md`, "AP saves without the client"), the 1.0.0 release candidate's
 builds on 2026-11-03 and 04, the 1.1.0 candidate's on 2026-11-08 (develop 5597753) and 09
 (develop 88bebfb), `develop` 4205871's Area Maps on 2026-11-09, and `develop` e500ab9's traps on
-2026-11-11 ("Features, and when each was working in game", below).
+2026-11-11. The runs since, of the checkpoint checks, own disks and traps following the save and
+other players' items kept collected (2026-11-13 to 15), are in "Features, and when each was working
+in game", below.
 
 ## How it fits together
 
@@ -150,57 +154,22 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04; another
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
-- This world's own OS Install Disks and traps following the save: 2026-11-14 (B1; the
-  helpers `zexion_ap.dll` `5f19e4d4…` from bbaf3c5 and, for the pause row and the count with
-  no client, `7859b9e7…` from 1b04f24). With the client: a disk's count dropping after a
-  RELOAD FROM SAVE (the disk counted again at its next pickup by the owner's "worked as
-  expected" alone); an own trap set off by the helper at its pickup and back in its room
-  after a reload (set off again at the second pickup by the owner's word alone). With none:
-  the helper's own count popup at a disk's pickup; an own trap set off at its pickup and
-  again after a RELOAD FROM SAVE. Not run in game, for the disks: the count dropping with no
-  client, the file select's count as it is now, the goal from a save's count, RETURN HOME
-  WITH THE DISKS?, the equipment screen's count after a reload, a disk received right after
-  a reload, a death, and the sound of the count popup the helper shows with no client; for
-  the traps: a death, one queued behind one of its kind, a pause on the pickup's frame, one
-  queued through a TELEPORT TO or carried to another slot, a load from the file select over
-  a different map (two were traced on 2026-11-15 over a map that already held the save's
-  cells, which left the question open), and no helper. The second review round's fixes (the
-  disk count's reset when the helper is attached again, a queued own trap dropped in
-  another slot's save and queued once a pickup, the offline seed handed to the helper
-  before the folder and size checks) are stand-in tested only ("The OS Install Disks goal",
-  "Traps").
-- Other players' items kept collected once the server has them as checked: after a pickup and
-  a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
-  the player has left, as the client then left it alone): 2026-11-14 (PR #144's branch at
-  bbaf3c5); an item beside the player gone when its owner collects: 2026-11-14 (the same
-  branch at 79bee7a). That run also found a soft-lock at Exodia X20 Y0, marked from afar
-  (its pickup starts the boss fight): that room is left unmarked since and shows Scrap Metal
-  once its item is checked, whose pickup starts the fight. Marked, an arena and a
-  reversed-gravity room played with no harm (the latter still shows the item as a picture
-  that gives nothing); a boss's reward, R'Talva X34 Y51's, still showed too, and the warp
-  gate waited for the touch of that picture: 2026-11-15 (the same branch at a17904b). The
-  helper hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at
-  399f57e; kept hidden under a menu, through reloads and a quit to the title: 2026-11-15,
-  PR #146's branch at c7186e9, by the owner's report and a read-only trace).
-  So R'Talva X34 Y51 is left unmarked too since, and showed as scrap in game: 2026-11-15
-  (the client of PR #145's branch at 399f57e with the room listed on top); the helper
-  making such a scrap's pickup the game's own Scrap Metal's: both rooms gave "the regular
-  scrap metal and the pickups from it" (the owner's words), and its map square showed as a
-  minor's under the presets' Obscure settings, 2026-11-15 (PR #146's branch at fe4fe1b);
-  the fight at Exodia X20 Y0 (started, won, the room left) and the gate and the music at
-  R'Talva X34 Y51 following that pickup, and each square steady with its item on screen:
-  2026-11-15 (the same branch at c7186e9). Not run in game: the map square under the other
-  Obscure settings, and a square of item 48 the game's on-screen write raises.
-  In those runs each mark gave one Scrap Metal; a mark gives none since (the second review
-  round, 2026-11-15): run in game the same day with the client of PR #146's branch at
-  c7186e9 (a pickup lost to a reload, then marked, and 74 marked at their owner's collect
-  gave none; a received Scrap Metal counted on top; an event square's item marked with the
-  player in its room). The marking's wait through a TELEPORT TO is tested only.
-  Not run in game: a death, another save of the seed, `!release`, a reload beside an item,
-  an arena's item marked while the player stands in its
-  room, and a room that shows its item as an object of another kind beside the item object
-  (Guardia X22 Y7) marked ("Other players' items", "Kept collected"; "What decides whether
-  an item appears").
+- This world's own OS Install Disks and traps following the save: 2026-11-14 (B1; the helpers
+  `zexion_ap.dll` `5f19e4d4…` from bbaf3c5 and `7859b9e7…` from 1b04f24), with the client and
+  with none. What each run showed and what is not run (the disks' count with no client and on
+  the file select, a death, a trap queued behind one of its kind, a load from the file select
+  over a different map, no helper, and the rest): `native/README.md`, "Traps" ("This world's
+  own") and "The OS Install Disks goal".
+- Other players' items kept collected once the server has them as checked: 2026-11-14 (PR
+  #144's branch at bbaf3c5 and 79bee7a: a reload, `!collect`), 2026-11-15 (PR #144's a17904b,
+  PR #145's 399f57e, PR #146's fe4fe1b and c7186e9: the two rooms left unmarked, the hidden
+  picture, a mark giving no Scrap Metal), B1. What each run showed and what is not run (a
+  death, another save of the seed, `!release`, a reload beside an item, an arena's item marked
+  with the player in its room, a type-715 room such as Guardia X22 Y7, the marking's wait
+  through a TELEPORT TO, the map square under the other Obscure settings, and a scrap-labeled
+  square of item 48 that the game's on-screen write raises): `native/README.md`, "Other players' items"
+  ("Kept collected", "This player's own Scrap Metal", "Run in game after the review rounds");
+  `docs/re/memory.md`, "What decides whether an item appears".
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
@@ -215,37 +184,17 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   described).
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
 - Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their first
-  design (after the trap's popup, the enemies' durations, a shield and AILMENTS applying) run in
-  game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one held
-  through the pause, one received while disconnected (once), this world's own (then set off
-  once by the client's follow-up; by the helper at each pickup since 2026-11-14, run in game
-  that day: the own disks' and traps' line above) and another Zexion
-  player's in this world, AILMENTS REDUCED and IMMUNE ("Traps"; `docs/re/memory.md`, "Ailments: the
-  script step that sets them"). The design since (at once, about 12 s, one of each kind at a time,
-  past a shield, AILMENTS's tests patched while one runs, disguised (then as a Zexion upgrade),
-  another game's trap as a progression item): 2026-11-11 (81dd8cc, `lab/ap/live60`); the pickup
-  popup naming the trap, a queued trap's popup waiting for it, the drawn disguises, a trap held at a
-  slot's first connection and `/reload_mod` refused during a trap: 2026-11-11 (5f66f1b,
-  `lab/ap/live61`); on `develop` e500ab9 (`lab/ap/live62` and `live63`,
-  `lab/ingame-138-develop-checks.md`): a trap held at a slot's first connection through a client
-  restart before play, the looks drawn from the owner's upgrades, keys and OS Install Disks and the
-  fallback, a key-look trap with no key marker (with Hints Revealed), one received while dead, and
-  the client closed while a trap waits (behind one of its kind) or runs: 2026-11-11. On e500ab9 a
-  disk's popup came after a trap's received with it (check 2 failed); as it is now, a received
-  trap's popup taking its turn in the queue, the trap going off as it shows, after a disk's popup
-  and count sent before it: 2026-11-11 (932411b, `lab/ap/live62`,
-  `lab/ingame-popup-order-checks.md`), and ARCHIPELAGO CLIENT CONNECTED. before the items received
-  while the client was away, the same run ("AP saves without the client"); a popup's follow-ups kept
-  ahead of a trap it passed, added after that run: stand-in tests only. A trap received in the
-  pause, then a TELEPORT TO, waiting out the teleport's countdown and going off after its load, with
-  its popup as it went off (on e500ab9 check 8's trap went off in the teleport and was reset; its
-  record named RELOAD FROM CHECKPOINT, but it was TELEPORT TO START: the owner, 2026-11-14), and
-  through RELOAD FROM CHECKPOINT, RELOAD FROM SAVE and a death's respawn: 2026-11-13 (907abfd,
-  `lab/ap/live62`, `lab/ingame-checkpoint-checks.md`). Not run in game: the ending or RETURN HOME, a
-  key-look trap after the scanner, received traps kept through a refused version swap, a big
-  release's popups split into batches, an unload refused while a trap waits, a trap's popup passed by
-  others while it waits for one of its kind, a connection's first held-traps record beside another
-  client's (the `default` operation), and the restart doubles ("Traps").
+  design 2026-11-11 (PR #138's 57381bf); the design since, 2026-11-11 (81dd8cc, `lab/ap/live60`;
+  5f66f1b, `live61`; `develop` e500ab9, `live62` and `live63`; the popup order at 932411b); a
+  trap waiting out RELOAD FROM CHECKPOINT, RELOAD FROM SAVE, a death's respawn and a TELEPORT TO,
+  2026-11-13 (907abfd); this world's own traps set off at their pickup by
+  the helper, 2026-11-14 (the line above); B1. What each run showed and what is not run (the
+  ending or RETURN HOME, a key-look trap after the scanner, received traps kept through a
+  refused version swap, a big release's popups split into batches, an unload refused while a
+  trap waits, a trap's popup passed by others, a connection's first held-traps record beside
+  another client's, the restart doubles, and a trap's popup in a translation):
+  `native/README.md`, "Traps"; the Ailments' record: `docs/re/memory.md`, "Ailments: the script
+  step that sets them".
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
@@ -423,7 +372,7 @@ To release:
    GitHub Release of the files below. Its message is the one `tools/release_notes.py` builds:
    the version's notes, then the install-and-update guide in `.github/release-footer.md`, then
    the compare link from the latest release; if the notes are missing or unfinished, nothing is
-   built or published. A version already released from this same commit is skipped (a re-run).
+   built into the release or published (the helper and proxy are built and tested first). A version already released from this same commit is skipped (a re-run).
    The job fails instead if that version's release is a draft (a publish that failed part-way:
    publish or delete it on GitHub, then re-run) or was released from another commit.
 4. If the approval is rejected or times out, or the job fails, `main` holds the version with no
