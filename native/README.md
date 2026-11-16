@@ -1002,7 +1002,7 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   leaves both (`client/session.py`, `mark`; `docs/re/memory.md`, "What decides whether an item
   appears"): compare-and-set writes, only for a location two polls in a row (in the same save
   slot, seconds apart at most) found still to mark. **Never in a room that waits for its
-  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0 and R'Talva X34 Y51). In game,
+  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0, R'Talva X34 Y51 and Kresezoa X5 Y23). In game,
   2026-11-14, the first of those squares
   marked from afar was a soft-lock: its item gone, the boss fight its pickup starts never
   began, and the room could not be left. There the item stays, and once the server has it as
@@ -1017,9 +1017,17 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   the seed `lab/ap/live65`, the client with the room listed and the helper of PR #145's
   399f57e; the owner's report, `lab/ingame-collected-checks.md`, "Check J": its popup read
   Scrap Metal with the logo, as a stand-in's does; whether the gate turned on at that
-  pickup was not said; the fourth run below). Those
-  two rooms are the ones listed, by the owner's judgment of
-  the game: 50 other location squares have an after-pickup event in the game's per-cell table
+  pickup was not said; the fourth run below). Kresezoa X5 Y23, a boss arena whose boss
+  drops the cell's item, was listed on 2026-11-16: marked from afar, the boss still dropped
+  the collected item's picture and its pickup gave nothing; left unmarked, the drop shows as
+  scrap and is an actual Scrap Metal (B1, `zexion_ap.dll` `ca19c141…`, the owner's reports,
+  `lab/ingame-event-rooms-checks.md`; `docs/re/memory.md`, "What decides whether an item
+  appears", "The type-28 events"). The same run marked the 14 squares of the seed
+  `lab/event-rooms/live66` from afar: Fijedar X5 Y39, Guardia X25 Y11, Vallahar X9 Y14 and
+  Machinus X27 Y24 played with no soft-lock; nine were not run (Guardia X41 Y10 and X22 Y9,
+  Pulsava X51 Y12 and X46 Y13, Phobyss X18 Y41, Kresezoa X22 Y26, Crysmoon X49 Y32, X52 Y38
+  and X53 Y20). The three listed are the ones found so far; 49 other location squares have
+  an after-pickup event in the game's per-cell table
   (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
   an arena and one more event square were played marked with no harm
   (below), the rest not. **An item the game has made already**
