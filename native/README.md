@@ -1034,8 +1034,12 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   (`client/reconcile.py`, `marked_count`; `docs/re/memory.md`, "The pickup counter and the
   collected cells": the count equals the collected cells in every lab save copy looked at
   but the marked one, short by its marks). Nothing is ever taken away: a save marked before
-  this rule, when each mark gave one Scrap Metal, keeps them. A marked square reads explored
-  on the map. A mark stays in the
+  this rule, when each mark gave one Scrap Metal, keeps them, and that surplus then stands
+  in for as many Scrap Metal, Area Maps or Energy Shields received later (their popups show,
+  the count stays; only the lab's saves predate the rule). A stand-in picked up and then
+  lost to a death or a reload is marked once the save is back, and gives none then either:
+  its Scrap Metal went with the load. A marked square reads explored on the map. A mark
+  stays in the
   save once the game saves: such a save played against another room of the same seed sends
   its marked locations as checks. With no client connected nothing is marked, and a failing
   read or write of the marking is said once while items and checks go on. Stand-in tests

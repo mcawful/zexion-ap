@@ -2,7 +2,8 @@
 
 Each target has two or more patterns from different code (candidates from tools/make_pattern.py);
 every one must match exactly once in .text and all must lead to the same address
-(client/game.py). Where a pattern refers to a field inside the target rather than its start,
+(client/game.py, which lets the client attach without its optional targets,
+``CLIENT_ONLY_TARGETS``). Where a pattern refers to a field inside the target rather than its start,
 another refers to the start, so a layout change makes them disagree. Recorded with evidence
 in docs/re/memory.md. ``rvas`` is what each target resolved to on each build it was checked
 on, by the build's name in ``KNOWN_BUILDS`` (tools/check_patterns.py compares them), for
