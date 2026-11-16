@@ -5,9 +5,9 @@ x64 exe on SDL2 and FMOD with no modding API: its mod folders are for sprites an
 only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
 Everything here comes from reverse engineering, hence the evidence rules below.
 
-**Status:** 1.1.0; played in game on build B1 only. Releases (the version: "Releases and
-versions") are published from `main` on GitHub's
-[Releases page](https://github.com/mcawful/zexion-ap/releases).
+**Status:** played in game on build B1 only. Releases (the version: "Releases and versions")
+are published from `main` on GitHub's [Releases page](https://github.com/mcawful/zexion-ap/releases);
+the current version is `world_version` in `worlds/zexion/archipelago.json`.
 
 Where things are:
 

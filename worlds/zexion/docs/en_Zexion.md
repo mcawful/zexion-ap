@@ -261,32 +261,8 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   when you pick it up. The Scrap Metal left in the two rooms that wait for their pickup
   (below) is a minor item on the map: UNKNOWN ITEM before you have seen it (checked in the
   game under the preset modes' Obscure settings only).
-- Another player's item stays collected once its location is checked, by you, by its owner's
-  `!collect` or by a release: if you die or reload without saving after picking it up, or
-  play another save of your seed, it's gone from its room, and so are items another player
-  collects with `!collect` and the ones you release (`!release`). One in a room around you
-  disappears a moment later (checked in the game when its owner collects; after a reload,
-  where you may see it for a second, not yet). Two rooms are left out, where picking the
-  item up is what moves the game on: Exodia 20,0 (it starts the boss fight) and R'Talva
-  34,51 (the boss's reward, which opens the warp gate). Once such an item is checked, a
-  Scrap Metal lies there instead, and you still pick it up. With the mod it is picked up as
-  the game's own Scrap Metal (checked in the game: both rooms gave the regular Scrap Metal
-  and its drops; at Exodia 20,0 the fight started, and at R'Talva 34,51 the gate opened and
-  the music came back; before the mod made its pickup the game's own, only Exodia 20,0's
-  fight had been checked). An enemy
-  that would have dropped a checked item drops nothing (checked in the
-  game). In an upside-down room the mod hides a checked item
-  (checked in the game; without the mod it shows, and touching it gives you nothing). An
-  item kept collected this way gives you nothing, not the Scrap Metal you get for picking
-  one up: that goes for one you picked up and then lost to a death or a reload, and for one
-  you picked up in another save, too (checked in the game for a reload and for an owner's
-  collect; not yet for a death or another save; a save from before this keeps the Scrap
-  Metal it got). Your own items aren't touched: they follow your save, so
-  after a death or a reload they're
-  back in their rooms. This needs the client connected (a death, another save and `!release`
-  are not yet checked in the game). A save keeps what was marked: played against a
-  new room of the same seed, or after the server went back to an older state, it sends those
-  locations as found (not yet checked in the game).
+- Whether such an item stays found after you pick it up: "Do other players' items stay found?"
+  below.
 - Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
   Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
   does, after its popup, once you have stayed on one map square for a second. Both, and the
@@ -296,6 +272,37 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   you saw before version 1.1.0, or that reached you before your first connection to the seed (it
   gets no popup), drops nothing, and nothing drops during the game's ending: what arrives then
   drops the next time you load the save.
+
+## Do other players' items stay found?
+
+Yes, while the client is connected: an item for another player that you picked up, or that its owner
+collected (`!collect`) or you released (`!release`), is gone from its room and marked on the map.
+The client does this, so the mod isn't needed for it.
+
+- **What stays collected:** if you die or reload without saving after picking one up, or play
+  another save of your seed, it's still gone. An item in a room around you disappears a moment
+  later. A save keeps what was marked: played against a new room of the same seed, or after the
+  server went back to an older state, it sends those locations as found.
+- **What it gives:** nothing. Picking one up gives you one Scrap Metal, but an item kept
+  collected this way gives none, also one you picked up and then lost to a death or a reload, or
+  picked up in another save.
+- **What isn't kept:** two rooms where picking the item up is what moves the game on, Exodia 20,0
+  (it starts the boss fight) and R'Talva 34,51 (the boss's reward, which opens the warp gate). Once
+  such an item is checked, Scrap Metal lies there instead and you still pick it up: with the mod,
+  as the game's own Scrap Metal. Your own items aren't touched either: they follow your save, so
+  after a death or a reload they're back in their rooms. An enemy that would have dropped a
+  checked item drops nothing.
+- **What needs the client:** all of the above. With it closed, an item you found before a death or a
+  reload is back in its room. In an upside-down room the mod hides a checked item (without the mod it
+  shows, and touching it gives nothing).
+
+Checked in the game: an item gone after a reload, and one in a room around you gone when its owner
+collects; a kept item giving no Scrap Metal, for a reload and for an owner's collect; both left-out
+rooms (the fight at Exodia 20,0; the gate and the music at R'Talva 34,51); enemy drops; the hidden
+item in an upside-down room. Not yet checked in the game: a death, another save of your seed,
+`!release`, a save played against a new room of the same seed or an older server state, seeing an
+item for a second after a reload beside it, and no Scrap Metal for one lost to a death or picked up
+in another save.
 
 ## What do Area Maps and Intel Chips do?
 
@@ -364,17 +371,14 @@ reload, with the client open and closed; not yet for a death).
 Other games' traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
-row; one past a shield; AILMENTS at both settings not changing them; one sent while paused, while
-dead or while the client was disconnected; one sent before you first connected, with the client
-restarted before you played; your own trap and other players' in your world, their look (an upgrade,
-a key or an OS Install Disk) and their pickup popups, and a disk-look trap not counting; with Hints
-Revealed, a key-look trap having no key marker; a second trap's popup waiting for it; the client
-closed while a trap waits or runs; a trap sent just after an OS Install Disk, coming after the
-disk's popup and count; and one sent while paused, then TELEPORT TO START, RELOAD FROM CHECKPOINT or
-RELOAD FROM SAVE, going off with its popup once you are back in play. Not checked in the game: a trap through
-RETURN HOME or the ending, a key-look trap after the scanner has shown your keys, other popups
-showing first while a trap waits for one of its kind to end, and the mod refusing to reload while a
-trap waits to go off.
+row; one past a shield; AILMENTS at both settings; one sent while paused, while dead, while the
+client was disconnected or before you first connected; your own trap and other players' in your
+world, with their look and pickup popups; with Hints Revealed, a key-look trap having no key
+marker; a trap sent just after an OS Install Disk; and one sent while paused, then TELEPORT TO
+START, RELOAD FROM CHECKPOINT or RELOAD FROM SAVE. Not checked in the game: a trap through RETURN
+HOME or the ending, a key-look trap after the scanner has shown your keys, other popups showing
+first while a trap waits for one of its kind to end, and the mod refusing to reload while a trap
+waits to go off. Every run is recorded in `native/README.md` ("Traps") in the repository.
 
 ## Can I use the assist menu?
 
