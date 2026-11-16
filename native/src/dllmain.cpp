@@ -231,7 +231,15 @@ void take_offline() {
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
 void note_put_seed(zap::OfflineSeed seed) {
     AcquireSRWLockExclusive(&g_offline_lock);
-    g_put_seeds.push_back(std::move(seed));
+    // One of the same name still waiting (no frame since: the game in the background) is
+    // replaced, so the queue holds one a seed however often a client puts it.
+    auto same = std::find_if(g_put_seeds.begin(), g_put_seeds.end(),
+                             [&](const zap::OfflineSeed& s) { return s.name == seed.name; });
+    if (same != g_put_seeds.end()) {
+        *same = std::move(seed);
+    } else {
+        g_put_seeds.push_back(std::move(seed));
+    }
     ReleaseSRWLockExclusive(&g_offline_lock);
 }
 

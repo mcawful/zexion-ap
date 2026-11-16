@@ -195,7 +195,23 @@ def test_a_seed_file_too_large_to_keep_still_reaches_the_helper(monkeypatch, siz
     monkeypatch.setattr(ticks, "offline_seed", lambda c, p: "x" * size)
     run(ticks.offline_tick(ctx, no_finds()))
     assert [r.startswith("offline_put seed ") for r in ctx.helper.requests] == [True] * sent
-    assert "seed" not in ctx.told.offline_sent, "not kept: sent again later"
+    # Taken by the helper, though not kept: not put again while it is the same text. One the
+    # pipe would not take was never handed over, and is tried again.
+    assert ("seed" in ctx.told.offline_sent) == sent
+    ctx.told.offline_at = 0.0
+    run(ticks.offline_tick(ctx, no_finds()))
+    assert len(ctx.helper.requests) == sent
+
+
+def test_a_seed_file_whose_write_failed_is_put_again(monkeypatch) -> None:
+    ctx = offline_ctx(native.HelperError("unused"))
+    ctx.helper = Refusing("error cannot write, error 5")
+    ctx.offline_config = (ctx.game_conn, None)
+    monkeypatch.setattr(ticks, "offline_seed", lambda c, p: "seed text")
+    for _ in range(2):
+        ctx.told.offline_at = 0.0
+        run(ticks.offline_tick(ctx, no_finds()))
+    assert len(ctx.helper.requests) == 2 and "seed" not in ctx.told.offline_sent
 
 
 def test_the_offline_file_locks_assist_until_assist_unlock_is_received() -> None:

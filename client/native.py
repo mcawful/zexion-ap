@@ -265,6 +265,10 @@ def wait_unloaded(process_handle: int) -> bool:
 class Helper:
     """A connection to the helper's pipe in process ``pid``. Any error closes it for good."""
 
+    # Whether ``attach`` loaded the helper into the game for this connection: none was there
+    # before (False for one the game or an earlier attach had loaded).
+    loaded_here = False
+
     def __init__(self, pid: int):
         name = pipe_name(pid)
         deadline = time.monotonic() + CONNECT_SECONDS
@@ -589,6 +593,7 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     else:
         loaded_here = False
     helper = Helper(g.pid)
+    helper.loaded_here = bool(loaded_here)
     try:
         hello = _hello(helper)
         version = hello.get("version", "")

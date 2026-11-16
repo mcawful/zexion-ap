@@ -63,7 +63,13 @@ around the change.
    the client gives what the player should own (the seed's starting items, the game's own items
    at the collected locations, and the items received) minus what the inventory holds. Check
    that `should_own` stays right, that nothing marks a grant as kept, and that an item arriving
-   while the game is not ready waits rather than being dropped. The one stored index is the
+   while the game is not ready waits rather than being dropped. A cell the client marked
+   collected owes nothing (the owner's rule: no Scrap Metal for marks): a stand-in's one Scrap
+   Metal counts only where it was picked up, the marked cells being the collected ones the
+   game's pickup counter does not account for (`reconcile.marked_count`; `docs/re/memory.md`,
+   "The pickup counter and the collected cells"), so that is not a lost grant; a mark that
+   gives Scrap Metal, or anything that takes Scrap Metal away, is a finding, and nothing may
+   be marked while the counter cannot be read. The one stored index is the
    popup count in the server's data storage (`announced_tick`, `client/storage.py`): check that
    it cannot replay or skip a popup across reconnects, client restarts, game restarts and
    reloads of an older save. Measured on B1: a grant is lost when the player dies before the
