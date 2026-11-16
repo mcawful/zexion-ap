@@ -324,7 +324,9 @@ public:
 
     // An item record restyled (the stand-ins, the Area Map), an object dressed or hidden (one
     // kept hidden through a menu, the records released), or the pickup popup's line width
-    // changed: unload must wait for a frame to put them back.
+    // changed: unload must wait for a frame to put them back. With a menu open over a save an
+    // unload is refused outright (unload_refusal), so the hidden object counts only for an
+    // unload no frame comes for.
     bool ap_items_restyled() const {
         return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth) ||
                looks_.dressed() || looks_.hidden_markers() > 0 || intel_.restyled();

@@ -52,10 +52,9 @@ worlds/zexion/ → generation → slot data → client
   it is checked, and with the helper it is picked up as the game's own Scrap Metal: in
   game, both rooms gave "the regular scrap metal and the pickups from it" (the owner's
   words), and its map square showed as a minor's under the presets' Obscure settings. An
-  item the game has made
-  already is ended by the game itself once its state is written; one that may be there as
-  another kind of object (in a room the game has loaded or within two map squares of the
-  player) stays until the player is farther from it
+  item the game has made already is ended by the game itself once its state is written; one
+  that may be there as another kind of object (in a room the game has loaded or within two
+  map squares of the player) stays until the player is farther from it
   ([`native/README.md`](../native/README.md), "Other players' items"). A marked item gives
   nothing: the one Scrap Metal a stand-in gives is counted only where it was picked up,
   which the game's own pickup count tells apart. With `--verbose` each marking is logged
@@ -72,10 +71,10 @@ worlds/zexion/ → generation → slot data → client
   own trap off at each pickup ([`native/README.md`](../native/README.md), "The OS Install Disks
   goal", "Traps"). A failing side task (labels, disk count, DeathLink, follow-up popups) is
   logged once while items, checks and the goal go on, and so is a failing marking of other
-  players' items ("Can't mark other
-  players' items collected right now"; or, on a game build where the pickup counter's
-  patterns no longer match, "Can't mark other players' items collected in this build of the
-  game", after which nothing is marked), which is part of the poll's step, not a side task.
+  players' items ("Can't mark other players' items collected right now"; or, on a game build
+  where the pickup counter's patterns no longer match, "Can't mark other players' items
+  collected in this build of the game", after which nothing is marked), which is part of the
+  poll's step, not a side task.
   With no server connection, while a save it has not dressed is loaded and no ending is on
   its way, it lets the helper go, so the helper gives AP saves their look as with no client,
   and attaches it again on connecting ([`native/README.md`](../native/README.md), "AP saves
@@ -171,23 +170,27 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   bbaf3c5); an item beside the player gone when its owner collects: 2026-11-14 (the same
   branch at 79bee7a). That run also found a soft-lock at Exodia X20 Y0, marked from afar
   (its pickup starts the boss fight): that room is left unmarked since and shows Scrap Metal
-  once its item is checked, whose pickup starts the fight; and a marked boss reward, arena
-  and reversed-gravity room played with no harm (the first and the last still show the item
-  as a picture that gives nothing): 2026-11-15 (the same branch at a17904b). The helper
-  hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at 399f57e).
-  R'Talva X34 Y51, the boss's reward, is left unmarked too since, and showed as scrap in
-  game: 2026-11-15; the helper making such a scrap's pickup the game's own Scrap Metal's:
-  both rooms gave "the regular scrap metal and the pickups from it" (the owner's words),
-  and its map square showed as a minor's under the presets' Obscure settings, 2026-11-15
-  (PR #146's branch at fe4fe1b). Not run in game with this helper: whether the fight at
-  Exodia X20 Y0 and the gate at R'Talva X34 Y51 follow the pickup, the map square under the
-  other Obscure settings, and the square while the item is on screen.
+  once its item is checked, whose pickup starts the fight. Marked, an arena and a
+  reversed-gravity room played with no harm (the latter still shows the item as a picture
+  that gives nothing); a boss's reward, R'Talva X34 Y51's, still showed too, and the warp
+  gate waited for the touch of that picture: 2026-11-15 (the same branch at a17904b). The
+  helper hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at
+  399f57e; kept hidden under a menu: stand-in tested only).
+  So R'Talva X34 Y51 is left unmarked too since, and showed as scrap in game: 2026-11-15
+  (the client of PR #145's branch at 399f57e with the room listed on top); the helper
+  making such a scrap's pickup the game's own Scrap Metal's: both rooms gave "the regular
+  scrap metal and the pickups from it" (the owner's words), and its map square showed as a
+  minor's under the presets' Obscure settings, 2026-11-15 (PR #146's branch at fe4fe1b).
+  Not run in game with this helper: whether the fight at Exodia X20 Y0 and the gate at
+  R'Talva X34 Y51 follow the pickup, the map square under the other Obscure settings, and
+  the square while the item is on screen.
   In those runs each mark gave one Scrap Metal; a mark gives none since (the second review
   round, 2026-11-15), which, with the marking's wait through a TELEPORT TO, is tested only.
-  Not run in game: a
-  death, another save of the seed, `!release`, a reload beside an item, and an item with an
-  after-pickup event (an arena's, say) marked while the player stands in its room ("Other
-  players' items", "Kept collected"; "What decides whether an item appears").
+  Not run in game: a death, another save of the seed, `!release`, a reload beside an item,
+  an item with an after-pickup event (an arena's, say) marked while the player stands in its
+  room, and a room that shows its item as an object of another kind beside the item object
+  (Guardia X22 Y7) marked ("Other players' items", "Kept collected"; "What decides whether
+  an item appears").
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
