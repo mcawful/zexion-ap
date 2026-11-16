@@ -2,7 +2,8 @@
 
 Each target has two or more patterns from different code (candidates from tools/make_pattern.py);
 every one must match exactly once in .text and all must lead to the same address
-(client/game.py). Where a pattern refers to a field inside the target rather than its start,
+(client/game.py, which lets the client attach without its optional targets,
+``CLIENT_ONLY_TARGETS``). Where a pattern refers to a field inside the target rather than its start,
 another refers to the start, so a layout change makes them disagree. Recorded with evidence
 in docs/re/memory.md. ``rvas`` is what each target resolved to on each build it was checked
 on, by the build's name in ``KNOWN_BUILDS`` (tools/check_patterns.py compares them), for
@@ -72,6 +73,11 @@ TARGETS = (
     Target("map_grid", "the live 54 x 54 map grid (one byte per cell; 0x1B = item collected)", {"B1": 0x3E469D}, (
         rip("48 8D 05 ?? ?? ?? ?? 41 FF C7 49 03 C2 42 0F B6 14 00 80 FA 18 7C 0B 8D 43 01 80 FA 32 0F 4F C3 8B D8 48 8D 05 ?? ?? ?? ??", 3, 7),
         rip("48 8D 05 ?? ?? ?? ?? 49 03 C2 48 89 84 24 A8 00 00 00 48 8D 05 ?? ?? ?? ?? 49 03 C2 48 89 74 24 40", 3, 7),
+    )),
+    Target("cell_state", "the live per-cell state, 9 bytes a map cell: its 8 objects' states, then its item's (0 there, 1 collected, 2 held by an object, 3 dropped by it)", {"B1": 0x3E5201}, (
+        rip("48 8D 35 ?? ?? ?? ?? 4C 89 84 24 38 01 00 00 4C 8D 35 ?? ?? ?? ??", 3, 7),
+        rip("48 8D 0D ?? ?? ?? ?? 49 6B C2 36 49 03 C0 4C 69 D8 9A 00 00 00", 3, 7),
+        rip("48 8D 05 ?? ?? ?? ?? 44 8B C2 4B 8D 0C D2 48 69 D5 E6 01 00 00", 3, 7, -0x8),
     )),
     Target("inventory", "the live inventory, one byte per item ID (inside the player state)", {"B1": 0x3ED47E}, (
         rip("C6 05 ?? ?? ?? ?? 01 44 89 25 ?? ?? ?? ?? 44 88 25 ?? ?? ?? ?? C7 05 ?? ?? ?? ?? 00 00 03 00", 2, 7, -0x2),
@@ -411,6 +417,21 @@ TARGETS = (
         rip("80 3D ?? ?? ?? ?? 00 75 1E 33 C9 FF 15 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 33 C9 C6 80 20 01 00 00 00 FF 15 ?? ?? ?? ?? 48 8B 83 E0 01 00 00", 2, 7),
         rip("80 3D ?? ?? ?? ?? 00 75 10 66 FF 8B BE 0C 00 00 33 C0 66 89 83 8C 10 00 00 FF 05 ?? ?? ?? ?? B9 CC 01 00 00", 2, 7),
     )),
+    Target("ailments", "the AILMENTS assist setting (16-bit): at 2 the Balorb's wave does nothing, and the per-frame code shortens or ends both ailments (Traps)", {"B1": 0x3E2DC4}, (
+        rip("66 44 39 25 ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? 69 05 ?? ?? ?? ?? 6D 4E C6 41", 4, 8),
+        rip("0F B7 0D ?? ?? ?? ?? 66 83 F9 02 ?? 09 66 89 B3 C4 0D 00 00", 3, 7),
+        rip("0F B7 0D ?? ?? ?? ?? 66 41 3B CC ?? 16 8D 42 FD 66 89 83 C2 0D 00 00", 3, 7),
+    )),
+    Target("ailments_hit_code", "the per-frame code's two tests of AILMENTS for the disruption's timer (43 bytes); the helper makes their jne's jmp's while a trap's runs (Traps)", {"B1": 0x1CC5C4}, (
+        at("0F B7 0D ?? ?? ?? ?? 66 41 3B CC ?? 16 8D 42 FD 66 89 83 C2 0D 00 00 0F B7 C7 0F B7 0D ?? ?? ?? ?? EB 02 8B C5 66 83 F9 02 ?? 09 66 89 B3 C2 0D 00 00"),
+        at("0F B7 93 C2 0D 00 00 8D 42 FF 66 89 83 C2 0D 00 00 0F B7 0D", 0x11),
+        rip("0F B7 83 C4 0D 00 00 66 85 C0 0F 8E ?? ?? ?? ?? 66 FF C8 66 89 83 C4 0D 00 00", 12, 16, -0x159),
+    )),
+    Target("ailments_wave_code", "the per-frame code's two tests of AILMENTS for the disorientation's timer (44 bytes); the helper makes their jne's jmp's while a trap's runs (Traps)", {"B1": 0x1CC62C}, (
+        at("0F B7 0D ?? ?? ?? ?? 66 41 3B CC ?? 19 66 41 3B C7 7E 13 66 44 89 BB C4 0D 00 00 41 0F B7 C7 0F B7 0D ?? ?? ?? ?? 66 83 F9 02 ?? 09 66 89 B3 C4 0D 00 00"),
+        at("0F B7 83 C4 0D 00 00 66 85 C0 0F 8E ?? ?? ?? ?? 66 FF C8 66 89 83 C4 0D 00 00 0F B7 0D", 0x1A),
+        rip("0F B7 83 C4 0D 00 00 66 85 C0 0F 8E ?? ?? ?? ?? 66 FF C8 66 89 83 C4 0D 00 00", 12, 16, -0xF1),
+    )),
     Target("ending_unlocks", "the ending's first Steam call, where its achievement, database entries and Feats begin; the helper jumps from here to ending_join in AP saves", {"B1": 0x94A7E}, (
         at("4C 8B DC 57 48 83 EC 50 48 83 3D ?? ?? ?? ?? 00 48 8B 05 ?? ?? ?? ?? 49 89 5B 10 48 8B 1D ?? ?? ?? ?? C6 80 20 01 00 00 00 0F 85 ?? ?? ?? ?? 49 89 6B 18 48 8D 0D ?? ?? ?? ?? 49 89 73 20 4D 89 63 F0 4D 89 6B E8 4D 89 73 E0 4D 89 7B D8", 0x4E),
         rip("48 83 C4 20 5B C3 CC CC CC CC CC CC 48 83 EC 28 E8 ?? ?? ?? ?? 48 83 C4 28 E9", 17, 21, 0x4E),
@@ -500,7 +521,13 @@ TARGETS = (
 )
 # fmt: on
 
-# Targets only the RE tools read (tools/grant.py, tools/check_patterns.py). The client does not
-# locate them (CLIENT_TARGETS), so one of their patterns breaking cannot stop it attaching.
-TOOL_TARGETS = frozenset({"pickup_counter"})
-CLIENT_TARGETS = tuple(t for t in TARGETS if t.name not in TOOL_TARGETS)
+# The targets the client locates: all of them, as the RE tools do.
+CLIENT_TARGETS = TARGETS
+# Targets the client reads and writes that the helper is not given (native.CONFIG_KEYS): it has
+# no use for them, and a key added to its config makes the offline cache written before it
+# refused until the client runs again. The client attaches without one whose patterns no
+# longer match (game.Game.attach): only what reads it stops, the marking of other players'
+# items (client/session.py, ``mark``, which needs both: the per-cell state to write, and the
+# pickup counter to tell a marked cell from one picked up), which says so once, while items
+# and checks go on.
+CLIENT_ONLY_TARGETS = frozenset({"cell_state", "pickup_counter"})

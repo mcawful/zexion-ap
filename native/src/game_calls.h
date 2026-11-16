@@ -6,6 +6,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -15,6 +16,7 @@
 #include <vector>
 
 #include "addresses.h"
+#include "cell_watch.h"
 #include "game_mem.h"
 #include "menu.h"
 #include "apitem.h"
@@ -32,6 +34,7 @@
 #include "title.h"
 #include "text.h"
 #include "translation.h"
+#include "trap.h"
 
 namespace zap {
 
@@ -39,6 +42,11 @@ namespace zap {
 inline constexpr char kMenuOpenRefusal[] = "a menu is open";
 inline constexpr char kEndingRefusal[] =
     "the ending RETURN HOME WITH THE DISKS? started is on its way";
+// A trap's AILMENTS patch is held (trap.h): putting it back would end the trap at IMMUNE.
+inline constexpr char kTrapRefusal[] = "a trap is running";
+// A trap queued for the save loaded (or any save) waits to go off: an unload would drop it, and
+// the client counts it handed over. One for another save is lost with the helper.
+inline constexpr char kTrapWaitingRefusal[] = "a trap is waiting to go off";
 
 class Game {
 public:
@@ -76,7 +84,8 @@ public:
     std::string apply(const Batch& batch);
 
     // Game thread, every frame: shows the next queued popup, with its sound, once the game's
-    // last popup has ended. A popup the game could not take stays queued.
+    // last popup has ended. A popup the game could not take stays queued. A received trap's
+    // popup is pump_traps's to show, as its trap goes off: the queue waits for it in its turn.
     void pump_popups();
 
     size_t queued_popups() const { return popups_.size(); }
@@ -160,14 +169,13 @@ public:
     const char* unload_refusal() const {
         if (menu_open()) return kMenuOpenRefusal;
         if (ending_pending()) return kEndingRefusal;
+        if (ailments_patched()) return kTrapRefusal;
+        if (trap_waiting()) return kTrapWaitingRefusal;
         return nullptr;
     }
-    // The file select (files.h): `disk_slots` sets the counts by slot; the entries' wrapper calls
-    // the game's (file_entry_original), then file_event.
-    void set_disk_slots(std::map<int, int> counts) {
-        client_file_counts_ = std::move(counts);
-        apply_file_counts();
-    }
+    // The file select (files.h): the counts by slot are each save's own, from its seed's file
+    // and its map (watch_offline); the entries' wrapper calls the game's (file_entry_original),
+    // then file_event.
     void* file_entry_original(void* widget) const { return files_.original(widget); }
     const FileEntries& files() const { return files_; }
     void file_event(void* widget, intptr_t event);
@@ -254,16 +262,75 @@ public:
     // <item>" or "refused <why> <item>".
     std::string drop_status() const;
     size_t queued_drops() const { return drops_.size(); }
+    // Game thread, every frame, and not while an unload runs (dllmain.cpp: with the watches,
+    // after watch_all): sets off each trap queued (this world's own by watch_own_traps, a
+    // received one's popup by an `apply`), as the game's touch does (trap.h),
+    // one a frame, once in play for a moment in the save it was for, not halted, not from RETURN
+    // HOME's fade through its ending, and not in an ending that began in the load (kept for the
+    // next), one of each kind at a time (the next waits for the last to run out): this world's
+    // own (watch_own_traps) at once; a received one's popup as its turn in the queue comes, shown
+    // here, the trap going off as it is drawn. Keeps AILMENTS's tests patched while a trap's timer
+    // runs.
+    void pump_traps(uint64_t now_ms);
+    // Game thread, every frame (watch_all), with a client or none: this world's own traps, as
+    // the loaded save's seed file lists them (offline.h, `traps`), each queued for pump_traps
+    // when its map cell turns collected after kCellWatchPlayLooks looks in play in a row: its
+    // pickup, every time, so again after a reload that put the item back. The look that sees it
+    // may be of a menu or a death (a pause taken on the pickup's frame). A load is never taken
+    // for a pickup: it comes from a menu, a death or no save, and the first looks in play after
+    // any of those, or after another seed's save, only take the cells as they are; a TELEPORT
+    // TO's, at the end of a countdown that reads as play, loads the play state as it was at
+    // that end or before (docs/re/memory.md, "Received Energy Shields", "Limits"), which turns
+    // no cell collected.
+    void watch_own_traps();
+    // Queues one of this world's own traps for the save loaded, as watch_own_traps does:
+    // `cell` its map cell (-1: none known), by which pump_traps drops one whose pickup a load
+    // undid before it went off, or that waits in another slot's save of the seed than the one
+    // it was picked up in. One still queued for that cell in this save is not queued twice (a
+    // pickup undone and made again before play settled).
+    void own_trap_found(uint8_t item, int cell = -1);
+    // Game thread, every frame (watch_all): with no client, in a known disk seed's save, an own
+    // OS Install Disk's pickup queues its count notice, as the client's follow-up does with one
+    // (client/discs.py, `note`): "OS Install Disk 3 of 15", the save's count from the seed's
+    // file and the map (offline_disk_count), "of 15" once the scanner has said how many. A
+    // pickup is a cell turning collected, as for watch_own_traps (no load is taken for one);
+    // a load that puts a disk back withdraws the count notices not shown yet, as does the save
+    // being left: their count is no longer the save's. A client attaching leaves one queued.
+    void watch_own_disks();
+    // `trap_status` (for live checks): "queued N; last <outcome>", the outcome "none", "set
+    // <item>", or "nothing <item>" (its timer already longer: as the game's op does nothing).
+    bool ailments_patched() const { return hit_patch_.patched() || wave_patch_.patched(); }
+    // Game thread, unloading (dllmain.cpp, after put_back_game): the AILMENTS patches put back,
+    // which put_back_game leaves to the trap running (a client going away keeps them).
+    void put_back_traps();
+    std::string trap_status() const;
+    // The traps not set off yet: this world's own (traps_) and the received ones' popups queued.
+    size_t queued_traps() const {
+        return traps_.size() + static_cast<size_t>(std::count_if(
+                                   popups_.begin(), popups_.end(), &Game::received_trap));
+    }
+    // A queued trap for the save loaded, or for any save (one received with none loaded): it
+    // goes off once in play (pump_traps), so an unload waits for it (unload_refusal).
+    bool trap_waiting() const {
+        return std::any_of(traps_.begin(), traps_.end(),
+                           [this](const QueuedTrap& t) { return origin_loaded(t.origin); }) ||
+               std::any_of(popups_.begin(), popups_.end(), [this](const Popup& p) {
+                   return received_trap(p) && showable(p);
+               });
+    }
     // Game thread (`die`): energy 0 and the game's death routine, once settled in one cell for a
     // second, not halted, no message up, no RETURN HOME prompt or ending on its way: "died" or
     // "refused <why>".
     std::string kill(uint64_t now_ms);
 
-    // An item record restyled (the stand-ins, the Area Map), an object dressed, or the pickup
-    // popup's line width changed: unload must wait for a frame to put them back.
+    // An item record restyled (the stand-ins, the Area Map), an object dressed or hidden (one
+    // kept hidden through a menu, the records released), or the pickup popup's line width
+    // changed: unload must wait for a frame to put them back. With a menu open over a save an
+    // unload is refused outright (unload_refusal), so the hidden object counts only for an
+    // unload no frame comes for.
     bool ap_items_restyled() const {
         return ap_items_.restyled() || (popup_width_ > 0 && popup_width_ != kGamePopupWidth) ||
-               looks_.dressed() || intel_.restyled();
+               looks_.dressed() || looks_.hidden_markers() > 0 || intel_.restyled();
     }
     int popup_width() const { return popup_width_; }  // tests
     // The first thing an unload must wait a frame to put back, as its refusal names it; or null.
@@ -275,6 +342,12 @@ public:
         if (feats_.ending_patched()) return "the ending's patch is still the helper's";
         if (seen_marker_.patched()) return "the map's on-screen marker is still the helper's";
         if (text_cut_.patched()) return "the text window's cut is still the helper's";
+        if (hit_patch_.patched() || wave_patch_.patched()) {
+            return "the AILMENTS tests are still the helper's";
+        }
+        // Also for an unload no frame came for (unload_refusal is asked in a frame): published
+        // each frame, and false after the unload frame's put-back, as nothing queues one then.
+        if (trap_waiting()) return kTrapWaitingRefusal;
         if (popup_areas_.in_use()) return "a popup still shows the helper's translated text";
         // Entry 70 still pointing into the run: put back by the unload's frame, so only an unload
         // no frame came for is refused (the next helper would take it for the game's).
@@ -328,6 +401,13 @@ private:
     bool rando_save_loaded() const;
     // A new game queued: the game's new-game routine set as the next transition.
     bool newgame_queued() const { return at<void*>(at_.transition_fn, 0) == at_.newgame_fn; }
+    // A transition counting down to its routine (the timer above 0): a TELEPORT TO's 60 frames
+    // before its load, a death's respawn, the ending's. Idle in play the timer is 0, room changes
+    // leave it alone (docs/re/memory.md, "Telling play from menus, the title screen and death").
+    bool transition_queued() const { return at<int32_t>(at_.transition_timer, 0) > 0; }
+    // In play in one cell for kSettledMs with no transition queued (note_play): a shield, a drop,
+    // a death.
+    bool settled(uint64_t now_ms) const;
     bool in_play() const;
     // In play outside home's cell; false with no home given, or the player's cell off the map.
     bool away_from_home() const;
@@ -338,6 +418,20 @@ private:
     int32_t popup_frames_left() const;
     // Whether a queued popup may show in the save loaded now (Popup::origin).
     bool showable(const Popup& popup) const;
+    // A received trap's popup (a client's `popup 102` or `103`): its trap goes off as it shows.
+    static bool received_trap(const Popup& popup);
+    // A received trap's popup whose trap cannot go off for a while: one of its kind a trap
+    // started still runs, or the game's ending holds it. The popups behind it go first meanwhile;
+    // it shows when its trap starts.
+    bool trap_parked(const Popup& popup) const;
+    // The next popup to show now, or popups_.end(): in play, the gap since the helper's last
+    // passed, no message of the game's up, no RETURN HOME on its way; the first queued for this
+    // save (or for any) that is not a parked trap's.
+    std::deque<Popup>::iterator next_popup();
+    // Shows `next` (from next_popup) with its sound and takes it off the queue: whether the game
+    // drew it. Not drawn (no message slot free, a translation's entry not free yet), it stays;
+    // one whose record is not loaded is dropped, but a trap's, which waits with its trap.
+    bool show_popup(std::deque<Popup>::iterator next);
     // A save loaded with flag 250 set and 211 clear, the client's goal: the ending begun, in
     // this load or before (a save past its ending reads so throughout).
     bool ending_flag() const;
@@ -377,10 +471,11 @@ private:
     int offline_count_ = -1, offline_told_ = -1;
     int offline_frames_ = 0;
     bool offline_settled_ = false;  // the loaded save in play since it loaded
-    // The file select's counts: the client's (disk_slots) and the offline ones (offline.h).
-    std::map<int, int> client_file_counts_, offline_file_counts_;
-    void apply_file_counts();
+    // The file select's counts, each save's own (offline.h, offline_disk_count), with a client
+    // or none.
+    std::map<int, int> offline_file_counts_;
     std::deque<Popup> popups_;
+    uint32_t batches_ = 0;  // the last `apply`'s number (Popup::batch)
     // Received scraps whose popup has shown, their drop not spawned yet (pump_drops), each with
     // its popup's save; lost, as queued popups are, with the helper.
     struct Drop {
@@ -388,6 +483,40 @@ private:
         std::shared_ptr<const OfflineSeed> origin;
     };
     std::deque<Drop> drops_;
+    // This world's own traps to set off (pump_traps), each with the save it was for; a received
+    // one waits as its popup in popups_. An unload waits for those of the save loaded
+    // (trap_waiting); those for another save are lost with the helper, as queued popups are.
+    struct QueuedTrap {
+        uint8_t item;
+        std::shared_ptr<const OfflineSeed> origin;
+        int cell = -1;  // an own trap's map cell (own_trap_found)
+        int slot = -1;  // and the save slot it was picked up in (0-based)
+    };
+    std::deque<QueuedTrap> traps_;
+    // watch_own_traps: the seed's own traps as last looked at (cell_watch.h), in the save loaded
+    // now.
+    CellWatch<OfflineSeed::OwnTrap> own_traps_watch_;
+    // watch_own_disks: the same for the seed's own disks' cells.
+    CellWatch<int> own_disks_watch_;
+    std::string trap_status_ = "none";
+    // Sets off trap `item` now: "set" or "nothing" (trap_status).
+    std::string run_trap(uint8_t item);
+    std::string disorient(BYTE* player);  // op 5's writes: run_trap's outcome
+    // Game thread: each timer's AILMENTS tests patched while a trap's runs (trap.h).
+    void watch_trap_patches();
+    trap::HitPatch hit_patch_;
+    trap::WavePatch wave_patch_;
+    bool trap_hit_ = false, trap_wave_ = false;  // a trap started the timer, and it runs
+    uint64_t in_play_since_ms_ = 0;               // in play since (any cell), for a trap
+    void play_sound(const trap::Sound& sound);
+    // Whether drops and traps wait for the ending (load_before_ending_), read every frame.
+    bool held_for_ending();
+    // held_for_ending's answer as its last call left load_before_ending_ (trap_parked).
+    bool ending_held() const { return ending_flag() && load_before_ending_; }
+    // Whether a trap of `item`'s kind that a trap started still runs (one of each at a time).
+    bool trap_running(uint8_t item) const {
+        return item == trap::kDisruption ? trap_hit_ : trap_wave_;
+    }
     // This load has been in play outside its ending (ending_flag false), or has read flag 211
     // set (the ship, or the escape skip's YES: an ending on its way), since the last frame with
     // no save loaded. While ending_flag then reads true, drops wait (pump_drops).
@@ -455,6 +584,9 @@ private:
     IconSheets icon_sheets_;  // the helper's icons in the translations' fonts
     // Runs a received item's pickup event (the Energy Shield's, a scrap's): "" or why not.
     std::string run_item_event(uint8_t item);
+    // Why `item`'s pickup event cannot be run ("": it can): its record, the event and the one
+    // it runs next as traced on B1, their handlers in the game's code. Sets `ev` and `handler`.
+    std::string item_event_ready(uint8_t item, BYTE*& ev, BYTE*& handler);
     int play_cell_ = -1;
     uint64_t play_since_ms_ = 0;
     int popup_width_ = -1;  // what the game holds, once read; -1 before

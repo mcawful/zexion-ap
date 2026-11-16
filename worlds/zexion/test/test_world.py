@@ -33,6 +33,7 @@ from ..items import (
     SCRAP_CHUNK,
     SCRAP_ENERGY,
     SCRAP_METAL,
+    TRAPS,
     UPGRADES,
     ZexionItem,
     code_of,
@@ -54,6 +55,7 @@ from ..world import (
     ZexionWorld,
 )
 from .bases import ZexionTestBase, every_list
+from .test_plando import generate
 
 
 def fake_world(**options: Any) -> ZexionWorld:
@@ -681,8 +683,8 @@ class TestTheStartIsOpened(ZexionTestBase):
         # Exclude 8 of the locations the opened start reaches: it opens on until 20 that are
         # not excluded are reached, since excluded locations take no progression. On seed 5
         # (Easy, Landing Pod) the opened start reaches exactly 20, so counting the excluded ones
-        # would stop it at 12 that are not.
-        self.options = {"mode": "easy"}
+        # would stop it at 12 that are not. No traps: they change the seed's draws.
+        self.options = {"mode": "easy", "trap_percentage": 0}
         self.world_setup(5)
         order = fill_recording(self.multiworld)
         self.assertEqual(len(self.reached_with(order)), START_REACH)
@@ -767,12 +769,20 @@ class TestSlotDataForTheClient(ZexionTestBase):
         distribute_items_restrictive(self.multiworld)
         items = self.world.fill_slot_data()["location_items"]
         self.assertEqual(len(items), len(data.LOCATIONS))
+        traps = 0
         for i, code in enumerate(items):
             placed = self.multiworld.get_location(location_name(i), self.player).item
             own = DRAWN_AS.get(code_of[placed.name], code_of[placed.name])  # Intel Chip: 49
+            if own in TRAPS:
+                self.assertEqual(code, FOREIGN_PROGRESSION, "this world's own trap: important")
+                traps += 1
+                continue
             self.assertEqual(code, SCRAP_METAL if own in (SCRAP_ENERGY, SCRAP_CHUNK) else own)
+        self.assertGreater(traps, 0, "the default seed has traps")
         self.assertNotIn(FOREIGN, items, "47 only for another player's item")
-        self.assertNotIn(FOREIGN_PROGRESSION, items, "48 only for another player's item")
+        self.assertEqual(
+            items.count(FOREIGN_PROGRESSION), traps, "48 only for another player's item or a trap"
+        )
 
     def test_another_worlds_item_is_scrap_energy_or_for_progression_scrap_chunk(self) -> None:
         kinds = [
@@ -788,7 +798,8 @@ class TestSlotDataForTheClient(ZexionTestBase):
         items = self.world.fill_slot_data()["location_items"]
         self.assertEqual(
             items[: len(kinds)],
-            [FOREIGN_PROGRESSION, FOREIGN, FOREIGN, FOREIGN, FOREIGN_PROGRESSION],
+            # Another game's trap looks important too (the owner's choice).
+            [FOREIGN_PROGRESSION, FOREIGN, FOREIGN, FOREIGN_PROGRESSION, FOREIGN_PROGRESSION],
         )
 
     def test_another_zexion_players_supplies_are_minor_like_this_players_own(self) -> None:
@@ -888,6 +899,8 @@ class TestAreaMapHints(ZexionTestBase):
         self.assertEqual(chip.code, 3392510_000 + 101)
         self.assertEqual(chip.classification, ItemClassification.filler, "as the Area Map")
         self.assertIs(self.world.fill_slot_data()["intel_chip"], True)
+        # They reveal nothing, so a received one loses nothing: not kept in this world.
+        self.assertNotIn("Area Map", self.world.options.local_items.value)
 
     def test_the_game_holds_an_intel_chip_as_the_area_map(self) -> None:
         # The pool's Area Maps are drawn per seed, and some seeds draw none: one of this
@@ -945,6 +958,69 @@ class TestAreaMapHintsOff(ZexionTestBase):
         self.assertEqual(pool.count("Area Map"), self.world.pool_codes.count(code_of["Area Map"]))
         self.assertIs(self.world.fill_slot_data()["intel_chip"], False)
 
+    def test_area_maps_stay_in_this_world(self) -> None:
+        # An Area Map reveals the map around the square it lies in, by the game's own pickup.
+        self.assertIn("Area Map", self.world.options.local_items.value)
+
+
+class TestAreaMapsStayInTheirOwnWorld(unittest.TestCase):
+    """Two Zexion players with Area Map Hints off: through the fill, with Archipelago's locality
+    rules, each player's Area Maps land in their own world only."""
+
+    def test_each_players_area_maps_are_in_their_own_world(self) -> None:
+        multiworld = two_zexion_players({"area_map_hints": False})
+        locality_rules(multiworld)
+        distribute_items_restrictive(multiworld)
+        maps = [loc for loc in multiworld.get_filled_locations() if loc.item.name == "Area Map"]
+        self.assertTrue({1, 2} <= {loc.item.player for loc in maps}, "both players have some")
+        for location in maps:
+            with self.subTest(location.name, player=location.player):
+                self.assertEqual(location.item.player, location.player)
+        self.assertTrue(multiworld.can_beat_game(CollectionState(multiworld)))
+
+    def test_area_maps_take_excluded_then_unreached_and_leave_priority_last(self) -> None:
+        multiworld = two_zexion_players({"area_map_hints": False})
+        world = multiworld.worlds[1]
+        start = multiworld.state.copy()
+        start.sweep_for_advancements()
+        own = [loc for loc in multiworld.get_locations(1) if loc.address is not None]
+        reached = [loc for loc in own if loc.can_reach(start)]
+        unreached = [loc for loc in own if not loc.can_reach(start)]
+        excluded, priority = unreached[:2], unreached[2:4]
+        for location in excluded:
+            location.progress_type = LocationProgressType.EXCLUDED
+        for location in priority:
+            location.progress_type = LocationProgressType.PRIORITY
+        # In an order the sort must undo: priority, reached, unreached, then excluded.
+        spots = [*priority, reached[0], unreached[4], *excluded]
+        scrap = world.create_item("Scrap Metal")
+        pool = [*(world.create_item("Area Map") for _ in range(3)), scrap]
+        world.place_area_maps(pool, spots)
+        self.assertEqual(pool, [scrap])
+        self.assertEqual(spots, [*priority, reached[0]], "excluded, then what the start misses")
+        for location in (*excluded, unreached[4]):
+            self.assertEqual(location.item.name, "Area Map", location.name)
+        world.place_area_maps([world.create_item("Area Map")], spots)
+        self.assertEqual(spots, priority, "then what the start reaches, priority left")
+        world.place_area_maps([world.create_item("Area Map")], spots)
+        self.assertEqual(len(spots), 1, "priority taken once nothing else is left")
+
+    def test_the_fill_does_not_strand_one_beside_a_player_short_of_filler(self) -> None:
+        # Beta: 30 disks (no filler left) and 16 excluded locations, which take Alpha's Scrap.
+        # Left to the fill's last step, one of Alpha's Area Maps found only Beta's locations
+        # open on this seed ("No more spots to place"): the world places them first.
+        names = sorted(ZexionWorld.location_name_to_id)
+        options = [
+            {"mode": "standard", "area_map_hints": False},
+            {**disks(placed=30, required=20), "exclude_locations": names[0::2][:16]},
+        ]
+        multiworld = generate(options, seed=3)
+        distribute_items_restrictive(multiworld)
+        maps = [loc for loc in multiworld.get_filled_locations() if loc.item.name == "Area Map"]
+        self.assertTrue(maps)
+        self.assertEqual({loc.player for loc in maps}, {1})
+        self.assertTrue(multiworld.can_beat_game(CollectionState(multiworld)))
+
 
 def filler_left(world: ZexionWorld, placed: int) -> int:
     """The filler items (Scrap, Area Maps as Intel Chips) a Standard world with this many disks
@@ -977,7 +1053,7 @@ class TestExcludedLocationsNeedFiller(ZexionTestBase):
         ZexionWorld.stage_pre_fill(self.multiworld)
         distribute_items_restrictive(self.multiworld)
         kinds = {location.item.classification for location in excluded}
-        self.assertEqual(kinds, {ItemClassification.filler})
+        self.assertLessEqual(kinds, {ItemClassification.filler, ItemClassification.trap})
 
     def test_one_more_is_refused_with_the_options_named(self) -> None:
         n = self.filler + 1
@@ -1013,6 +1089,33 @@ class TestExcludedLocationsNameThePlayerOver(unittest.TestCase):
         message = str(caught.exception)
         want = f"Zexion (Beta): {filler[2] + 1} excluded locations, but only {filler[2]} filler"
         self.assertIn(want, message)
+
+    def test_another_players_area_maps_do_not_make_up_the_difference(self) -> None:
+        # Area Map Hints off: Alpha's Area Maps stay in Alpha's world (local_items), so they
+        # cannot fill Beta's excluded locations. Alpha keeps only them as filler here.
+        multiworld = two_zexion_players({**disks(placed=16, required=12), "area_map_hints": False})
+        alpha = multiworld.worlds[1]
+        pool = multiworld.itempool
+        pool[:] = [
+            item
+            for item in pool
+            if item.player != 1 or item.advancement or item.useful or item.name == "Area Map"
+        ]
+        pool += [alpha.create_item("Area Map") for _ in range(3)]
+        filler = filler_left(multiworld.worlds[2], 16)
+        kept = sorted(multiworld.worlds[2].kept_locations)[: filler + 1]
+        for i in kept:
+            multiworld.get_location(
+                location_name(i), 2
+            ).progress_type = LocationProgressType.EXCLUDED
+        with self.assertRaises(OptionError) as caught:
+            ZexionWorld.stage_pre_fill(multiworld)
+        message = str(caught.exception)
+        self.assertIn(f"Zexion (Beta): {filler + 1} excluded locations", message)
+        self.assertIn("such as a Zexion player's Area Maps with Area Map Hints off", message)
+        # The same Area Maps with Area Map Hints on would go anywhere: counted for Beta.
+        alpha.options.local_items.value.discard("Area Map")
+        ZexionWorld.stage_pre_fill(multiworld)
 
 
 class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):
@@ -1067,7 +1170,8 @@ def assert_disks_took_in_order(test: ZexionTestBase, placed: int) -> None:
 
 
 class TestDiscHuntStandard(ZexionTestBase):
-    options = disks()
+    # No traps: they take the Scrap the disks leave, any of its kinds (test_traps.py).
+    options = {**disks(), "trap_percentage": 0}
 
     def test_the_keys_are_gone_and_the_discs_are_in(self) -> None:
         pool = pool_names(self)
@@ -1161,7 +1265,8 @@ class TestDiscHuntOHKO(ZexionTestBase):
 
 
 class TestDiscHuntEasy(ZexionTestBase):
-    options = disks("easy", 10, 10)
+    # No traps: they take the Scrap the disks leave, any of its kinds (test_traps.py).
+    options = {**disks("easy", 10, 10), "trap_percentage": 0}
 
     def test_ten_discs_take_scrap_only(self) -> None:
         assert_disks_took_in_order(self, 10)

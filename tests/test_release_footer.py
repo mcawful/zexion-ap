@@ -1,8 +1,10 @@
-"""The install guide at the bottom of each release's notes (``.github/release-footer.md``).
+"""The install guide in each release's message (``.github/release-footer.md``).
 
-``.github/workflows/release.yml`` appends it to GitHub's generated notes, with ``{{VERSION}}``
-filled in. These keep it honest: the workflow reads it, every file it names is one the release
-has, its links lead somewhere in the repo, and its game build is the setup guide's.
+``tools/release_notes.py`` puts it after the version's notes, with ``{{VERSION}}`` and
+``{{PREVIOUS}}`` filled in and the notes' own update steps at ``{{UPDATE_STEPS}}``
+(``tests/test_release_notes.py``: the workflow publishes that). These keep it honest: every file
+it names is one the release has, its links lead somewhere in the repo, and its game build is the
+setup guide's.
 """
 
 from __future__ import annotations
@@ -14,7 +16,6 @@ import build_apworld as bap
 
 ROOT = Path(__file__).resolve().parent.parent
 FOOTER = ROOT / ".github" / "release-footer.md"
-WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 REPO = "https://github.com/mcawful/zexion-ap/"
 
 
@@ -30,23 +31,15 @@ def released_names() -> set[str]:
     return names
 
 
-def test_the_workflow_appends_the_footer_to_generated_notes() -> None:
-    text = WORKFLOW.read_text(encoding="utf-8")
-    assert "releases/generate-notes" in text
-    assert "previous_tag_name=" in text
-    assert 'sed "s/{{VERSION}}/$VERSION/g" .github/release-footer.md >> "$notes"' in text
-    assert '--notes-file "$notes"' in text
-    assert "--generate-notes" not in text  # gh would put our text above GitHub's
-
-
 def test_every_file_it_names_is_in_the_release() -> None:
     named = set(re.findall(r"`([\w.-]+\.(?:apworld|dll|md|yaml))`", footer()))
     assert {"zexion.apworld", "zexion_ap.dll", "version.dll", "zexion-setup-guide.md"} <= named
     assert named <= released_names(), named - released_names()
 
 
-def test_its_only_placeholder_is_the_version() -> None:
-    assert set(re.findall(r"\{\{(\w+)\}\}", footer())) == {"VERSION"}
+def test_its_placeholders_are_the_ones_release_notes_fills() -> None:
+    assert set(re.findall(r"\{\{(\w+)\}\}", footer())) == {"VERSION", "PREVIOUS", "UPDATE_STEPS"}
+    assert "\n{{UPDATE_STEPS}}\n" in footer()  # a line of its own, after the guide's last step
 
 
 def test_its_links_into_the_repo_lead_to_tracked_paths() -> None:

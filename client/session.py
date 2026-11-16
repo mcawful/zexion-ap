@@ -1,5 +1,6 @@
 """One poll of the running game: which locations were checked, whether the goal was reached,
-and the grants that bring the inventory up to what the player should own.
+the grants that bring the inventory up to what the player should own, and other players' items
+the server has as checked marked collected in the save.
 
 No Archipelago imports, so the tests drive it with a fake game. The client calls ``step`` a few
 times a second from a worker thread and does the networking.
@@ -21,10 +22,22 @@ Safety, in order:
 - A grant waits for two polls in a row to owe exactly the same, so a pickup the game is half
   way through recording (the map cell set, the inventory byte not yet) is never taken for an
   item owed.
+- Other players' items the server has as checked are kept collected in the save (``mark``):
+  only in play, only those two polls in a row found still to mark, as compare-and-set writes,
+  and never in a room that waits for its item's pickup (``plain``, ids.PICKUP_ROOMS).
+  An item object in the loaded rooms is ended by the game once its state is written, and the
+  map cell is never written under one still there; a cell whose item may be there as another
+  kind of object is left. A read or write of it that fails is said once and never holds back
+  the checks, the goal or the grants. A marked cell gives no Scrap Metal: the grants count a
+  stand-in's only where it was picked up, by the game's pickup counter
+  (reconcile.marked_count), and nothing is marked while that counter cannot be read.
 
-With the helper attached (``step``'s ``helper``) the grants go as one batch the helper applies
+With the helper attached (``step``'s ``helper``) the grants go as a batch the helper applies
 between frames, re-checking each byte, with the game's popup for each item not yet
-``announced`` (nothing goes through the helper until this connection has read that count). A
+``announced`` (nothing goes through the helper until this connection has read that count). The
+writes are in the first batch; the popups of a big release are split over more, each under the
+pipe's limit, and the first can stand while a later one is refused or its reply lost (what had
+its popup is counted as it goes: ``give_through_helper``). A
 helper that fails gives nothing this poll: the step keeps its checks and goal and names the
 error (``Step.helper_error``), and the client attaches the helper again before the next step.
 """
@@ -33,11 +46,16 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterable, Sequence
 from dataclasses import astuple, dataclass, field
 
-from . import discs, game, ids, native, reconcile, save_patch
+from . import discs, game, ids, native, offline, reconcile, save_patch
 
 logger = logging.getLogger("Zexion")
+
+# A run of popups handed over together (Session.give_through_helper): the held trap's index or
+# None, the received index handed over up to once it is shown or None, and the popups.
+Unit = tuple[int | None, int | None, list[tuple[int, str] | tuple[int, str, bool]]]
 
 # The goal: flag 250 with flag 211 clear, the ending begun. The game's own escape skip sets 250
 # with 211 still set, so the goal waits for the ending at the ship (docs/re/memory.md, "The
@@ -63,6 +81,7 @@ class Snapshot:
     stamp: bytes = b""  # game.Game.save_stamp, b"" if it could not be read
     cell: tuple[int, int] = (-1, -1)  # game.PlayerState.cell
     game_saved: int | None = None  # game.Game.game_saved, None if it could not be read
+    pickups: int | None = None  # game.Game.pickup_counter, None if it could not be read
 
 
 # The flags a poll reads, in one read from the first.
@@ -91,6 +110,7 @@ def read_once(g: game.Game) -> Snapshot:
         stamp,
         player.cell,
         game_saved(g),  # after the stamp (game.Game.game_saved)
+        pickup_counter(g),
     )
 
 
@@ -113,6 +133,167 @@ def game_saved(g: game.Game) -> int | None:
         raise
     except game.GameError:
         return None
+
+
+def pickup_counter(g: game.Game) -> int | None:
+    """game.Game.pickup_counter, or None on a game build where it was not found (its patterns
+    no longer match: patterns.CLIENT_ONLY_TARGETS). Any other failed read fails the poll, as
+    the snapshot's other reads do: taken for "no counter", it would count every marked cell
+    as picked up and give its Scrap Metal for good."""
+    try:
+        return g.pickup_counter()
+    except game.PatternError:
+        return None
+
+
+# Two polls agree on what to mark only this close together, and in the same save slot: a
+# pause in the polls (the helper attached again, a read that failed) starts over.
+MARK_AGREE_SECONDS = 5.0
+# The cells this far from the player's, each way, are marked only where an item object of the
+# cell is in the loaded rooms, on top of the cells the game says it has loaded
+# (game.Game.loaded_cells): the game keeps the cells next to the player's loaded
+# (docs/re/memory.md, "What decides whether an item appears"), and one more is the margin
+# chosen for the player moving on between the look and the write.
+NEAR_CELLS = 2
+
+
+def near(cell: tuple[int, int], player: tuple[int, int]) -> bool:
+    """Whether a map cell (x, y) is among those around the player's cell, which the player
+    state gives as the game's (X, Y): this repo's (y, x) (game.PlayerState.cell)."""
+    return abs(cell[0] - player[1]) <= NEAR_CELLS and abs(cell[1] - player[0]) <= NEAR_CELLS
+
+
+def plain(cells: Sequence[tuple[int, int]], gone: Iterable[int]) -> set[int]:
+    """Those of ``gone`` (location indices) that may be marked: every one but those in a room
+    that waits for its item's pickup (ids.PICKUP_ROOMS), whose item stays to be picked up."""
+    return {i for i in gone if 0 <= i < len(cells) and cells[i] not in ids.PICKUP_ROOMS}
+
+
+def to_mark(
+    grid: bytes, states: bytes, cells: Sequence[tuple[int, int]], gone: Iterable[int]
+) -> set[int]:
+    """Which of ``gone`` (location indices) do not read as a pickup leaves them: the map cell
+    not collected, or the item state still there (a mark a load cut in two: the game itself
+    never leaves a collected map cell over an item that is there)."""
+    out = set()
+    for i in gone:
+        if not 0 <= i < len(cells):
+            continue
+        x, y = cells[i]
+        at = y * ids.MAP_SIZE + x
+        if grid[at] != ids.COLLECTED or states[at] == game.ITEM_THERE:
+            out.add(i)
+    return out
+
+
+def same_load(g: game.Game, stamp: bytes) -> bool:
+    """Whether the game is in play in the randomizer save a look found, by its slot's stamp
+    (new after each save, death and reload), with no transition counting down: read again
+    right before the marking's writes. A TELEPORT TO is the one load that reads as play under
+    an unchanged stamp: it copies the play state as its entry is chosen and loads that copy a
+    second later, the transition timer counting meanwhile (game.Game.transition_timer), so a
+    write in that second would be taken back by the load."""
+    return (
+        len(stamp) >= 4
+        and g.state() == game.IN_PLAY
+        and g.rando_marker() == 1
+        and g.save_stamp() == stamp
+        and g.transition_timer() == 0
+    )
+
+
+def mark_collected(
+    g: game.Game,
+    grid: bytes,
+    cells: Sequence[tuple[int, int]],
+    indices: Iterable[int],
+    stamp: bytes,
+    gap: float = 0.0,
+    ended: set[int] | None = None,
+) -> set[int]:
+    """Mark these locations (``to_mark``'s) collected, as Session.mark describes; the ones
+    marked. Right before the first write the save is checked to be the look's, in play
+    (``same_load``), and the item states, the loaded cells, the item objects and the player's
+    cell are read again. First each cell's item state, which stops the game making the item
+    from then on and, for an item object of the cell in the loaded rooms, has the game end it
+    in its next update (docs/re/memory.md, "What decides whether an item appears": the item's
+    update ends its own object once the state reads collected); then, after ``gap`` for those
+    updates and the save checked again, the map cell of each with no item object left. A cell
+    the game has loaded, or near the player's, with no item object of its own is left out: an
+    object of another kind may be its item, and writing the state would not end that. Such a
+    cell is marked once it had an item object here (``ended`` keeps those across polls of one
+    load, so the map cell follows even if the object goes between two polls). One whose map
+    cell could not be written this time (the game changed it since the look) is left for a
+    later poll. What is reported as marked is what a last look still finds so: nothing if the
+    game does not read as in play with no transition counting after the last write, and not a
+    cell whose item state reads there again (a load took it back under a map cell written
+    since: the next polls write the state again, ``to_mark``). That look sees less than
+    happened, both ways: a pause or a death right after the writes leaves them in place, though
+    nothing is reported; and a load that begins after the look (a TELEPORT TO chosen then)
+    takes back marks that were reported. Either way the next polls look at the bytes again.
+    GameNotRunning is raised; another GameError leaves that location for a later poll."""
+    if not same_load(g, stamp):
+        return set()
+    ended = set() if ended is None else ended
+    states, loaded = g.cell_items(), g.loaded_cells()
+    live = g.live_item_cells()
+    player = g.player_state().cell
+    todo, waits = [], False
+    for i in indices:
+        x, y = cells[i]
+        state = states[y * ids.MAP_SIZE + x]
+        if state not in (game.ITEM_THERE, game.ITEM_COLLECTED):
+            continue  # an object of the cell holds its item, or has dropped it
+        if (x, y) in live:
+            ended.add(i)  # the game ends that object once the state reads collected
+            waits = True
+        elif i not in ended and (loaded[y * ids.MAP_SIZE + x] or near((x, y), player)):
+            continue  # its item may be in the loaded rooms as an object of another kind
+        try:
+            if state == game.ITEM_THERE:
+                g.set_item_collected((x, y))
+        except game.GameNotRunning:
+            raise
+        except game.GameError as exc:
+            logger.info(f"Not marked collected this time: {exc}")
+            continue
+        todo.append(i)
+    if not todo:
+        return set()
+    if waits:
+        time.sleep(gap)  # the game's next updates end the item objects of the cells written
+        if not same_load(g, stamp):
+            return set()
+    live, loaded = g.live_item_cells(), g.loaded_cells()
+    marked = set()
+    for i in todo:
+        x, y = cells[i]
+        if (x, y) in live or (loaded[y * ids.MAP_SIZE + x] and i not in ended):
+            continue  # an item object still there, or a room loaded since the look
+        try:
+            if grid[y * ids.MAP_SIZE + x] != ids.COLLECTED:
+                g.set_map_collected((x, y), grid[y * ids.MAP_SIZE + x])
+        except game.GameNotRunning:
+            raise
+        except game.GameError as exc:
+            logger.info(f"Not marked collected this time: {exc}")
+            continue
+        marked.add(i)
+    if not marked:
+        return marked
+    if g.state() != game.IN_PLAY or g.transition_timer() != 0:
+        logger.info("The game left play during the marking; the next polls look again.")
+        return set()
+    states = g.cell_items()
+    undone = {
+        i for i in marked if states[cells[i][1] * ids.MAP_SIZE + cells[i][0]] == game.ITEM_THERE
+    }
+    if undone:
+        logger.info(
+            f"A load took back {len(undone)} item state(s) during the marking; the next polls "
+            "write them again."
+        )
+    return marked - undone
 
 
 def read_settled(g: game.Game, gap: float = game.SETTLE_SECONDS) -> Snapshot | None:
@@ -146,6 +327,8 @@ class Step:
     game_saved: int | None = None  # read after save_stamp (game.Game.game_saved)
     # The helper failed with this poll's grants: nothing given (zexion_client's helper_error).
     helper_error: native.HelperError | None = None
+    # Other players' items marked collected by this poll (Session.mark), by location index.
+    marked: set[int] = field(default_factory=set)
 
 
 class Session:
@@ -159,12 +342,33 @@ class Session:
         self.listed = [plan.cells[i] for i in plan.order]  # as the game's list holds them
         self._said: set[str] = set()
         self._due: dict[int, int] | None = None  # what the previous poll found owed
+        # What the previous poll found to mark (mark), when, and in which save slot.
+        self._to_mark: set[int] = set()
+        self._to_mark_at = 0.0
+        self._to_mark_slot = b""
+        # Locations seen with an item object in the loaded rooms while being marked, in the
+        # load with this stamp (mark_collected's ``ended``).
+        self._ended: set[int] = set()
+        self._ended_stamp = b""
         # How many received items have been handed over, to the helper for their popup or
         # written directly, and whether this connection has read the server's count since
         # Connected (client/storage.py, announced_tick; the client clears it at each). Until it
         # has, nothing goes through the helper, and direct writes leave the count as it is.
         self.announced = 0
         self.announced_read = False
+        # The traps among the items a slot held at its first connection (no count stored on the
+        # server: state.held_traps), by index: counted as handed over with the rest, so no flood
+        # of old popups, but each still gets its popup, and so its effect, once, through the
+        # helper (give_through_helper); dropped with direct writes, as received traps are.
+        self.held_traps: list[int] = []
+        # Set by the poll while an old helper has refused to unload and none is attached since
+        # (ZexionContext.swap_pending): the traps received meanwhile join held_traps instead of
+        # being dropped with the direct writes, for the helper that replaces it.
+        self.keep_traps = False
+        # Whether this session has taken the server's record of the waiting held traps: only its
+        # first read does (a client restarted keeps them); later reads keep the session's own,
+        # which a lost emptying store would otherwise bring back (storage.announced_tick).
+        self.held_read = False
         # The ending: the goal as the previous poll of this load read it (None: not read yet),
         # and whether received items wait because the ending began during this load (its
         # cutscenes read as play). Both cleared when no save of this seed is loaded, and kept
@@ -200,16 +404,20 @@ class Session:
         followups: dict[int, str] | None = None,
         helper: native.Helper | None = None,
         give: bool = True,
+        gone: Iterable[int] = (),
     ) -> Step:
         """One poll. ``senders`` names who sent each of ``received`` (for popups); ``followups``
         adds a notice straight after the popup of some of them (an Intel Chip's hint,
         client/hints.py; an OS Install Disk's count, client/discs.py). Grants go through
-        ``helper`` when one is attached, else directly; a HelperError from it gives nothing and
-        is kept in the step (``helper_error``). Without ``give`` (a helper lost earlier in the
-        poll, to be attached again first) nothing is given, and the rest is read as usual."""
+        ``helper`` when one is attached, else directly; a HelperError from it gives nothing more
+        and is kept in the step (``helper_error``). Without ``give`` (a helper lost earlier in the
+        poll, to be attached again first) nothing is given, and the rest is read as usual.
+        ``gone`` are the locations to keep collected in the save (``mark``): other players'
+        items the server has as checked."""
         snap = read_settled(g, gap)
         if snap is None or snap.state != game.IN_PLAY:
             self._due = None
+            self._to_mark = set()
         if snap is None:
             return Step()
         if snap.state == game.NO_SAVE:
@@ -224,12 +432,14 @@ class Session:
         # ("unknown"), and nothing with no helper, as without it the two can't be told apart.
         if seed is None or list(seed.locations) != self.listed:
             self._due = None
+            self._to_mark = set()
             self.leave()
             if seed is None:
                 return Step(left_seed=True)  # a normal save: nothing to say in the game
             return Step(left_seed=True, other_seed=True, state=snap.state)
         if not save_patch.section_matches(snap.blob, self.plan):
             self._due = None
+            self._to_mark = set()
             self.leave()
             return Step(left_seed=True, other_seed=True, state=snap.state)
         collected = reconcile.collected_locations(snap.grid, self.plan.cells)
@@ -254,9 +464,23 @@ class Session:
         if self._goal_before is False and goal:
             self.holding = True
             self._due = None
+            self._to_mark = set()
         elif not goal:
             self.holding = False  # a load before its ending (one carried over a reconnect too)
         self._goal_before = goal
+        if snap.state == game.IN_PLAY and not self.holding:
+            try:
+                step.marked = self.mark(g, snap, gone, gap)
+            except game.GameNotRunning:
+                raise
+            except game.GameError as exc:
+                # The marking must never stop the checks, the goal or the grants.
+                self._to_mark = set()
+                self.say_once(
+                    "mark",
+                    "Can't mark other players' items collected right now (details in the "
+                    f"log); items and checks still work. ({exc})",
+                )
         if snap.state == game.IN_PLAY and not self.holding and give:
             try:
                 step.granted = self.give(
@@ -273,6 +497,7 @@ class Session:
         to show (discs.received_notes) before a received disk's count is worked out."""
         self.announced_read = False
         self._due = None
+        self._to_mark = set()
 
     def hold_ending(self) -> None:
         """The ending began again in this load, on a save past it (RETURN HOME's YES: the
@@ -280,11 +505,72 @@ class Session:
         already, does not show. A step keeps it, as the goal stays read, until the load ends."""
         self.holding = True
         self._due = None
+        self._to_mark = set()
 
     def leave(self) -> None:
         """No save of this seed loaded (or the game closed): the next load starts afresh."""
         self._goal_before = None
         self.holding = False
+        self._to_mark = set()
+
+    def mark(self, g: game.Game, snap: Snapshot, gone: Iterable[int], gap: float = 0.0) -> set[int]:
+        """Keep ``gone`` collected in the loaded save (other players' items the server has as
+        checked: found in another save of the seed or before a death or reload, collected by
+        their owner, or released), so they are not there to pick up again: each one's map cell
+        reads collected, as a pickup leaves it, and the game makes no item there when it loads
+        the room (docs/re/memory.md, "What decides whether an item appears"). The locations
+        marked.
+
+        Only one the poll before found still to mark too and did not mark, in play, in the same
+        save slot and no more than MARK_AGREE_SECONDS ago, so a load caught half way marks
+        nothing. An item object of the cell in the loaded rooms is ended by the game itself
+        once the state is written (a reload at a save point beside it, its owner collecting
+        while the player stands by it), and the map cell follows. One whose item may be in the
+        loaded rooms as something else is left as it is, to pick up as usual or to mark once
+        its room is left: one an object of the cell holds or has dropped, and, with no item
+        object of its own, one whose cell the game has loaded (game.Game.loaded_cells) or
+        within NEAR_CELLS of the player's cell (an object of another kind may be the item, in
+        a reversed-gravity room, say). All of it is read again right before the writes, with
+        the save and the state (mark_collected). The map cell is never written under an item
+        object still there: the save would count a pickup of it twice. A marked cell gives
+        nothing: not the Scrap Metal a stand-in's pickup gives (reconcile.should_own leaves the
+        marked ones out), nor a count on the game's pickup counter (ITEMS on the pause
+        screen), which marking leaves alone and by which the marked cells are told from those
+        picked up (reconcile.marked_count). So nothing is marked while the counter cannot be
+        read (``snap.pickups`` None): a cell marked then would be taken for one picked up."""
+        gone = set(gone)
+        if not gone:
+            self._to_mark = set()
+            return set()
+        cells = self.plan.cells
+        gone = plain(cells, gone)
+        if not gone:
+            self._to_mark = set()
+            return set()
+        if snap.pickups is None:
+            self._to_mark = set()
+            self.say_once(
+                "mark counter",
+                "Can't mark other players' items collected in this build of the game (its "
+                "pickup counter was not found); items and checks still work.",
+            )
+            return set()
+        states = g.cell_items()
+        want = to_mark(snap.grid, states, cells, gone)
+        now, slot = time.monotonic(), snap.stamp[:4]
+        if len(slot) < 4:
+            self._to_mark = set()  # the slot's stamp did not read: no save to tell apart
+            return set()
+        agreed = slot == self._to_mark_slot and now - self._to_mark_at <= MARK_AGREE_SECONDS
+        ready = want & self._to_mark if agreed else set()
+        self._to_mark, self._to_mark_at, self._to_mark_slot = want, now, slot
+        if not ready:
+            return set()
+        if snap.stamp != self._ended_stamp:
+            self._ended, self._ended_stamp = set(), snap.stamp  # a save, a death or a reload
+        marked = mark_collected(g, snap.grid, cells, sorted(ready), snap.stamp, gap, self._ended)
+        self._to_mark -= marked  # one a reload brings back waits for two polls again
+        return marked
 
     def give(
         self,
@@ -299,8 +585,9 @@ class Session:
     ) -> dict[int, int]:
         plan = self.plan
         guns_first = plan.guns_first
+        marked = reconcile.marked_count(plan.location_items, collected, snap.pickups)
         target = reconcile.should_own(
-            plan.start_items, plan.location_items, collected, received, guns_first
+            plan.start_items, plan.location_items, collected, received, guns_first, marked
         )
         result = reconcile.grants(snap.inventory, target, guns_first)
         for item, missing in result.not_grantable.items():
@@ -314,16 +601,35 @@ class Session:
         if helper is not None:
             if not self.announced_read:
                 return {}  # which items have had their popup is not known yet
-            try:
-                return self.give_through_helper(
-                    helper, snap, result.inventory, received, senders, followups
-                )
-            except native.ReplyLost:
-                # The batch may have been applied and its popups shown: none shown again.
-                self.announced = len(received)
-                raise
+            return self.give_through_helper(
+                helper, snap, result.inventory, received, senders, followups
+            )
         if self.announced_read:
-            self.announced = len(received)  # direct writes show no popups
+            # Direct writes show no popups, and a trap rides on its popup: those waiting do
+            # nothing (said, so a lost trap is not a mystery), unless the helper that will
+            # replace the old one is only waiting for a trap to end (keep_traps): they are kept
+            # for its popups.
+            if self.keep_traps:
+                self.held_traps = sorted(
+                    {
+                        *(i for i in self.held_traps if i < len(received)),
+                        *(
+                            i
+                            for i in range(self.announced, len(received))
+                            if received[i] in ids.TRAPS
+                        ),
+                    }
+                )
+            else:
+                waiting = sorted(
+                    {i for i in self.held_traps if i < len(received)}
+                    | {i for i in range(self.announced, len(received)) if received[i] in ids.TRAPS}
+                )  # by index: a held trap past the count (a restart) is in both
+                if waiting:
+                    names = ", ".join(ids.TRAP_NAMES[received[i]] for i in waiting)
+                    logger.info(f"Without the mod, these traps sent to you do nothing: {names}.")
+                self.held_traps = []
+            self.announced = len(received)
         granted: dict[int, int] = {}
         try:
             for item, value in result.inventory.items():
@@ -358,8 +664,27 @@ class Session:
         senders: list[str] | None,
         followups: dict[int, str] | None = None,
     ) -> dict[int, int]:
-        popups: list[tuple[int, str] | tuple[int, str, bool]] = []
         start = self.announced
+        # A held trap at or past the count was not handed over (the client stopped between
+        # storing the record and the count): it goes with the rest, once.
+        self.held_traps = [i for i in self.held_traps if i < start]
+        # Units of popups: (the held trap's index, or None; the received index it counts as
+        # handed over up to, or None; the popups). The traps held at the slot's first connection
+        # go first: they came before the rest.
+        units: list[Unit] = [
+            (
+                i,
+                None,
+                [
+                    (
+                        received[i],
+                        f"from {senders[i]}" if senders and i < len(senders) and senders[i] else "",
+                    )
+                ],
+            )
+            for i in self.held_traps
+            if i < len(received)
+        ]
         # With Guns First, a progressive weapon received while its weapon is owned arrives as
         # the upgrade, so its popup names the upgrade; an upgrade received as itself (sent from
         # the server console) is a copy of its weapon too (reconcile.should_own). Without it,
@@ -374,19 +699,54 @@ class Session:
                 # The weapon is owned from now on, whichever byte this one set.
                 weapons.add(weapon)
             sender = senders[index] if senders and index < len(senders) else ""
-            popups.append((item, f"from {sender}" if sender else ""))
+            popups: list[tuple[int, str] | tuple[int, str, bool]] = [
+                (item, f"from {sender}" if sender else "")
+            ]
             followup = (followups or {}).get(index)
             if followup:
                 popups.append((item, followup, True))  # a notice after it: a hint, a count
-        if not owed and not popups:
+            units.append((None, index + 1, popups))
+        if not owed and not units:
             before = reconcile.Supplies(*snap.supplies)
             if reconcile.supplies_after(snap.inventory, before) != before:
                 helper.apply(native.batch_text([], [], refresh=True))
             return {}
         cas = [(item, snap.inventory[item], value) for item, value in sorted(owed.items())]
-        reply = helper.apply(native.batch_text(cas, popups, intel=self.intel_chips))
-        if reply != "applied":
-            logger.info(f"Not given this time: {reply}")
-            return {}
-        self.announced = len(received)
+        # A request over the pipe's limit ends the connection (the helper drops it), so the
+        # popups go in batches under it, the writes in the first.
+        room = offline.MAX_REQUEST - len(
+            native.batch_text(cas, [], intel=self.intel_chips).encode()
+        )
+        batches: list[list[Unit]] = [[]]
+        for unit in units:
+            size = len(native.batch_text([], unit[2]).encode()) - len("apply")
+            if size > room and batches[-1]:
+                batches.append([])
+                room = offline.MAX_REQUEST - len(
+                    native.batch_text([], [], intel=self.intel_chips).encode()
+                )
+            batches[-1].append(unit)
+            room -= size
+        for number, batch in enumerate(batches):
+            text = native.batch_text(
+                cas if number == 0 else [],
+                [popup for _, _, popups in batch for popup in popups],
+                intel=self.intel_chips,
+            )
+            counted = [end for _, end, _ in batch if end is not None]
+            handed = {held for held, _, _ in batch if held is not None}
+            try:
+                reply = helper.apply(text)
+            except native.ReplyLost:
+                # The batch may have been applied and its popups shown: none shown again.
+                if counted:
+                    self.announced = counted[-1]
+                self.held_traps = [i for i in self.held_traps if i not in handed]
+                raise
+            if reply != "applied":
+                logger.info(f"Not given this time: {reply}")
+                return dict(owed) if number else {}  # the writes went in the first batch
+            if counted:
+                self.announced = counted[-1]
+            self.held_traps = [i for i in self.held_traps if i not in handed]
         return dict(owed)

@@ -99,7 +99,7 @@ def log(entry: dict) -> None:
 
 
 def cmd_show(args: argparse.Namespace, names: dict[int, str]) -> int:
-    g = game.Game.attach(TARGETS)  # the pickup counter too
+    g = game.Game.attach(TARGETS)  # every target required: the pickup counter is read
     inv = g.inventory()
     print(f"build {g.build.name}; {g.state()}; pickup counter {g.pickup_counter()}")
     for i, v in enumerate(inv):

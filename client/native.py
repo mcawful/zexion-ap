@@ -27,11 +27,14 @@ DLL_NAME = "zexion_ap.dll"
 # looks for it in its own folder): while it exists neither the proxy nor the client loads the
 # game folder's helper.
 DISABLED_NAME = "zexion_ap.disabled"
-VERSION = "1.1.0"  # the helper's, in its hello (native/src/dllmain.cpp)
-# The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
-# native/src/game_calls.cpp, kConfigKeys; it takes them in any order). A key added later makes the
-# offline cache written before it refused until the client runs: native/README.md, "The pipe".
-CONFIG_KEYS = tuple(t.name for t in patterns.CLIENT_TARGETS)
+VERSION = "1.2.0"  # the helper's, in its hello (native/src/dllmain.cpp)
+# The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS)
+# but those it alone uses (patterns.CLIENT_ONLY_TARGETS; native/src/game_calls.cpp, kConfigKeys;
+# it takes them in any order). A key added later makes the offline cache written before it
+# refused until the client runs: native/README.md, "The pipe".
+CONFIG_KEYS = tuple(
+    t.name for t in patterns.CLIENT_TARGETS if t.name not in patterns.CLIENT_ONLY_TARGETS
+)
 APPLY_SECONDS = 3.0  # longer than the 1 s the helper waits for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0
@@ -41,7 +44,11 @@ UNLOAD_REFUSED = "; not unloading"  # the end of the helper's refusal: "error <w
 
 
 class HelperError(RuntimeError):
-    """The helper could not be loaded, reached or unloaded."""
+    """The helper could not be loaded, reached or unloaded. ``old_gone``: raised by ``attach``
+    after a loaded helper of another version unloaded to make way, so nothing is left to
+    replace (the client's helper failed to load or configure)."""
+
+    old_gone = False
 
 
 class ReplyLost(HelperError):
@@ -93,8 +100,9 @@ def batch_text(
 ) -> str:
     """An ``apply`` request: (item, expected, value) writes, done all or none in one frame, and
     popups shown one at a time with the item's sound: (item, suffix) after the item's icon and
-    name, or (item, text, True) a notice, the text alone (an Area Map's hint). With ``intel``,
-    its Area Maps' popups read Intel Chip."""
+    name, or (item, text, True) a notice, the text alone (an Area Map's hint). A trap's popup
+    (its item code: ids.TRAPS) takes its turn with the rest, and the helper sets the trap off as
+    it shows. With ``intel``, its Area Maps' popups read Intel Chip."""
     lines = ["apply"]
     lines += [f"cas {item} {expected} {value}" for item, expected, value in cas]
     if refresh:
@@ -260,6 +268,10 @@ def wait_unloaded(process_handle: int) -> bool:
 
 class Helper:
     """A connection to the helper's pipe in process ``pid``. Any error closes it for good."""
+
+    # Whether ``attach`` loaded the helper into the game for this connection: none was there
+    # before (False for one the game or an earlier attach had loaded).
+    loaded_here = False
 
     def __init__(self, pid: int):
         name = pipe_name(pid)
@@ -480,15 +492,23 @@ def _shown(version: str) -> str:
     return f"version {version}" if version else "another version"
 
 
-def _unloaded(helper: Helper, handle: int) -> bool:
-    """Whether the helper unloaded when asked (a refusal or a failed request: not)."""
+def _unload_refusal(helper: Helper, handle: int) -> str | None:
+    """None once the helper unloaded when asked; else why not (its refusal's reason, or the
+    failed request's)."""
     try:
-        return helper.request("unload") == "bye" and wait_unloaded(handle)
+        if helper.request("unload") == "bye" and wait_unloaded(handle):
+            return None
+        return "it was still loaded"  # it said bye but stayed, or answered something else
     except GameExited:
         raise
-    except HelperError as exc:
-        log.warning(f"The helper of another version did not unload: {exc}")
-        return False
+    except ReplyLost as exc:
+        log.debug(f"unload: {exc!r}")
+        return "it didn't answer"
+    except ModMismatch as exc:  # "error unknown request"
+        log.debug(f"unload: {exc!r}")
+        return "it is too old to unload on request"
+    except HelperError as exc:  # its refusal ("<why>; not unloading"), or a pipe closed
+        return str(exc).removesuffix(UNLOAD_REFUSED)
 
 
 def _hello(helper: Helper) -> dict[str, str]:
@@ -501,6 +521,16 @@ def _hello(helper: Helper) -> dict[str, str]:
 
 
 def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
+    """``_attach``, its HelperErrors marked ``old_gone`` once the old helper has unloaded."""
+    unloaded: list[bool] = []
+    try:
+        return _attach(g, dll, notes, unloaded)
+    except HelperError as exc:
+        exc.old_gone = bool(unloaded)
+        raise
+
+
+def _attach(g, dll: Path, notes: list[str] | None, unloaded: list[bool]) -> Helper:
     """The helper in game ``g``, loaded if absent, and configured. A loaded helper of another
     version is replaced by the built ``dll`` if there is one; a game-folder copy with no build
     to replace it, or a ``dll`` known to load as another version (_STALE), is refused; with
@@ -541,12 +571,15 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
                     raise _wrong_version(dll, version, own_build=False, where=where)
                 if stale is not None:  # the same file again: refused, the helper left alone
                     raise _wrong_version(dll, stale[1], own_build)
-                if not _unloaded(old, handle):
+                why = _unload_refusal(old, handle)
+                if why is not None:
                     raise NotUnloaded(
                         f"the mod loaded in Zexion is {_shown(version)}, this client "
-                        f"{VERSION}, and it didn't unload to make way for the client's build; "
-                        "the client tries again, and if it keeps failing, restart Zexion"
+                        f"{VERSION}, and it didn't unload to make way for the client's build "
+                        f"({why}); the client tries again, and if it keeps failing, restart "
+                        "Zexion"
                     )
+                unloaded.append(True)
                 if in_folder and notes is not None:
                     notes.append(
                         f"The mod in Zexion's folder is {_shown(version)}, and this client is "
@@ -575,6 +608,7 @@ def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     else:
         loaded_here = False
     helper = Helper(g.pid)
+    helper.loaded_here = bool(loaded_here)
     try:
         hello = _hello(helper)
         version = hello.get("version", "")

@@ -28,7 +28,7 @@ add_library(zap_core STATIC
             src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp src/game_mem.cpp
             src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/text.cpp
             src/menu.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
-            src/files.cpp src/intel.cpp src/offline.cpp src/title.cpp src/mapmarks.cpp
+            src/files.cpp src/intel.cpp src/offline.cpp src/title.cpp src/mapmarks.cpp src/trap.cpp
             src/apitem.cpp src/looks.cpp src/feats.cpp src/translation.cpp)
 target_include_directories(zap_core PUBLIC src)
 target_link_libraries(zap_core PUBLIC advapi32)

@@ -8,7 +8,14 @@ import pytest
 from fakes import CELLS, SECRET_LIST, FakeGame, FakeProcess, pe_image
 
 from client import game
-from client.patterns import CLIENT_TARGETS, TARGETS, TOOL_TARGETS, Build, Pattern, Target
+from client.patterns import (
+    CLIENT_ONLY_TARGETS,
+    CLIENT_TARGETS,
+    TARGETS,
+    Build,
+    Pattern,
+    Target,
+)
 
 # lea rax, [rip + disp32] ; add rax, rdx ; ret  -- a stand-in for a referring instruction
 LEA = Pattern("48 8D 05 ?? ?? ?? ?? 48 01 D0 C3", disp_at=3, kind="rip", rip_end=7, addend=0)
@@ -73,11 +80,32 @@ def test_patterns_that_disagree_are_refused() -> None:
     assert found["t"] == 0x40 + 7 + 0x100
 
 
-def test_the_client_does_not_locate_the_targets_only_the_tools_read() -> None:
-    # A pattern of the pickup counter breaking with an update cannot stop the client attaching.
-    assert {"pickup_counter"} == TOOL_TARGETS
-    assert {t.name for t in CLIENT_TARGETS} == {t.name for t in TARGETS} - TOOL_TARGETS
-    assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS,)
+def test_the_client_locates_every_target_and_two_are_its_alone() -> None:
+    # The pickup counter is optional like the cell state, so a pattern of it breaking with an
+    # update still cannot stop the client attaching.
+    assert CLIENT_TARGETS is TARGETS
+    # The per-cell state and the pickup counter are the client's alone: not sent to the helper.
+    client_only = {"cell_state", "pickup_counter"}
+    assert client_only == CLIENT_ONLY_TARGETS <= {t.name for t in CLIENT_TARGETS}
+    assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS, None)
+
+
+def test_a_client_only_target_that_no_longer_matches_does_not_stop_the_attach() -> None:
+    # A game update that breaks the per-cell state's patterns stops the marking alone.
+    code = code_with(lea(0x100))
+    missing = Pattern("48 8D 0D ?? ?? ?? ?? 90 90 90 90", 3, "rip", 7, 0)
+    targets = [Target("there", "test", {}, (LEA,)), Target("gone", "test", {}, (missing,))]
+    with pytest.raises(game.PatternError):
+        game.locate_all(code, 0, targets)
+    assert game.locate_all(code, 0, targets, optional={"gone"}) == {"there": 0x40 + 7 + 0x100}
+    with pytest.raises(game.PatternError):
+        game.locate_all(code, 0, targets, optional={"there"})
+    g = fake_game(map_grid=GRID_AT)  # attached with no cell_state and no pickup_counter
+    for call in (g.cell_items, g.loaded_cells, lambda: g.set_item_collected((1, 1))):
+        with pytest.raises(game.PatternError, match="cell_state was not found"):
+            call()
+    with pytest.raises(game.PatternError, match="pickup_counter was not found"):
+        g.pickup_counter()
 
 
 # --- PE header and build identity ----------------------------------------------------------
@@ -168,6 +196,97 @@ def test_set_item_refuses_items_and_values_it_should_not_write() -> None:
         g.set_item(50, 0, 1)  # Energy Shield: its pickup counts in byte 46, not 50
     with pytest.raises(ValueError, match="fit a byte"):
         g.set_item(3, 0, 256)
+
+
+GRID_AT, CELLS_AT, POOL_AT = 0x2000, 0x3000, 0xB000  # in cells_game's memory
+
+
+def cells_game() -> FakeGame:
+    """A fake with the map grid, the per-cell state and the item pool."""
+    size = POOL_AT + game.ITEM_OBJECTS * game.ITEM_OBJECT_SIZE
+    return fake_game(size, map_grid=GRID_AT, cell_state=CELLS_AT, item_pool=POOL_AT)
+
+
+def cell_item_at(x: int, y: int) -> int:
+    return CELLS_AT + (y * 54 + x) * game.CELL_STRIDE + game.CELL_ITEM
+
+
+def test_each_cells_item_state_is_its_ninth_byte() -> None:
+    g = cells_game()
+    g.pm.memory[CELLS_AT : CELLS_AT + 54 * 54 * 9] = bytes([4] * 8 + [0]) * (54 * 54)
+    g.pm.memory[cell_item_at(25, 25)] = 1
+    g.pm.memory[cell_item_at(53, 53)] = 2
+    states = g.cell_items()
+    assert len(states) == 54 * 54 and states[25 * 54 + 25] == 1 and states[-1] == 2
+    assert states.count(0) == 54 * 54 - 2, "the eight object states before each are not read"
+
+
+def test_the_transition_timer_is_a_signed_32_bit_count() -> None:
+    g = fake_game(transition_timer=0x1800)
+    assert g.transition_timer() == 0
+    g.pm.memory[0x1800:0x1804] = struct.pack("<i", 53)  # a TELEPORT TO counting down
+    assert g.transition_timer() == 53
+    g.pm.memory[0x1800:0x1804] = struct.pack("<i", -1)
+    assert g.transition_timer() == -1
+
+
+def test_each_cells_loaded_byte_is_read_from_right_after_the_states() -> None:
+    g = cells_game()
+    after = CELLS_AT + 54 * 54 * game.CELL_STRIDE
+    g.pm.memory[CELLS_AT:after] = bytes([7]) * (after - CELLS_AT)
+    g.pm.memory[after + 25 * 54 + 24] = 1
+    loaded = g.loaded_cells()
+    assert len(loaded) == 54 * 54 and loaded[25 * 54 + 24] == 1 and loaded.count(0) == 54 * 54 - 1
+
+
+def test_the_item_objects_in_use_give_their_cells() -> None:
+    g = cells_game()
+
+    def put(slot: int, serial: int, x: int, y: int) -> None:
+        at = POOL_AT + slot * game.ITEM_OBJECT_SIZE
+        g.pm.memory[at + game.OBJECT_HANDLE : at + game.OBJECT_HANDLE + 4] = struct.pack(
+            "<I", serial
+        )
+        # The game's X at +0x3AC is this repo's y.
+        g.pm.memory[at + game.ITEM_OBJECT_CELL : at + game.ITEM_OBJECT_CELL + 2] = bytes([y, x])
+
+    put(0, 77, 19, 11)
+    put(5, 0, 23, 14)  # a freed slot keeps its last item's cell
+    put(127, 3, 34, 51)
+    assert g.live_item_cells() == {(19, 11), (34, 51)}
+
+
+def test_marking_a_cells_item_collected_is_compare_and_set() -> None:
+    g = cells_game()
+    g.set_item_collected((25, 24))
+    assert g.pm.memory[cell_item_at(25, 24)] == game.ITEM_COLLECTED
+    assert sum(g.pm.memory[CELLS_AT:POOL_AT]) == 1, "one byte written"
+    with pytest.raises(game.GameError, match="not the expected"):
+        g.set_item_collected((25, 24))  # collected already
+    g.pm.memory[cell_item_at(3, 4)] = 2  # held by an object of the cell
+    with pytest.raises(game.GameError, match="not the expected"):
+        g.set_item_collected((3, 4))
+    assert g.pm.memory[cell_item_at(3, 4)] == 2
+    with pytest.raises(ValueError, match="not on the map"):
+        g.set_item_collected((54, 0))
+    g.pm.overwrite_with = 0  # the game puts the byte back straight after (a load)
+    with pytest.raises(game.ReadBackMismatch):
+        g.set_item_collected((7, 7))
+
+
+def test_marking_a_map_cell_collected_is_compare_and_set() -> None:
+    g = cells_game()
+    g.pm.memory[GRID_AT + 24 * 54 + 25] = 0x19
+    with pytest.raises(game.GameError, match="not the expected"):
+        g.set_map_collected((25, 24), expected=0)
+    assert g.map_grid()[24 * 54 + 25] == 0x19
+    g.set_map_collected((25, 24), expected=0x19)
+    assert g.map_grid()[24 * 54 + 25] == 0x1B and sum(g.map_grid()) == 0x1B
+    with pytest.raises(ValueError, match="not on the map"):
+        g.set_map_collected((0, -1), expected=0)
+    g.pm.overwrite_with = 0x19  # the game writes the cell straight after (a reveal)
+    with pytest.raises(game.ReadBackMismatch):
+        g.set_map_collected((7, 7), expected=0)
 
 
 def test_a_run_of_flags_is_read_at_once() -> None:
@@ -389,14 +508,3 @@ def test_a_current_slot_out_of_range_has_no_stamp(slot) -> None:
     g.pm.memory[0x10:0x14] = struct.pack("<i", slot)
     with pytest.raises(game.GameError, match="current slot"):
         g.save_stamp()
-
-
-def test_each_slots_marker_and_use_are_read_from_its_own_block() -> None:
-    # A block's randomizer marker at +0x9400 (16-bit) and its empty mark, 0xFF at +0x935E (the
-    # file's 0x9360): docs/re/memory.md, "The file select".
-    g = slots_game()
-    for n in range(game.SLOTS):
-        block = 0x100 + n * 0x9408
-        g.pm.memory[block + 0x935E] = 0xFF if n % 3 == 0 else 0
-        struct.pack_into("<H", g.pm.memory, block + 0x9400, n + 0x100)
-    assert g.slot_markers() == [(n + 0x100, n % 3 != 0) for n in range(game.SLOTS)]

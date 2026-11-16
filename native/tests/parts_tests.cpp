@@ -9,9 +9,11 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "check.h"
 #include "build.h"
+#include "cell_watch.h"
 #include "game_mem.h"
 #include "iat.h"
 #include "pipe.h"
@@ -222,6 +224,14 @@ void test_frames() {
 
 // The code patches (game_mem.h): put back only where the code still reads as written, and
 // still the helper's while it does.
+// A two-byte jne made a jmp, for test_code_patches' CodePatch.
+bool jne_to_jmp(const BYTE (&game)[2], BYTE (&out)[2]) {
+    if (game[0] != 0x75) return false;
+    out[0] = 0xEB;
+    out[1] = game[1];
+    return true;
+}
+
 void test_code_patches() {
     const BYTE game[2] = {0x75, 0x2E}, ours[2] = {0xEB, 0x2E}, other[2] = {0x74, 0x2E};
     auto* code = static_cast<BYTE*>(
@@ -258,6 +268,32 @@ void test_code_patches() {
     check(!zap::put_back_code(view, big, big, sizeof(big)), "one too long to check: held");
     UnmapViewOfFile(view);
     CloseHandle(section);
+
+    // A patch whose put-back fails stays held (patched()), as the AILMENTS patches' do, which
+    // Game::unload_blocker reads: the page made non-executable under it (the same bytes, mapped
+    // again where it was, without execute).
+    HANDLE exec_section = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_EXECUTE_READWRITE,
+                                             0, 0x1000, nullptr);
+    auto* exec = static_cast<BYTE*>(
+        MapViewOfFile(exec_section, FILE_MAP_WRITE | FILE_MAP_EXECUTE, 0, 0, 0x1000));
+    check(exec != nullptr, "an executable section view");
+    if (exec == nullptr) return;
+    std::memcpy(exec, game, sizeof(game));
+    zap::CodePatch<2, jne_to_jmp> patch;
+    patch.watch(exec);
+    check(patch.patched() && zap::code_reads(exec, ours, 2), "patched");
+    UnmapViewOfFile(exec);
+    auto* again = static_cast<BYTE*>(
+        MapViewOfFileEx(exec_section, FILE_MAP_WRITE, 0, 0, 0x1000, exec));
+    check(again == exec, "mapped again where it was, not executable");
+    if (again == exec) {
+        patch.restore();
+        check(patch.patched() && zap::code_reads(exec, ours, 2), "a failed put-back: still held");
+        patch.watch(nullptr);
+        check(patch.patched(), "held through another try");
+        UnmapViewOfFile(again);
+    }
+    CloseHandle(exec_section);
 }
 
 void test_build_check() {
@@ -292,6 +328,58 @@ void test_pipe() {
     check(served.load(), "serve_pipe reports a clean stop");
 }
 
+
+// CellWatch (cell_watch.h): what each look tells of the cells since the look before.
+void test_cell_watch() {
+    zap::CellWatch<int> watch;
+    std::vector<char> cells(3, 0);
+    auto read = [&](size_t i) { return cells[i] != 0; };
+    const std::vector<int> keys = {10, 20, 30};
+
+    check(!watch.looked(), "nothing looked at yet");
+    check(!watch.look(keys, read, true) && watch.looked(), "the first look is of no list before it");
+    cells[1] = 1;
+    check(watch.look(keys, read, true) && watch.found().empty(),
+          "a cell turning collected on the second look in play: one look in play is not enough");
+    cells[0] = 1;  // two looks in play have come before this one
+    check(watch.look(keys, read, true) && watch.found() == std::vector<size_t>{0},
+          "then it is told, once");
+    check(watch.look(keys, read, true) && watch.found().empty() && watch.undone().empty(),
+          "and not again");
+    cells[1] = 0;
+    cells[2] = 1;
+    check(watch.look(keys, read, true) && watch.found() == std::vector<size_t>{2} &&
+              watch.undone() == std::vector<size_t>{1},
+          "one found and another put back in a look");
+
+    // Looks not in play start the count over; a put-back cell is told without waiting.
+    check(watch.look(keys, read, false), "a look in a menu");
+    cells[0] = 0;
+    cells[1] = 1;
+    check(watch.look(keys, read, true) && watch.found().empty() &&
+              watch.undone() == std::vector<size_t>{0},
+          "the first look in play after it: a cell put back is told, one found is not");
+    cells[1] = 0;
+    check(watch.look(keys, read, true) && watch.undone() == std::vector<size_t>{1},
+          "still told");
+    cells[1] = 1;
+    check(watch.look(keys, read, true) && watch.found() == std::vector<size_t>{1},
+          "two looks in play since the menu: told");
+
+    // Another list is no look of the same one; a reset likewise.
+    const std::vector<int> other = {10, 20};
+    cells[0] = 0;
+    check(!watch.look(other, read, true) && watch.found().empty() && watch.undone().empty() &&
+              watch.looked(),
+          "another list: that look takes the cells as they are");
+    cells[0] = 1;
+    check(watch.look(other, read, true) && watch.found() == std::vector<size_t>{0},
+          "the look after it compares with that one (the looks in play still count)");
+    watch.reset();
+    check(!watch.looked() && !watch.look(other, read, true) && watch.found().empty(),
+          "after a reset the next look is the first");
+}
+
 }  // namespace
 
 int main() {
@@ -303,5 +391,6 @@ int main() {
     test_code_patches();
     test_build_check();
     test_pipe();
+    test_cell_watch();
     return report("parts tests");
 }

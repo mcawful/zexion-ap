@@ -46,7 +46,27 @@ uint8_t important_value(uint8_t value, Obscure obscure, bool ended) {
     }
 }
 
-int mark_important(const BYTE* section, BYTE* grid, bool ended) {
+uint8_t minor_value(uint8_t value, Obscure obscure, bool ended) {
+    if (value >= kClassLimit) return value;
+    const auto base = static_cast<uint8_t>(value - value % 12);
+    switch (value % 12) {
+        case kMajorShown:
+            // Minors alone obscured: raised from a shown minor or an obscured one alike.
+            if (!ended && obscure.minors && !obscure.majors && !obscure.by_class) return value;
+            return static_cast<uint8_t>(base + kMinorShown);
+        case kMajorObscured: {
+            // Under Obscure Class the game writes this value for a minor too: left.
+            if (obscure.by_class) return value;
+            const bool majors_only = obscure.majors && !obscure.minors;
+            return static_cast<uint8_t>(base + (majors_only ? kMinorShown : kMinorObscured));
+        }
+        default:
+            return value;
+    }
+}
+
+int mark_important(const BYTE* section, BYTE* grid, bool ended,
+                   const std::map<int, Label>& labels, const std::set<int>& held) {
     if (section == nullptr || grid == nullptr) return 0;
     const Obscure obscure = obscure_settings(section);
     int changed = 0;
@@ -56,7 +76,13 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended) {
         auto x = field<uint16_t>(section, 4 * i), y = field<uint16_t>(section, 4 * i + 2);
         if (x >= kMapSide || y >= kMapSide) continue;
         BYTE& cell = grid[y * kMapSide + x];
-        uint8_t raised = important_value(cell, obscure, ended);
+        // This player's own Scrap Metal (a stand-in picked up as it): a minor's square, left
+        // as it is while its item object is live (the game's write would raise it again).
+        auto label = labels.find(y * kMapSide + x);
+        const bool scrap = label != labels.end() && label->second.scrap();
+        if (scrap && held.count(y * kMapSide + x) != 0) continue;
+        uint8_t raised = scrap ? minor_value(cell, obscure, ended)
+                               : important_value(cell, obscure, ended);
         if (raised != cell) {
             cell = raised;
             ++changed;

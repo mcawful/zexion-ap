@@ -5,7 +5,39 @@ from __future__ import annotations
 import pytest
 from fakes import connection, slot_data
 
-from client import discs, game, native, session, state
+from client import discs, game, ids, native, session, state
+
+
+def test_the_waiting_held_traps_record_is_read_for_traps_only() -> None:
+    codes = [17, ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
+    assert state.stored_held([2, 1, 1], codes) == [1, 2]
+    assert state.stored_held([0, 9, True, "1", -1], codes) == [], "only traps, in range"
+    assert state.stored_held(None, codes) == [] and state.stored_held({"1": 1}, codes) == []
+
+
+def test_the_traps_held_at_a_first_connection() -> None:
+    codes = [17, ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
+    assert state.held_traps(None, codes, 0) == [1, 2]
+    assert state.held_traps(None, codes, 2) == [2], "not those the session handed over itself"
+    assert state.held_traps(1, codes, 0) == [], "a stored count: they pop up as new items"
+
+
+def test_this_worlds_own_traps_come_from_the_slot_data() -> None:
+    assert connection().traps == {}, "a seed from before the traps lists none"
+    conn = connection(trap_locations=[[3, ids.DISRUPTION_TRAP], [40, ids.DISORIENT_TRAP]])
+    assert conn.traps == {3: ids.DISRUPTION_TRAP, 40: ids.DISORIENT_TRAP}
+    for bad in ([[3, 46]], [[200, ids.DISRUPTION_TRAP]], [3], "x"):
+        with pytest.raises(state.UnsupportedSeed):
+            state.Connection.from_slot_data(slot_data(trap_locations=bad), 0, 1)
+
+
+def test_the_trap_looks_come_from_the_slot_data() -> None:
+    assert connection().trap_looks == {}, "a seed from before the looks lists none"
+    conn = connection(trap_looks=[[3, 24], [40, ids.DATA_DISC]])
+    assert conn.trap_looks == {3: 24, 40: ids.DATA_DISC}
+    for bad in ([[3, ids.DISRUPTION_TRAP]], [[3, 250]], [[200, 24]], [3], "x"):
+        with pytest.raises(state.UnsupportedSeed):
+            state.Connection.from_slot_data(slot_data(trap_looks=bad), 0, 1)
 
 
 def test_a_connection_reads_the_seed_from_its_slot_data() -> None:
@@ -68,7 +100,7 @@ def test_the_data_storage_keys_are_per_team_and_slot() -> None:
 def test_a_new_helper_is_told_everything_again() -> None:
     told = state.HelperState()
     assert told.assists.sent is None and told.intel.sent is None
-    assert told.discs.sent is None and told.slots.sent is None and told.offline_sent == {}
+    assert told.discs.sent is None and told.offline_sent == {}
     # It may hold an earlier client's labels: taken back unless this seed's are sent.
     assert told.labels_held and told.labels_for is None and not told.labels_refused
     assert not told.client_back_sent and not told.other_save_sent
@@ -267,3 +299,49 @@ def test_the_language_is_said_outside_the_default_english_and_english_hd() -> No
     assert line is not None and line.startswith("Zexion is set to Brazilian Portuguese:")
     assert "default English" in line and "English(HD)" in line
     assert state.language_line("Japanese") is not None
+
+
+def test_the_others_are_the_stand_ins_but_the_own_disks_and_traps() -> None:
+    items = [46] * 154
+    items[3], items[20], items[30], items[40], items[9] = 47, 48, 48, 48, 48
+    conn = state.Connection.from_slot_data(
+        slot_data(
+            location_items=items,
+            goal="os_install_disks",
+            discs_required=1,
+            discs_placed=1,
+            disc_locations=[20],
+            trap_locations=[[30, ids.DISRUPTION_TRAP]],
+        ),
+        team=0,
+        slot=1,
+    )
+    assert conn.foreign == [3, 20, 30, 40], "location 9 is not kept"
+    assert conn.others == {3, 40}, "the own disk (20) and the own trap (30) follow the save"
+
+
+def test_an_own_disk_is_never_among_the_others_whatever_the_goal() -> None:
+    items = [46] * 154
+    items[3], items[20] = 47, 48
+    conn = state.Connection.from_slot_data(
+        slot_data(location_items=items, goal="core", disc_locations=[20]), team=0, slot=1
+    )
+    assert conn.hunt is None and conn.foreign == [3, 20]
+    assert conn.others == {3}, "the slot data's own disks follow the save with the core goal too"
+
+
+def test_only_the_others_the_server_has_checked_are_kept_collected() -> None:
+    items = [46] * 154
+    items[3], items[20], items[40] = 47, 48, 48
+    conn = connection(
+        location_items=items,
+        goal="os_install_disks",
+        discs_required=1,
+        discs_placed=1,
+        disc_locations=[20],
+    )
+    base = ids.LOCATION_ID_BASE
+    # A release checks every location: the others' are kept collected, the rest are not.
+    assert state.others_gone(conn, {base + i for i in range(154)}) == {3, 40}
+    assert state.others_gone(conn, {base + 3, base + 20, base + 7}) == {3}
+    assert state.others_gone(conn, set()) == set()

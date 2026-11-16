@@ -42,6 +42,10 @@ constexpr uint8_t kStandInOwnPalette = 8;
 // scrap"): restyled to -1 while the records are the helper's, and what a received one runs
 // (game_calls.cpp, run_item_event).
 constexpr int16_t kStandInOwnEvents[kStandInCount] = {3549, 3550};
+// Scrap Metal's pickup event, which a stand-in's record names while it is named after a cell
+// labeled this player's own Scrap Metal (Label::scrap; ApItems::watch), so its pickup spawns
+// Scrap Metal's drops as the game's own does.
+constexpr int16_t kScrapMetalEvent = 3548;
 constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
 
 // Font glyph `code`'s place in the sprite texture: 16 a row of 8 x 8, from (0, 976).
@@ -223,8 +227,11 @@ public:
 
     // Game thread, every frame while active: restyles the records if they read as the game's
     // own (again, if the game reloaded its records), and names each for its cell in `cells`
-    // (47's, then 48's: name_cells). `records_holder` holds the pointer to the records.
-    void watch(BYTE* records_holder, const int (&cells)[2]);
+    // (47's, then 48's: name_cells). `records_holder` holds the pointer to the records. A
+    // record named after a cell labeled this player's own Scrap Metal (Label::scrap) names
+    // Scrap Metal's pickup event while `scrap_event` (that event is the one traced:
+    // Game::item_event_ready), and no event otherwise.
+    void watch(BYTE* records_holder, const int (&cells)[2], bool scrap_event = false);
 
     // Game thread, every frame while active (the GL context current): paints the logos now and
     // then and on a texture change. `now_ms` (GetTickCount64) sets the progression arrow's color.

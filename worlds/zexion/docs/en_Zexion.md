@@ -7,9 +7,10 @@ up, but lets Archipelago decide what is at each of the game's 154 item locations
 are 150, and in Custom the ones your settings and start room can reach, plus a 155th with
 Secret Shuffle. A location the seed can't reach holds Scrap, as in the game's own randomizer.
 Items found in Zexion can belong to other players, and their games can send items to
-you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, Area Maps or Intel
-Chips): exclude more locations than you have filler, and generation stops with an error that
-says so, unless the other players' filler makes up the difference.
+you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, traps, Area Maps or
+Intel Chips): exclude more locations than you have filler, and generation stops with an error that
+says so, unless the other players' filler makes up the difference (not Area Maps kept in their
+own world: "What do Area Maps and Intel Chips do?").
 
 You need the Zexion Archipelago mod and the Zexion Client: see the setup guide
 (`zexion-setup-guide.md` in the release).
@@ -34,13 +35,19 @@ Set with the Goal option.
     pause menu's RANDO SETTINGS, an OHKO seed then shows as Custom mode, with OHKO's items and
     amounts and Gates Unlocked (checked in game). The spoiler log's header names the change.
   - Your count shows after each disk's popup (a disk sent to you first pops up as any item
-    does, with who sent it), on the pause screen and on the file select.
+    does, with who sent it), on the pause screen and on the file select. It's your save's own:
+    the disks sent to you, plus your own that the save holds. If you die or reload without
+    saving after picking up one of your own, it's back in its room and off your count until you
+    pick it up again, which shows the count again (checked in the game for a reload: the
+    count dropping on the pause screen; the count showing again at the second pickup was not
+    looked at apart; not yet a death, nor the file select's count as it is now). With the
+    client closed, the mod shows the count itself when you pick up one of your own (checked
+    in the game).
   - The scanner at Guardia 42,26, outside the core's door, which shows where the keys are in
-    the normal game, tells you how many you need. It was seen there in game after a visit to
-    Vallahar 6,8; whether that visit is needed first is not known yet. Until you have been
-    there, the pause screen shows "OF ?". With
-    Hints Revealed (Custom), the game counts you as told from the start, so the number shows
-    at once (by the game's code; not yet checked in game).
+    the normal game, tells you how many you need. Until you have been there, the pause screen
+    shows "OF ?". With Hints Revealed (Custom), the game counts you as told from the start, so
+    the number shows at once (seen in game: a number showed before the scanner, though what it
+    read and where weren't checked).
   - Once you have enough, save at the Landing Pod's save point (Kresezoa 16,13, the
     `landing_pod` start room, whichever room you started in) and answer YES to RETURN HOME WITH
     THE DISKS?. The game's ending is your goal. NO lets you keep exploring; the question comes
@@ -58,13 +65,13 @@ Set with the Goal option.
 
 ## Which modes are there?
 
-The Mode option picks the game's own Easy, Standard or OHKO mode, with that mode's items,
-starting items and settings (with the OS Install Disks goal, OHKO's Gates Vanilla becomes
-Unlocked: "What is the goal?"), or Custom. Each seed draws its items as the game does for a new
-game: Standard starts with a random weapon (the Machine Gun, Force Blaster, Snake or Lance,
-with the other three in the item pool), and every mode draws its filler (Scrap, Area Maps,
-Energy Shields). OHKO has no Energy Tanks and gives you a second room to teleport to; the 4
-locations it can't reach are left out.
+The Mode option picks the game's own Easy, Standard or OHKO mode, with that mode's items, starting
+items and settings (with the OS Install Disks goal, OHKO's Gates Vanilla becomes Unlocked: "What
+is the goal?"), or Custom. Each seed draws its items as the game does for a new game: Standard
+starts with a random weapon (the Machine Gun, Force Blaster, Snake or Lance, with the other three
+in the item pool), and every mode draws its filler (Scrap, Area Maps, Energy Shields), and traps
+take some of the Scrap ("What do traps do?"). OHKO has no Energy Tanks and gives you a second room
+to teleport to; the 4 locations it can't reach are left out.
 
 With `mode: custom`, every setting of the game's randomizer menu is yours, named as the menu
 names it: the six amounts (Starting Energy Tanks to Item Pool Mega Bombs), each of the 27 items
@@ -138,7 +145,8 @@ generator logs a warning naming which, and generation may fail.
 Locations are named by their area and their X and Y as the pause screen shows them, as in
 "Guardia 22,7", so you can find them on the in-game map. Each area's name (Guardia,
 Machinus, and so on) is also a group of its locations, for options such as
-`exclude_locations`; the item groups are Keys, Weapons, Weapon Upgrades, Supplies and Scrap.
+`exclude_locations`; the item groups are Keys, Weapons, Weapon Upgrades, Supplies, Scrap and
+Traps.
 
 ## Can I add starting items?
 
@@ -167,8 +175,8 @@ What a new game can start with:
 - keys, in order from the Alpha Key;
 - OS Install Disks, with the OS Install Disks goal: they count toward the disks you need.
 
-Anything else, such as Scrap, Area Maps, Intel Chips, Energy Shields, Mega Bombs, Bomb Boxes
-or Assist Unlock, stops generation with an error that names it.
+Anything else, such as Scrap, Area Maps, Intel Chips, Energy Shields, Mega Bombs, Bomb Boxes,
+Assist Unlock or a trap, stops generation with an error that names it.
 
 ## Can I use plando?
 
@@ -196,8 +204,8 @@ Zexion:
 
 Locations are named by area and X,Y ("Where does the game start?"). In `locations`, an area's
 name, such as Machinus, stands for its locations; in `items`, an item group (Keys, Weapons,
-Weapon Upgrades, Supplies, Scrap) for one of its items. Keep `from_pool: true`, the default: it
-moves an item from your pool rather than making a new one.
+Weapon Upgrades, Supplies, Scrap, Traps) for one of its items. Keep `from_pool: true`, the
+default: it moves an item from your pool rather than making a new one.
 
 Played in game: another game's item and another Zexion player's in your locations, your own OS
 Install Disk and Intel Chip in your own, a Progressive Snake at Kresezoa 25,25, and your disks
@@ -215,6 +223,9 @@ none left of):
 - an OS Install Disk without the OS Install Disks goal, or more disks than `os_install_disks`
   (with your starting disks) makes: set the number there;
 - an Area Map with Area Map Hints on (they are Intel Chips), or an Intel Chip with it off.
+
+With Area Map Hints off, your Area Maps stay in your own world, plando too ("What do Area Maps
+and Intel Chips do?").
 
 The copies an item link's `replacement_item` adds aren't plando and are never refused, though a
 second copy of an item the game holds once gives nothing.
@@ -236,6 +247,9 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   if the item is important. Picking it up says PROGRESSION ITEM or AP ITEM, and whom it is for
   (FOR ALICE; in English(HD), Progression Item or AP Item, for Alice).
 - Another Zexion player's item looks like the item itself.
+- A trap looks important: another game's like its progression items, and a Zexion trap like one
+  of its owner's upgrades, keys or OS Install Disks that's in the seed. That's on purpose: you
+  can't tell it from a real one until you pick it up ("What do traps do?").
 - On the map, other players' important items and your OS Install Disks are marked as important
   items (another Zexion player's supplies, the Energy Tanks, Missile Containers, Mega Bombs and
   Missile and Bomb Boxes, stay minor, as yours do). Once you have seen an item, the cursor says
@@ -244,12 +258,56 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   one reads as the game's own important items do under your seed's Obscure settings: UNKNOWN
   ITEM, as every item does, with Obscure Class on; otherwise ADVANCED TECH with Obscure Majors
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
-  when you pick it up.
-- Items sent to you pop up with the sender's name. An Energy Shield sent to you comes up
-  around you. Scrap sent to you drops what the game's own Scrap does, after its popup, once
-  you have stayed on one map square for a second. Scrap whose popup
-  you saw before version 1.1.0 drops nothing, and nothing drops during the game's ending: what
-  arrives then drops the next time you load the save.
+  when you pick it up. The Scrap Metal left in the three rooms that wait for their pickup
+  (below) is a minor item on the map: UNKNOWN ITEM before you have seen it (checked in the
+  game under the preset modes' Obscure settings, for two of the three rooms).
+- Whether such an item stays found after you pick it up: "Do other players' items stay found?"
+  below.
+- Items sent to you pop up with the sender's name (a trap too: "What do traps do?"). An Energy
+  Shield sent to you comes up around you. Scrap sent to you drops what the game's own Scrap
+  does, after its popup, once you have stayed on one map square for a second. Both, and the
+  popups of items sent to you, wait out a teleport from the pause menu and come once you
+  arrive (checked in the game for an Energy Shield and TELEPORT TO START; not yet for Scrap or
+  popups). Scrap whose popup
+  you saw before version 1.1.0, or that reached you before your first connection to the seed (it
+  gets no popup), drops nothing, and nothing drops during the game's ending: what arrives then
+  drops the next time you load the save.
+
+## Do other players' items stay found?
+
+Yes, while the client is connected: an item for another player that you picked up, or that its owner
+collected (`!collect`) or you released (`!release`), is gone from its room and marked on the map.
+The client does this, so the mod isn't needed for it, apart from what's under "What the mod
+adds".
+
+- **What stays collected:** if you die or reload without saving after picking one up, or play
+  another save of your seed, it's still gone. An item in a room around you disappears a moment
+  later, and an enemy that would have dropped a checked item drops nothing. A save keeps what was
+  marked: played against a new room of the same seed, or after the server went back to an older
+  state, it sends those locations as found.
+- **What it gives:** nothing. Picking one up gives you one Scrap Metal, but an item kept
+  collected this way gives none, also one you picked up and then lost to a death or a reload, or
+  picked up in another save.
+- **What isn't kept:** three rooms where picking the item up is what moves the game on or where the
+  game still drops an item: Exodia 20,0 (it starts the boss fight), R'Talva 34,51 (the boss's
+  reward, which opens the warp gate) and Kresezoa 5,23 (its boss drops the item; marked collected,
+  the drop was still a picture that gave nothing). Once such an item is checked, Scrap Metal lies
+  there instead and you still pick it up: with the mod, as the game's own Scrap Metal. Your own
+  items aren't touched either: they follow your save, so after a death or a reload they're back in
+  their rooms.
+- **What needs the client:** all of the above. With it closed, an item you found before a death or a
+  reload is back in its room.
+- **What the mod adds:** in an upside-down room the mod hides a checked item (without the mod it
+  shows, and touching it gives nothing), and in the three rooms above it makes the Scrap Metal's
+  pickup the game's own.
+
+Checked in the game: an item gone after a reload, and one in a room around you gone when its owner
+collects; a kept item giving no Scrap Metal, for a reload and for an owner's collect; the first two
+left-out rooms (the fight at Exodia 20,0; the gate and the music at R'Talva 34,51), and the boss's
+drop at Kresezoa 5,23 as Scrap Metal; enemy drops; the hidden item in an upside-down room. Not yet
+checked in the game: a death, another save of your seed, `!release`, a save played against a new
+room of the same seed or an older server state, seeing an item for a second after a reload beside
+it, and no Scrap Metal for one lost to a death or picked up in another save.
 
 ## What do Area Maps and Intel Chips do?
 
@@ -260,7 +318,75 @@ a second shows the hint, such as HINT: SLIDE MOD IS AT GUARDIA 22,7 (in English(
 Slide Mod is at Guardia 22,7), and it goes into your hint list. When nothing is left to hint,
 it says HINT: NO HINTS LEFT. Intel Chips don't reveal the map.
 
-With the option off, Area Maps work as in the normal game.
+With the option off, Area Maps work as in the normal game: picking one up reveals the map around
+the square it lay in. So they stay in your own world: the generator never places your Area Maps
+in another player's world (as if they were in your `local_items`, which wins over your
+`non_local_items`), and they don't count toward filling other players' excluded locations. An
+item plando that puts one there isn't placed: the generator logs a warning saying why (not with
+`force: silent`), and with `force: true` generation stops. An Area Map that still reaches you
+from elsewhere, such as one sent from the server's console or through an item link (Area Maps in
+an item link aren't kept this way), has no square in your world and reveals nothing.
+
+## What do traps do?
+
+Traps take the place of some of your Scrap: 15% of it by default, so usually 2 or 3 (1 to 4) in
+an Easy, Standard or OHKO seed (Trap Percentage, `trap_percentage`; 0 for none). Each is one of
+two, picked by their weights (`disruption_trap_weight`, `disorient_trap_weight`). With the OS
+Install Disks goal the disks take the Scrap first, so there may be few traps or none. Traps are
+filler, so excluded locations can hold them.
+
+- **Disruption Trap:** what a Phazo's touch does, for about 12 seconds (a Phazo's lasts about 4):
+  your energy weapons don't fire and your charge stays empty; missiles and Mega Bombs still
+  work, and your HUD flashes. An Energy Shield doesn't stop it.
+- **Disorient Trap:** what a Balorb's wave does, for about 12 seconds: its sound, then your
+  controls are reversed, with swirls around your head; a flash and a sound come just before it
+  wears off.
+
+A trap goes off as its popup shows (DISRUPTION TRAP, FROM ALICE), once you are in play. Its popup
+takes its turn after the popups that came before it, such as an OS Install Disk's and its count, so
+the trap comes after them (a second of the same kind shows its popup as it starts, and the popups
+after it don't wait for it meanwhile). It waits through the pause menu, other menus, a death or a
+load, and through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load
+then). It also waits through a teleport from the pause menu, such as TELEPORT TO START (the other
+TELEPORT TO entries work the same way but were not tried), and goes off once you arrive. Each trap
+sent to you happens at most once, including one sent while your client was closed, or before you
+first connected (it comes when you connect); if the client closes just as a trap goes off, it may
+come again; a trap still waiting for its popup is lost if the game closes, or if the mod is reloaded
+while it waits for a save that isn't loaded; and with no mod running a trap does nothing: not one
+sent to you, and not your own when you pick it up (the client says so). A second trap of
+the same kind waits for the first to end and then goes off, so each lasts its full 12 seconds. The
+game's AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change
+traps: while one runs, it is left out for that effect, so an enemy's touch of the same kind during a
+trap isn't shortened by it either.
+
+In a Zexion world, a trap looks like an important item: one of yours, or another Zexion player's,
+looks like one of that player's upgrades, keys or OS Install Disks that's in the seed (not one they
+start with), on the map too, and another game's trap like that game's progression items. That's on
+purpose: you can't tell a trap from a real item until you pick it up. Picking up a Zexion trap says
+what it is (DISORIENT TRAP, and FOR BOB if it's Bob's), and one that looks like an OS Install Disk
+never counts as a disk; another game's trap still says PROGRESSION ITEM. If none of those is in the
+seed (its owner starts with, or leaves out, every upgrade, and has no key or disk in the seed), a
+Zexion trap looks like any upgrade: maybe one they already have, or one not in the seed. Once the
+scanner, or a map revealed in full (Hints Revealed, in Custom mode), has shown your keys on the map,
+a trap that looks like one of your keys has no key marker there: just an important item's (checked
+in the game with Hints Revealed; after the scanner, not yet checked). Picking up your own sets it
+off at once, with the client open or closed, and every time: if you die or reload without saving,
+it's back in its room, and picking it up again sets it off again (checked in the game for a
+reload, with the client open and closed; not yet for a death).
+Other games' traps sent to you do nothing in Zexion.
+
+Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
+row; one past a shield; AILMENTS at both settings; one sent while paused, while dead, while the
+client was disconnected or before you first connected; your own trap and other players' in your
+world, with their look and pickup popups; with Hints Revealed, a key-look trap having no key
+marker; a trap sent just after an OS Install Disk; and one sent while paused, then TELEPORT TO
+START, RELOAD FROM CHECKPOINT or RELOAD FROM SAVE. Not checked in the game: a trap through RETURN
+HOME or the ending, a key-look trap after the scanner has shown your keys, other popups showing
+first while a trap waits for one of its kind to end, a trap's popup in a translation, the mod
+refusing to reload while a trap waits to go off, a trap sent while the mod is being replaced
+by a new version (kept until the new one starts), and a big batch of items sent at once (its
+popups come in several batches). Every run is recorded in `native/README.md` ("Traps") in the
+repository.
 
 ## Can I use the assist menu?
 
@@ -299,9 +425,9 @@ for the whole game, as they would in any save.
 
 ## Does Zexion support DeathLink?
 
-Yes, with the DeathLink option. When you die, everyone else in the DeathLink dies too. When
-another player dies, you die as soon as you are in play, even with an Energy Shield up. Deaths
-received together come one at a time, after you respawn. Any still waiting when your ending
-begins, or sent during it, are dropped, unless the client first saw your save after the ending
-began (opened or connected during it): then they can still reach you during the ending. A death
-takes you back to your last save.
+Yes, with the DeathLink option. When you die, everyone else in the DeathLink dies too. When another
+player dies, you die as soon as you are in play (after a teleport from the pause menu, once you
+arrive: not yet tried in the game), even with an Energy Shield up. Deaths received together come one
+at a time, after you respawn. Any still waiting when your ending begins, or sent during it, are
+dropped, unless the client first saw your save after the ending began (opened or connected during
+it): then they can still reach you during the ending. A death takes you back to your last save.

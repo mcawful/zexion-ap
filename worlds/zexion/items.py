@@ -15,6 +15,13 @@ console to lift the client's assist lock (an item rule keeps a plando'd one out 
 player's locations, where it would never be received: worlds/zexion/world.py); and Intel Chip
 (101), the Area Map as a hint (Area Map Hints), which the game holds and draws as the Area Map
 (DRAWN_AS) and the helper renames INTEL CHIP (docs/re/memory.md, "Intel Chips").
+
+Two traps are not the game's either, and never held: Disruption Trap (102), the Phazo's touch
+(energy weapons don't fire), and Disorient Trap (103), the Balorb's wave (controls reversed),
+each for about 12 seconds. The helper sets the game's timers for them as the game's own touch
+does, but longer, past an Energy Shield and with AILMENTS left out (docs/re/memory.md, "The
+Phazo's disruption" and "The Balorb's disorienting wave"; native/README.md, "Traps"). They take
+the place of some of the pool's Scrap (the Trap Percentage option: world.py, ``add_traps``).
 """
 
 from __future__ import annotations
@@ -31,6 +38,8 @@ ITEM_ID_BASE = 3392510_000  # Steam app ID x 1000, to keep IDs recognizable
 
 ASSIST_UNLOCK = 100
 INTEL_CHIP = 101
+DISRUPTION_TRAP, DISORIENT_TRAP = 102, 103
+TRAPS = (DISRUPTION_TRAP, DISORIENT_TRAP)
 DRAWN_AS = {INTEL_CHIP: AREA_MAP}
 GAME_ITEMS = range(0, 51)  # the codes that are the game's own inventory bytes
 
@@ -84,6 +93,8 @@ NAMES = {
     50: "Energy Shield",
     ASSIST_UNLOCK: "Assist Unlock",
     INTEL_CHIP: "Intel Chip",
+    DISRUPTION_TRAP: "Disruption Trap",
+    DISORIENT_TRAP: "Disorient Trap",
 }
 
 # Everything the rules read, directly or through the codes derived from items
@@ -96,8 +107,16 @@ PROGRESSION |= {27, 28, 29, 30, 33, 34, 36, 37} | UPGRADES
 SUPPLIES = {0, 1, 2, 36, 37}
 # Intel Chips are filler like the Area Maps they replace, so excluded locations still have
 # filler.
-FILLER = {SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK, AREA_MAP, INTEL_CHIP}
+SCRAP = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)  # the game's filler; the traps take its places
+FILLER = {*SCRAP, AREA_MAP, INTEL_CHIP}
 DATA_DISC = 44  # the OS Install Disk (the game's Data Disc): progression, never balanced
+
+# What a Zexion trap lying in a Zexion world is shown as (the owner's choices, 2026-11-11): one of
+# the trap's owner's important items that lie in the seed's locations (LOOKS: an upgrade held
+# once, a key or an OS Install Disk), drawn per trap (world.py, trap_looks); with none, any of
+# the upgrades (DISGUISES).
+DISGUISES = (8, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 33, 34)
+LOOKS = frozenset({*DISGUISES, *KEY_CODES, DATA_DISC})
 
 KEYS = tuple(NAMES[code] for code in KEY_CODES)
 FILLER_NAME = NAMES[SCRAP_METAL]
@@ -109,7 +128,8 @@ item_name_groups = {
     "Weapons": {NAMES[code] for code in PROGRESSIVE},
     "Weapon Upgrades": {NAMES[code] for code in UPGRADES},
     "Supplies": {NAMES[code] for code in SUPPLIES},
-    "Scrap": {NAMES[code] for code in (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)},
+    "Scrap": {NAMES[code] for code in SCRAP},
+    "Traps": {NAMES[code] for code in TRAPS},
 }
 
 
@@ -135,6 +155,8 @@ def classification(code: int) -> ItemClassification:
         return ItemClassification.progression
     if code in FILLER:
         return ItemClassification.filler
+    if code in TRAPS:
+        return ItemClassification.trap
     return ItemClassification.useful
 
 

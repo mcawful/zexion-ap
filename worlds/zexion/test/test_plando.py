@@ -271,6 +271,31 @@ class TestPlandoRefused(PlandoTestCase):
             "Intel Chip: with Area Map Hints off, an Intel Chip would hint nothing", message
         )
 
+    def test_an_area_map_in_another_world_without_area_map_hints(self) -> None:
+        # Kept in its own world (local_items), as the fill keeps it: not placed, and with
+        # `force: true` the generator stops, after the world's warning says why.
+        away = block({"Area Map": 1}, ["Vallahar 6,14"], world="Tester2")
+        options = [{"mode": "easy", "area_map_hints": False, "plando_items": [away]}]
+        with self.assertLogs(level="WARNING") as logs, self.assertRaises(Exception) as caught:
+            generate([*options, {"mode": "easy"}])
+        self.assertIn("Could not place", str(caught.exception.__cause__))
+        want = "Zexion (Tester1): plando_items puts an Area Map in another world, but Area Map"
+        self.assertTrue(any(want in line for line in logs.output), logs.output)
+
+    def test_an_area_map_in_another_world_silently(self) -> None:
+        # force: silent asks for no warning: Archipelago logs only at debug, and so does the world.
+        away = block({"Area Map": 1}, ["Vallahar 6,14"], world="Tester2", force="silent")
+        options = {"mode": "easy", "area_map_hints": False, "plando_items": [away]}
+        world = generate([options, {"mode": "easy"}]).worlds[1]
+        self.assertEqual(plando.area_maps_away(world), [])
+
+    def test_an_area_map_in_its_own_world_without_area_map_hints(self) -> None:
+        own = block({"Area Map": 1}, ["Vallahar 6,14"])
+        options = {"mode": "easy", "area_map_hints": False, "plando_items": [own]}
+        world = generate([options, {"mode": "easy"}]).worlds[1]
+        self.assertEqual(world.get_location("Vallahar 6,14").item.name, "Area Map")
+        self.assertEqual(plando.area_maps_away(world), [])
+
     def test_too_many_energy_tanks_in_another_world(self) -> None:
         # Copies made for another player's locations count too: Alpha's Easy seed with enough
         # Energy Tanks plando'd into Beta's world to pass 40 in all.

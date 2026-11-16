@@ -19,6 +19,7 @@ def test_a_seed_file_in_the_helpers_format() -> None:
         lock_assists=False,
         discs=(3, 12, "COLLECT 12 OS INSTALL DISKS!", [1312, 40]),
         labels="ap_labels\nlabel 23 14 4150",
+        traps=[(1375, 103), (40, 102)],
     )
     lines = text.splitlines()
     assert lines[0] == "zexion-ap offline 1"
@@ -27,12 +28,19 @@ def test_a_seed_file_in_the_helpers_format() -> None:
     assert lines[3:5] == ["intel 1", "assists free"]
     assert lines[5] == "discs 3 12 " + b"COLLECT 12 OS INSTALL DISKS!".hex()
     assert lines[6] == "unfound 1312,40"
-    assert lines[7:] == ["ap_labels", "label 23 14 4150"]
+    assert lines[7] == "traps 40:102,1375:103"  # this player's own traps: cell and item
+    assert lines[8:] == ["ap_labels", "label 23 14 4150"]
 
 
 def test_no_disks_and_no_labels() -> None:
     text = offline.seed_text([0] * 154, (0, 0, 0), False, True, None, None)
-    assert text.splitlines()[3:] == ["intel 0", "assists lock", "discs -", "unfound -"]
+    assert text.splitlines()[3:] == [
+        "intel 0",
+        "assists lock",
+        "discs -",
+        "unfound -",
+        "traps -",
+    ]
 
 
 def test_the_cached_config_carries_its_checks() -> None:

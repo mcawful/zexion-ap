@@ -9,6 +9,13 @@ import pytest
 from client import ids
 from client import reconcile as rc
 
+
+def test_received_traps_are_never_in_the_inventory() -> None:
+    # The helper sets each off with its popup (native/README.md, "Traps"): no byte owed.
+    owed = rc.should_own({}, [46] * 4, set(), [ids.DISRUPTION_TRAP, 17, ids.DISORIENT_TRAP])
+    assert owed == Counter({17: 1})
+
+
 CELLS = [(25, 25), (29, 24), (3, 40), (50, 1)]
 TABLE = [3, 0, 46, 27]  # Machine Gun, Energy Tank, Scrap (a remote item), Alpha Key
 START = {0: 3, 1: 3, 4: 1}
@@ -211,6 +218,38 @@ def test_a_stand_in_pickup_does_not_swallow_a_received_scrap_metal() -> None:
     # afterwards is still owed.
     target = rc.should_own(START, [47], {0}, [46])
     assert rc.grants(inv(**STARTED, i46=1), target).inventory == {46: 2}
+
+
+def test_a_cell_the_client_marked_gives_no_scrap_metal() -> None:
+    # Three stand-in cells read collected, two of them marked by the client (the pickup
+    # counter accounts for one pickup): only the one picked up counts, and a received Scrap
+    # Metal is owed on top.
+    table = [47, 48, 47, 3]
+    marked = rc.marked_count(table, {0, 1, 2}, pickups=1)
+    assert marked == 2
+    target = rc.should_own(START, table, {0, 1, 2}, [46], marked=marked)
+    assert rc.grants(inv(**STARTED, i46=1), target).inventory == {46: 2}
+    # A save marked under the old rule holds one Scrap Metal a mark: left as it is.
+    assert rc.grants(inv(**STARTED, i46=4), target).inventory == {}
+
+
+def test_the_marked_cells_are_those_the_pickup_counter_does_not_account_for() -> None:
+    table = [47, 48, 3, 27, 44, 46]
+    everything = set(range(len(table)))
+    # The counter leaves out a key's pickup (27) and a Data Disc's (44): four of these count.
+    assert rc.marked_count(table, everything, pickups=4) == 0
+    assert rc.marked_count(table, everything, pickups=1) == 3
+    assert rc.marked_count(table, {0}, pickups=0) == 1
+    assert rc.marked_count(table, {3, 4}, pickups=0) == 0, "neither is counted at a pickup"
+    assert rc.marked_count(table, {0}, pickups=5) == 0, "never below none"
+    assert rc.marked_count(table, everything, pickups=None) == 0, "no counter: all picked up"
+
+
+def test_more_marks_than_stand_ins_leave_the_rest_as_it_is() -> None:
+    # A counter short of the collected cells by more than the stand-ins among them (not seen):
+    # no stand-in counts, and nothing else is taken off.
+    target = rc.should_own(START, [47, 3], {0, 1}, [], marked=5)
+    assert target[46] == 0 and target[3] == 1
 
 
 def test_a_data_disc_is_never_put_in_the_inventory() -> None:

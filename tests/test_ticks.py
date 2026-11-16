@@ -76,6 +76,7 @@ class Ctx:
         self.player_names = {1: "Me", 2: "Bob"}
         self.slot_info: dict = {}
         self.locations_info: dict = {}
+        self.checked_locations: set[int] = set()  # the server's
         self.unlocked = False
         self.deaths_sent: list[str] = []
 
@@ -171,6 +172,48 @@ def test_an_offline_file_the_helper_refused_keeps_the_helper(caplog) -> None:
     assert ctx.helper.requests and "config" not in ctx.told.offline_sent
 
 
+class Refusing(Helper):
+    """A helper that answers every request with ``reply``."""
+
+    def __init__(self, reply: str) -> None:
+        super().__init__()
+        self.reply = reply
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        self.requests.append(text)
+        return self.reply
+
+
+@pytest.mark.parametrize("size, sent", [(offline.MAX_FILE + 1, True), (offline.MAX_REQUEST, False)])
+def test_a_seed_file_too_large_to_keep_still_reaches_the_helper(monkeypatch, size, sent) -> None:
+    # The running helper takes a seed's text for its own use (its own traps, the disk count)
+    # before it refuses to keep the file, so the client sends one over offline.MAX_FILE all
+    # the same; only a request the pipe would not take is never sent.
+    ctx = offline_ctx(native.HelperError("unused"))
+    ctx.helper = Refusing("error too large")
+    ctx.offline_config = (ctx.game_conn, None)  # no config file to send here
+    monkeypatch.setattr(ticks, "offline_seed", lambda c, p: "x" * size)
+    run(ticks.offline_tick(ctx, no_finds()))
+    assert [r.startswith("offline_put seed ") for r in ctx.helper.requests] == [True] * sent
+    # Taken by the helper, though not kept: not put again while it is the same text. One the
+    # pipe would not take was never handed over, and is tried again.
+    assert ("seed" in ctx.told.offline_sent) == sent
+    ctx.told.offline_at = 0.0
+    run(ticks.offline_tick(ctx, no_finds()))
+    assert len(ctx.helper.requests) == sent
+
+
+def test_a_seed_file_whose_write_failed_is_put_again(monkeypatch) -> None:
+    ctx = offline_ctx(native.HelperError("unused"))
+    ctx.helper = Refusing("error cannot write, error 5")
+    ctx.offline_config = (ctx.game_conn, None)
+    monkeypatch.setattr(ticks, "offline_seed", lambda c, p: "seed text")
+    for _ in range(2):
+        ctx.told.offline_at = 0.0
+        run(ticks.offline_tick(ctx, no_finds()))
+    assert len(ctx.helper.requests) == 2 and "seed" not in ctx.told.offline_sent
+
+
 def test_the_offline_file_locks_assist_until_assist_unlock_is_received() -> None:
     # Before this seed's save is seen in a connection, conn.lock_assists is the slot data's:
     # the file follows Assist Unlock, received on an earlier connection, all the same.
@@ -208,6 +251,138 @@ def test_a_secret_shuffle_seeds_offline_table_is_in_the_games_order() -> None:
     assert lines[1] == offline.seed_text(p.table, p.start, False, False, None, None).splitlines()[1]
 
 
+def test_traps_look_important() -> None:
+    # Location 3 holds a stand-in: this player's own trap there is a Zexion upgrade, alone;
+    # another Zexion player's, for them; another game's trap a progression item.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISRUPTION_TRAP]], trap_looks=[[3, 24]]))
+    loc = ids.LOCATION_ID_BASE + 3
+    cell = ctx.conn.plan.cells[3]
+    for player, game_name, code, text in (
+        (1, "Zexion", ids.DISRUPTION_TRAP, aplabels.trap_label(24, ids.DISRUPTION_TRAP)),
+        (2, "Zexion", ids.DISORIENT_TRAP, aplabels.trap_label(24, ids.DISORIENT_TRAP, "Bob")),
+        (2, "Other", ids.DISORIENT_TRAP, aplabels.label(True, "Bob")),
+    ):
+        ctx.slot_info = {2: types.SimpleNamespace(game=game_name)}
+        ctx.locations_info = {loc: Scouted(ids.ITEM_ID_BASE + code, loc, player, 0b100)}
+        labels, own = ticks.foreign_labels(ctx)
+        assert labels == {cell: text} and own == 0, (player, game_name)
+
+
+def test_an_own_trap_is_the_helpers_to_set_off() -> None:
+    # Found in this world: the helper sets it off at the pickup, from the seed's file, which
+    # lists its cell and item. The client sends nothing for it, and records nothing.
+    ctx = Ctx(connection(trap_locations=[[3, ids.DISORIENT_TRAP]]))
+    ctx.server = None
+    ctx.helper = Homing()
+    ctx.told.client_back_sent = True
+    ctx.stored_data = {ctx.conn.popped_key: {}}
+    ctx.load.save_collected = {3}
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    run(ticks.followups_tick(ctx, no_finds(), shown))
+    assert ctx.helper.requests == [] and not ctx.seed_state.popped_mine
+    ctx.scout()
+    x, y = ctx.conn.plan.cells[3]
+    assert f"traps {y * 54 + x}:103" in ticks.offline_seed(ctx, no_finds()).splitlines()
+
+
+def test_a_seed_with_no_own_trap_lists_none_for_the_helper() -> None:
+    ctx = Ctx(connection())
+    ctx.scout()
+    assert "traps -" in ticks.offline_seed(ctx, no_finds()).splitlines()
+
+
+def test_a_lost_reply_sends_a_disks_count_again() -> None:
+    # The disk at 12 picked up: the reply lost, its count is sent again (shown twice at worst).
+    ctx = homing_ctx()
+    ctx.server = None
+    ctx.load.save_collected = {12}
+
+    def lost(text: str) -> str:
+        ctx.helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    p = types.SimpleNamespace(codes=[ids.DATA_DISC] * 3, found=[])
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    ctx.helper.apply = lost
+    with pytest.raises(native.ReplyLost):
+        run(ticks.followups_tick(ctx, p, shown))
+    assert ctx.load.disks_counted == set(), "still owed"
+    del ctx.helper.apply  # the class's: applied
+    run(ticks.followups_tick(ctx, p, shown))
+    again = ctx.helper.requests[1].splitlines()
+    assert again == ["apply", "notice 44 OS Install Disk 4"]
+    assert ctx.load.disks_counted == {12}
+    run(ticks.followups_tick(ctx, p, shown))
+    assert len(ctx.helper.requests) == 2, "once it has shown"
+
+
+def test_an_own_disk_picked_up_again_after_a_reload_shows_its_count_again() -> None:
+    ctx = homing_ctx()
+    ctx.server = None
+    hunt, load = ctx.conn.hunt, ctx.load
+    p = types.SimpleNamespace(codes=[ids.DATA_DISC], found=[])  # one received, handed over
+    ctx.seed_state.session.announced = 1
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+
+    def look(collected: set[int]) -> None:
+        """A poll's look at the save (zexion_client.poll), then its follow-ups."""
+        load.save_collected = set(collected)
+        load.disks_counted = discs.counted(load.disks_counted, collected, hunt.locations)
+        run(ticks.followups_tick(ctx, p, shown))
+
+    look(set())
+    assert notices(ctx) == []
+    look({12})  # picked up
+    assert notices(ctx) == ["notice 44 OS Install Disk 2"]
+    look({12})
+    assert len(notices(ctx)) == 1, "once a pickup"
+    look(set())  # a death or a reload without saving: the disk is back in its room
+    look({12})  # picked up again
+    assert notices(ctx) == ["notice 44 OS Install Disk 2"] * 2, "it counts, and says so, again"
+
+
+def test_a_disk_the_save_held_when_first_looked_at_shows_no_count() -> None:
+    # Picked up before this load was watched (with no client, or before a reconnect): no notice.
+    ctx = homing_ctx()
+    ctx.server = None
+    ctx.load.disks_counted = None  # the load's second look not made yet
+    ctx.load.save_collected = {12}
+    p = types.SimpleNamespace(codes=[], found=[])
+    shown = session.Step(seed_matches=True, state=game.IN_PLAY)
+    run(ticks.followups_tick(ctx, p, shown))
+    ctx.load.disks_counted = discs.counted(None, {12}, ctx.conn.hunt.locations)
+    run(ticks.followups_tick(ctx, p, shown))
+    assert notices(ctx) == [] and ctx.load.disks_counted == {12}
+
+
+def test_the_helpers_count_is_the_loaded_saves_own() -> None:
+    # One disk received, the own one at 12 picked up: 2. A reload from before the pickup: 1.
+    ctx = Ctx(connection(**HUNT))
+    ctx.seed_state.dressed = True
+    p = types.SimpleNamespace(codes=[ids.DATA_DISC], found=[12])  # found once, in some save
+    ctx.load.save_collected = {12}
+    run(ticks.discs_helper_tick(ctx, p))
+    assert ctx.helper.requests[-1].startswith("discs 2 3 ")
+    ctx.load.save_collected = set()
+    run(ticks.discs_helper_tick(ctx, p))
+    assert ctx.helper.requests[-1].startswith("discs 1 3 "), "the found record counts no disk"
+
+
+def test_the_offline_file_counts_each_saves_own_disks_from_its_map() -> None:
+    # What every save shares (the start and the received), and every own disk's cell: the
+    # helper adds those a save's map shows collected (native/src/offline.h), whatever the
+    # loaded save or the found record hold.
+    ctx = Ctx(connection(**HUNT))
+    ctx.scout()
+    x, y = ctx.conn.plan.cells[12]
+    for collected in (set(), {12}):
+        ctx.load.save_collected = collected
+        p = types.SimpleNamespace(codes=[ids.DATA_DISC, ids.DATA_DISC], found=[12])
+        lines = ticks.offline_seed(ctx, p).splitlines()
+        assert [line for line in lines if line.startswith("discs")][0].startswith("discs 2 3 ")
+        assert f"unfound {y * 54 + x}" in lines
+
+
 def test_a_secret_shuffle_seeds_labels_go_on_each_locations_own_cell() -> None:
     ctx = Ctx(secret_connection())
     ctx.scout(progression=True)
@@ -230,6 +405,36 @@ def dressed_save(**changes) -> Ctx:
     assert ctx.told.discs.sent == discs.request(0, 3, told=True)
     ctx.helper.requests.clear()
     return ctx
+
+
+def test_a_pickup_rooms_item_shows_as_scrap_once_the_server_has_it_checked(monkeypatch) -> None:
+    # A room that waits for its item's pickup is never marked collected (client/session.py):
+    # once its item is checked, what is left there is shown as the game's Scrap Metal.
+    ctx = dressed_save(**HUNT)
+    ctx.conn.items_listed = True
+    i = ctx.conn.foreign[0]
+    cell = ctx.conn.plan.cells[i]
+    before, _ = ticks.foreign_labels(ctx)
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset({cell}))
+    run(ticks.labels_tick(ctx))
+    assert ctx.helper.requests == [], "not checked: the labels as they were"
+    ctx.checked_locations = {ids.LOCATION_ID_BASE + i}
+    labels, own = ticks.foreign_labels(ctx)
+    assert labels[cell] == "@46" and {c: t for c, t in labels.items() if c != cell} == {
+        c: t for c, t in before.items() if c != cell
+    }
+    run(ticks.labels_tick(ctx))
+    assert ctx.helper.firsts() == ["ap_labels"] and ctx.told.labels_sent == labels
+    assert ctx.helper.requests[0] == aplabels.labels_request(labels)
+    run(ticks.labels_tick(ctx))
+    assert len(ctx.helper.requests) == 1, "sent once a change"
+    # Any other checked item keeps its label (it is marked collected instead), and so does
+    # this one while the items are not listed yet (a dropped connection).
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset())
+    assert ticks.foreign_labels(ctx)[0] == before
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset({cell}))
+    ctx.conn.items_listed = False
+    assert ticks.foreign_labels(ctx)[0] == before
 
 
 def reconnect(ctx: Ctx, same_seed: bool) -> None:
@@ -529,6 +734,7 @@ def homing_ctx() -> Ctx:
     ctx.stored_data = {ctx.conn.popped_key: {}}
     ctx.seed_state.session.announced = 3  # the received disks' popups handed over
     ctx.seed_state.session.announced_read = True
+    ctx.load.disks_counted = set()  # the load looked at twice: no own disk in the save
     return ctx
 
 
@@ -589,8 +795,9 @@ def test_a_found_disks_count_leaves_out_a_received_disk_not_handed_over_yet(hand
     run(ticks.followups_tick(ctx, p, shown))
     assert notices(ctx) == [f"notice 44 OS Install Disk {1 + handed}"]
     if not handed:  # the received one's count, handed over on a later poll
-        pending = ctx.load.save_collected - ctx.seed_state.popped_mine
-        later = discs.received_notes(ctx.conn.hunt, p.codes, p.found, False, pending)
+        load, hunt = ctx.load, ctx.conn.hunt
+        pending = discs.uncounted(load.disks_counted, load.save_collected, hunt.locations)
+        later = discs.received_notes(hunt, p.codes, load.save_collected, False, pending)
         assert later == {0: "OS Install Disk 2"}
 
 
@@ -883,7 +1090,7 @@ def test_requests_that_never_reached_the_helper_are_not_misses(why, monkeypatch)
     assert ctx.helper.requests == ["shield"] and counts_sent(ctx)
 
 
-def test_a_request_cancelled_on_its_way_stays_looked_for(monkeypatch) -> None:
+def test_a_request_canceled_on_its_way_stays_looked_for(monkeypatch) -> None:
     # Its thread may still deliver it: dropping it would ask for it twice.
     world = ShieldWorld()
     ctx = shield_ctx(world)

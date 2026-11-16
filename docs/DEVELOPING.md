@@ -1,20 +1,25 @@
 # Developing zexion-ap
 
 For contributors. Players start at the [README](../README.md). The project's rules (evidence,
-no hard-coded addresses, the game and save folders read-only, what never gets committed) are in
-[`CLAUDE.md`](../CLAUDE.md), "Rules": read them before changing anything.
+no hard-coded addresses, the game and save folders and the mod's offline files read-only, what
+never gets committed) are in [`CLAUDE.md`](../CLAUDE.md), "Rules": read them before changing
+anything.
 
 Zexion has no modding API, so everything here rests on reverse engineering, recorded with its
 evidence in [`docs/re/`](re/README.md).
 
 ## Status
 
-1.1.0; the first release, 1.0.0, was published on 2026-11-05 (UTC). Every in-game run was on game
-build B1. A release build has run from Archipelago 0.6.8's Launcher since 2026-10-25
+The first release, 1.0.0, was published on 2026-11-05 (UTC), 1.1.0 after it (the current version is
+`world_version` in `worlds/zexion/archipelago.json`). Every in-game run was on game build B1. A
+release build has run from Archipelago 0.6.8's Launcher since 2026-10-25
 ([`docs/re/memory.md`](re/memory.md), "The client in a live game"), the 1.0.0 client from it on
 2026-10-29 (`native/README.md`, "AP saves without the client"), the 1.0.0 release candidate's
-builds on 2026-11-03 and 04, and the 1.1.0 candidate's on 2026-11-08 (develop 5597753) and 09
-(develop 88bebfb) ("Features, and when each was working in game", below).
+builds on 2026-11-03 and 04, the 1.1.0 candidate's on 2026-11-08 (develop 5597753) and 09
+(develop 88bebfb), `develop` 4205871's Area Maps on 2026-11-09, and `develop` e500ab9's traps on
+2026-11-11. The runs since, of the checkpoint checks, own disks and traps following the save and
+other players' items kept collected (2026-11-13 to 16), are in "Features, and when each was working
+in game", below.
 
 ## How it fits together
 
@@ -22,7 +27,8 @@ builds on 2026-11-03 and 04, and the 1.1.0 candidate's on 2026-11-08 (develop 55
 Archipelago server ⇄ (websocket) ⇄ client/  (Python, outside the game)
                                      ├─ reads Zexion.exe's memory, found by byte pattern
                                      │  (game state, inventory, map); writes inventory bytes
-                                     │  itself only when no helper is in use
+                                     │  itself only when no helper is in use, and marks other
+                                     │  players' items collected
                                      └─ named pipe \\.\pipe\zexion-ap-<pid>
                                           ⇄ zexion_ap.dll, the helper (inside Zexion.exe)
 version.dll, the proxy (in the game's folder) → loads the helper as the game starts
@@ -41,18 +47,44 @@ worlds/zexion/ → generation → slot data → client
   other worlds send, and sends the goal once the save has reached the ending (with the OS
   Install Disks goal, with enough disks). It never counts its own grants: it gives what the
   player should own minus what the inventory holds, so an item lost to a death or a reload is
-  given again. Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
-  count up: any other item's byte is written as 1 at most, so a second copy (a server console's
-  `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
+  given again. Another player's item in this world stays collected once the server has its
+  location as checked (found before a death or a reload, or in another save of the seed;
+  collected by its owner; released): the client marks it collected in the loaded save, so it
+  is not there to pick up again. Never in a room that waits for its item's pickup (Exodia
+  X20 Y0, where the pickup starts the boss fight, R'Talva X34 Y51, the boss's reward,
+  whose pickup turns the warp gate on, and Kresezoa X5 Y23, whose boss drops the item): there
+  the item stays and shows as Scrap Metal once it is checked, and with the helper it is picked
+  up as the game's own Scrap Metal: in game, the first two rooms gave "the regular scrap metal
+  and the pickups from it" (the owner's words), and Kresezoa X5 Y23's boss dropped an actual
+  Scrap Metal (the owner's report, 2026-11-16), and the first two rooms' squares showed as a
+  minor's under the presets' Obscure settings. An
+  item the game has made already is ended by the game itself once its state is written; one
+  that may be there as another kind of object (in a room the game has loaded or within two
+  map squares of the player) stays until the player is farther from it
+  ([`native/README.md`](../native/README.md), "Other players' items"). A marked item gives
+  nothing: the one Scrap Metal a stand-in gives is counted only where it was picked up,
+  which the game's own pickup count tells apart. With `--verbose` each marking is logged
+  ("Marked collected in this save (...)"). This world's own items follow the save.
+  Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal count up: any
+  other item's byte is written as 1 at most, so a second copy (a server console's `/send`)
+  changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
-  items handed to the helper for their popup, the follow-up popups shown, the Intel Chip hints
-  made, the Energy Shields given, and this world's locations found in game, which the OS Install
-  Disks count and the Area Map hints read; sent again until the server holds them). A failing
-  side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
-  and the goal go on. With no server connection, while a save it has not dressed is loaded and
-  no ending is on its way, it lets the helper go, so the helper gives AP saves their look as
-  with no client, and attaches it again on connecting
-  ([`native/README.md`](../native/README.md), "AP saves without the client").
+  items handed to the helper for their popup, the traps held at the slot's first connection still
+  to pop up, the hints shown for this world's own Area Maps found, the Intel Chip hints
+  made, the Energy Shields given, and this world's locations found in game, which the Area Map
+  hints read; sent again until the server holds them). This world's own OS Install Disks and
+  traps follow the save instead: the disk count is the loaded save's own, and the helper sets an
+  own trap off at each pickup ([`native/README.md`](../native/README.md), "The OS Install Disks
+  goal", "Traps"). A failing side task (labels, disk count, DeathLink, follow-up popups) is
+  logged once while items, checks and the goal go on, and so is a failing marking of other
+  players' items ("Can't mark other players' items collected right now"; or, on a game build
+  where the pickup counter's patterns no longer match, "Can't mark other players' items
+  collected in this build of the game", after which nothing is marked), which is part of the
+  poll's step, not a side task.
+  With no server connection, while a save it has not dressed is loaded and no ending is on
+  its way, it lets the helper go, so the helper gives AP saves their look as with no client,
+  and attaches it again on connecting ([`native/README.md`](../native/README.md), "AP saves
+  without the client").
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
   the look of other players' items, and the rest of the features below. It hooks the game's
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
@@ -83,10 +115,10 @@ How the helper works: [`native/README.md`](../native/README.md).
 - **The helper**: `zexion_ap.dll`, built from `native/`. **The proxy**: `version.dll`, built
   from `native/proxy/`. Players call the two together "the mod".
 - **Stand-in**: the Scrap Energy (47) or Scrap Chunk (48) the game holds at a location whose
-  item it cannot hand out itself: another player's item (48 if it is progression, except another
-  Zexion player's supplies, 47 and minor as the game marks this player's own:
+  item it cannot hand out itself: another player's item (48 if it is progression or a trap,
+  except another Zexion player's supplies, 47 and minor as the game marks this player's own:
   `world.important_elsewhere`), or, with the OS Install Disks goal, one of this world's own disks
-  (48). The helper restyles them.
+  (48), or one of this world's own traps (48). The helper restyles them.
 - **Frame call**: one call the game makes, once per frame, through the hooked import; the
   helper runs its frame function in it.
 - **B1**: the only game build supported so far (Steam build 23943567:
@@ -124,16 +156,51 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04; another
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
+- This world's own OS Install Disks and traps following the save: 2026-11-14 (B1; the helpers
+  `zexion_ap.dll` `5f19e4d4…` from bbaf3c5 and `7859b9e7…` from 1b04f24), with the client and
+  with none. What each run showed and what is not run (the disks' count with no client and on
+  the file select, a death, a trap queued behind one of its kind, a load from the file select
+  over a different map, no helper, and the rest): `native/README.md`, "Traps" ("This world's
+  own") and "The OS Install Disks goal".
+- Other players' items kept collected once the server has them as checked: 2026-11-14 (PR
+  #144's branch at bbaf3c5 and 79bee7a: a reload, `!collect`), 2026-11-15 (PR #144's a17904b,
+  PR #145's 399f57e, PR #146's fe4fe1b and c7186e9: the two rooms left unmarked, the hidden
+  picture, a mark giving no Scrap Metal), 2026-11-16 (develop 0b01d41: 14 squares with a type-28
+  event marked from afar, Kresezoa X5 Y23's boss drop, PR #153), B1. What each run showed and what
+  is not run (a death, another save of the seed, `!release`, a reload beside an item, an arena's
+  item marked with the player in its room, a type-715 room such as Guardia X22 Y7, the marking's
+  wait through a TELEPORT TO, the map square under the other Obscure settings, a scrap-labeled
+  square of item 48 that the game's on-screen write raises, nine of the 14 type-28 squares (Guardia
+  X41 Y10 and X22 Y9, Pulsava X51 Y12 and X46 Y13, Phobyss X18 Y41, Kresezoa X22 Y26, Crysmoon X49
+  Y32, X52 Y38 and X53 Y20), Fijedar X5 Y39's enemy's drop, and the other squares where a boss holds
+  the item): `native/README.md`, "Other players' items" ("Kept collected", "This player's own Scrap
+  Metal", "Run in game after the review rounds"); `docs/re/memory.md`, "What decides whether an item
+  appears".
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
   2026-11-03; given once across reconnects: 2026-11-04; the helper's check of the whole of
   event 3553: 2026-11-09 ("Received Energy Shields"; its stop after three misses: not run in
-  game).
+  game). One received in the pause, then TELEPORT TO START, coming up after the teleport's load:
+  2026-11-14 (99dc486, `lab/ap/live62`, `lab/ingame-checkpoint-checks.md`); scrap's drops,
+  received deaths and popups waiting out a TELEPORT TO's countdown: stand-in tests only ("Popups",
+  "Received Energy Shields").
 - Received scrap's drops (its pickup's event, after its popup), one received while
   disconnected dropping once: 2026-11-09 ("Received scrap"; what the drops were and gave not
   described).
 - DeathLink, both ways: 2026-10-23 ("DeathLink").
+- Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their first
+  design 2026-11-11 (PR #138's 57381bf); the design since, 2026-11-11 (81dd8cc, `lab/ap/live60`;
+  5f66f1b, `live61`; `develop` e500ab9, `live62` and `live63`; the popup order at 932411b); a
+  trap waiting out RELOAD FROM CHECKPOINT, RELOAD FROM SAVE, a death's respawn and a TELEPORT TO,
+  2026-11-13 (907abfd); this world's own traps set off at their pickup by
+  the helper, 2026-11-14 (the line above); B1. What each run showed and what is not run (the
+  ending or RETURN HOME, a key-look trap after the scanner, received traps kept through a
+  refused version swap, a big release's popups split into batches, an unload refused while a
+  trap waits, a trap's popup passed by others, a connection's first held-traps record beside
+  another client's, the restart doubles, and a trap's popup in a translation):
+  `native/README.md`, "Traps"; the Ailments' record: `docs/re/memory.md`, "Ailments: the script
+  step that sets them".
 - The ASSIST lock and Assist Unlock: 2026-10-23; left unlocked in another save: 2026-10-25
   ("The assist menu").
 - Intel Chips: received hints 2026-10-24; picked up, with the INTEL CHIP name and no map reveal,
@@ -141,6 +208,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   one received while the client was disconnected, its hint made once after the reconnect:
   2026-11-08 (develop 5597753). Not run in game: a received chip's two popups held for the next
   load.
+- Area Maps kept in their own world with Area Map Hints off, so the game's own pickup reveals
+  the map around the square it lay in: 2026-11-09 (develop 4205871; `docs/re/locations.md`,
+  "Where the world departs from the game"; why: `docs/re/memory.md`, "Intel Chips"). Not run in
+  game: the other players' sides of that seed, and an Area Map received with the option off.
 - OS Install Disks goal: the count, the scanner, the equipment, pause and file-select screens:
   2026-10-24 and 25; RETURN HOME WITH THE DISKS?: 2026-10-24, at the Landing Pod's save point
   2026-10-25 (whatever the start room since 2026-10-30: 2026-11-02), a replay past the ending
@@ -151,10 +222,14 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   load: 2026-11-04. A received disk's own popup before its count, two at once, and both held
   at YES for the next load: 2026-11-08 ("Popups"); a received and a found disk's counts going
   up in order, then the reminder: 2026-11-08 (develop 5597753; the counts' text not quoted).
+  Those runs were of the count as it was until 2026-11-14, shared by every save of the seed
+  (a found disk from the found record, the file select's from the client): the screens, the
+  notices and their order stand; the count's source since, the loaded save: 2026-11-14.
   Not run in game: RELOAD FROM CHECKPOINT and
   a teleport at the pod, and the map right after saving.
-- Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
-  offline finds included: 2026-10-25.
+- An Intel Chip's hint for each of this world's own found, once each, offline finds
+  included: 2026-10-25 (then with a found disk's count, once each too; a disk's count now
+  shows at each pickup: the own disks' line above).
 - The helper loaded with the game by the proxy: 2026-10-25 ("The proxy").
 - `/reload_mod`: 2026-10-26; refused with a menu open or the ending on its way: 2026-10-27
   ("Unloading").
@@ -235,17 +310,23 @@ them, and there a missing one fails a test as well.
 
 On Windows, with the game. The command, what it needs and its flags: [`CLAUDE.md`](../CLAUDE.md),
 "The client". Running it may load the helper into the game: the one already there if it is this
-version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). Beyond that:
+version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). One of another version
+that refuses to unload for it (a menu open, a trap waiting or running) is asked again every 5 s,
+the client saying why, with items held back up to 30 s ([`native/README.md`](../native/README.md),
+"Getting in"). Beyond that:
 
 - A new game started from RANDOMIZER (kept by `--keep-randomizer`) with the seed's text typed
   into the menu gets the seed: the helper places it again with the seed's settings, whatever
   else the menu holds (`client/newgame.py`; `native/README.md`, "New games"; working in game,
   2026-10-27). From the Launcher: `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
-- `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items
-  meanwhile (popups still queued are lost; items are not); with a menu or the map open, or
-  while the ending RETURN HOME WITH THE DISKS? started is on its way, it refuses and says why,
-  and the mod stays loaded. While the client is not connected and has let the helper go (the
-  client, above), it says so and does nothing.
+- `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items meanwhile
+  (popups still queued are lost; items are not, nor traps waiting in the save loaded, or received
+  with none loaded, for which it refuses; one waiting for a save not loaded is lost); with a menu or
+  the map open, while the ending RETURN HOME WITH THE DISKS? started is on its way, or while a trap
+  runs or waits to go off, it refuses and says why, and the mod stays loaded. If the mod does not
+  come back (no frame, the game in the background, say), items wait for it as after any lost helper.
+  While the client is not connected and has let the helper go (the client, above), it says so and
+  does nothing.
 - While this seed's save is loaded, the client asks the helper whether its Feats and
   achievements guard is on ([`native/README.md`](../native/README.md), "Feats and achievements
   in AP saves"). If the helper says it could not do all of it (`feats=on:<why>` in its
@@ -266,11 +347,11 @@ every check but `ruff and pytest (macos-latest)`, which a pull request must stil
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate
-(`.github/workflows/release-gate.yml`): it must come from this repo's `develop` and raise the
-version above every release's tag and above the version on `main` (`tools/release_check.py`).
-The second matters while a merged release waits for approval: it has no tag yet, but `main`
-already holds its number. If GitHub can't list the releases or `main`'s version can't be read,
-the gate fails. The gate runs again on any edit to the pull request, so one retargeted from
+(`.github/workflows/release-gate.yml`): it must come from this repo's `develop`, raise the
+version above every release's tag and above the version on `main`, and have the version's notes
+written (`tools/release_check.py`). Being above `main` matters while a merged release waits for
+approval: it has no tag yet, but `main` already holds its number. If GitHub can't list the
+releases or `main`'s version can't be read, the gate fails. The gate runs again on any edit to the pull request, so one retargeted from
 `develop` to `main` is checked too.
 
 A release has one version number, in three places, which the tests and the builder check
@@ -279,7 +360,12 @@ A release has one version number, in three places, which the tests and the build
 To release:
 
 1. On a topic branch, raise the version in all three places and run
-   `tools/gen_sample_yamls.py`; merge it into `develop`.
+   `tools/gen_sample_yamls.py`. In the same pull request, write the release's notes for players:
+   copy `docs/releases/TEMPLATE.md` to `docs/releases/<version>.md` and draft it from the pull
+   requests merged into `develop` since the last release, as
+   [`docs/releases/README.md`](releases/README.md) says. The owner approves the wording in that
+   pull request. Preview the whole message with `tools/release_notes.py <version> --previous
+   v<last>`. Merge it into `develop`.
 2. Open a pull request from `develop` into `main`. Only the owner merges it, with **Create a
    merge commit** (a ruleset on `main` allows nothing else: a squash or rebase would put a
    commit on `main` that `develop` lacks, and the branches would drift apart). Claude never
@@ -289,13 +375,13 @@ To release:
    `release`, so it waits on the Actions page until the owner approves it; nothing is built,
    tagged or published before that. It then builds the helper and proxy, runs the native
    tests, builds the release with `tools/build_apworld.py`, tags `v<VERSION>` and publishes a
-   GitHub Release of the files below. Its notes are GitHub's generated ones, the pull requests
-   since the latest release (named to GitHub, which otherwise may compare against no tag and list
-   every pull request), followed by the install-and-update guide in `.github/release-footer.md`
-   with `{{VERSION}}` filled in; if the notes can't be generated, nothing is published. A
-   version already released from this same commit is skipped (a re-run). The job fails instead
-   if that version's release is a draft (a publish that failed part-way: publish or delete it
-   on GitHub, then re-run) or was released from another commit.
+   GitHub Release of the files below. Its message is the one `tools/release_notes.py` builds:
+   the version's notes, then the install-and-update guide in `.github/release-footer.md`, then
+   the compare link from the latest release; if the notes are missing or unfinished, nothing is
+   built into the release or published (the helper and proxy are built and tested first). A version
+   already released from this same commit is skipped (a re-run). The job fails instead if that
+   version's release is a draft (a publish that failed part-way: publish or delete it on GitHub,
+   then re-run) or was released from another commit.
 4. If the approval is rejected or times out, or the job fails, `main` holds the version with no
    release: re-run the workflow from the Actions page, or fix the cause on a topic branch into
    `develop`, raise the version (the gate wants it above `main`'s), and merge `develop` into

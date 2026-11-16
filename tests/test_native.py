@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from client import native, process, state
+from client import ids, native, process, state
 
 WINDOWS = sys.platform == "win32"
 BUILT = native.default_dll()
@@ -47,6 +47,9 @@ def test_an_apply_request_puts_each_popup_on_one_line() -> None:
     # spaces (any text the server sends) must not break a popup into another line.
     cas = [(17, 0, 1), (0, 3, 4)]
     popups = [(17, "FROM  Bob\nthe\tBold "), (0, ""), (49, " A  hint\n", True), (16, "", True)]
+    # A received trap is its popup; this world's own are the helper's to set off.
+    trap = native.batch_text([], [(ids.DISRUPTION_TRAP, "from Bob")])
+    assert trap.splitlines() == ["apply", "popup 102 from Bob"]
     assert native.batch_text(cas, popups, refresh=True, intel=True).splitlines() == [
         "apply",
         "cas 17 0 1",
@@ -449,6 +452,49 @@ def test_a_mod_of_another_version_that_wont_unload_says_they_dont_match(
     with pytest.raises(native.ModMismatch, match="version 0.29.0, this client") as caught:
         native.attach(game, built)
     assert "restart Zexion" in str(caught.value) and game.loads == 0
+    assert "(a menu is open)" in str(caught.value), "the refusal's reason, for the player"
+
+
+def test_an_error_after_the_old_helper_unloaded_says_it_is_gone(tmp_path, monkeypatch) -> None:
+    # The client holds the traps it receives for the helper to come (Session.keep_traps) only
+    # while the old one is loaded: ``old_gone`` is how attach tells the two apart.
+    built = tmp_path / "zexion_ap.dll"
+    built.write_bytes(b"")
+    game = stand_in_attach(monkeypatch, loaded="0.29.0", stays=True)
+    with pytest.raises(native.NotUnloaded) as caught:
+        native.attach(game, built)
+    assert not caught.value.old_gone, "still loaded"
+    game.stays = False
+
+    def fail(*args, **kwargs) -> bool:
+        raise native.HelperError("loading zexion_ap.dll into the game failed")
+
+    monkeypatch.setattr(native, "load", fail)
+    with pytest.raises(native.HelperError, match="loading") as caught:
+        native.attach(game, built)
+    assert game.unloads == 1 and caught.value.old_gone
+
+
+@pytest.mark.parametrize(
+    ("error", "said"),
+    [
+        (native.ReplyLost("no reply within 2.0 s"), "it didn't answer"),
+        (
+            native.ModMismatch("both are version 0, but from different builds"),
+            "it is too old to unload on request",
+        ),
+        (
+            native.HelperError("a trap is waiting to go off; not unloading"),
+            "a trap is waiting to go off",
+        ),
+    ],
+)
+def test_why_an_old_helper_did_not_unload_reads_plainly(error, said) -> None:
+    class Old:
+        def request(self, text: str, *args: object) -> str:
+            raise error
+
+    assert native._unload_refusal(Old(), 0) == said
 
 
 def test_a_mod_that_doesnt_know_the_games_build_is_another_build(tmp_path, monkeypatch) -> None:
@@ -462,7 +508,7 @@ def test_a_mod_that_doesnt_know_the_games_build_is_another_build(tmp_path, monke
 @pytest.mark.parametrize(
     ("request_text", "reply", "said"),
     [
-        ("disk_slots 1 3", b"error unknown request", "doesn't know the request disk_slots"),
+        ("no_such_request", b"error unknown request", "doesn't know the request no_such_request"),
         ("ap_newgame\nfoo 1", b"error unknown line foo 1", "a line of ap_newgame (foo)"),
     ],
 )

@@ -57,6 +57,7 @@ using EventFn = void (*)(char row, char column, BYTE* event);  // an area-event 
 constexpr uint8_t kScrapMetal = 46, kScrapEnergy = 47, kScrapChunk = 48, kEnergyShield = 50;
 static_assert(kScrapEnergy == kStandInItem && kScrapChunk == kStandInProgression,
               "kStandInOwnEvents is in the stand-ins' order");
+static_assert(kScrapMetal == kScrapMetalItem, "Label::scrap's item");
 constexpr uint8_t kSpawnEventType = 11, kFadeEventType = 1;
 constexpr ptrdiff_t kEventNext = 0x20;
 // The record, but for each item's object (+4), next event (+0x20) and own number (+0x24).
@@ -76,7 +77,7 @@ struct ItemEvent {
     int16_t event, object, next;
 };
 constexpr ItemEvent kItemEvents[] = {
-    {kScrapMetal, 3548, 2010, -1},
+    {kScrapMetal, kScrapMetalEvent, 2010, -1},
     {kScrapEnergy, kStandInOwnEvents[0], 2016, -1},
     {kScrapChunk, kStandInOwnEvents[1], 2017, kChunkFade},
     {kEnergyShield, 3553, 2018, -1},
@@ -93,7 +94,13 @@ bool has_drop(const Popup& popup) {
     return popup.counted && !popup.bare &&
            (popup.item == kScrapMetal || popup.item == kScrapEnergy || popup.item == kScrapChunk);
 }
+// A received trap's popup: its name and no icon (it has no record), Scrap Metal's sound.
+bool trap_popup(const Popup& popup) { return !popup.bare && trap::is_trap(popup.item); }
 constexpr uint64_t kSettledMs = 1000;  // in play in one cell this long: a shield, a drop, a death
+// In play this long, in any cell, with no transition queued: a trap. A margin past a menu, a death
+// or a load; alone it does not cover a transition's countdown, which reads as play (a TELEPORT
+// TO's 60 frames before its load, whose reset would undo the trap: transition_queued).
+constexpr uint64_t kTrapSettledMs = 250;
 // The player's death: death_fn(player, 0), as the damage code calls it (docs/re/memory.md,
 // "DeathLink").
 using DeathFn = void (*)(void* player, char kind);
@@ -119,8 +126,9 @@ constexpr bool kOptional = true;
 constexpr ConfigKey code(const char* name, Member member, bool optional = false) {
     return {name, member, Held::kCode, 0, 0, optional};
 }
-constexpr ConfigKey data(const char* name, Member member, uint64_t room = 0, uint64_t before = 0) {
-    return {name, member, Held::kData, room, before, false};
+constexpr ConfigKey data(const char* name, Member member, uint64_t room = 0, uint64_t before = 0,
+                         bool optional = false) {
+    return {name, member, Held::kData, room, before, optional};
 }
 constexpr ConfigKey import_slot(const char* name, Member member) {
     return {name, member, Held::kImportSlot, 0, 0, false};
@@ -151,6 +159,10 @@ constexpr ConfigKey kConfigKeys[] = {
     data("frame_clock", &G::frame_clock), data("sprite_templates", &G::sprite_templates),
     data("event_handlers", &G::event_handlers), code("death_fn", &G::death_fn),
     data("halt_flag", &G::halt_flag), code("assist_menu_fn", &G::assist_menu_fn),
+    // Added after 1.1.0, all three optional (trap.h).
+    data("ailments", &G::ailments, sizeof(int16_t), 0, kOptional),
+    code("ailments_hit_code", &G::ailments_hit_code, kOptional),
+    code("ailments_wave_code", &G::ailments_wave_code, kOptional),
     data("object_pool", &G::object_pool), data("text_table", &G::text_table),
     code("equipment_fn", &G::equipment_fn), code("equip_panel_fn", &G::equip_panel_fn),
     code("widget_move_fn", &G::widget_move_fn), code("text_place_fn", &G::text_place_fn),
@@ -355,8 +367,12 @@ std::string Game::apply(const Batch& batch) {
     if (rando_save_loaded()) {
         origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
     }
+    // A received trap's popup takes its turn with the rest, and its trap goes off as it shows
+    // (pump_traps; the owner's choice).
+    if (++batches_ == 0) batches_ = 1;  // 0 is the helper's own notices'
     for (Popup popup : batch.popups) {
         if (popup.counted) popup.origin = origin;
+        popup.batch = batches_;
         popup.intel = batch.intel && !popup.bare && popup.item == kAreaMapItem;
         popups_.push_back(std::move(popup));
     }
@@ -380,22 +396,46 @@ int32_t Game::popup_frames_left() const {
     return at<int32_t>(last, kMessageFramesLeft);
 }
 
-void Game::pump_popups() {
-    if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
-    if (popups_.empty() || !in_play()) return;
-    if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return;
+bool Game::received_trap(const Popup& popup) { return popup.counted && trap_popup(popup); }
+
+bool Game::trap_parked(const Popup& popup) const {
+    return received_trap(popup) && (trap_running(popup.item) || ending_held());
+}
+
+std::deque<Popup>::iterator Game::next_popup() {
+    // Not through a queued transition either (a TELEPORT TO's countdown reads as play): the load at
+    // its end clears the message slots (0x1F9CE0), which would cut a popup short.
+    if (popups_.empty() || !in_play() || transition_queued()) return popups_.end();
+    if (frames_since_popup_ < kPopupGapFrames || popup_busy()) return popups_.end();
     // RETURN HOME's fade and prompt; from its YES (the screen kept black or not: watch_mission)
     // and through the ending, whose cutscenes read as play, kept for this save's next load.
-    if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
-    // The first one for this save (or for any): a client's popups for another save wait for it.
-    auto next = std::find_if(popups_.begin(), popups_.end(),
-                             [this](const Popup& p) { return showable(p); });
+    if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) {
+        return popups_.end();
+    }
+    // The first one for this save (or for any): a client's popups for another save wait for it,
+    // and a trap's that cannot go off for a while lets the rest go first.
+    return std::find_if(popups_.begin(), popups_.end(),
+                        [this](const Popup& p) { return showable(p) && !trap_parked(p); });
+}
+
+void Game::pump_popups() {
+    if (frames_since_popup_ < (1 << 20)) ++frames_since_popup_;
+    auto next = next_popup();
     if (next == popups_.end()) return;
+    // A received trap's turn: pump_traps shows it as the trap goes off (in play for a moment, not
+    // halted), so the popups behind it wait, as for any popup ahead of them.
+    if (received_trap(*next)) return;
+    show_popup(next);
+}
+
+bool Game::show_popup(std::deque<Popup>::iterator next) {
     const Popup& popup = *next;
-    BYTE* rec = record(popup.item);
+    // A trap has no record: Scrap Metal's gives its sound (trap_popup).
+    const bool is_trap = trap_popup(popup);
+    BYTE* rec = record(is_trap ? kScrapMetal : popup.item);
     if (rec == nullptr) {
-        popups_.erase(next);
-        return;
+        if (!received_trap(popup)) popups_.erase(next);  // a trap's waits, never lost
+        return false;
     }
     // With a translation on, the text goes into a borrowed entry (translation.h), which may wait
     // a frame or two to free; not after hold_translated_popups.
@@ -406,7 +446,7 @@ void Game::pump_popups() {
     if (translated) {
         hd = hd_popup_text(popup, rec, *now);
         where = popup_areas_.reserve(*now, hd.size());
-        if (where == PopupAreas::kWait) return;
+        if (where == PopupAreas::kWait) return false;
     }
     int per_line = kGamePopupWidth;
     std::string text;
@@ -418,6 +458,8 @@ void Game::pump_popups() {
         if (stand_in >= 0) {
             // A received stand-in: the game's own name and no icon, not the restyled record's.
             head = kStandInNames[stand_in];
+        } else if (is_trap) {
+            head = in_capitals(trap::name(popup.item));
         } else if (disk_popup(popup)) {
             head = static_cast<char>(kDiskGlyph) + in_capitals(kDiskName);
         } else {
@@ -431,7 +473,7 @@ void Game::pump_popups() {
     last_message(last_before, seq_before);
     void* message = reinterpret_cast<MessageFn>(at_.message_fn)(
         text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
-    if (message == nullptr) return;  // all four slots busy: try again next frame
+    if (message == nullptr) return false;  // all four slots busy: try again next frame
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
     // The translation's font; failing that, the pixel text, the slot's last translated mark
     // cleared so it shows (clear_mark checks the flag itself).
@@ -440,7 +482,8 @@ void Game::pump_popups() {
     }
     BYTE* p = player();
     auto sound = at<int16_t>(rec, record::kSound);
-    if (popup.counted && sound >= 0) {  // the helper's own notices make no sound
+    // The helper's own notices make no sound, but a disk's count (watch_own_disks).
+    if ((popup.counted || popup.sounds) && sound >= 0) {
         reinterpret_cast<SoundFn>(at_.sound_fn)(
             at_.sound_system, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);
@@ -448,7 +491,23 @@ void Game::pump_popups() {
     own_disk_ = disk_popup(popup);
     // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops).
     if (has_drop(popup)) drops_.push_back({popup.item, popup.origin});
-    popups_.erase(next);
+    // Its follow-ups (a disk's count, a chip's hint: the client's notices queued right after it
+    // in its own `apply`) go ahead of the parked traps' popups it passed, so a trap whose kind
+    // runs out meanwhile never comes between them. Any popup for this save ahead of it is a
+    // parked trap's (next_popup). Notices of another `apply` stay where they are.
+    const auto index = next - popups_.begin();
+    const bool bare = popup.bare;
+    const uint32_t batch = popup.batch;
+    auto ahead = std::find_if(popups_.begin(), next, [this](const Popup& p) { return showable(p); });
+    const auto to = ahead - popups_.begin();
+    popups_.erase(popups_.begin() + index);
+    if (!bare && to < index) {
+        auto first = popups_.begin() + index;
+        auto last = std::find_if(first, popups_.end(), [batch](const Popup& p) {
+            return !(p.bare && p.counted && p.batch == batch);
+        });
+        std::rotate(popups_.begin() + to, first, last);
+    }
     frames_since_popup_ = 0;
     // The game's last message now, with a new sequence: kept only if this call changed it
     // (docs/re/memory.md, "Game functions the helper calls").
@@ -460,6 +519,7 @@ void Game::pump_popups() {
         own_message_ = last;
         own_sequence_ = sequence;
     }
+    return true;
 }
 
 bool Game::own_popup_up() const {
@@ -485,6 +545,13 @@ std::wstring Game::translated_name(int item, bool own, const std::optional<Loade
 std::wstring Game::hd_label_text(const Label& label, bool first_line, bool icon) const {
     // Another Zexion player's item with no name of the client's: the translation's (ItemNames),
     // the game's own, not a label the helper wrote over a stand-in's (as hd_popup_text).
+    // A disguised trap's pickup popup: its own text alone, no icon (the map's cursor, the first
+    // line, keeps the disguise).
+    if (!first_line && !label.pickup.empty()) {
+        std::wstring out = hd_case(at_, label.pickup);
+        if (!label.who.empty()) out += L'\n' + hd_case(at_, label.who);
+        return out;
+    }
     std::wstring first;
     if (label.item >= 0 && label.item_name.empty()) {
         first = translated_name(label.item, true, loaded_translation(at_));
@@ -492,7 +559,8 @@ std::wstring Game::hd_label_text(const Label& label, bool first_line, bool icon)
     if (first.empty()) {
         first = hd_case(at_, label.item_name.empty() ? label.first_text() : label.item_name);
     }
-    std::wstring out = (icon ? hd_icon(label.glyph) : std::wstring()) + first;
+    // This player's own Scrap Metal (Label::scrap): no icon, as the game's.
+    std::wstring out = (icon && !label.scrap() ? hd_icon(label.glyph) : std::wstring()) + first;
     if (!first_line && !label.who.empty()) out += L'\n' + hd_case(at_, label.who);
     return out;
 }
@@ -504,6 +572,10 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
     constexpr double kCap = kGamePopupWidth * 8.0;
     constexpr size_t kCapCharacters = kGamePopupWidth + kGamePopupWidth / 4;
     if (popup.bare) return layout_popup(L"", hd_case(at_, popup.text), m, kCap, kCapCharacters);
+    if (trap_popup(popup)) {
+        return layout_popup(hd_case(at_, trap::name(popup.item)), hd_case(at_, popup.text), m,
+                            kCap, kCapCharacters);
+    }
     if (disk_popup(popup)) {
         return layout_popup(hd_icon(kDiskGlyph) + hd_case(at_, kDiskName),
                             hd_case(at_, popup.text), m, kCap, kCapCharacters);
@@ -521,11 +593,16 @@ std::wstring Game::hd_popup_text(const Popup& popup, const BYTE* rec, const Load
 }
 
 void Game::note_play(uint64_t now_ms) {
-    // A shield or a death waits for this, not for a load, a respawn or a room change settling.
-    if (!configured_ || !in_play()) {
+    // A shield, a drop, a death or a trap waits for this, not for a load, a respawn or a room
+    // change settling, nor through a queued transition (a TELEPORT TO's countdown reads as play,
+    // and the load at its end resets the player and the room): each clock starts again once it
+    // has run.
+    if (!configured_ || !in_play() || transition_queued()) {
         play_since_ms_ = 0;
+        in_play_since_ms_ = 0;
         return;
     }
+    if (in_play_since_ms_ == 0) in_play_since_ms_ = now_ms;
     BYTE* p = player();
     int cell = at<uint8_t>(p, kPlayerCellRow) * 256 + at<uint8_t>(p, kPlayerCellColumn);
     if (play_since_ms_ == 0 || cell != play_cell_) {
@@ -534,11 +611,15 @@ void Game::note_play(uint64_t now_ms) {
     }
 }
 
+bool Game::settled(uint64_t now_ms) const {
+    // Checked here too, not only by note_play: a transition queued since its last call.
+    return in_play() && !transition_queued() && play_since_ms_ != 0 &&
+           now_ms - play_since_ms_ >= kSettledMs;
+}
+
 std::string Game::spawn_shield(uint64_t now_ms) {
     if (!configured_) return "refused not configured";
-    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
-        return "refused not settled";
-    }
+    if (!settled(now_ms)) return "refused not settled";
     if (mission_.started()) return "refused RETURN HOME WITH THE DISKS? ending";
     std::string why = run_item_event(kEnergyShield);
     return why.empty() ? "spawned" : "refused " + why;
@@ -549,12 +630,12 @@ std::string Game::kill(uint64_t now_ms) {
     // at 0 while halted, and can fault with every message slot busy: refused while halted or a
     // message shows.
     if (!configured_) return "refused not configured";
-    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) {
-        return "refused not settled";
-    }
+    if (!settled(now_ms)) return "refused not settled";
     if (*at_.halt_flag != 0) return "refused halted";
     if (popup_busy()) return "refused message showing";
-    // Not between RETURN HOME's fade and its prompt: the prompt would open over the death.
+    // Not between RETURN HOME's fade and its prompt: the prompt would open over the death. A
+    // defensive check: the fade's countdown (kFadeDelay, or 1) is a transition queued, which
+    // settled() refuses first.
     if (mission_.opening()) return "refused RETURN HOME WITH THE DISKS? opening";
     // Nor in the black after its YES, nor in the ending it started.
     if (mission_.dark() || mission_.started()) return "refused RETURN HOME WITH THE DISKS? ending";
@@ -564,25 +645,30 @@ std::string Game::kill(uint64_t now_ms) {
     return "died";
 }
 
-void Game::pump_drops(uint64_t now_ms) {
-    if (!configured_) return;
+bool Game::held_for_ending() {
     // The game's ending, whose cutscenes read as play: an ending this load was seen in play
-    // before keeps every drop for the next load, as the client holds received items (its goal
-    // read false, then true: client/session.py; docs/re/memory.md, "The ending: flag 250"). Read
-    // every frame, whether drops wait or not. A save past its ending reads as one throughout, and
-    // gets its drops until it plays the ending again (flag 211 set at the ship, or by the escape
-    // skip's YES, then cleared as the ending begins). 211 set counts in or out of play: the ship
-    // may show no frame in play before the ending.
+    // before keeps every drop and trap for the next load, as the client holds received items
+    // (its goal read false, then true: client/session.py; docs/re/memory.md, "The ending: flag
+    // 250"). Read every frame, whether anything waits or not. A save past its ending reads as one
+    // throughout, and gets its drops and traps until it plays the ending again (flag 211 set at
+    // the ship, or by the escape skip's YES, then cleared as the ending begins). 211 set counts in
+    // or out of play: the ship may show no frame in play before the ending.
     const bool ending = ending_flag();
     if (*at_.save_loaded == kNoSaveLoaded) {
         load_before_ending_ = false;
     } else if ((!ending && in_play()) || at_.flags[flag::kFinale] != 0) {
         load_before_ending_ = true;
     }
-    if (drops_.empty() || (ending && load_before_ending_)) return;
-    // As spawn_shield waits: in play in one cell for a second, and not from RETURN HOME's fade
-    // through its ending (kept for this save's next load, as the popups are).
-    if (!in_play() || play_since_ms_ == 0 || now_ms - play_since_ms_ < kSettledMs) return;
+    return ending && load_before_ending_;
+}
+
+void Game::pump_drops(uint64_t now_ms) {
+    if (!configured_) return;
+    if (held_for_ending() || drops_.empty()) return;
+    // As spawn_shield waits: in play in one cell for a second with no transition queued, and not
+    // from RETURN HOME's fade through its ending (kept for this save's next load, as the popups
+    // are).
+    if (!settled(now_ms)) return;
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     auto next = std::find_if(drops_.begin(), drops_.end(),
                              [this](const Drop& d) { return origin_loaded(d.origin); });
@@ -603,17 +689,146 @@ std::string Game::drop_status() const {
     return "queued " + std::to_string(drops_.size()) + "; last " + drop_status_;
 }
 
+void Game::pump_traps(uint64_t now_ms) {
+    if (!configured_) return;
+    if (held_for_ending()) return;
+    // In play for a moment with no transition queued (a TELEPORT TO's countdown reads as play, and
+    // the load at its end resets the player), not halted, not from RETURN HOME's fade through its
+    // ending, and in the save it was for. A state not measured (a cutscene other than the
+    // ending's) is not told apart: docs/re/memory.md, "Telling play from menus, the title screen
+    // and death".
+    if (!in_play() || transition_queued() || in_play_since_ms_ == 0 ||
+        now_ms - in_play_since_ms_ < kTrapSettledMs) {
+        return;
+    }
+    if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
+    if (*at_.halt_flag != 0) return;
+    // This world's own whose pickup a load undid while it waited (behind one of its kind still
+    // running, or through a death): its item lies in its room again, and picking it up again
+    // queues it again, so this one is dropped. So is one picked up in another slot's save of
+    // the seed (quit to the title while it waited, another save of the seed loaded): that
+    // save's cell reading collected is no pickup made in it.
+    const int slot = at<int32_t>(at_.current_slot, 0);
+    std::erase_if(traps_, [this, slot](const QueuedTrap& t) {
+        return t.cell >= 0 && origin_loaded(t.origin) &&
+               (at_.map_grid[t.cell] != kCollectedCell || t.slot != slot);
+    });
+    // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a
+    // trap started still runs, and starts as it ends; an enemy's own effect does not hold it.
+    // This world's own, picked up in it (watch_own_traps): at once (the game's pickup popup
+    // names it).
+    uint8_t item = 0;
+    auto own = std::find_if(traps_.begin(), traps_.end(), [this](const QueuedTrap& t) {
+        return origin_loaded(t.origin) && !trap_running(t.item);
+    });
+    if (own != traps_.end()) {
+        item = own->item;
+        traps_.erase(own);
+    } else {
+        // A received one: as its popup shows, in its turn in the queue (the owner's choice), so
+        // after the popups queued before it, a disk's count or a chip's hint among them, and past
+        // popups waiting for another save. Not drawn this frame: it waits with its popup.
+        auto next = next_popup();
+        if (next == popups_.end() || !received_trap(*next)) return;
+        item = next->item;
+        if (!show_popup(next)) return;
+    }
+    const std::string outcome = run_trap(item);
+    trap_status_ = outcome + " " + std::to_string(item);
+    watch_trap_patches();  // before the game's next frame: AILMENTS left out from its first
+}
+
+void Game::watch_trap_patches() {
+    // Each timer's AILMENTS tests patched while a trap started it and it runs (trap.h), in a
+    // save; put back once it has run out, a load reset it, or no save is loaded.
+    BYTE* p = player();
+    const bool loaded = *at_.save_loaded != kNoSaveLoaded;
+    if (!loaded || at<int16_t>(p, trap::kDisruptionTimer) <= 0) trap_hit_ = false;
+    if (!loaded || at<int16_t>(p, trap::kDisorientTimer) <= 0) trap_wave_ = false;
+    BYTE* hit = at_.ailments_hit_code;
+    BYTE* wave = at_.ailments_wave_code;
+    const bool hit_reads = trap_hit_ && trap::ailments_reads(hit, trap::kHitJumps, at_.ailments);
+    const bool wave_reads =
+        trap_wave_ && trap::ailments_reads(wave, trap::kWaveJumps, at_.ailments);
+    hit_patch_.watch(hit_reads ? hit : nullptr);
+    wave_patch_.watch(wave_reads ? wave : nullptr);
+}
+
+std::string Game::trap_status() const {
+    return "queued " + std::to_string(queued_traps()) + "; last " + trap_status_;
+}
+
+void Game::play_sound(const trap::Sound& sound) {
+    BYTE* p = player();
+    reinterpret_cast<SoundFn>(at_.sound_fn)(
+        at_.sound_system, sound.id, static_cast<float>(at<double>(p, kX)),
+        static_cast<float>(at<double>(p, kY)), sound.volume, trap::kPitch, sound.a, sound.b);
+}
+
+std::string Game::run_trap(uint8_t item) {
+    // The writes of op 4 or op 5 of the type-74 handler (0x47910 to 0x47AE6 on B1), with the
+    // state's duration (its random part is 0, so the game's random number is not drawn here),
+    // from the player's position rather than the touching object's (docs/re/memory.md,
+    // "Ailments: the script step that sets them").
+    BYTE* p = player();
+    if (item == trap::kDisruption) {
+        // The Phazo's contact state plays its sound as it starts (0x43B50), then op 4's timer,
+        // with no Energy Shield taking it (the owner's choice) and longer.
+        play_sound(trap::kContactSound);
+        int16_t& timer = at<int16_t>(p, trap::kDisruptionTimer);
+        if (!(trap::kFrames > timer)) return "nothing";
+        timer = trap::kFrames;
+        trap_hit_ = true;
+        return "set";
+    }
+    // Op 5 (AILMENTS not read: the owner's choice), then the state 2902 chains to, whose sound
+    // plays whatever op 5 did.
+    const std::string outcome = disorient(p);
+    if (outcome == "set") trap_wave_ = true;
+    play_sound(trap::kWaveSound);
+    return outcome;
+}
+
+std::string Game::disorient(BYTE* p) {
+    // Nothing while a longer disorientation runs.
+    int16_t& timer = at<int16_t>(p, trap::kDisorientTimer);
+    if (!(trap::kFrames > timer)) return "nothing";
+    if (timer <= 0) {
+        int8_t& facing = at<int8_t>(p, trap::kFacing);
+        facing = static_cast<int8_t>((facing + 4) % 8);
+    }
+    int16_t& flash = at<int16_t>(p, trap::kFlash);
+    if (flash < trap::kFlashAtLeast) flash = trap::kFlashAtLeast;
+    timer = trap::kFrames;
+    return "set";
+}
+
 std::string Game::run_item_event(uint8_t item) {
     // The item's pickup event, run as the pickup does, its record and every event it runs
     // checked first (docs/re/memory.md, "Received Energy Shields" and "Received scrap").
+    BYTE* ev = nullptr;
+    BYTE* handler = nullptr;
+    const std::string why = item_event_ready(item, ev, handler);
+    if (!why.empty()) return why;
+    BYTE* p = player();
+    uint8_t row = at<uint8_t>(p, kPlayerCellRow), column = at<uint8_t>(p, kPlayerCellColumn);
+    if (row >= kMapSide || column >= kMapSide) return "off the map";  // the raw cell can be -1
+    reinterpret_cast<EventFn>(handler)(static_cast<char>(row), static_cast<char>(column), ev);
+    return "";
+}
+
+std::string Game::item_event_ready(uint8_t item, BYTE*& ev, BYTE*& handler) {
     const ItemEvent* traced = item_event(item);
     if (traced == nullptr) return "no event traced";
     BYTE* rec = record(item);
     if (rec == nullptr) return "no item record";
     // The stand-ins' records read -1 while the helper restyles them (apitem.cpp, which restyles
-    // only a record holding the game's own event).
-    int16_t named = at<int16_t>(rec, record::kEvent);
-    if (named != traced->event && !(stand_in_index(item) >= 0 && named == -1)) {
+    // only a record holding the game's own event), or Scrap Metal's event while named after a
+    // cell labeled this player's own Scrap Metal (ApItems::watch).
+    int16_t named = 0;
+    if (!read(rec, record::kEvent, named)) return "no item record";
+    if (named != traced->event &&
+        !(stand_in_index(item) >= 0 && (named == -1 || named == kScrapMetalEvent))) {
         return "event not as traced";
     }
     const int16_t event = traced->event;
@@ -623,7 +838,7 @@ std::string Game::run_item_event(uint8_t item) {
         traced->next >= events) {
         return "no event";
     }
-    BYTE* ev = table + static_cast<ptrdiff_t>(event) * event::kSize;
+    ev = table + static_cast<ptrdiff_t>(event) * event::kSize;
     BYTE copy[event::kSize];
     if (!safe_read(ev, copy, sizeof(copy))) return "no event";
     BYTE want[event::kSize];
@@ -632,7 +847,7 @@ std::string Game::run_item_event(uint8_t item) {
     std::memcpy(want + kEventNext, &traced->next, sizeof(int16_t));
     std::memcpy(want + event::kSelf, &event, sizeof(int16_t));
     if (std::memcmp(copy, want, sizeof(copy)) != 0) return "event not as traced";
-    BYTE* handler = pointer_at(at_.event_handlers, kSpawnEventType * sizeof(void*));
+    handler = pointer_at(at_.event_handlers, kSpawnEventType * sizeof(void*));
     if (handler == nullptr) return "no handler";
     if (!in_image_code(reinterpret_cast<HMODULE>(base_), handler)) {
         return "handler not in the game's code";
@@ -650,10 +865,6 @@ std::string Game::run_item_event(uint8_t item) {
             return "handler not in the game's code";
         }
     }
-    BYTE* p = player();
-    uint8_t row = at<uint8_t>(p, kPlayerCellRow), column = at<uint8_t>(p, kPlayerCellColumn);
-    if (row >= kMapSide || column >= kMapSide) return "off the map";  // the raw cell can be -1
-    reinterpret_cast<EventFn>(handler)(static_cast<char>(row), static_cast<char>(column), ev);
     return "";
 }
 
@@ -738,8 +949,11 @@ void Game::watch_all(WidgetCallback callback) {
     watch_ap_items();
     watch_map_marks();
     watch_pickups();
+    watch_own_traps();  // before pump_traps: one picked up this frame goes off this frame
+    watch_own_disks();
     watch_translation();
     text_cut_.watch(at_.text_cut_code);  // tall popups' lines cut right (text.h)
+    watch_trap_patches();                 // AILMENTS left out while a trap runs (trap.h)
 }
 
 void Game::watch_pickups() {
@@ -1020,10 +1234,12 @@ void Game::watch_mission() {
     // message down to kFadeMessageLeft frames, the helper's own never cut short. After YES no
     // game message is waited for: the ending ends them (docs/re/memory.md, "The mission prompt");
     // nor queued popups, which wait for the save's next load (pump_popups), as once the ending
-    // has started.
+    // has started. A trap's popup waiting for one of its kind to run out does not hold it (as
+    // next_popup passes it).
     const bool yes = mission_.ending();
-    const bool waiting = !yes && std::any_of(popups_.begin(), popups_.end(),
-                                             [this](const Popup& p) { return showable(p); });
+    const bool waiting = !yes && std::any_of(popups_.begin(), popups_.end(), [this](const Popup& p) {
+                             return showable(p) && !trap_parked(p);
+                         });
     const bool own = own_popup_up();
     const int32_t left = own ? 1 : yes ? INT32_MAX : kFadeMessageLeft;
     const bool idle = in_play() && !waiting && popup_frames_left() <= left &&
@@ -1199,7 +1415,26 @@ void Game::watch_map_marks() {
     if (map_seed_passes_ < 2) return;
     // Before the raise, so an item on screen stays raised.
     seen_marker_.watch(at_.seen_marker_code);
-    mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0);
+    // The cells with a live item object: a square labeled this player's own Scrap Metal is
+    // not lowered there (the game's write raises it each frame the item is in view, which
+    // would flip the square under the client's two reads of the grid). With no pool read,
+    // every such square is held.
+    std::set<int> held;
+    const BYTE* pool = read_item_pool();
+    if (pool == nullptr) {
+        for (const auto& [cell, label] : ap_items_.labels()) {
+            if (label.scrap()) held.insert(cell);
+        }
+    } else {
+        for (int slot = 0; slot < ItemLooks::kSlots; ++slot) {
+            const BYTE* o = pool + slot * obj::kItemSize;
+            if (field<int32_t>(o, obj::kSpawn) == 0) continue;
+            const uint8_t row = o[obj::kItemRow], column = o[obj::kItemColumn];
+            if (row < kMapSide && column < kMapSide) held.insert(row * kMapSide + column);
+        }
+    }
+    mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0,
+                   ap_items_.labels(), held);
 }
 
 void Game::watch_title() {
@@ -1358,7 +1593,18 @@ void Game::watch_ap_items() {
                                   at<double>(player(), kY), cell, ap_items_.labels(), cells,
                                   stand_in_near_);
         if (touching >= 0) width_cell = cells[touching];
-        ap_items_.watch(at_.item_records, cells);
+        // A stand-in named after this player's own Scrap Metal names Scrap Metal's pickup
+        // event, if that event is the one traced (checked only where such a label names one).
+        bool scrap_event = false;
+        for (int c : cells) {
+            auto named = ap_items_.labels().find(c);
+            if (named == ap_items_.labels().end() || !named->second.scrap()) continue;
+            BYTE* ev = nullptr;
+            BYTE* handler = nullptr;
+            scrap_event = item_event_ready(kScrapMetal, ev, handler).empty();
+            break;
+        }
+        ap_items_.watch(at_.item_records, cells, scrap_event);
         // Each record's translated name (watch_translation), centered where the spaces fit the
         // entry's room, else as it is so no name is cut (native/README.md, "Translations").
         FontMetrics metrics;
@@ -1393,7 +1639,10 @@ void Game::watch_ap_items() {
         looks_.apply(at_, pool, base);
         looks_.own_colors(at_, pool, base);
     } else {
-        looks_.restore(at_);
+        // Released for a menu over the save: a reversed-gravity room's item hidden over a
+        // collected cell stays hidden under the menu (the rest is put back with the records);
+        // put_back_ap_items, for a client gone or an unload, shows it again.
+        looks_.restore(at_, *at_.save_loaded != kNoSaveLoaded && *at_.menu_state != 0);
     }
 }
 
@@ -1488,6 +1737,9 @@ void Game::put_back_game(WidgetCallback callback) {
     put_back_files();
     leave_offline();
     text_cut_.restore();
+    // A running trap's AILMENTS patches stay: they are the trap's, which outlives the client, as
+    // queued popups do; an unload is refused while one is held (unload_refusal), then puts them
+    // back (put_back_traps).
     if (configured_) {
         // The translation's entries back; the popup areas emptied once free (unload waits).
         const std::optional<Loaded> now = loaded_translation(at_);
@@ -1502,8 +1754,15 @@ void Game::put_back_game(WidgetCallback callback) {
 void Game::forget_client() {
     disarm_newgame();
     drop_save_look();  // with the disks, a RETURN HOME prompt asked for (set_discs)
-    client_file_counts_.clear();
-    apply_file_counts();
+}
+
+void Game::put_back_traps() {
+    hit_patch_.restore();  // AILMENTS applies again to what is left of a trap (trap.h)
+    wave_patch_.restore();
+    // trap_hit_ and trap_wave_ stay: a later blocker can still refuse this unload, and a timer
+    // that runs with no patch (AILMENTS not read, or its site not matching) must keep its kind
+    // from a second trap. watch_trap_patches clears each once its timer has run out, and the
+    // patches come back there while a trap runs.
 }
 
 void Game::client_gone(WidgetCallback callback) {

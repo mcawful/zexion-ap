@@ -1,8 +1,8 @@
 """The numbers the client's modules share: the item and location codes the world uses
 (worlds/zexion/items.py and locations.py, which must agree), and the game's own sizes.
 
-Item codes are the game's item IDs (``ItemNames.txt``), except ASSIST_UNLOCK and INTEL_CHIP,
-which are the world's own. No Archipelago imports.
+Item codes are the game's item IDs (``ItemNames.txt``), except ASSIST_UNLOCK, INTEL_CHIP and
+the TRAPS, which are the world's own. No Archipelago imports.
 """
 
 from __future__ import annotations
@@ -36,6 +36,12 @@ ENERGY_SHIELD = 50
 ASSIST_UNLOCK = 100
 INTEL_CHIP = 101
 DRAWN_AS = {INTEL_CHIP: AREA_MAP}
+# The traps: never held; the helper sets the game's timer for each with its popup
+# (native/README.md, "Traps"), or, picked up in this world, with the game's own popup, at each
+# pickup. Named here for the client's log.
+DISRUPTION_TRAP, DISORIENT_TRAP = 102, 103
+TRAP_NAMES = {DISRUPTION_TRAP: "Disruption Trap", DISORIENT_TRAP: "Disorient Trap"}
+TRAPS = frozenset(TRAP_NAMES)
 
 LOCATIONS = 154  # the randomizer's locations (RandoCells; docs/re/randocells.md)
 # With Secret Shuffle (setting t37) the game's list holds a 155th, at list position 134 in grid
@@ -44,4 +50,11 @@ SECRET_SHUFFLE = 37
 MAX_LOCATIONS = LOCATIONS + 1
 MAP_SIZE = 54  # the map grid's cells along each side
 COLLECTED = 0x1B  # a map cell's value once its item is collected (docs/re/memory.md)
+# Map cells (x, y) whose room waits for its item's pickup. There another player's item is never
+# marked collected (client/session.py, ``plain``) and, once the server has it as checked, shows
+# as the game's Scrap Metal, to pick up for the room's sake (client/ticks.py, foreign_labels).
+# Exodia X20 Y0: the pickup starts the boss fight. R'Talva X34 Y51: the pickup of the boss's
+# reward turns the warp gate on. Kresezoa X5 Y23: its boss drops the cell's item. The evidence,
+# and the rooms not listed: docs/re/memory.md, "What decides whether an item appears".
+PICKUP_ROOMS = frozenset({(0, 20), (51, 34), (23, 5)})
 SECTION_SIZE = 0x908  # the randomizer section, as loaded and in each slot's copy

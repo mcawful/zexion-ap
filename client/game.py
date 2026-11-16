@@ -1,16 +1,20 @@
 """Find and access Zexion's game state in the running process, by byte pattern.
 
 ``attach`` refuses a build not in ``patterns.KNOWN_BUILDS`` and locates each target
-(``patterns.CLIENT_TARGETS``; the RE tools ask for all of ``patterns.TARGETS``) by scanning
-.text; every pattern must match exactly once and a target's patterns must agree, else
-``PatternError`` and nothing is touched. Every read and write first checks the process is
-alive (``GameNotRunning`` only once it has exited).
+(``patterns.CLIENT_TARGETS``, all of ``patterns.TARGETS``) by scanning .text; every pattern
+must match exactly once and a target's patterns must agree, else ``PatternError`` and nothing
+is touched; but for the client's optional targets
+(``patterns.CLIENT_ONLY_TARGETS``), which may be missing: only a read or write of one then
+raises. Every read and write first checks the process is alive (``GameNotRunning`` only once
+it has exited).
 
-Item writes are compare-and-set and read back. A grant lasts only once the game saves it
-(docs/re/memory.md, "Granting each kind of item"); client/session.py gives again what a reload
-took. ``state()`` can read IN_PLAY mid-load (the load sets two of its three values before
-restoring the inventory), so writers use ``settled_state()`` and re-check after writing
-(docs/re/memory.md, "Telling play from menus, the title screen and death").
+Item writes are compare-and-set and read back, as are the two that mark a location collected
+(``set_item_collected``, ``set_map_collected``: docs/re/memory.md, "What decides whether an item
+appears"). A grant lasts only once the game saves it (docs/re/memory.md, "Granting each kind of
+item"); client/session.py gives again what a reload took, and marks again. ``state()`` can read
+IN_PLAY mid-load (the load sets two of its three values before restoring the inventory), so
+writers use ``settled_state()`` and re-check after writing (docs/re/memory.md, "Telling play
+from menus, the title screen and death").
 """
 
 from __future__ import annotations
@@ -18,12 +22,20 @@ from __future__ import annotations
 import re
 import struct
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 
 from . import ids, pe, process
 from .ids import LOCATIONS, MAP_SIZE, SECRET_SHUFFLE, SECTION_SIZE, WRITABLE_ITEMS
-from .patterns import CLIENT_TARGETS, KNOWN_BUILDS, TARGETS, Build, Pattern, Target
+from .patterns import (
+    CLIENT_ONLY_TARGETS,
+    CLIENT_TARGETS,
+    KNOWN_BUILDS,
+    TARGETS,
+    Build,
+    Pattern,
+    Target,
+)
 from .save_patch import OPTIONS_AT, TABLE_AT
 
 SLOTS = 30  # save slots
@@ -43,6 +55,17 @@ PLAYER_CELL = 0x107A  # in the player state: the game's X, then its Y (this repo
 MESSAGE_SEQUENCE = 0x1D8
 MESSAGE_GLYPH_COUNT, MESSAGE_GLYPHS, GLYPH_CHARACTER = 0x200, 0x220, 0x1C4
 GAME_SAVED = b"GAME SAVED"
+
+# The per-cell state (cell_state): 9 bytes a map cell, in the map grid's order: the states of the
+# cell's 8 objects, then its item's, which the game reads to decide whether the item appears when
+# the cell is loaded (docs/re/memory.md, "What decides whether an item appears").
+CELL_STRIDE, CELL_ITEM = 9, 8
+ITEM_THERE, ITEM_COLLECTED = 0, 1  # 2: held by an object of the cell; 3: dropped by it
+# The live item objects (item_pool): in use while the dword at +0x1D8 is not 0, the item's map
+# cell at +0x3AC (the game's X, this repo's y) and +0x3AD (docs/re/memory.md, "Live item
+# objects").
+ITEM_OBJECTS, ITEM_OBJECT_SIZE = 128, 0x3B0
+ITEM_OBJECT_CELL = 0x3AC
 
 PROCESS = "Zexion.exe"
 FLAGS = 0x9C4  # the loaded game's flags, one byte each
@@ -153,14 +176,25 @@ def resolve(code: bytes, code_rva: int, pattern: Pattern) -> int:
     return code_rva + at + pattern.rip_end + field + pattern.addend
 
 
-def locate_all(code: bytes, code_rva: int, targets: Iterable[Target] = TARGETS) -> dict[str, int]:
-    """RVA of every target; every pattern of a target must agree."""
+def locate_all(
+    code: bytes,
+    code_rva: int,
+    targets: Iterable[Target] = TARGETS,
+    optional: Collection[str] = (),
+) -> dict[str, int]:
+    """RVA of every target; every pattern of a target must agree. A target named in
+    ``optional`` whose patterns do not is left out instead of raising."""
     out = {}
     for target in targets:
-        found = {resolve(code, code_rva, p) for p in target.patterns}
-        if len(found) != 1:
-            listed = ", ".join(f"{v:#x}" for v in sorted(found))
-            raise PatternError(f"{target.name}: patterns disagree ({listed})")
+        try:
+            found = {resolve(code, code_rva, p) for p in target.patterns}
+            if len(found) != 1:
+                listed = ", ".join(f"{v:#x}" for v in sorted(found))
+                raise PatternError(f"{target.name}: patterns disagree ({listed})")
+        except PatternError:
+            if target.name in optional:
+                continue
+            raise
         out[target.name] = found.pop()
     return out
 
@@ -254,8 +288,14 @@ class Game:
     build: Build
 
     @classmethod
-    def attach(cls, targets: Iterable[Target] = CLIENT_TARGETS) -> Game:
-        """Attach to the running game and locate ``targets`` (the client's by default)."""
+    def attach(
+        cls, targets: Iterable[Target] = CLIENT_TARGETS, optional: Collection[str] | None = None
+    ) -> Game:
+        """Attach to the running game and locate ``targets`` (the client's by default). The
+        targets named in ``optional`` (for the client's: patterns.CLIENT_ONLY_TARGETS; none
+        for another list) may be missing: a read or write of one then raises PatternError."""
+        if optional is None:
+            optional = CLIENT_ONLY_TARGETS if targets is CLIENT_TARGETS else ()
         try:
             pm = process.Process(PROCESS)
         except process.ProcessNotFound as exc:
@@ -273,7 +313,7 @@ class Game:
             build = identify_build(header)
             text_rva, text_size = code_section(header)
             code = pm.read_bytes(base + text_rva, text_size)
-            rva = locate_all(code, text_rva, targets)
+            rva = locate_all(code, text_rva, targets, optional)
             return cls(pm, base, rva, pm.process_id, build)
         except GameError:
             pm.close_process()
@@ -307,8 +347,14 @@ class Game:
         return out
 
     # Every access goes through _read_pointer or _write, which check liveness first.
+    def _at(self, target: str) -> int:
+        """A located target's address; PatternError for an optional one that was not found."""
+        if target not in self.rva:
+            raise PatternError(f"{target} was not found in this build of the game")
+        return self.base + self.rva[target]
+
     def _read(self, target: str, offset: int, size: int) -> bytes:
-        return self._read_pointer(self.base + self.rva[target] + offset, size)
+        return self._read_pointer(self._at(target) + offset, size)
 
     def _read_pointer(self, address: int, size: int) -> bytes:
         """Read at an address: a located target's, or a pointer the game holds."""
@@ -323,7 +369,7 @@ class Game:
 
     def _write(self, target: str, offset: int, data: bytes) -> None:
         self._check_alive()
-        address = self.base + self.rva[target] + offset
+        address = self._at(target) + offset
         try:
             self.pm.write_bytes(address, data)
         except Exception as exc:
@@ -356,6 +402,59 @@ class Game:
                 f"flags {first} to {first + count - 1} are outside the 0x{FLAGS:X} flags"
             )
         return self._read("flags", first, count)
+
+    def cell_items(self) -> bytes:
+        """Each map cell's item state (ITEM_THERE, ITEM_COLLECTED, or 2 or 3 while an object of
+        the cell holds the item or has dropped it), in the map grid's order, from one read."""
+        cells = MAP_SIZE * MAP_SIZE
+        return self._read("cell_state", 0, cells * CELL_STRIDE)[CELL_ITEM::CELL_STRIDE]
+
+    def loaded_cells(self) -> bytes:
+        """Each map cell's loaded byte, in the map grid's order: not 0 while the game has the
+        cell's objects loaded, its item among them (the array right after the per-cell state:
+        docs/re/memory.md, "What decides whether an item appears")."""
+        cells = MAP_SIZE * MAP_SIZE
+        return self._read("cell_state", cells * CELL_STRIDE, cells)
+
+    def live_item_cells(self) -> set[tuple[int, int]]:
+        """The map cells (x, y) of the item objects now in the loaded rooms, from one read of
+        the pool: an item that is there to pick up, whatever its cell's state says."""
+        pool = self._read("item_pool", 0, ITEM_OBJECTS * ITEM_OBJECT_SIZE)
+        out = set()
+        for at in range(0, len(pool), ITEM_OBJECT_SIZE):
+            if struct.unpack_from("<I", pool, at + OBJECT_HANDLE)[0]:
+                y, x = struct.unpack_from("<2b", pool, at + ITEM_OBJECT_CELL)
+                out.add((x, y))
+        return out
+
+    def _set_cell_byte(self, target: str, offset: int, expected: int, value: int) -> None:
+        """Compare-and-set one byte of a per-cell array, then read it back (as set_item)."""
+        current = self._read(target, offset, 1)[0]
+        if current != expected:
+            raise GameError(
+                f"{target}+{offset:#x} holds {current}, not the expected {expected}; not written"
+            )
+        self._write(target, offset, bytes([value]))
+
+    def set_item_collected(self, cell: tuple[int, int]) -> None:
+        """Compare-and-set a map cell's item state from ITEM_THERE to ITEM_COLLECTED, which
+        keeps the game from making the cell's item when it loads the cell (an item object
+        already there stays until its room is left). Refuses (``GameError``) if the byte does
+        not hold ITEM_THERE just before the write."""
+        x, y = cell
+        if not (0 <= x < MAP_SIZE and 0 <= y < MAP_SIZE):
+            raise ValueError(f"cell {cell} is not on the map")
+        offset = (y * MAP_SIZE + x) * CELL_STRIDE + CELL_ITEM
+        self._set_cell_byte("cell_state", offset, ITEM_THERE, ITEM_COLLECTED)
+
+    def set_map_collected(self, cell: tuple[int, int], expected: int) -> None:
+        """Compare-and-set a map cell's marker to collected (ids.COLLECTED), as a pickup
+        leaves it. Refuses (``GameError``) if the cell does not hold ``expected`` just before
+        the write."""
+        x, y = cell
+        if not (0 <= x < MAP_SIZE and 0 <= y < MAP_SIZE):
+            raise ValueError(f"cell {cell} is not on the map")
+        self._set_cell_byte("map_grid", y * MAP_SIZE + x, expected, ids.COLLECTED)
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         """Compare-and-set an item's inventory byte, then read it back.
@@ -444,28 +543,27 @@ class Game:
         return second if second == first else CHANGING
 
     def pickup_counter(self) -> int:
-        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45. Only the RE tools
-        locate it (``patterns.TOOL_TARGETS``).
+        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45
+        (reconcile.UNCOUNTED_PICKUPS). A cell the client marks collected leaves it alone, which
+        is how the client's sum tells such a cell from one picked up
+        (reconcile.marked_count). Optional for the client (``patterns.CLIENT_ONLY_TARGETS``).
 
         Not a per-location signal; the map grid is (docs/re/memory.md).
         """
         return struct.unpack("<H", self._read("pickup_counter", 0, 2))[0]
+
+    def transition_timer(self) -> int:
+        """Frames left before the game runs its queued transition routine (signed 32-bit); 0
+        with none queued. A TELEPORT TO counts it down for a second that reads as play before
+        its load, which takes back what was written since the entry was chosen
+        (docs/re/memory.md, "Telling play from menus, the title screen and death")."""
+        return struct.unpack("<i", self._read("transition_timer", 0, 4))[0]
 
     def rando_marker(self) -> int:
         """1 when the loaded save is a randomizer save, 0 for a normal one. Loading a normal
         save leaves the previous randomizer section in memory (measured), so ``rando_blob()``
         means something only while this reads 1."""
         return struct.unpack("<H", self._read("rando_marker", 0, 2))[0]
-
-    def slot_markers(self) -> list[tuple[int, bool]]:
-        """Each of the 30 save slots' randomizer marker (block +0x9400, 1 for a randomizer
-        save) and whether it holds a save (block +0x935E not 0xFF), from the slot array."""
-        out = []
-        for n in range(SLOTS):
-            marker = struct.unpack("<H", self._read("slot_array", n * SLOT_STRIDE + 0x9400, 2))[0]
-            used = self._read("slot_array", n * SLOT_STRIDE + 0x935E, 1)[0] != 0xFF
-            out.append((marker, used))
-        return out
 
     def save_stamp(self) -> bytes:
         """The loaded slot (``current_slot``, 0-based, 4 bytes), its block's SAVE_STAMP_SIZE
@@ -503,11 +601,6 @@ class Game:
             if read != character:
                 return None
         return sequence
-
-    def rando_slot_copies(self) -> bytes:
-        """The game's copy of each slot's randomizer section (30 of SECTION_SIZE bytes, in
-        the loaded section's layout; docs/re/memory.md, "The file select")."""
-        return self._read("rando_slots", 0, SLOTS * SECTION_SIZE)
 
     def rando_blob(self) -> bytes:
         """The loaded save's randomizer section, as from file offset 0x12814."""

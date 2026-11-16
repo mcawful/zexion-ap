@@ -1,4 +1,5 @@
-"""The release's version, and the check a pull request into main must pass: it raises it.
+"""The release's version, and the check a pull request into main must pass: it raises it,
+and the version has its notes for players.
 
     .venv/Scripts/python tools/release_check.py                         # print the version
     .venv/Scripts/python tools/release_check.py --base origin/main --above v0.28.0 v0.29.0
@@ -11,6 +12,14 @@ differ). CI passes every release's tag as ``--above`` (none before the first rel
 version on main. Main always holds the last release's version or one still waiting for approval,
 which no tag shows yet; without ``--base`` a second merge under that number would pass. Any
 error reading main's version fails the check.
+
+The version's notes, ``docs/releases/<version>.md``, must be there and finished
+(``tools/release_notes.py``, ``problems``): not empty, no ``TODO`` from the template or
+``{{...}}`` left in, and an "## Updating from" section, if any, a list of steps from the last
+release (the highest ``--above``). ``.github/workflows/release.yml`` runs this with no
+arguments before anything is built: that checks the notes are there and finished, but not
+which release an Updating section is from (``tools/release_notes.py`` checks that before
+publishing, against the latest release).
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from pathlib import Path
 
 from build_apworld import client_version, version_in
 from protected import ROOT
+from release_notes import problems as notes_problems
 
 
 def parse(text: str) -> tuple[int, ...]:
@@ -72,6 +82,10 @@ def main(argv: list[str] | None = None) -> int:
         on_base = version_at(args.base)
         if parse(version) <= parse(on_base):
             return _refuse(version, f"{on_base}, the version on {args.base}")
+    wrong = notes_problems(version, previous=last or None)
+    if wrong:
+        print("\n".join(wrong), file=sys.stderr)
+        return 1
     print(version)
     return 0
 

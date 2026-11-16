@@ -5,9 +5,10 @@ x64 exe on SDL2 and FMOD with no modding API: its mod folders are for sprites an
 only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
 Everything here comes from reverse engineering, hence the evidence rules below.
 
-**Status:** 1.1.0; played in game on build B1 only. Releases (the version: "Releases and
-versions") are published from `main` on GitHub's
-[Releases page](https://github.com/mcawful/zexion-ap/releases).
+**Status:** played in game on build B1 only. Releases (the version: "Releases and versions")
+are published from `main` on GitHub's
+[Releases page](https://github.com/mcawful/zexion-ap/releases); the current version is
+`world_version` in `worlds/zexion/archipelago.json`.
 
 Where things are:
 
@@ -35,11 +36,14 @@ Where things are:
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
   its `install` (an empty slot, after a verified backup) and `restore` write the save folder.
-  The client never writes it.
+  The client never writes it. The same hooks block writes to the mod's offline files,
+  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts): only the helper writes
+  them, and they change what the mod does with no client running.
 - **Ask first, every time,** before anything that changes the running game or the saves:
-  `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run that may load
-  the helper, the client's `/reload_mod`, and `save_lab.py install` and `restore`. Grants and
-  memory writes go only into a lab slot; grants only while the player stands still in play.
+  `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run (it may load
+  the helper, and with or without it writes the game's map: "The client"), the client's
+  `/reload_mod`, and `save_lab.py install` and `restore`. Grants and memory writes go only
+  into a lab slot; grants only while the player stands still in play.
 - **Branches and releases.** `main` holds released code; `develop` holds code ready for the next
   release. Work on a short-lived topic branch cut from `develop`, merged into `develop` by pull
   request, then deleted. `develop` and `main` take changes only through pull requests with every CI
@@ -116,8 +120,12 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - From source it needs `.ap/` with the world linked in (`ap_checkout.py`): AP's
   client looks up its game's data at startup. From the Launcher it uses the Launcher's AP.
   `ZEXION_AP_DIR` points it at another AP folder.
-- `--verbose` also logs what it sets up in the game for the seed. `--keep-randomizer` leaves
-  RANDOMIZER on the menu instead of offering ARCHIPELAGO.
+- `--verbose` also logs what it sets up in the game for the seed, and each marking below
+  ("Marked collected in this save (...)"). `--keep-randomizer` leaves RANDOMIZER on the menu
+  instead of offering ARCHIPELAGO.
+- While this seed's save is in play it marks other players' items the server has as checked
+  collected in the game's memory (the cell's item state and its map cell), with the helper or
+  without: [`native/README.md`](native/README.md), "Other players' items", "Kept collected".
 - On attaching it uses or loads the helper (which one: [`native/README.md`](native/README.md),
   "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written
   directly with no popup and no seed can be started. `/reload_mod` unloads it and loads it
@@ -149,7 +157,8 @@ game or save folders.
 | `gen_world_data.py` | regenerate `worlds/zexion/data.py` | no |
 | `gen_sample_yamls.py` | regenerate `samples/` (needs `.ap/`) | no |
 | `build_apworld.py` | a release into `dist/` | no |
-| `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF` | no |
+| `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF`, and its notes are written | no |
+| `release_notes.py [VERSION] [--previous TAG] [--notes FILE] [--out FILE]` | the release's message, to check before it is published | no |
 
 The tools find the game through Steam's library list (on Windows, from the registry) and the
 saves through `%APPDATA%`. `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR`
@@ -168,18 +177,28 @@ missing, stale or mismatched DLLs, a mismatched `world_version`, and samples tha
 untracked or for another version (its docstring): rebuild `native/` first. The packaged client has no build of
 its own, so it uses the helper in the game's folder. On GitHub,
 `.github/workflows/release.yml` builds the release and publishes it once the owner approves
-(`docs/DEVELOPING.md`, "Branches and releases"). The release's notes are GitHub's generated
-ones (the pull requests since the latest release) followed by the install guide in
-`.github/release-footer.md`, with `{{VERSION}}` filled in; `tests/test_release_footer.py` checks
-the files it names are the release's.
+(`docs/DEVELOPING.md`, "Branches and releases"). The release's message is written for
+players: the version's notes, `docs/releases/<version>.md`, then the install guide in
+`.github/release-footer.md`, then the compare link from the previous release, put together by
+`tools/release_notes.py`. `tests/test_release_notes.py` checks the notes here rebuild the
+published messages; `tests/test_release_footer.py` that the files the guide names are the
+release's.
 
 - **The release version** is one number in three places: `VERSION` in `client/native.py`,
   `kVersion` in `native/src/dllmain.cpp` and `world_version` in
   `worlds/zexion/archipelago.json`. Raise all three together before a release:
   `tests/test_cross_checks.py` and `build_apworld.py` check they match, and the release gate
-  (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last release and the version on `main`. The
-  helper shows it on the title screen. The sample YAMLs name it too: run
-  `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py` check).
+  (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last
+  release and the version on `main`. The helper shows it on the title screen. The sample YAMLs name
+  it too: run `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py`
+  check).
+- **The release notes** are written in the pull request that raises the version, drafted from
+  the pull requests merged since the last release; the owner approves the wording there. Copy
+  `docs/releases/TEMPLATE.md` to `docs/releases/<version>.md`; how they read, with 1.1.0's as
+  the example: [`docs/releases/README.md`](docs/releases/README.md). The release gate refuses a
+  version whose notes are missing, empty, unfinished (a `TODO` from the template or a `{{...}}`
+  left in), or with an "Updating from" section that is malformed or not from the last release;
+  pytest fails on `develop` until the repo's version has notes.
 - `pyproject.toml`'s `0.0.0` is unused.
 
 ## Layout
@@ -202,7 +221,7 @@ the files it names are the release's.
   | Module | Job |
   |---|---|
   | `zexion_client.py` | `CommonClient` wiring, the commands, the game loop |
-  | `session.py` | one poll: checks, the goal, grants |
+  | `session.py` | one poll: checks, the goal, grants, other players' items kept collected |
   | `reconcile.py` | what to give: should own minus inventory |
   | `state.py` | the client's state, by lifetime, and pure decisions on it |
   | `ticks.py` | the side tasks with the helper |
@@ -217,7 +236,7 @@ the files it names are the release's.
   | `newgame.py` | the seed as `ap_newgame` |
   | `aplabels.py` | other players' items as `ap_labels` |
   | `hints.py` | which item each Area Map or Intel Chip hints |
-  | `discs.py` | the OS Install Disks count: `discs`, `disk_slots` |
+  | `discs.py` | the OS Install Disks count, the loaded save's own: `discs` |
   | `deathlink.py` | deaths out, and received ones to deal (`die`) |
   | `shields.py` | received Energy Shields (`shield`) |
   | `offline.py` | `offline_put`: files for AP saves without the client |
@@ -229,16 +248,18 @@ the files it names are the release's.
   Custom mode's own options, written by `tools/gen_sample_yamls.py`;
   `worlds/zexion/test/test_samples.py` fails while one is out of date (after a change to the
   options, their descriptions or the version: run the tool again).
-- `tools/`: RE and save tooling, and the release builder. `tools/protected.py` defines the
-  protected folders (for the tools and the write guard) and `append_log`.
+- `tools/`: RE and save tooling, and the release builder and its checks. `tools/protected.py`
+  defines the protected folders (for the tools and the write guard) and `append_log`.
 - `docs/re/`: the reverse-engineering record.
+- `docs/releases/`: each release's notes for players, the template and the style guide.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
   a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
-  must agree on (version, builds, `config` keys, the flags and layouts both read), and the
-  world's `world_version`.
-  `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py` and
-  `test_release_footer.py` test the release builder, the data generator, the release gate and
-  the install guide under the release notes.
+  must agree on (version, builds, `config` keys, the request names and the replies the client
+  branches on, the offline seed's header and keys, the label separator, the font's punctuation,
+  the item record count, the flags and layouts both read), and the world's `world_version`.
+  `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
+  `test_release_notes.py` and `test_release_footer.py` test the release builder, the data
+  generator, the release gate, the release's message and the install guide in it.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not
   be public), `.ap/` (the pinned AP checkout).
 
@@ -247,11 +268,13 @@ the files it names are the release's.
 Committed under `.claude/`, so they apply to anyone working here:
 
 - `.claude/settings.json`: the hook `guard_protected.py` blocks writes into the game install,
-  the save folder and Steam's cloud cache for the game (rules: its docstring; cases:
+  the save folder, Steam's cloud cache for the game and the mod's offline files
+  (`%LOCALAPPDATA%\ZexionAP`) (rules: its docstring; cases:
   `tests/test_guard_hook.py`). The guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
-  `deny` rules for Edit and Write back it up; only the game-install one has been seen to fire.
+  `deny` rules for Edit and Write back it up for the save folder, the game install and the cloud
+  cache (not the offline files); only the game-install one has been seen to fire.
   `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist runs `git status`, `diff`,
   `log` and `show`, the read-only forms of `git branch` (bare, `-a`, `-r`, `-v`, `-vv`,
   `--show-current`, `--list`), `ruff check`, `ruff format --check`, pytest, `build_id.py` and
@@ -263,13 +286,15 @@ Committed under `.claude/`, so they apply to anyone working here:
   on Debian, Ubuntu and macOS, the Microsoft Store stub on some Windows machines, or Python 2,
   and a hook that fails that way lets the call through. It runs the hook with the first Python
   3.11 or later that can run it (the repo's `.venv`, then `python3`, `python`, `py -3`) and,
-  with none, blocks a guard call whose payload mentions the saves or a Steam folder, as the
-  guard does when it breaks (cases: `tests/test_hook_runner.py`).
+  with none, blocks a guard call whose payload mentions the saves, a Steam folder or `ZexionAP`,
+  as the guard does when it breaks (cases: `tests/test_hook_runner.py`).
 - Skills: `/preflight` (the checks; without the toolchain a change is unverified), `/save-lab`
   (Steam Cloud, backups, copies, diffs, patches, install, restore), `/find-address` (a value in
   memory to a byte pattern, recorded with evidence).
 - Subagents: `docs-reviewer` (docs a change made wrong, behavior nothing describes),
   `logic-reviewer` (APWorld rules not backed by `docs/re/locations.md`; soft-locks),
   `re-auditor` (hard-coded addresses, unchecked reads, unsafe hooks, double or lost items in
-  client, tool and helper diffs). The first two run on Sonnet; `re-auditor` on the session's
-  model, since what it misses can lose or double an item.
+  client, tool and helper diffs). Each sets its model and effort in its frontmatter:
+  `docs-reviewer` runs on Sonnet at high effort; `logic-reviewer` on Opus at high, since a
+  missed soft-lock breaks seeds; `re-auditor` on Opus at high too, since what it misses can lose
+  or double an item.

@@ -749,6 +749,56 @@ void test_zexion_item_labels() {
     std::map<int, zap::Label> bad;
     zap::parse_labels("ap_labels\nlabel 8 2 40333658", bad);  // "@36X": not an item label
     check(bad[2 * 54 + 8].item == -1 && bad[2 * 54 + 8].item_name.empty(), "@36X is text");
+    // Pickup texts the client never sends, pinned: empty after the '/' (item 36 shown as itself),
+    // a name then nothing, one cut to the popup's width, characters the font lacks dropped, and
+    // a '/' in the second line kept as text.
+    auto one = [](const std::string& text) {
+        std::map<int, zap::Label> labels;
+        zap::parse_labels("ap_labels\nlabel 8 2 " + hex(text), labels);
+        return labels[2 * 54 + 8];
+    };
+    zap::Label l = one("@36/");
+    check(l.item == 36 && l.pickup.empty() && l.item_name.empty(), "@36/: no pickup text");
+    l = one("@36 Name/");
+    check(l.item == 36 && l.item_name == "Name" && l.pickup.empty(), "@36 Name/: the name only");
+    l = one("@36/" + std::string(30, 'x'));
+    check(l.item == 36 && l.pickup == std::string(zap::kGamePopupWidth, 'x'), "cut to 24");
+    l = one("@36/Tr~a#p\xE9");
+    check(l.item == 36 && l.pickup == "Trap", "characters outside the font dropped");
+    l = one("@36/Disorient Trap\nfor A/B");
+    check(l.item == 36 && l.pickup == "Disorient Trap" && l.who == "for A/B",
+          "a '/' in the second line is its text");
+
+    // "@36/Disorient Trap" for Bob: a trap disguised as the box. The look and the map's name
+    // stay the box's; the pickup popup reads the trap's name alone, no icon, then whom it is for.
+    std::map<int, zap::Label> trap;
+    check(zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@36/Disorient Trap\nfor Bob"), trap)
+                  .empty() &&
+              trap[2 * 54 + 8].item == 36 && trap[2 * 54 + 8].pickup == "Disorient Trap" &&
+              trap[2 * 54 + 8].item_name.empty() && trap[2 * 54 + 8].who == "for Bob",
+          "a disguised trap's label: the item, its pickup text, whom it is for");
+    game.set_labels(trap);
+    game.watch_ap_items();
+    const zap::Label& shown = game.labels().at(2 * 54 + 8);
+    check(record_name(47) == "DISORIENT TRAP" "   FOR BOB",
+          "the pickup names the trap, no icon, whom it is for centered under it");
+    check(zap::map_name(shown) == "MISSILE BOX", "the map's cursor keeps the disguise");
+
+    // "@44 OS Install Disk/Disruption Trap": a trap disguised as a disk, under the disk's name.
+    std::map<int, zap::Label> as_disk;
+    check(zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@44 OS Install Disk/Disruption Trap"),
+                            as_disk)
+                  .empty() &&
+              as_disk[2 * 54 + 8].item == 44 &&
+              as_disk[2 * 54 + 8].item_name == "OS Install Disk" &&
+              as_disk[2 * 54 + 8].pickup == "Disruption Trap",
+          "a disguise under a name of the client's, and the trap's pickup text");
+    game.set_labels(as_disk);
+    game.watch_ap_items();
+    const zap::Label& trap_as_disk = game.labels().at(2 * 54 + 8);
+    check(record_name(47) == "DISRUPTION TRAP", "the pickup names the trap");
+    check(trap_as_disk.glyph == 0xFB && zap::map_name(trap_as_disk) == "OS INSTALL DISK",
+          "the look, the disk's glyph; the map's cursor, the name the client gave");
     game.restore_ap_items();
 }
 
@@ -989,6 +1039,111 @@ void test_stand_ins_in_their_own_colors() {
     check(object_palette(4) == g_palette_table[8] && get<int32_t>(pool_slot(4), 0x1D0) == 7 &&
               general_ptr(12, 0x198) == g_palette_table[8] && game.looks().colored() == 0,
           "restore puts palette 8 and the style back");
+}
+
+// A reversed-gravity room draws its item with a general object (type 2026), which a mark of
+// the cell does not end: over a cell that reads collected it is hidden, and shown again when the
+// cell no longer does (a reload from before the mark) or on restore.
+void test_a_collected_item_in_a_reversed_gravity_room_is_hidden() {
+    zap::Game game;
+    ready(game);
+    own_stand_ins(g_records);
+    auto flipped = [](int k, int32_t spawn, int x, int y, int16_t first) {
+        put_flipped(k, spawn, 63, x, y);
+        put<int16_t>(general_slot(k), 0x32E, first);
+        general_slot(k)[0x120] = 1;
+    };
+    auto shown = [](int k) { return general_slot(k)[0x120]; };
+    const int cell = 2 * 54 + 6, other = 5 * 54 + 9;  // as the labels name them: y * 54 + x
+    flipped(21, 602, 6, 2, 13867);  // type 2026's first state
+    flipped(24, 603, 9, 5, 13609);  // type 715's: another kind of object, left alone
+    std::map<int, zap::Label> labels;
+    zap::parse_labels(kBoxAndApItem, labels);
+    game.set_labels(labels);
+    g_map_grid[cell] = 0x19;
+    g_map_grid[other] = 0x1B;
+    game.watch_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0, "not collected: shown");
+    check(shown(24) == 1, "another type over a collected cell is left alone");
+
+    g_map_grid[cell] = 0x1B;  // the client marked it collected
+    game.watch_ap_items();
+    check(shown(21) == 0 && game.looks().hidden_markers() == 1,
+          "hidden once its cell reads collected");
+    general_slot(21)[0x120] = 1;  // the game shows it again
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again the next frame");
+
+    g_map_grid[cell] = 0x19;  // a reload from before the mark
+    game.watch_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0,
+          "shown again when the cell no longer reads collected");
+
+    g_map_grid[cell] = 0x1B;
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden");
+    general_slot(21)[0x32C] = 1;  // it holds its cell's item: the pickup, whatever the map says
+    game.watch_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0, "one holding the item is shown");
+    general_slot(21)[0x32C] = 0;
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again");
+    game.restore_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0, "restore shows it again");
+
+    // A menu over the save releases the records, and with them every other look; the hidden
+    // picture stays hidden under the menu, and an unload waits for a frame to show it again.
+    game.set_labels(labels);
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again with the labels back");
+    g_menu = 2;  // the pause menu
+    for (int i = 0; i < 3; ++i) game.watch_ap_items();
+    check(shown(21) == 0 && game.looks().hidden_markers() == 1,
+          "kept hidden while a menu is open");
+    check(game.ap_items_restyled(), "and still the helper's to put back: an unload waits");
+    general_slot(21)[0x120] = 1;  // shown by the game under the menu
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again under the menu");
+    g_map_grid[cell] = 0x19;  // RELOAD FROM SAVE from that menu, from before the mark
+    game.watch_ap_items();
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0,
+          "shown once its cell no longer reads collected, menu or not");
+    g_map_grid[cell] = 0x1B;
+    g_menu = 0;
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden again in play");
+    g_menu = 2;
+    game.watch_ap_items();
+    put<int32_t>(general_slot(21), 0x1D8, 0);  // the object freed under the menu (a load)
+    put_flipped(21, 777, 63, 6, 2);  // and its slot another object's
+    put<int16_t>(general_slot(21), 0x32E, 13609);
+    general_slot(21)[0x120] = 0;
+    game.watch_ap_items();
+    check(shown(21) == 0 && game.looks().hidden_markers() == 0,
+          "another object in its slot is not this helper's to show");
+    g_menu = 0;
+    flipped(21, 602, 6, 2, 13867);
+    game.watch_ap_items();
+    g_menu = 2;
+    game.watch_ap_items();
+    check(shown(21) == 0, "hidden under a menu once more");
+    game.restore_ap_items();  // a client gone, or an unload, with the menu still open
+    check(shown(21) == 1 && game.looks().hidden_markers() == 0 && !game.ap_items_restyled(),
+          "put back for a client gone or an unload, menu or not");
+    g_menu = 0;
+
+    // One made while the stand-ins were not restyled (a load from a menu) shows the game's
+    // scrap, frame 134, not a logo: hidden all the same.
+    game.set_labels(labels);
+    put_flipped(25, 604, 134, 6, 2);
+    put<int16_t>(general_slot(25), 0x32E, 13867);
+    general_slot(25)[0x120] = 1;
+    for (int i = 0; i < 31; ++i) game.watch_ap_items();
+    check(shown(25) == 0 && general_ptr(25, 0x1B0) == g_frames + 134 * 0x38,
+          "hidden on the game's own frame too, its frame left as it is");
+    game.restore_ap_items();
+    check(shown(25) == 1, "and shown again on restore");
+    g_map_grid[cell] = g_map_grid[other] = 0;
 }
 
 // The logo-frame marker at R'Talva X34 Y51 is hidden (+0x120 cleared) each frame while restyled
@@ -1396,6 +1551,56 @@ void show_next(zap::Game& game) {
     for (int i = 0; i < 100 && g_messages == before; ++i) game.pump_popups();
 }
 
+// Another player's checked item in a room that waits for its pickup, labeled "@46" for no one
+// (this player's own Scrap Metal): the stand-in there reads SCRAP METAL with no icon and names
+// Scrap Metal's pickup event, so the game's pickup spawns its drops, while that event is the
+// one traced; a received Scrap Energy still drops meanwhile.
+void test_own_scrap_metal_is_picked_up_as_the_games() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    std::map<int, zap::Label> labels;
+    check(zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@46") + "\nlabel 9 2 " +
+                                hex("@46\nfor Bob"),
+                            labels)
+                  .empty() &&
+              labels[2 * 54 + 8].scrap() && !labels[2 * 54 + 9].scrap(),
+          "@46 for no one is this player's own Scrap Metal; for another player it is theirs");
+    game.set_labels(labels);
+    auto event_of = [](int item) { return get<int16_t>(g_records, item * 100 + 0x40); };
+    player_cell(8, 2);
+    game.watch_ap_items();
+    check(record_name(47) == "SCRAP METAL" && record_name(48) == "SCRAP METAL",
+          "the game's name for it, no icon");
+    check(event_of(47) == 3548 && event_of(48) == 3548, "Scrap Metal's pickup event");
+    check(event_of(46) == 3548 && record_name(46) == "SCRAP METAL", "Scrap Metal's record as is");
+
+    // A received Scrap Energy meanwhile: its own event still runs.
+    apply(game, "apply\npopup 47 FROM BOB");
+    game.note_play(5000);
+    show_next(game);
+    game.pump_drops(6100);
+    check(g_spawn_calls == 1 && g_spawn_event == g_events + 3549 * 0x28,
+          "a received Scrap Energy drops as before");
+
+    player_cell(9, 2);  // another Zexion player's Scrap Metal: their item, no drops
+    game.watch_ap_items();
+    check(event_of(47) == -1 && event_of(48) == -1 &&
+              record_name(47).find('\xEE') != std::string::npos,
+          "another player's: the logo and no event");
+
+    put<int16_t>(g_events + 3548 * 0x28, 4, 2011);  // Scrap Metal's event not as traced
+    player_cell(8, 2);
+    game.watch_ap_items();
+    check(event_of(47) == -1 && event_of(48) == -1 && record_name(47) == "SCRAP METAL",
+          "an event not as traced is not named");
+    put<int16_t>(g_events + 3548 * 0x28, 4, 2010);
+    game.watch_ap_items();
+    check(event_of(47) == 3548, "named again once it is");
+    game.restore_ap_items();
+    check(event_of(47) == 3549 && event_of(48) == 3550, "restore: the game's own events");
+}
+
 // A received scrap's drop: its pickup's event, run once after its popup shows, once the player
 // has been in one cell for a second, in the save its popup was for.
 void test_received_scrap_drops() {
@@ -1628,6 +1833,1070 @@ void test_received_death() {
     check(g_deaths == 1, "no other death");
 }
 
+// Scrap Metal's record, whose sound a trap's popup plays (it has no record of its own).
+void trap_records() {
+    scrap_records();
+    put<int16_t>(g_records + 46 * 100, 0x5A, 61);
+    put<float>(g_records + 46 * 100, 0x5C, 1.0f);
+}
+
+// In play for a moment, as a trap waits for (a quarter second, with no transition queued).
+void in_play_since(zap::Game& game, uint64_t now) { game.note_play(now - 1000); }
+
+// The stand-in's AILMENTS tests, each jne as the game has it (75) or patched (EB).
+bool hit_jumps_are(BYTE opcode) {
+    return code_byte(g_ailments_hit_code, 0x0B) == opcode &&
+           code_byte(g_ailments_hit_code, 0x29) == opcode;
+}
+bool wave_jumps_are(BYTE opcode) {
+    return code_byte(g_ailments_wave_code, 0x0B) == opcode &&
+           code_byte(g_ailments_wave_code, 0x2A) == opcode;
+}
+
+// Frame calls as dllmain.cpp makes them (pump_traps, then pump_popups) until the next popup is
+// taken off the queue, at most 100.
+void next_frames(zap::Game& game, uint64_t now) {
+    const size_t before = game.queued_popups();
+    for (int i = 0; i < 100 && game.queued_popups() == before; ++i) {
+        game.pump_traps(now);
+        game.pump_popups();
+    }
+}
+
+// What a trap's popup plays: Scrap Metal's sound (trap_records).
+const std::string kTrapPopupSound = "61/10/0/8 ";
+
+// A received trap: its popup queued in its turn, the trap set off as the popup shows, once; as
+// the game's touch does but longer, past a shield, and with AILMENTS's tests patched while its
+// timer runs.
+void test_received_traps() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    check(apply(game, "apply\npopup 102 FROM ALICE") == "applied", "a Disruption Trap's popup");
+    check(game.queued_traps() == 1 && game.queued_popups() == 1,
+          "queued with its popup as the apply takes it");
+    game.pump_popups();
+    check(g_messages == 0 && field<int16_t>(0xDC2) == 0 && game.queued_popups() == 1,
+          "its popup is left to pump_traps");
+    g_sound_log.clear();
+    game.pump_traps(5000);
+    check(field<int16_t>(0xDC2) == 660 && game.trap_status() == "queued 0; last set 102",
+          "set as its popup shows, 660 frames");
+    check(g_messages == 1 && g_text.find("DISRUPTION TRAP") != std::string::npos &&
+              g_text.find("FROM ALICE") != std::string::npos && game.queued_popups() == 0,
+          "its popup: its name over its sender");
+    check(g_sound_log == kTrapPopupSound + "26/10/8/16 ",
+          "Scrap Metal's sound, then the Phazo's contact sound, as the state plays it");
+    check(hit_jumps_are(0xEB) && wave_jumps_are(0x75),
+          "the disruption's AILMENTS tests patched, the disorientation's not");
+    game.pump_traps(6000);
+    check(game.trap_status() == "queued 0; last set 102", "once");
+    check(std::string(game.unload_blocker() ? game.unload_blocker() : "") ==
+              "the AILMENTS tests are still the helper's",
+          "no unload while they are patched");
+    game.watch_all(&chosen);
+    check(hit_jumps_are(0xEB), "kept while the timer runs");
+    field<int16_t>(0xDC2) = 0;  // run out
+    game.watch_all(&chosen);
+    check(hit_jumps_are(0x75), "put back once it has run out");
+
+    // Not drawn (every message slot busy): the trap waits with its popup.
+    apply(game, "apply\npopup 102 FROM BOB");
+    g_message_fails = true;
+    for (int i = 0; i < 100; ++i) {
+        game.pump_traps(6500);
+        game.pump_popups();
+    }
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1 && game.queued_popups() == 1,
+          "a popup not drawn: its trap not set, both kept");
+    g_message_fails = false;
+    next_frames(game, 6500);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "set once it is drawn");
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+
+    // An Energy Shield up does not stop it (the owner's choice).
+    field<int32_t>(0x103C) = 80;
+    apply(game, "apply\npopup 102 FROM BOB");
+    next_frames(game, 7000);
+    check(field<int16_t>(0xDC2) == 660 && field<int32_t>(0x103C) == 80,
+          "past a shield, its strength untouched");
+    field<int32_t>(0x103C) = 0;
+    // A longer timer is left as it is (as the op does), and nothing is patched for it.
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+    field<int16_t>(0xDC2) = 700;
+    apply(game, "apply\npopup 102 FROM BOB");
+    next_frames(game, 8000);
+    check(field<int16_t>(0xDC2) == 700 && game.trap_status() == "queued 0; last nothing 102" &&
+              hit_jumps_are(0x75),
+          "a longer one is left as it is, AILMENTS not patched for it");
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+
+    // Several of one kind at once (a reconnect's): one at a time, each popup showing as its trap
+    // starts; the popups behind a waiting one, one of the other kind's too, go ahead meanwhile.
+    for (int i = 0; i < 200; ++i) game.pump_popups();
+    const int shown_before = g_messages;
+    apply(game,
+          "apply\npopup 102 FROM BOB\npopup 102 FROM BOB\npopup 46 FROM CAROL\n"
+          "popup 103 FROM BOB");
+    check(game.queued_popups() == 4 && game.queued_traps() == 3, "each popup queued in its turn");
+    next_frames(game, 8000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 2 &&
+              g_messages == shown_before + 1 && g_text.find("DISRUPTION TRAP") != std::string::npos,
+          "the first set as its popup shows");
+    field<int16_t>(0xDC2) = 300;  // counting down
+    game.watch_all(&chosen);
+    next_frames(game, 8000);
+    check(field<int16_t>(0xDC2) == 300 && game.queued_traps() == 2 &&
+              g_text.find("FROM CAROL") != std::string::npos,
+          "the second waits for it, its popup too; the scrap's behind it goes ahead");
+    next_frames(game, 8000);
+    check(field<int16_t>(0xDC4) == 660 && game.queued_traps() == 1 &&
+              g_text.find("DISORIENT TRAP") != std::string::npos,
+          "and the other kind's, set as its popup shows");
+    for (int i = 0; i < 200; ++i) {
+        game.pump_traps(8000);
+        game.pump_popups();
+    }
+    check(field<int16_t>(0xDC2) == 300 && g_messages == shown_before + 3 &&
+              game.queued_popups() == 1,
+          "nothing more while the first runs");
+    field<int16_t>(0xDC2) = 0;  // run out
+    game.watch_all(&chosen);
+    next_frames(game, 8000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0 && hit_jumps_are(0xEB) &&
+              g_text.find("DISRUPTION TRAP") != std::string::npos,
+          "then the second, its full 660, patched again, its popup now");
+    field<int16_t>(0xDC2) = 0;
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);
+    // An enemy's own effect running does not hold a trap: it restarts it, as the touch would.
+    field<int16_t>(0xDC2) = 100;
+    apply(game, "apply\npopup 102 FROM BOB");
+    next_frames(game, 8000);
+    check(field<int16_t>(0xDC2) == 660, "over an enemy's effect: as its popup shows");
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+    for (int i = 0; i < 200; ++i) game.pump_popups();
+
+    // The disorientation, as op 5 but longer and whatever AILMENTS reads.
+    for (int16_t ailments : {int16_t{0}, int16_t{1}, int16_t{2}}) {
+        g_ailments = ailments;
+        field<int16_t>(0xDC4) = 0;
+        field<int8_t>(0xDDB) = 6;
+        field<int16_t>(0xD20) = 0;
+        game.watch_all(&chosen);
+        g_sound_log.clear();
+        apply(game, "apply\npopup 103 FROM CAROL");
+        next_frames(game, 9000);
+        check(field<int16_t>(0xDC4) == 660 && field<int8_t>(0xDDB) == 2 &&
+                  field<int16_t>(0xD20) == 2 && game.trap_status() == "queued 0; last set 103",
+              "the disorientation: 660 frames, the byte turned, +0xD20 2, at any AILMENTS");
+        check(g_sound_log == kTrapPopupSound + "82/10/8/16 ",
+              "its popup's sound, then the sound of the state the wave's chains to");
+        check(wave_jumps_are(0xEB) && hit_jumps_are(0x75), "its AILMENTS tests patched");
+    }
+    g_ailments = 0;
+    // Over an enemy's wave running: 660, the byte not turned; +0xD20 left above 2.
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);  // the trap's ended
+    field<int16_t>(0xDC4) = 40;
+    field<int16_t>(0xD20) = 9;
+    apply(game, "apply\npopup 103 FROM CAROL");
+    next_frames(game, 10000);
+    check(field<int16_t>(0xDC4) == 660 && field<int8_t>(0xDDB) == 2 && field<int16_t>(0xD20) == 9,
+          "over an enemy's wave: 660, the byte as it was");
+    // A negative byte: C's % keeps the sign, as the game's code does.
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);
+    field<int8_t>(0xDDB) = -7;
+    apply(game, "apply\npopup 103 FROM CAROL");
+    next_frames(game, 11000);
+    check(field<int8_t>(0xDDB) == -3, "(-7 + 4) % 8 is -3");
+    // A load (no save, then the reset) puts the patch back.
+    g_save_loaded = 0xFF;
+    game.watch_all(&chosen);
+    check(wave_jumps_are(0x75), "put back with no save loaded");
+    g_save_loaded = 3;
+    field<int16_t>(0xDC4) = 0;
+
+    // Code not as traced, or reading another word than AILMENTS: never patched.
+    build_ailments_code(&g_ailments, false);  // a byte of the wave's tests not as traced
+    apply(game, "apply\npopup 103 FROM CAROL");
+    next_frames(game, 12000);
+    game.watch_all(&chosen);
+    check(field<int16_t>(0xDC4) == 660 && wave_jumps_are(0x75), "other code: set, not patched");
+    build_ailments_code();
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);
+    build_ailments_code(&g_halt_flag);  // its loads read another word
+    apply(game, "apply\npopup 103 FROM CAROL");
+    next_frames(game, 12000);
+    game.watch_all(&chosen);
+    check(field<int16_t>(0xDC4) == 660 && wave_jumps_are(0x75), "another word: not patched");
+    build_ailments_code();
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);
+    for (int i = 0; i < 100; ++i) game.pump_popups();
+
+    // Halted, dead, in a menu, or in another save than its apply's: it waits, and its popup.
+    field<int16_t>(0xDC2) = 0;
+    apply(game, "apply\npopup 102 FROM DAN");
+    g_halt_flag = 1;
+    next_frames(game, 13000);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1 && game.queued_popups() == 1,
+          "not while halted, nor its popup");
+    g_halt_flag = 0;
+    field<int16_t>(0xCEA) = 0;
+    game.note_play(13000);
+    next_frames(game, 15000);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1, "not while dead");
+    field<int16_t>(0xCEA) = 48;
+    game.note_play(15000);
+    next_frames(game, 15100);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_popups() == 1,
+          "not in the first moment back in play (a load's frame), nor its popup");
+    next_frames(game, 15300);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "then with its popup");
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x11;  // this seed's item table
+    g_rando_marker = 1;
+    apply(game, "apply\npopup 103 FROM DAN");
+    check(std::string(game.unload_refusal() ? game.unload_refusal() : "") ==
+              "a trap is waiting to go off",
+          "an unload is refused while a trap for the save loaded waits");
+    check(std::string(game.unload_blocker() ? game.unload_blocker() : "") ==
+              "a trap is waiting to go off",
+          "and one no frame came for, by the blocker published each frame");
+    g_section[0x26C] = 0x22;  // another seed's save
+    next_frames(game, 16000);
+    check(field<int16_t>(0xDC4) == 0 && game.queued_traps() == 1, "another seed's save: it waits");
+    check(game.unload_refusal() == nullptr && game.unload_blocker() == nullptr,
+          "one for another save does not hold an unload");
+    g_section[0x26C] = 0x11;
+    game.client_gone(&chosen);  // the client gone meanwhile: kept, as its popups are
+    next_frames(game, 16000);
+    check(field<int16_t>(0xDC4) == 660 && game.queued_traps() == 0, "set in its own save");
+    game.client_gone(&chosen);
+    game.watch_all(&chosen);
+    check(wave_jumps_are(0xEB), "a client going away leaves a running trap's patch");
+    check(std::string(game.unload_refusal() ? game.unload_refusal() : "") == "a trap is running",
+          "an unload is refused while it is held, before anything is put back");
+    game.put_back_traps();
+    check(wave_jumps_are(0x75) && game.unload_blocker() == nullptr, "put back for an unload");
+    g_rando_marker = 0;
+
+    // A trap's popup is never a notice, and only the two traps' codes are taken.
+    check(apply(game, "apply\nnotice 102 HELLO").rfind("parse: bad line", 0) == 0, "no notice");
+    check(apply(game, "apply\npopup 104 FROM X").rfind("parse: bad line", 0) == 0, "not 104");
+    check(apply(game, "apply\ntrap 102").rfind("parse: unknown line", 0) == 0,
+          "no trap line: this world's own are the helper's to set off (watch_own_traps)");
+    reset_events();
+}
+
+// A received trap's popup takes its turn: after the popups queued before it (an OS Install
+// Disk's and its count, as in check 2 of the 2026-11-11 run), the trap going off as its popup
+// shows, not before; past popups waiting for another save; and the popups behind it waiting
+// while it does.
+void test_a_trap_popup_takes_its_turn() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    apply(game,
+          "apply\npopup 44 FROM BOB\nnotice 44 DISK 1 OF 3\npopup 103 FROM BOB\n"
+          "popup 46 FROM DAN");
+    next_frames(game, 5000);
+    check(g_text.find("FROM BOB") != std::string::npos && field<int16_t>(0xDC4) == 0,
+          "the disk's popup first, the trap not set");
+    next_frames(game, 5000);
+    check(g_text.find("DISK 1 OF 3") != std::string::npos && field<int16_t>(0xDC4) == 0,
+          "its count next, the trap still waiting");
+    next_frames(game, 5000);
+    check(g_text.find("DISORIENT TRAP") != std::string::npos && field<int16_t>(0xDC4) == 660,
+          "then the trap's popup, the trap set as it shows");
+    next_frames(game, 5000);
+    check(g_text.find("FROM DAN") != std::string::npos, "then the rest");
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);
+
+    // A popup waiting for another save at the head does not hold it.
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x11;
+    g_rando_marker = 1;
+    apply(game, "apply\npopup 46 FROM ERIN");  // for the 0x11 save
+    g_section[0x26C] = 0x22;                     // another save loaded
+    apply(game, "apply\npopup 103 FROM ALICE");
+    next_frames(game, 6000);
+    check(g_text.find("DISORIENT TRAP") != std::string::npos && field<int16_t>(0xDC4) == 660,
+          "past ERIN's popup, waiting for its own save");
+    g_section[0x26C] = 0x11;
+    next_frames(game, 6000);
+    check(g_text.find("FROM ERIN") != std::string::npos, "ERIN's in its own save");
+    g_rando_marker = 0;
+    field<int16_t>(0xDC4) = 0;
+    game.watch_all(&chosen);
+
+    // Not in play for a moment yet (a load's frame): the popups behind it wait with it.
+    field<int16_t>(0xCEA) = 0;
+    game.note_play(7000);
+    field<int16_t>(0xCEA) = 48;
+    game.note_play(7000);
+    apply(game, "apply\npopup 103 FROM ALICE\npopup 46 FROM DAN");
+    const int shown = g_messages;
+    next_frames(game, 7100);
+    check(g_messages == shown && game.queued_popups() == 2, "nothing shown before it");
+    next_frames(game, 7300);
+    check(g_text.find("DISORIENT TRAP") != std::string::npos && field<int16_t>(0xDC4) == 660,
+          "then it, set as it shows");
+    next_frames(game, 7300);
+    check(g_text.find("FROM DAN") != std::string::npos, "then the one behind it");
+    game.put_back_traps();
+}
+
+// An unload refused after its put-back (a later blocker, say a popup still showing the helper's
+// translated text): a trap running with no patch held (AILMENTS's loads reading another word)
+// still holds its kind, so a second one of it waits for the timer, not goes off over it.
+void test_a_refused_unload_keeps_a_running_trap_in_its_kind() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    build_ailments_code(&g_halt_flag);  // not AILMENTS: the trap's timer runs unpatched
+    apply(game, "apply\npopup 102 FROM ALICE");
+    next_frames(game, 5000);
+    check(field<int16_t>(0xDC2) == 660 && hit_jumps_are(0x75) && !game.ailments_patched(),
+          "the first set, no patch held");
+    field<int16_t>(0xDC2) = 300;  // counting down
+    game.watch_all(&chosen);
+    game.put_back_traps();  // the unload frame; then another blocker refuses it
+    apply(game, "apply\npopup 102 FROM BOB");
+    next_frames(game, 5100);
+    game.watch_all(&chosen);
+    check(field<int16_t>(0xDC2) == 300 && game.queued_traps() == 1,
+          "a second one still waits for the timer");
+    field<int16_t>(0xDC2) = 0;  // it runs out
+    game.watch_all(&chosen);
+    next_frames(game, 5200);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "and goes off after it");
+    build_ailments_code();
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+    game.put_back_traps();
+}
+
+// A popup that goes ahead of a parked trap's keeps its follow-ups (a disk's count, a chip's hint)
+// right behind it, though the trap's kind runs out while it shows.
+void test_a_popups_notices_stay_ahead_of_a_trap_it_passed() {
+    for (const char* batch :
+         {"apply\npopup 102 FROM BOB\npopup 44 FROM DAN\nnotice 44 DISK 1 OF 3",
+          "apply\nintel\npopup 102 FROM BOB\npopup 49 FROM DAN\nnotice 49 HINT: SLIDE MOD"}) {
+        zap::Game game;
+        ready(game);
+        trap_records();
+        in_play_since(game, 5000);
+        apply(game, "apply\npopup 102 FROM ALICE");
+        next_frames(game, 5000);
+        check(field<int16_t>(0xDC2) == 660, "the first trap set");
+        check(apply(game, batch) == "applied", "applied");
+        next_frames(game, 5000);
+        check(g_text.find("FROM DAN") != std::string::npos && game.queued_traps() == 1,
+              "the second waits for it, the popup behind it shown");
+        field<int16_t>(0xDC2) = 0;  // the first runs out while that popup shows
+        game.watch_all(&chosen);
+        next_frames(game, 5000);
+        check(g_text.find("DISK 1 OF 3") != std::string::npos ||
+                  g_text.find("SLIDE MOD") != std::string::npos,
+              "its follow-up next, not the trap");
+        check(field<int16_t>(0xDC2) == 0, "the trap not set yet");
+        next_frames(game, 5000);
+        check(g_text.find("DISRUPTION TRAP") != std::string::npos &&
+                  field<int16_t>(0xDC2) == 660,
+              "then the trap, set as its popup shows");
+        game.put_back_traps();
+    }
+}
+
+// Only the shown popup's own notices go ahead of the trap it passed: a notice of a later `apply`
+// right behind it in the queue (another find's count, say, or one for another save) stays
+// behind the trap.
+void test_a_later_batchs_notice_stays_behind_a_trap_passed() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    apply(game, "apply\npopup 102 FROM ALICE");
+    next_frames(game, 5000);
+    check(field<int16_t>(0xDC2) == 660, "the first trap set");
+    apply(game, "apply\npopup 102 FROM BOB\npopup 46 FROM DAN");
+    check(apply(game, "apply\nnotice 44 DISK 4 OF 9") == "applied", "a later batch's notice");
+    next_frames(game, 5000);
+    check(g_text.find("FROM DAN") != std::string::npos, "the popup behind the waiting trap shown");
+    field<int16_t>(0xDC2) = 0;  // the first runs out while it shows
+    game.watch_all(&chosen);
+    next_frames(game, 5000);
+    check(g_text.find("DISRUPTION TRAP") != std::string::npos && field<int16_t>(0xDC2) == 660,
+          "the trap next, in its turn");
+    next_frames(game, 5000);
+    check(g_text.find("DISK 4 OF 9") != std::string::npos, "then the later batch's notice");
+    game.put_back_traps();
+}
+
+// Frame calls as dllmain.cpp makes them (note_play, pump_traps, pump_popups), one every 16 ms
+// from `from` to `to`.
+void play_frames(zap::Game& game, uint64_t from, uint64_t to) {
+    for (uint64_t now = from; now <= to; now += 16) {
+        game.note_play(now);
+        game.pump_traps(now);
+        game.pump_popups();
+    }
+}
+
+// A TELEPORT TO's countdown (the transition timer at 60 as the menu closes, the load and its
+// reset of the player when it reaches 0) reads as play: a trap received in the pause (which the
+// client hands over once the menu has closed), and this world's own, wait it out with their
+// popups, then go off a moment after the load, for their full time (check 8 of the 2026-11-11
+// run, docs/re/memory.md, "Telling play from menus, the title screen and death").
+void test_traps_wait_out_a_teleport() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    g_menu = 2;  // the pause menu
+    game.note_play(5000);
+    g_menu = 0;  // TELEPORT TO START: the menu closes with its 60 frames queued
+    g_transition_timer = 60;
+    game.note_play(5016);
+    check(apply(game, "apply\npopup 102 FROM ALICE") == "applied",
+          "received in the pause, handed over as the countdown reads as play");
+    play_frames(game, 5016, 6000);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1 && game.queued_popups() == 1 &&
+              g_messages == 0,
+          "not set through the teleport, a second past the menu, nor its popup shown");
+    game.own_trap_found(103);
+    check(game.queued_traps() == 2, "this world's own picked up meanwhile");
+    play_frames(game, 6016, 6200);
+    check(field<int16_t>(0xDC4) == 0 && game.queued_traps() == 2, "it waits too");
+    g_transition_timer = 0;  // the load: the player reset
+    field<int8_t>(0xDDB) = -1;
+    play_frames(game, 6216, 6400);
+    check(field<int16_t>(0xDC2) == 0 && field<int16_t>(0xDC4) == 0 && game.queued_traps() == 2,
+          "not in the moment after the load");
+    play_frames(game, 6416, 6600);
+    check(field<int16_t>(0xDC4) == 660 && field<int16_t>(0xDC2) == 660 &&
+              game.queued_traps() == 0 && g_messages == 1 &&
+              g_text.find("DISRUPTION TRAP") != std::string::npos,
+          "then both, full length, the received one's popup as it goes off");
+    check(game.trap_status() == "queued 0; last set 102", "each once");
+    field<int16_t>(0xDC2) = 300;  // counting down
+    field<int16_t>(0xDC4) = 300;
+    play_frames(game, 6616, 7000);
+    check(field<int16_t>(0xDC2) == 300 && field<int16_t>(0xDC4) == 300 && g_messages == 1,
+          "not again");
+    game.put_back_traps();
+
+    // A transition queued with no frame of note_play since (a frame call's order): held all the
+    // same, and long in play does not let it through.
+    zap::Game other;
+    ready(other);
+    trap_records();
+    in_play_since(other, 5000);
+    g_transition_timer = 60;
+    other.own_trap_found(102);
+    other.pump_traps(9000);
+    check(field<int16_t>(0xDC2) == 0 && other.queued_traps() == 1,
+          "a transition queued holds it at once");
+    g_transition_timer = 0;
+    play_frames(other, 9000, 9300);
+    check(field<int16_t>(0xDC2) == 660 && other.queued_traps() == 0, "set once it has run");
+    other.put_back_traps();
+}
+
+// A TELEPORT TO from the pause menu: the menu closes with the transition's 60 frames queued.
+void teleport_from_pause(zap::Game& game, uint64_t now) {
+    g_menu = 2;
+    game.note_play(now);
+    g_menu = 0;
+    g_transition_timer = 60;
+}
+
+// The rest of what the load at a TELEPORT TO's end could undo waits out its countdown too, then
+// settles as after any load: a received Energy Shield (the reset zeroes its strength), a scrap's
+// drop (spawned in the room left), a DeathLink death (against the load), and an ordinary popup
+// (the load clears the message slots); each released after the load, once.
+void test_received_things_wait_out_a_teleport() {
+    {
+        zap::Game game;
+        ready(game);
+        shield_records(2018);
+        game.note_play(1000);
+        g_transition_timer = 60;  // queued since note_play last ran
+        check(game.spawn_shield(2500) == "refused not settled", "a shield: held at once");
+        g_transition_timer = 0;
+        teleport_from_pause(game, 3000);
+        for (uint64_t now = 3016; now <= 5000; now += 16) game.note_play(now);
+        check(game.spawn_shield(5000) == "refused not settled" && g_spawn_calls == 0,
+              "a shield: not through the countdown, two seconds in play in one cell");
+        g_transition_timer = 0;  // the load
+        for (uint64_t now = 5016; now <= 5900; now += 16) game.note_play(now);
+        check(game.spawn_shield(5900) == "refused not settled", "nor in the second after the load");
+        game.note_play(6100);
+        check(game.spawn_shield(6100) == "spawned" && g_spawn_calls == 1, "a shield: then spawned");
+    }
+    {
+        zap::Game game;
+        ready(game);
+        scrap_records();
+        apply(game, "apply\npopup 46 FROM ALICE");
+        game.note_play(1000);
+        game.pump_popups();
+        check(game.queued_drops() == 1, "a drop queued as its popup shows");
+        g_transition_timer = 60;  // queued since note_play last ran
+        game.pump_drops(2500);
+        check(g_spawn_calls == 0 && game.queued_drops() == 1, "a drop: held at once");
+        g_transition_timer = 0;
+        teleport_from_pause(game, 2600);
+        for (uint64_t now = 2616; now <= 5000; now += 16) {
+            game.note_play(now);
+            game.pump_drops(now);
+        }
+        check(g_spawn_calls == 0 && game.queued_drops() == 1, "a drop: not through the countdown");
+        g_transition_timer = 0;  // the load
+        for (uint64_t now = 5016; now <= 6100; now += 16) {
+            game.note_play(now);
+            game.pump_drops(now);
+        }
+        check(g_spawn_calls == 1 && game.queued_drops() == 0, "a drop: spawned after the load, once");
+    }
+    {
+        zap::Game game;
+        ready(game);
+        game.note_play(1000);
+        g_transition_timer = 60;  // queued since note_play last ran
+        check(game.kill(2200) == "refused not settled" && g_deaths == 0, "a death: held at once");
+        g_transition_timer = 0;
+        teleport_from_pause(game, 2500);
+        for (uint64_t now = 2516; now <= 4500; now += 16) game.note_play(now);
+        check(game.kill(4500) == "refused not settled" && g_deaths == 0,
+              "a death: not through the countdown");
+        g_transition_timer = 0;  // the load
+        for (uint64_t now = 4516; now <= 5600; now += 16) game.note_play(now);
+        check(game.kill(5600) == "died" && g_deaths == 1, "a death: after the load");
+    }
+    {
+        zap::Game game;
+        ready(game);
+        game.note_play(1000);
+        teleport_from_pause(game, 1000);
+        game.note_play(1016);
+        check(apply(game, "apply\npopup 36 FROM ALICE") == "applied", "a popup applied meanwhile");
+        play_frames(game, 1016, 3000);
+        check(g_messages == 0 && game.queued_popups() == 1, "a popup: not through the countdown");
+        g_transition_timer = 0;  // the load
+        play_frames(game, 3016, 3100);
+        check(g_messages == 1 && g_text.find("FROM ALICE") != std::string::npos &&
+                  game.queued_popups() == 0,
+              "a popup: shown after the load");
+    }
+}
+
+// A received trap's popup with no record to show it by (Scrap Metal's, records not loaded) waits
+// with its trap, never dropped as other popups are.
+void test_a_trap_popup_with_no_record_waits() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    apply(game, "apply\npopup 102 FROM ALICE");
+    check(game.trap_status() == "queued 1; last none", "trap_status counts a received one");
+    g_records_ptr = nullptr;
+    next_frames(game, 5000);
+    check(game.queued_popups() == 1 && game.queued_traps() == 1 && field<int16_t>(0xDC2) == 0,
+          "kept, its trap not set");
+    g_records_ptr = g_records;
+    next_frames(game, 5000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_popups() == 0,
+          "shown and set once the records are there");
+    game.put_back_traps();
+}
+
+// This world's own trap, found in it: no popup of the helper's, set off at once, even while the
+// game's pickup popup shows.
+void test_own_traps() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    game.own_trap_found(103);
+    check(game.queued_traps() == 1 && game.queued_popups() == 0, "queued, with no popup");
+    message_showing(60);  // the game's pickup popup
+    in_play_since(game, 3000);
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660 && game.queued_traps() == 0, "set at once");
+}
+
+// Looks in play, as many as a pickup needs before it (kCellWatchPlayLooks).
+void play_looks(zap::Game& game) {
+    for (int i = 0; i < 2; ++i) game.watch_all(&chosen);
+}
+
+// With no client, an own OS Install Disk's pickup shows the save's count, as the client's
+// follow-up does with one: every pickup, so again after a reload put the disk back; a load is
+// no pickup, and a count queued for a pickup a load undid is withdrawn.
+void test_an_own_disk_shows_its_count_with_no_client() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    const int first = 4 * 54 + 3, second = 7 * 54 + 9;
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.discs = true;
+    seed.count = 1;  // the disks the slot starts with and those received
+    seed.required = 4;
+    seed.scan_line = "Collect 4 OS Install Disks!";
+    seed.unfound = {first, second};
+    g_map_grid[first] = 0x19;
+    g_map_grid[second] = 0;
+    g_flags[39] = 0;  // the scanner has not said how many
+    put<int16_t>(g_records + 44 * 100, 0x5A, 77);  // the disk's pickup sound
+    put<float>(g_records + 44 * 100, 0x5C, 1.0f);
+    game.set_offline({seed});
+
+    // With a client: its own follow-up shows the count.
+    in_play_since(game, 3000);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    g_map_grid[first] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 0, "with a client: the count is the client's to show");
+    g_map_grid[first] = 0x19;
+
+    game.client_gone(&chosen);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);  // dressed, its warning queued
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(game.queued_popups() == 0 && g_sound == -1, "the offline warning shown, silent");
+    const int shown = g_messages;
+    g_map_grid[first] = zap::kCollectedCell;  // the pickup
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "an own disk's pickup queues its count");
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "once a pickup");
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(g_messages == shown + 1 && g_text.find("OS INSTALL DISK 2") != std::string::npos &&
+              g_text.find(" OF ") == std::string::npos,
+          "the save's count, before the scanner has said how many");
+    check(g_sound == 77, "with the disk's pickup sound, as the client's count has");
+
+    // RELOAD FROM SAVE without saving: the disk back, then picked up again.
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_map_grid[first] = 0x19;
+    g_menu = 0;
+    play_looks(game);
+    check(game.queued_popups() == 0, "the reload queues nothing");
+    g_flags[39] = 1;
+    g_map_grid[first] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(g_messages == shown + 2 && g_text.find("OS INSTALL DISK 2 OF 4") != std::string::npos,
+          "counted, and said, again; with how many are needed once told");
+
+    // A load is no pickup: a save holding the second disk, loaded from the menu.
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_map_grid[second] = zap::kCollectedCell;
+    g_menu = 0;
+    play_looks(game);
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 0 && g_messages == shown + 2, "a load is no pickup");
+
+    // A count still queued when a load undoes its pickup is withdrawn.
+    g_map_grid[second] = 0;
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_menu = 0;
+    play_looks(game);
+    g_map_grid[second] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "queued by the pickup");
+    g_menu = 2;  // paused before it showed, then RELOAD FROM SAVE
+    game.watch_all(&chosen);
+    g_map_grid[second] = 0;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 0, "withdrawn: its count is no longer the save's");
+    g_menu = 0;
+
+    // A client attaching (one that lost the helper and is back) leaves a count queued: the
+    // pickup was the helper's to count. A disk picked up with it is not counted once it goes.
+    play_looks(game);
+    g_map_grid[second] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "queued with no client");
+    check(configure(game).empty(), "a client attaches");
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "kept when a client attaches");
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    g_map_grid[first] = 0x19;
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_menu = 0;
+    play_looks(game);
+    g_map_grid[first] = zap::kCollectedCell;  // picked up with the client attached
+    game.watch_all(&chosen);
+    game.client_gone(&chosen);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(g_text.find("OS INSTALL DISK") == std::string::npos,
+          "one picked up with a client is not counted by the helper once the client goes");
+    g_rando_marker = 0;
+    g_flags[39] = 0;
+    g_map_grid[first] = g_map_grid[second] = 0;
+}
+
+// This world's own trap goes off at its pickup, every pickup: the helper watches the cells the
+// loaded save's seed file lists, with a client or none, and takes no load for a pickup.
+void test_own_traps_go_off_at_each_pickup() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    g_rando_marker = 1;
+    const int disorient = 4 * 54 + 3, disruption = 7 * 54 + 9;
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.traps = {{disorient, 103}, {disruption, 102}};
+    game.set_offline({seed});
+    g_map_grid[disorient] = 0x19;  // seen, not picked up
+    g_map_grid[disruption] = 0;
+    in_play_since(game, 3000);
+    play_looks(game);
+    check(game.queued_traps() == 0, "looks alone queue nothing");
+    g_map_grid[disorient] = zap::kCollectedCell;  // the pickup
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "queued by its pickup, with no request");
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660 && field<int16_t>(0xDC2) == 0 && game.queued_traps() == 0,
+          "its own trap, set off at once");
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "once a pickup");
+    game.put_back_traps();
+    field<int16_t>(0xDC4) = 0;
+
+    // RELOAD FROM SAVE without saving: the menu, then the save from before, the item back.
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_map_grid[disorient] = 0x19;
+    g_menu = 0;
+    play_looks(game);
+    check(game.queued_traps() == 0, "the reload queues nothing");
+    g_map_grid[disorient] = zap::kCollectedCell;  // picked up again
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "queued again by the pickup after the reload");
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660, "and set off again");
+    game.put_back_traps();
+    field<int16_t>(0xDC4) = 0;
+
+    // A pause taken on the pickup's frame: the look that first sees it is of the menu.
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_map_grid[disruption] = zap::kCollectedCell;
+    g_menu = 2;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "a pickup first seen with the pause menu up");
+    game.watch_all(&chosen);
+    g_menu = 0;
+    play_looks(game);
+    check(game.queued_traps() == 1, "once");
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "set off once play goes on");
+    game.put_back_traps();
+    field<int16_t>(0xDC2) = 0;
+
+    // A load is no pickup: a save holding it collected, loaded from a menu, after a death, or
+    // from the file select; nor is a cell collected in the first looks in play after one.
+    for (int way = 0; way < 4; ++way) {
+        g_map_grid[disruption] = 0;
+        play_looks(game);  // in play, not collected
+        if (way == 0 || way == 3) g_menu = 2;
+        if (way == 1) field<int16_t>(0xCEA) = -1;
+        if (way == 2) g_save_loaded = 0xFF;
+        game.watch_all(&chosen);
+        game.watch_all(&chosen);
+        if (way != 3) g_map_grid[disruption] = zap::kCollectedCell;  // the load
+        g_menu = 0;
+        field<int16_t>(0xCEA) = 48;
+        g_save_loaded = 3;
+        game.watch_all(&chosen);  // the first look in play
+        if (way == 3) g_map_grid[disruption] = zap::kCollectedCell;  // filled a frame late
+        game.watch_all(&chosen);
+        game.watch_all(&chosen);
+        check(game.queued_traps() == 0, "a load with it collected is no pickup");
+    }
+
+    // Another seed's save, or a normal one: its cells are not this seed's traps.
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_section[0x26C] ^= 1;  // another seed's item table
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "not in another seed's save");
+    g_section[0x26C] ^= 1;
+    play_looks(game);
+    check(game.queued_traps() == 0, "nor on coming back to this seed's with it collected");
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_rando_marker = 0;  // a normal save
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "not in a normal save");
+    g_rando_marker = 1;
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+
+    // A seed file a client puts meanwhile with another list (merge_offline): looked at afresh,
+    // though the cell it now lists first was not collected at the last look and is now.
+    g_map_grid[disorient] = zap::kCollectedCell;
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    seed.traps = {{disruption, 103}, {disorient, 102}, {9 * 54 + 9, 102}};
+    g_map_grid[disruption] = zap::kCollectedCell;
+    g_map_grid[9 * 54 + 9] = zap::kCollectedCell;
+    game.merge_offline({seed});
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "a new list starts over");
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660 && field<int16_t>(0xDC2) == 0,
+          "the trap the file names for the cell");
+    game.put_back_traps();
+    field<int16_t>(0xDC4) = 0;
+
+    // A seed with no traps listed (a file from before them): nothing.
+    seed.traps.clear();
+    game.set_offline({seed});
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "no list, no trap");
+    g_map_grid[disorient] = 0;
+    g_map_grid[disruption] = 0;
+    g_map_grid[9 * 54 + 9] = 0;
+    g_rando_marker = 0;
+    game.set_offline({});
+    game.watch_all(&chosen);
+}
+
+// An own trap whose pickup a load undid while it waited is dropped: its item is back in its
+// room, and picking it up again queues it again.
+void test_an_own_trap_whose_pickup_was_undone_is_dropped() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    g_rando_marker = 1;
+    const int cell = 4 * 54 + 3;
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.traps = {{cell, 102}};
+    game.set_offline({seed});
+    g_map_grid[cell] = 0x19;
+    in_play_since(game, 3000);
+    play_looks(game);
+    check(apply(game, "apply\npopup 102 FROM ALICE") == "applied", "a received one of its kind");
+    next_frames(game, 3000);
+    check(field<int16_t>(0xDC2) == 660, "running");
+    g_map_grid[cell] = zap::kCollectedCell;  // the own one picked up while it runs
+    game.watch_all(&chosen);
+    game.pump_traps(3100);
+    check(game.queued_traps() == 1, "it waits for the one of its kind running");
+    // A death, then the respawn from the save: the timer reset, the item back in its room.
+    field<int16_t>(0xCEA) = -1;
+    game.watch_all(&chosen);
+    field<int16_t>(0xDC2) = 0;
+    g_map_grid[cell] = 0x19;
+    field<int16_t>(0xCEA) = 48;
+    game.note_play(4000);
+    play_looks(game);
+    game.pump_traps(6000);
+    check(game.queued_traps() == 0 && field<int16_t>(0xDC2) == 0,
+          "dropped with its pickup, not set off after the respawn");
+    g_map_grid[cell] = zap::kCollectedCell;  // picked up again
+    game.watch_all(&chosen);
+    game.pump_traps(6100);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "the new pickup sets it off");
+
+    // Undone and picked up again before play settles (pump_traps not yet past the load): the
+    // one still queued stands for the pickup made, and it goes off once.
+    g_map_grid[cell] = 0x19;
+    play_looks(game);
+    g_map_grid[cell] = zap::kCollectedCell;  // picked up while one of its kind runs
+    game.watch_all(&chosen);
+    game.pump_traps(6200);
+    check(game.queued_traps() == 1 && field<int16_t>(0xDC2) == 660, "waiting behind its kind");
+    field<int16_t>(0xCEA) = -1;  // a death; the respawn resets the timer and puts the item back
+    game.watch_all(&chosen);
+    field<int16_t>(0xDC2) = 0;
+    g_map_grid[cell] = 0x19;
+    field<int16_t>(0xCEA) = 48;
+    play_looks(game);
+    g_map_grid[cell] = zap::kCollectedCell;  // and it is picked up again at once
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "queued once for the pickup that stands");
+    game.note_play(7000);
+    game.pump_traps(9000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "set off once");
+
+    // Still waiting when the player quits to the title and loads another slot's save of the
+    // seed, which holds that cell collected: not set off there.
+    g_map_grid[cell] = 0x19;
+    play_looks(game);
+    g_map_grid[cell] = zap::kCollectedCell;  // picked up while the one before still runs
+    game.watch_all(&chosen);
+    game.pump_traps(9100);
+    check(game.queued_traps() == 1, "waiting again");
+    const int32_t slot = g_current_slot;
+    g_save_loaded = 0xFF;  // the title
+    game.watch_all(&chosen);
+    g_current_slot = slot + 1;  // the other save, the cell collected in it too
+    g_save_loaded = 0;
+    field<int16_t>(0xDC2) = 0;
+    game.note_play(10000);
+    play_looks(game);
+    game.pump_traps(12000);
+    check(game.queued_traps() == 0 && field<int16_t>(0xDC2) == 0,
+          "dropped: no pickup was made in this save");
+    g_current_slot = slot;
+    game.put_back_traps();
+    field<int16_t>(0xDC2) = 0;
+    g_map_grid[cell] = 0;
+    g_rando_marker = 0;
+    game.set_offline({});
+    game.watch_all(&chosen);
+}
+
+// This world's own trap, queued by its cell's pickup, through a TELEPORT TO: held while the
+// countdown reads as play; set off after the load when the pickup stands, dropped when the load
+// took it back (the teleport loads the play state as it was when its entry was chosen).
+void test_an_own_trap_by_its_cell_waits_out_a_teleport() {
+    for (bool stands : {true, false}) {
+        zap::Game game;
+        ready(game);
+        trap_records();
+        g_rando_marker = 1;
+        const int cell = 4 * 54 + 3;
+        zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+        seed.traps = {{cell, 102}};
+        game.set_offline({seed});
+        g_map_grid[cell] = 0x19;
+        in_play_since(game, 5000);
+        play_looks(game);
+        if (stands) {  // picked up, then the pause menu at once: copied with the play state
+            g_map_grid[cell] = zap::kCollectedCell;
+            game.watch_all(&chosen);
+        }
+        teleport_from_pause(game, 5000);
+        game.watch_all(&chosen);
+        if (!stands) {  // picked up during the countdown, which the load takes back
+            g_map_grid[cell] = zap::kCollectedCell;
+            game.watch_all(&chosen);
+        }
+        check(game.queued_traps() == 1, "queued by its pickup");
+        play_frames(game, 5016, 6000);
+        check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1,
+              "held through the countdown, though it reads as play");
+        g_transition_timer = 0;  // the load
+        if (!stands) g_map_grid[cell] = 0x19;
+        play_frames(game, 6016, 6200);
+        check(field<int16_t>(0xDC2) == 0, "not in the moment after the load");
+        play_frames(game, 6216, 6600);
+        if (stands) {
+            check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0,
+                  "set off once play has settled: its pickup stands");
+        } else {
+            check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 0,
+                  "dropped with the pickup the load took back");
+        }
+        game.put_back_traps();
+        field<int16_t>(0xDC2) = 0;
+        g_map_grid[cell] = 0;
+        g_rando_marker = 0;
+        game.set_offline({});
+        game.watch_all(&chosen);
+    }
+}
+
+// A config with none of the AILMENTS keys (an offline cache written before the traps): the traps
+// run, with AILMENTS as the game applies it (nothing patched).
+void test_traps_without_ailments() {
+    HMODULE self = GetModuleHandleW(nullptr);
+    auto older = stand_in_config();
+    for (const char* key : {"ailments", "ailments_hit_code", "ailments_wave_code"}) {
+        older.erase(key);
+    }
+    reset_game();
+    zap::Game game;
+    check(game.configure(self, older, false).empty(), "configures without them");
+    trap_records();
+    game.own_trap_found(103);
+    game.own_trap_found(102);
+    in_play_since(game, 3000);
+    game.pump_traps(3000);
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660 && field<int16_t>(0xDC2) == 660, "both set");
+    check(hit_jumps_are(0x75) && wave_jumps_are(0x75), "nothing patched");
+}
+
+// Traps held through the game's ending, which reads as play, as drops are.
+void test_traps_held_for_the_ending() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    g_flags[250] = 0;
+    in_play_since(game, 1000);
+    game.pump_traps(1000);  // the load's first frame in play: flag 250 clear
+    game.own_trap_found(102);
+    g_flags[250] = 1;  // the ending began in this load
+    game.pump_traps(5000);
+    check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1, "held through the ending");
+    g_save_loaded = 0xFF;  // MISSION COMPLETE, then the title
+    game.pump_traps(6000);
+    g_save_loaded = 3;  // the save loaded again, past its ending
+    game.note_play(7000);
+    game.pump_traps(8000);
+    check(field<int16_t>(0xDC2) == 660, "set at the next load, though flag 250 stays set");
+    g_flags[250] = 0;
+    game.put_back_traps();
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+
+    // A received one: its popup waits with it, and the popups behind it show meanwhile (they
+    // show over the ending's cutscenes, as before).
+    g_save_loaded = 0xFF;
+    game.pump_traps(9000);
+    g_save_loaded = 3;
+    game.note_play(9000);
+    game.pump_traps(10000);  // in play, flag 250 clear
+    apply(game, "apply\npopup 102 FROM BOB\npopup 46 FROM DAN");
+    g_flags[250] = 1;
+    next_frames(game, 11000);
+    check(field<int16_t>(0xDC2) == 0 && g_text.find("FROM DAN") != std::string::npos &&
+              game.queued_traps() == 1,
+          "held through the ending, the popup behind it shown");
+    g_save_loaded = 0xFF;
+    game.pump_traps(12000);
+    g_save_loaded = 3;
+    game.note_play(13000);
+    next_frames(game, 14000);
+    check(field<int16_t>(0xDC2) == 660 && g_text.find("DISRUPTION TRAP") != std::string::npos,
+          "set at the next load as its popup shows");
+    g_flags[250] = 0;
+    game.put_back_traps();
+}
+
 void test_assist_watch() {
     zap::Game game;
     check(configure(game).empty(), "configures");
@@ -1740,6 +3009,103 @@ void test_pickup_list() {
     check(g_pickups[zap::pickups::kCount] == 0, "a normal save: untouched");
 }
 
+// A square labeled this player's own Scrap Metal is lowered to a minor's, but not while its
+// item object is live: the game's write raises it each frame the item is in view, and the two
+// would flip the square every pass (the client's poll waits for two equal reads of the grid).
+void test_a_scrap_square_is_left_while_its_item_is_live() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    std::memset(g_section, 0, 4);
+    g_section[0] = 3;  // location 0 at (3, 4)
+    g_section[2] = 4;
+    g_section[0x26C] = 48;
+    // No Obscure setting on (t29, t38, t41), so a shown major lowers to a shown minor.
+    BYTE* settings = g_section + 0x87B;
+    const BYTE obscure[] = {settings[29], settings[38], settings[41]};
+    settings[29] = settings[38] = settings[41] = 0;
+    const int cell = 4 * 54 + 3;
+    g_map_grid[cell] = 0x1A;  // seen: the game's patched write gave it a major's class
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 3 4 " + hex("@46"), labels);
+    check(labels.count(cell) == 1 && labels[cell].scrap(), "labeled the game's Scrap Metal");
+    game.set_labels(labels);
+    put_object(5, 911, 48, 3, 4);  // its item object, live in the loaded rooms
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    check(g_map_grid[cell] == 0x1A, "left as the game wrote it while the item is live");
+    std::memset(pool_slot(5), 0, 0x3B0);  // the room left: the object freed
+    for (int i = 0; i < 17; ++i) game.watch_all(&chosen);
+    check(g_map_grid[cell] == 0x19, "lowered to a minor's once no item object is there");
+    game.client_gone(&chosen);
+    g_map_grid[cell] = 0;
+    g_rando_marker = 0;
+    settings[29] = obscure[0];
+    settings[38] = obscure[1];
+    settings[41] = obscure[2];
+}
+
+// With the item pool unreadable, which cells hold a live item object is not known: every
+// scrap-labeled square is held as it is, none lowered, until the pool reads again.
+void test_scrap_squares_are_held_while_the_item_pool_cannot_be_read() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    std::memset(g_section, 0, 4);
+    g_section[0] = 3;  // location 0 at (3, 4)
+    g_section[2] = 4;
+    g_section[0x26C] = 48;
+    BYTE* settings = g_section + 0x87B;
+    const BYTE obscure[] = {settings[29], settings[38], settings[41]};
+    settings[29] = settings[38] = settings[41] = 0;
+    const int cell = 4 * 54 + 3;
+    g_map_grid[cell] = 0x1A;
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 3 4 " + hex("@46"), labels);
+    game.set_labels(labels);
+    std::memset(g_item_pool, 0, sizeof(g_item_pool));  // no item object anywhere
+    // The pool's inner pages made unreadable (its first and last share pages with other data).
+    const auto begin = reinterpret_cast<uintptr_t>(g_item_pool);
+    const uintptr_t first = (begin + 0xFFF) & ~uintptr_t{0xFFF};
+    const uintptr_t last = (begin + sizeof(g_item_pool)) & ~uintptr_t{0xFFF};
+    DWORD old = 0;
+    VirtualProtect(reinterpret_cast<void*>(first), last - first, PAGE_NOACCESS, &old);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    const BYTE held = g_map_grid[cell];
+    VirtualProtect(reinterpret_cast<void*>(first), last - first, old, &old);
+    check(held == 0x1A, "held while the pool cannot be read");
+    for (int i = 0; i < 17; ++i) game.watch_all(&chosen);
+    check(g_map_grid[cell] == 0x19, "lowered once the pool reads again, no item object there");
+    game.client_gone(&chosen);
+    g_map_grid[cell] = 0;
+    g_rando_marker = 0;
+    settings[29] = obscure[0];
+    settings[38] = obscure[1];
+    settings[41] = obscure[2];
+}
+
+// A record that cannot be read (the pointer the game holds gone bad) refuses a received scrap's
+// drop: the read of the record's event is checked, every frame call it is made.
+void test_a_drop_with_an_unreadable_record_is_refused() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    apply(game, "apply\npopup 46 FROM ALICE");
+    game.note_play(5000);
+    game.pump_popups();
+    check(game.queued_drops() == 1 && g_spawn_calls == 0, "queued as its popup shows");
+    auto* gone = static_cast<BYTE*>(
+        VirtualAlloc(nullptr, 0x2000, MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS));
+    BYTE* records = g_records_ptr;
+    g_records_ptr = gone;
+    game.pump_drops(10100);
+    g_records_ptr = records;
+    check(g_spawn_calls == 0, "no event run from a record that cannot be read");
+    check(game.drop_status().find("no item record") != std::string::npos,
+          "and the drop says why");
+    VirtualFree(gone, 0, MEM_RELEASE);
+    reset_events();
+}
+
 // The map's squares are raised in the labels' seed's save with a menu open too (the player may
 // pause and open the map at once), after two looks in a row (every 16th frame) read that seed.
 void test_map_marks_with_a_menu_open() {
@@ -1841,7 +3207,6 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
     game.set_assists_locked(true);
     game.set_intel(true);
     game.set_discs(3, 15, "COLLECT 15 OS INSTALL DISKS!", true);
-    game.set_disk_slots({{2, 3}, {5, 3}});
     player_cell(3, 4);  // the label's cell
     // The stand-ins and INTEL CHIP restyled, ASSIST locked, the scanner's line written.
     auto applied = [&] {
@@ -1863,16 +3228,15 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
     check(game.newgame_status() == "armed" && game.assists_locked() && game.intel_on() &&
               game.disc_count() == 3 && game.discs_required() == 15 && game.discs_told() &&
               game.scan_line() == "COLLECT 15 OS INSTALL DISKS!" &&
-              game.files().counts() == std::map<int, int>{{2, 3}, {5, 3}} &&
               game.labels().count(4 * 54 + 3) == 1 && game.mission_status() == "asked",
           "what the client asked for kept: the new game, ASSIST, INTEL CHIP, the disks, the "
-          "file select's counts, the labels, RETURN HOME WITH THE DISKS?");
+          "labels, RETURN HOME WITH THE DISKS?");
     for (int i = 0; i < 32; ++i) game.watch_all(&chosen);  // the scanner's look every 30th
     check(applied(), "the unload refused: the watches apply it all again");
 
     game.client_gone(&chosen);
     check(games() && game.newgame_status() == "idle" && !game.assists_locked() &&
-              !game.intel_on() && game.scan_line().empty() && game.files().counts().empty() &&
+              !game.intel_on() && game.scan_line().empty() &&
               game.labels().empty() && game.mission_status() == "not asked",
           "a client gone: put back and dropped");
     for (int i = 0; i < 32; ++i) game.watch_all(&chosen);
@@ -2114,12 +3478,15 @@ void test_popups_wait_for_the_mission_fade() {
           "idle: the fade, the opener 60 frames away");
     message_showing(1);  // GAME SAVED over: only the fade holds a popup back
     game.note_play(1000);
-    check(game.kill(3000) == "refused RETURN HOME WITH THE DISKS? opening" && g_deaths == 0,
+    // The fade's 60 frames are a transition queued: not settled (RETURN HOME's own refusal
+    // behind it).
+    check(game.kill(3000) == "refused not settled" && g_deaths == 0,
           "no received death between the fade and the prompt");
     apply(game, "apply\npopup 36 FROM ALICE");
     for (int i = 0; i < 60; ++i) game.pump_popups();
     check(g_messages == 0 && game.queued_popups() == 1, "a popup waits through the fade");
-    game.mission_open();  // the game runs the opener
+    g_transition_timer = 0;  // the game runs the opener as its timer reaches 0
+    game.mission_open();
     for (int i = 0; i < 30; ++i) game.pump_popups();
     check(g_messages == 1, "then shows");
 
@@ -2149,6 +3516,7 @@ void test_popups_wait_for_the_mission_fade() {
 
     // Dead when the opener runs: the fade turned back (a step every 6 frames), asked again.
     field<int16_t>(0xCEA) = -1;
+    g_transition_timer = 0;
     game.mission_open();
     check(game.mission_status() == "asked again: not in play when it opened" &&
               g_transition_fn == g_routine_table[zap::kIdleRoutine] && g_transition_timer == 0 &&
@@ -2158,6 +3526,27 @@ void test_popups_wait_for_the_mission_fade() {
     field<int16_t>(0xCEA) = 48;  // respawned
     game.watch_all(&chosen);
     check(g_fade_calls == 3 && g_transition_timer == zap::kFadeDelay, "then offered again");
+    game.put_back_game(&chosen);
+}
+
+// A received trap's popup waiting for one of its kind to run out does not hold RETURN HOME's
+// fade, as no popup of its did before it went off.
+void test_a_parked_trap_popup_does_not_hold_the_mission() {
+    MissionGame m;
+    zap::Game& game = m.game;
+    trap_records();
+    player_cell(13, 16);  // back at the pod (scrap_records moves the player)
+    in_play_since(game, 5000);
+    apply(game, "apply\npopup 102 FROM ALICE");
+    next_frames(game, 5000);
+    check(field<int16_t>(0xDC2) == 660, "the first trap set");
+    apply(game, "apply\npopup 102 FROM BOB");
+    for (int i = 0; i < 30; ++i) game.pump_popups();  // the helper's gap since its popup
+    game.request_mission(kPodColumn, kPodRow);
+    game.watch_all(&chosen);
+    check(g_fade_calls == 1 && game.queued_popups() == 1,
+          "the second's popup, waiting for the first to run out, does not hold the fade");
+    game.put_back_traps();
     game.put_back_game(&chosen);
 }
 
@@ -2300,6 +3689,7 @@ void test_return_home_lapses_away_from_the_pod() {
     // Dead when the opener runs, the death having set a fade of its own: left alone.
     field<int16_t>(0xCEA) = -1;
     g_fade[zap::fade_state::kTarget] = 4;  // not event 3667's
+    g_transition_timer = 0;
     game.mission_open();
     check(game.mission_status() == "asked again: not in play when it opened" &&
               g_fade_calls == fades + 1 && g_transition_fn == g_routine_table[zap::kIdleRoutine],
@@ -2391,6 +3781,7 @@ void test_the_black_after_yes() {
     g_transition_timer = 0;
     game.mission_end();  // the game runs the wrapper
     g_transition_fn = nullptr;
+    g_transition_timer = 0;
     g_save_loaded = 0xFF;  // MISSION COMPLETE: no save loaded
     game.watch_all(&chosen);
     g_save_loaded = 3;  // loaded again
@@ -2417,6 +3808,7 @@ void test_the_black_after_yes() {
     g_transition_timer = 0;
     game.mission_end();
     g_transition_fn = nullptr;
+    g_transition_timer = 0;
     g_save_loaded = 0xFF;
     game.watch_all(&chosen);
     g_save_loaded = 3;
@@ -2459,6 +3851,7 @@ void test_the_black_after_yes() {
               g_fade[zap::fade_state::kStep] == zap::kEndingFadeStep && !game.ending_pending(),
           "run: drawn black, fading in from there; nothing pending");
     g_transition_fn = nullptr;  // 0x948A0 run: the transition cleared
+    g_transition_timer = 0;
     game.watch_all(&chosen);
     MissionGame::idle();  // idle-looking later in its cutscenes
     game.request_mission(kPodColumn, kPodRow);
@@ -2601,11 +3994,15 @@ int main() {
     test_the_black_after_yes();
     test_own_popup_needs_a_new_last_message();
     test_popups_wait_for_the_mission_fade();
+    test_a_parked_trap_popup_does_not_hold_the_mission();
     test_drops_wait_for_the_mission_fade();
     test_a_save_during_the_mission_fade();
     test_the_mission_request_gives_home();
     test_return_home_lapses_away_from_the_pod();
     test_map_marks_with_a_menu_open();
+    test_a_scrap_square_is_left_while_its_item_is_live();
+    test_scrap_squares_are_held_while_the_item_pool_cannot_be_read();
+    test_a_drop_with_an_unreadable_record_is_refused();
     test_pickup_list();
     test_popups_wait_for_their_save();
     test_a_refused_unload_keeps_what_the_client_asked();
@@ -2621,6 +4018,7 @@ int main() {
     test_zexion_items_show_as_themselves();
     test_flipped_items_show_as_themselves();
     test_the_marker_hidden();
+    test_a_collected_item_in_a_reversed_gravity_room_is_hidden();
     test_stand_ins_in_their_own_colors();
     test_colored_stand_ins_dressed_later();
     test_zexion_scrap_shown_as_itself();
@@ -2629,9 +4027,25 @@ int main() {
     test_received_disk_popup();
     test_received_intel_chip_popup();
     test_received_shield();
+    test_own_scrap_metal_is_picked_up_as_the_games();
     test_received_scrap_drops();
     test_received_scrap_drops_held();
     test_received_death();
+    test_received_traps();
+    test_own_traps();
+    test_own_traps_go_off_at_each_pickup();
+    test_an_own_disk_shows_its_count_with_no_client();
+    test_an_own_trap_whose_pickup_was_undone_is_dropped();
+    test_an_own_trap_by_its_cell_waits_out_a_teleport();
+    test_a_trap_popup_takes_its_turn();
+    test_a_refused_unload_keeps_a_running_trap_in_its_kind();
+    test_a_popups_notices_stay_ahead_of_a_trap_it_passed();
+    test_a_trap_popup_with_no_record_waits();
+    test_a_later_batchs_notice_stays_behind_a_trap_passed();
+    test_traps_without_ailments();
+    test_traps_held_for_the_ending();
+    test_traps_wait_out_a_teleport();
+    test_received_things_wait_out_a_teleport();
     test_assist_watch();
     test_newgame_watch();
     test_randomizer_by_seed();

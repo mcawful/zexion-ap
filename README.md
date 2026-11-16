@@ -14,7 +14,7 @@ Get the latest release from the [Releases page](https://github.com/mcawful/zexio
 It has `zexion.apworld`, `zexion_ap.dll`, `version.dll`, the two player guides and a sample
 YAML for each mode (Easy, Standard, OHKO and Custom).
 
-This is version 1.1.0. Seeds have been played start to finish in testing.
+Seeds have been played start to finish in testing.
 It supports one version of Zexion, Steam build 23943567; if Steam updates the game, the client
 tells you when your version isn't supported.
 
@@ -25,6 +25,9 @@ tells you when your version isn't supported.
 - Items sent to you pop up in the game with the sender's name.
 - Two goals: grab Zexion in the core and reach the game's ending, or hunt for OS Install Disks.
 - Intel Chips (on by default): each Area Map becomes a hint for one of your important items.
+- Traps (on by default): some Scrap becomes a Disruption Trap or a Disorient Trap, which copy
+  two enemies' touch for about 12 seconds, and that look like important items until you pick
+  them up ([What do traps do?](worlds/zexion/docs/en_Zexion.md#what-do-traps-do)).
 - DeathLink.
 - The game's default English and English(HD), where the mod's text and icons use the HD font
   and art; in the other languages its text is in English (the setup guide's
@@ -68,7 +71,8 @@ build of the game, and nothing is called working in game until it has run in the
 played by the maintainer. The maintainer decides what goes in, and reviews and merges every change.
 
 The Claude Code setup used here (review subagents, skills, and a hook that blocks writes to the
-game and save folders) is committed in `.claude/`; [`CLAUDE.md`](CLAUDE.md) describes it.
+game and save folders and the mod's offline files) is committed in `.claude/`;
+[`CLAUDE.md`](CLAUDE.md) describes it.
 
 ## Contributing
 

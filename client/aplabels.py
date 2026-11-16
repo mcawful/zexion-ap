@@ -1,13 +1,17 @@
 """Names for other players' items in the game.
 
 The world puts a stand-in at each location holding another player's item: 47 (Scrap Energy),
-or 48 (Scrap Chunk) for progression (not another Zexion player's supplies, which stay minor:
-world.important_elsewhere), and with the OS Install Disks goal 48 for this player's own disks
-too. The client scouts those locations and sends the helper a label per map cell:
-"Progression Item" or "AP Item" over "for Alice", or ``@N`` for another Zexion player's item
+or 48 (Scrap Chunk) for progression and traps (not another Zexion player's supplies, which stay
+minor: world.important_elsewhere), and 48 for this player's own traps and, with the OS Install
+Disks goal, disks too. The client scouts those locations and sends the helper a label per map cell:
+"Progression Item" or "AP Item" over "for Alice", ``@N`` for another Zexion player's item
 (its own icon and name), which the pickup popup shows (native/README.md; docs/re/memory.md,
-"Other players' items"). Labels keep only what the game's 8 x 8 font draws, 24 characters a
-line, in the case they are written in: the helper shows them in capitals but in English(HD).
+"Other players' items"). A trap looks important: another game's as a progression item, a Zexion
+trap (this player's own, which the world puts a stand-in for too, or another Zexion player's) as
+one of its owner's upgrades, keys or OS Install Disks, its pickup popup naming the trap
+(``trap_label``). Labels keep only what the
+game's 8 x 8 font draws, 24 characters a line, in the case they are written in: the helper shows
+them in capitals but in English(HD).
 Pure functions; client/ticks.py (labels_tick, foreign_labels) sends them.
 """
 
@@ -23,10 +27,13 @@ PER_LINE = 24  # the popup's characters a line
 FONT = frozenset(string.ascii_uppercase + string.digits + " .,'!?-:()/&")
 AP_ITEM = "AP Item"
 PROGRESSION_ITEM = "Progression Item"
-# A scouted item's flags: the progression bit (Archipelago's ItemClassification.progression,
+# A scouted item's flags: the progression and trap bits (Archipelago's ItemClassification's,
 # checked against it in worlds/zexion/test/test_client_agrees.py), kept here so the client's
-# modules other than zexion_client.py import without Archipelago.
+# modules other than zexion_client.py import without Archipelago. Another game's trap is shown as
+# a progression item (the owner's choice, 2026-11-11); a Zexion trap as an item of its owner's
+# (trap_label).
 PROGRESSION = 0b00001
+TRAP = 0b00100
 
 
 def font_text(text: str, chars: frozenset[str]) -> str:
@@ -85,6 +92,19 @@ ZEXION_LOOKS = {
     ids.AREA_MAP: (ids.AREA_MAP, "Area Map"),
     ids.INTEL_CHIP: (ids.DRAWN_AS[ids.INTEL_CHIP], "Intel Chip"),
 }
+
+
+def trap_label(look: int, code: int, player_name: str = "") -> str:
+    """The label for Zexion trap ``code`` lying in a Zexion world (the owner's choice,
+    2026-11-11): the item ``look`` the world drew for it (slot data ``trap_looks``: an upgrade, a
+    key or an OS Install Disk) in the world and on the map ("@N", or "@N NAME" where the game's
+    name for it is not the one shown, zexion_look), with the trap's name in its pickup popup
+    ("/NAME" after it, in the font's characters, no icon), then whom it is for, or nothing more
+    for this player's own."""
+    name = " ".join(_font_words(ids.TRAP_NAMES[code]))
+    item, shown = zexion_look(look) or (look, "")
+    first = f"{own_label(item, shown)}/{name}"
+    return f"{first}\n{_for(player_name)}" if player_name else first
 
 
 def zexion_look(code: int) -> tuple[int, str] | None:

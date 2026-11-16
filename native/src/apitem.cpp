@@ -105,8 +105,8 @@ bool is_own(const BYTE* r, const StandIn& s) {
 
 bool is_ours(const BYTE* r, const StandIn& s) {
     return word(r, record::kKind) == kOwnShape.kind && word(r, record::kFrame) == s.frame &&
-           word(r, record::kFrames) == kLogoFrames &&
-           r[record::kIcon] == 0 && word(r, record::kEvent) == kNoEvent;
+           word(r, record::kFrames) == kLogoFrames && r[record::kIcon] == 0 &&
+           (word(r, record::kEvent) == kNoEvent || word(r, record::kEvent) == kScrapMetalEvent);
 }
 
 }  // namespace
@@ -165,7 +165,7 @@ int name_cells(const std::vector<StandInSeen>& seen, double player_x, double pla
     return touching;
 }
 
-void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
+void ApItems::watch(BYTE* holder, const int (&cells)[2], bool scrap_event) {
     if (!active()) return;
     Label unlabeled;  // the logo and AP ITEM
     unlabeled.lay_out();
@@ -186,6 +186,10 @@ void ApItems::watch(BYTE* holder, const int (&cells)[2]) {
         // Ours now, or already (an earlier watch, or a helper unloaded without a frame).
         records_[i] = r;
         set_record_name(r, name);
+        // This player's own Scrap Metal is picked up as the game's: its drops too.
+        const bool scrap = scrap_event && it != labels_.end() && it->second.scrap();
+        const int16_t event = scrap ? kScrapMetalEvent : kNoEvent;
+        if (at<int16_t>(r, record::kEvent) != event) at<int16_t>(r, record::kEvent) = event;
     }
 }
 

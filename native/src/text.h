@@ -51,6 +51,7 @@ struct Capitals {
 // The logo glyph, which starts a stand-in's name (the record's own icon stays 0, so the popup
 // shows the name as written and it can be centered), and the name where no label is.
 constexpr uint8_t kApItemGlyph = 0xEE;
+constexpr int kScrapMetalItem = 46;  // the game's Scrap Metal (Label::scrap)
 constexpr char kApItemName[] = "AP Item";
 
 // A label for another player's item at a map cell (requests.h, parse_labels): its parts in the
@@ -66,6 +67,18 @@ struct Label {
     // "@N NAME": item N's icon, but this name for it (this player's own OS Install Disk, which
     // the game's record calls DATA DISC).
     std::string item_name;
+    // "@N/TEXT" (or "@N NAME/TEXT"): item N's look and name (in the world, on the map's cursor),
+    // but the pickup popup reads TEXT alone, with no icon, then whom it is for (a Zexion trap
+    // disguised as item N).
+    std::string pickup;
+    // "@46" alone, for no one: this player's own Scrap Metal, which the client labels another
+    // player's checked item in a room that waits for its pickup (client/ticks.py,
+    // foreign_labels). The stand-in there is picked up as the game's Scrap Metal: no icon in
+    // its popup (the record's own has none), Scrap Metal's pickup event (ApItems::watch) and a
+    // minor's square on the map (mark_important).
+    bool scrap() const {
+        return item == kScrapMetalItem && who.empty() && item_name.empty() && pickup.empty();
+    }
     bool pending() const { return item >= 0 && first.empty(); }
     std::string first_text() const;
     // The stand-in's name in the 8 x 8 font, set by lay_out: the first line (glyph first) and

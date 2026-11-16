@@ -2,9 +2,10 @@
 
 Archipelago comes from .ap/Archipelago (or ``ZEXION_AP_DIR``), or is the Launcher's own when
 started as Zexion Client. While this seed's save is loaded it sends the locations the map marks
-collected, gives items from other worlds (client/session.py) and sends the goal when the ending
-begins; the side tasks with the in-game helper are in client/ticks.py. This world's own items
-are in the save's item table, so it asks the server only for other worlds' (items_handling).
+collected, gives items from other worlds, marks other players' items the server has as
+checked collected in the save (client/session.py) and sends the goal when the ending begins;
+the side tasks with the in-game helper are in client/ticks.py. This world's own items are in
+the save's item table, so it asks the server only for other worlds' (items_handling).
 """
 
 from __future__ import annotations
@@ -51,7 +52,6 @@ from .storage import (  # noqa: E402
     hint_notes,
     hints_tick,
     own_found,
-    popped,
     store_found,
 )
 from .ticks import (  # noqa: E402
@@ -74,7 +74,6 @@ from .ticks import (  # noqa: E402
     other_save_tick,
     replay_tick,
     shields_tick,
-    slots_tick,
     toggle_tick,
 )
 
@@ -139,6 +138,14 @@ class ZexionContext(CommonContext):
         # the items owed get their popups.
         self.helper_lost = False
         self.helper_back_by = 0.0  # when a failing attach after it stops holding back the step
+        # A helper of another version refused to unload (native.NotUnloaded): not asked again
+        # before then, as each try has it put things back (attach_helper).
+        self.attach_again_at = 0.0
+        # An old helper refused to unload (native.NotUnloaded) and none is attached since,
+        # whatever the refusals after it (a menu, a trap, no answer): the traps received
+        # meanwhile are kept for the helper that replaces it, not dropped with the direct writes
+        # once HELPER_RETRY_SECONDS have passed. Cleared when a helper attaches or the game closes.
+        self.swap_pending = False
         # The last step in play that had a helper found it failing, or waited for one lost just
         # before it (poll): one failing again is not attached again before the next step.
         self.step_failed = False
@@ -194,15 +201,16 @@ class ZexionContext(CommonContext):
         # look at the load (what the helper holds for the save stays). Both asked for again in
         # one Get, so one reply brings them: the popup count is never read without the hints,
         # whose notices go with the popups.
-        reread = [conn.announced_key, conn.hints_key]
+        reread = [conn.announced_key, conn.held_key, conn.hints_key]
         for key in reread:
             self.stored_data.pop(key, None)
             self.stored_data_notification_keys.discard(key)
         # Kept by the server across clients: shields given, locations found, follow-ups shown,
         # item popups handed over, and the Area Map hints.
-        keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key]
+        keys = [conn.shield_key, conn.found_key, conn.popped_key, conn.announced_key, conn.held_key]
         self.set_notify(*keys, *([conn.hints_key] if conn.hint_targets else []))
         self.load.seed_loaded = False
+        self.load.disks_counted = None  # a disk picked up meanwhile shows no count
         self.load.return_home = discs.ReturnHome()
         if self.told is not None:
             self.told.labels_retry_at = 0.0
@@ -218,7 +226,13 @@ class ZexionContext(CommonContext):
                 name="scout labels",
             )
         if conn.hunt is not None:
-            detail(f"The goal is {conn.hunt.required} of {conn.hunt.placed} OS Install Disks.")
+            # What the slot data says, not a total: the OS Install Disks option, and how many
+            # of the disks start with the player (those moved out of the pool among them).
+            hunt = conn.hunt
+            detail(
+                f"The goal is {hunt.required} OS Install Disks (the OS Install Disks option is "
+                f"{hunt.placed}; {hunt.start} start with you)."
+            )
         detail(f"Seed for Zexion's {conn.mode} mode.")
 
     async def disconnect(self, allow_autoreconnect: bool = False) -> None:
@@ -284,6 +298,9 @@ class ZexionContext(CommonContext):
         self.told = None
         self.reload_mod_pending = False  # a request for the helper gone, not the next one
         self.load.feats = state.FeatsCheck()  # the next helper is asked about its own guard
+        # A disk picked up while the helper has no client is the helper's to count (its own
+        # notice): the next helper's first look takes the disks the save holds for counted.
+        self.load.disks_counted = None
         self.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         conn = self.conn
         # Its popups not shown yet still show if it stays loaded, and are lost if it is gone. A
@@ -301,7 +318,7 @@ class ZexionContext(CommonContext):
     def received(self) -> tuple[list[int], list[str]]:
         """The Zexion item code of each received item, and who sent it ("" for this slot's
         own), kept in step: anything that is not a Zexion item is left out of both (and said
-        once a connection)."""
+        once a connection). A trap is in both: it is given as its popup (session.py)."""
         codes, senders = [], []
         warned = self.conn.warned if self.conn is not None else set()
         for index, item in enumerate(self.items_received):
@@ -309,7 +326,7 @@ class ZexionContext(CommonContext):
             if code == ASSIST_UNLOCK:
                 continue  # not for the inventory: see assists_unlocked
             code = ids.DRAWN_AS.get(code, code)  # the Intel Chip: the game holds an Area Map
-            if code in ids.GAME_ITEMS:
+            if code in ids.GAME_ITEMS or code in ids.TRAPS:
                 codes.append(code)
                 senders.append(
                     "" if item.player == self.slot else self.player_names.get(item.player, "")
@@ -401,6 +418,8 @@ def game_closed(ctx: ZexionContext, seed: state.SeedState) -> None:
     ctx.drop_helper()
     # The next game's is attached with it.
     ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
+    ctx.attach_again_at = 0.0
+    ctx.swap_pending = False
     ctx.step_failed = False
     # The next game's failures are news, and its language is told again.
     ctx.said.clear("read", "read detail", "mismatch", "language")
@@ -459,22 +478,27 @@ async def poll(ctx: ZexionContext) -> None:
         (logger.info if unloaded else logger.warning)(line)
         if unloaded:
             ctx.drop_helper()
-            # Nothing else this pass, so no item is written directly (no popup) meanwhile.
             await asyncio.sleep(RELOAD_SECONDS)
             await attach_helper(ctx)
+            # An attach that failed (no frame while the game is in the background, say) holds
+            # the step back as a lost helper does (tried again below), rather than write the
+            # items owed with no popup and drop the traps waiting.
+            ctx.helper_lost = ctx.helper is None
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("item labels", lambda: labels_tick(ctx)),
         ("assist lock", lambda: toggle_tick(ctx, ctx.told.assists, ctx.load.assists_want, ASSISTS)),
         ("Intel Chips", lambda: toggle_tick(ctx, ctx.told.intel, ctx.load.intel_want, INTEL)),
         ("disk count", lambda: discs_helper_tick(ctx, p)),
-        ("file select's disk count", lambda: slots_tick(ctx, p)),
         ("language", lambda: language_tick(ctx)),
     ):
         if ctx.helper is None:
             break  # none, or it failed in the tick before
         await side_tick(ctx, name, tick)
     if ctx.conn is None or not ctx.slot:
+        # A hold cut short by the disconnect starts over at the next connection, with its own
+        # HELPER_RETRY_SECONDS (else a reconnect after them would step at once without it).
+        ctx.helper_back_by = 0.0
         await away_tick(ctx)
         await leave_helper_tick(ctx)
         return
@@ -493,7 +517,11 @@ async def poll(ctx: ZexionContext) -> None:
             return
         ctx.said.clear("game")
         logger.info("Attached to Zexion.")
-        await attach_helper(ctx)
+        # One that failed but may attach on a later try (an old helper refusing to unload, no
+        # frame yet): held for as after a lost helper, so this poll's step writes nothing with
+        # no popup and drops no waiting trap.
+        if await attach_helper(ctx) and ctx.helper is None:
+            ctx.helper_lost = True
     elif ctx.helper is None and (ctx.helper_left or ctx.helper_lost):
         # Let go while no connection stepped (leave_helper_tick), or lost in a side tick:
         # attached again before any step, as a step with no helper writes the items owed with
@@ -504,7 +532,10 @@ async def poll(ctx: ZexionContext) -> None:
         now = time.monotonic()
         if ctx.helper_back_by == 0.0:
             ctx.helper_back_by = now + HELPER_RETRY_SECONDS
-        waiting = await attach_helper(ctx) and now < ctx.helper_back_by
+        if now < ctx.attach_again_at:  # refused to unload just now: asked again in a while
+            waiting = now < ctx.helper_back_by
+        else:
+            waiting = await attach_helper(ctx) and now < ctx.helper_back_by
         if ctx.helper is None and waiting and game_alive(ctx):
             await asyncio.sleep(BACK_RETRY_SECONDS)
             return
@@ -518,6 +549,9 @@ async def poll(ctx: ZexionContext) -> None:
     # A save past its ending playing it again: held before this poll's step gives anything.
     await side_tick(ctx, "the ending again", lambda: replay_tick(ctx))
     await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
+    if ctx.helper is not None:
+        # CLIENT CONNECTED before the popups this poll's step hands over.
+        await side_tick(ctx, "client-back notice", lambda: client_back_tick(ctx))
     try:
         followups: dict[int, str] = {}
         try:
@@ -532,9 +566,11 @@ async def poll(ctx: ZexionContext) -> None:
                 log.warning(f"Area Map hints failed ({exc!r}); items and checks go on.")
         hunt = conn.hunt
         if hunt is not None:  # a received disk's popup, then the count
-            # Found disks whose count followups_tick has still to show count there, not here.
-            pending = ctx.load.save_collected - (popped(ctx) or set())
-            followups |= discs.received_notes(hunt, p.codes, p.found, seed.discs_told, pending)
+            # Disks picked up whose count followups_tick has still to show count there, not
+            # here; the rest of the loaded save's own count here.
+            have = ctx.load.save_collected
+            pending = discs.uncounted(ctx.load.disks_counted, have, hunt.locations)
+            followups |= discs.received_notes(hunt, p.codes, have, seed.discs_told, pending)
         if ctx.conn is not conn:
             return  # another connection while the hints were stored: its items are not these
         # A helper lost in a tick since the attach above (the ending again): the step gives
@@ -543,6 +579,7 @@ async def poll(ctx: ZexionContext) -> None:
         waiting = ctx.helper is None and ctx.helper_lost
         if waiting and ctx.step_failed:
             waiting = ctx.helper_lost = False
+        current.keep_traps = ctx.helper is None and ctx.swap_pending
         step = await asyncio.to_thread(
             current.step,
             ctx.game_conn,
@@ -551,6 +588,11 @@ async def poll(ctx: ZexionContext) -> None:
             followups=followups,
             helper=ctx.helper,
             give=not waiting,
+            # Other players' items the server has as checked stay collected in the save. Not
+            # before this connection's item list has come: after a drop the checked locations
+            # are the last connection's until the next Connected (a server that came back with
+            # an older save has fewer).
+            gone=state.others_gone(conn, ctx.checked_locations) if conn.items_listed else (),
         )
     except game.GameNotRunning:
         game_closed(ctx, seed)
@@ -563,6 +605,16 @@ async def poll(ctx: ZexionContext) -> None:
         await asyncio.sleep(2)
         return
     ctx.said.clear("read", "read detail")
+    if step.marked:
+        n = len(step.marked)
+        places = ", ".join(
+            ctx.location_names.lookup_in_slot(LOCATION_ID_BASE + i, ctx.slot)
+            for i in sorted(step.marked)
+        )
+        detail(
+            f"Marked collected in this save ({n} other players' "
+            f"{'item' if n == 1 else 'items'} found or collected already): {places}."
+        )
     if step.helper_error is not None:
         # Nothing was given (session.py); the checks and the goal go on below. The helper is
         # attached again before the next step, once: one that fails the step again (a request
@@ -579,6 +631,11 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         await attach_helper(ctx)
+    if ctx.helper is not None:
+        ctx.said.clear("own traps")
+    elif conn.traps and step.seed_matches and ctx.said("own traps", "no mod"):
+        # The helper sets them off at their pickup; nothing makes one up later.
+        logger.info("Without the mod, your own traps do nothing when you pick them up.")
     # The popups the step handed the helper, or the items it wrote directly.
     await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
     load = ctx.load
@@ -598,6 +655,7 @@ async def poll(ctx: ZexionContext) -> None:
         if not load.seed_loaded:
             logger.info(state.save_loaded(step.save_stamp))  # again after a reconnect
         load.seed_loaded = True
+        load.in_play = step.state == game.IN_PLAY
         seed.discs_told = step.scanned
         load.save_collected = set(step.checked)
         if conn.lock_assists and ctx.assists_unlocked():
@@ -624,6 +682,14 @@ async def poll(ctx: ZexionContext) -> None:
         # A load's first look: sent from the next poll's, two reads apart, so a load caught half
         # way (the section still the last save's, the map grid the new one's) sends nothing.
         return
+    if hunt is not None:
+        # From the second look on: the own disks the save holds have had their count, but one
+        # picked up since (followups_tick), again after a reload put it back. Another slot of
+        # the seed (loaded while the polls paused, so with no look at the title between) starts
+        # over: the disks it holds were not picked up now.
+        if step.save_stamp[:4] != load.disks_slot:
+            load.disks_counted, load.disks_slot = None, step.save_stamp[:4]
+        load.disks_counted = discs.counted(load.disks_counted, step.checked, hunt.locations)
     shield_work = seed.shields.pending is not None or seed.shields.given is not None
     if ctx.helper is not None or shield_work:
         await side_tick(ctx, "Energy Shields", lambda: shields_tick(ctx, p.codes))
@@ -646,8 +712,7 @@ async def poll(ctx: ZexionContext) -> None:
     if new:
         p.found = own_found(ctx)  # counted from now on, in this poll too
     for name, tick in (
-        ("client-back notice", lambda: client_back_tick(ctx, step)),  # CLIENT CONNECTED first
-        ("follow-up popups", lambda: followups_tick(ctx, p, step)),
+        ("follow-up popups", lambda: followups_tick(ctx, p, step)),  # after CLIENT CONNECTED
         ("Landing Pod's RETURN HOME", lambda: mission_tick(ctx, p, step)),
         ("Feats guard check", lambda: feats_tick(ctx, step)),
     ):
@@ -657,7 +722,7 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.conn is not conn:
         return  # the connection changed meanwhile: this ending is not its goal
     if step.goal and not ctx.finished_game:
-        have = 0 if hunt is None else discs.owned(hunt, p.codes, p.found)
+        have = 0 if hunt is None else discs.owned(hunt, p.codes, load.save_collected)
         if state.goal_reached(step.goal, None if hunt is None else hunt.required, have):
             try:
                 await ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])

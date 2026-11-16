@@ -2,6 +2,8 @@
 name: re-auditor
 description: Reviews diffs to the Zexion client and the RE tools for hard-coded addresses, memory reads and writes that are not checked, writes to the game or save folders outside save_lab's install and restore, hooks in the native helper that could crash the game or outlive an unload, and anything that could deliver an Archipelago item twice, lose one, or send a location check that did not happen. Use after any change to client/, tools/ or native/.
 tools: Read, Grep, Glob, Bash
+model: opus
+effort: high
 ---
 
 You review changes to `client/`, `tools/` and `native/` in the zexion-ap repository for the failures
@@ -34,6 +36,21 @@ around the change.
    (`Game.set_item`, no helper) must compare-and-set, read the byte back and treat a mismatch
    as not delivered. Either way, nothing counts a grant as kept: the next poll gives again
    whatever the inventory still lacks (`client/reconcile.py`).
+   The client's other writes mark other players' items collected (`client/session.py`, `mark`;
+   `Game.set_item_collected` and `set_map_collected`): the cell's item state, then its map
+   cell. Each must be compare-and-set and read back, made only in play in this seed's save
+   with the save checked again right before the writes, for a location the server has as
+   checked that is never this world's own (its disks and traps follow the save). The state
+   may be written under an item object of the cell in the loaded rooms (the game's own
+   update then ends that object); the map cell never under one still there (the save would
+   count its pickup twice), and neither for a cell whose item may be there as another kind of
+   object (the game's loaded byte or the margin around the player with no item object, an
+   item an object holds or has dropped), nor ever in a room that waits for its item's
+   pickup (`ids.PICKUP_ROOMS`: marked from afar, Exodia X20 Y0 soft-locked in game, and
+   R'Talva X34 Y51's warp gate waited for the touch of a reward that gave nothing, and Kresezoa X5
+   Y23's boss still dropped the item's picture, which gave nothing), whose checked item is labeled
+   Scrap Metal instead (`native/README.md`, "Kept collected"; `docs/re/memory.md`, "What decides
+   whether an item appears").
 4. **Unsafe timing.** Delivering items or reading checks while the game is loading, in a menu,
    on the title screen, dead, or in a cutscene. Writes must be gated on
    `Game.settled_state() == IN_PLAY`, not a single `state()`: loading a save (and respawning)
@@ -47,10 +64,18 @@ around the change.
    the client gives what the player should own (the seed's starting items, the game's own items
    at the collected locations, and the items received) minus what the inventory holds. Check
    that `should_own` stays right, that nothing marks a grant as kept, and that an item arriving
-   while the game is not ready waits rather than being dropped. The one stored index is the
-   popup count in the server's data storage (`announced_tick`, `client/storage.py`): check that
-   it cannot replay or skip a popup across reconnects, client restarts, game restarts and
-   reloads of an older save. Measured on B1: a grant is lost when the player dies before the
+   while the game is not ready waits rather than being dropped. A cell the client marked
+   collected owes nothing (the owner's rule: no Scrap Metal for marks): a stand-in's one Scrap
+   Metal counts only where it was picked up, the marked cells being the collected ones the
+   game's pickup counter does not account for (`reconcile.marked_count`; `docs/re/memory.md`,
+   "The pickup counter and the collected cells"), so that is not a lost grant; a mark that
+   gives Scrap Metal, or anything that takes Scrap Metal away, is a finding, and nothing may
+   be marked while the counter cannot be read. The stored indexes are the
+   popup count in the server's data storage (`announced_tick`, `client/storage.py`) and the
+   held-traps record beside it (`held_key`, `held_stored`): a trap rides on its popup, so a
+   record lost or counted twice runs a trap twice or never. Check that neither can replay or
+   skip a popup or a trap across reconnects, client restarts, game restarts and reloads of an
+   older save. Measured on B1: a grant is lost when the player dies before the
    game saves, and kept once it saves (`docs/re/memory.md`, "Granting each kind of item"); the
    next poll must give it again. Counted items (Energy Tanks, Missile Containers, Mega Bombs)
    need their player-state fields written too; a grant of the byte alone is incomplete.
@@ -59,10 +84,11 @@ around the change.
    not this seed's, or before the flag's meaning is recorded in `docs/re/`. Also checks that are
    never re-sent after a disconnect.
 7. **Writes to protected folders.** Anything in `client/` or `tools/` that opens the game
-   install, the save folder, or Steam's cloud cache for writing, other than `save_lab.py
-   install` and `restore` (the client writes neither). The tools' paths must go through
-   `tools/protected.py` (`assert_writable`). Also flag any new path around the backup checks
-   in those two.
+   install, the save folder, Steam's cloud cache or the mod's offline files
+   (`%LOCALAPPDATA%\ZexionAP`; only the helper writes them) for writing, other than
+   `save_lab.py install` and `restore` (the client writes neither of the first two). The tools'
+   paths must go through `tools/protected.py` (`assert_writable`). Also flag any new path around the
+   backup checks in those two.
 8. **Patterns that won't survive a patch.** Patterns with few fixed bytes, patterns over data
    rather than code, or wildcards missing over `rel32`/`disp32` bytes.
 9. **Native helper safety** (`native/`). Code that runs inside the game: anything done in

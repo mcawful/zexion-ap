@@ -13,7 +13,7 @@ the same heading with the new build, beside the old one, never in its place.
    [`builds.md`](builds.md). If the exe's SHA-256 differs from every build there, add a new
    section (B2, and so on) with it, and note which data files changed.
 2. **Copy the new build's files** into `lab/`: `.venv/Scripts/python tools/game_data.py
-   RandoCells MapData Text Objects AreaEvents Enemies Bosses Sprites Sprites.png Palettes --exe`
+   RandoCells MapData Text Objects AreaEvents Enemies Bosses Missiles Sprites Sprites.png Palettes --exe`
    (into `lab/data/<exe-hash-12>/`, the first 12 hex digits of the exe's SHA-256, so builds
    never mix): every data file the layouts in `memory.md` and `randocells.md` depend on.
    Everything below reads these copies, never the install. `build_id.py` fingerprints all but
@@ -21,6 +21,10 @@ the same heading with the new build, beside the old one, never in its place.
 3. **Check every pattern** against the copy: `.venv/Scripts/python tools/check_patterns.py
    lab/data/<exe-hash-12>/Zexion.exe`. Each target must resolve (every pattern once, all agreeing);
    for a build not yet known the tool reports the addresses found, for `docs/re/memory.md`.
+   Two targets may fail without stopping the client: `cell_state` and `pickup_counter`
+   (`patterns.CLIENT_ONLY_TARGETS`), without either of which it still attaches and only stops
+   marking other players' items collected, saying so once. Replace their patterns all the
+   same.
 4. **Replace the patterns that fail** with `.venv/Scripts/python tools/make_pattern.py EXE RVA`
    (the `/find-address` skill, step 4): find the target's new RVA from the old code (its
    references, its function), take candidates, and keep two or more from different code. A

@@ -37,7 +37,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "1.1.0";
+constexpr char kVersion[] = "1.2.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // Passes on the original's rax: the test target returns a value, SDL_GL_SwapWindow none.
@@ -231,7 +231,15 @@ void take_offline() {
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
 void note_put_seed(zap::OfflineSeed seed) {
     AcquireSRWLockExclusive(&g_offline_lock);
-    g_put_seeds.push_back(std::move(seed));
+    // One of the same name still waiting (no frame since: the game in the background) is
+    // replaced, so the queue holds one a seed however often a client puts it.
+    auto same = std::find_if(g_put_seeds.begin(), g_put_seeds.end(),
+                             [&](const zap::OfflineSeed& s) { return s.name == seed.name; });
+    if (same != g_put_seeds.end()) {
+        *same = std::move(seed);
+    } else {
+        g_put_seeds.push_back(std::move(seed));
+    }
     ReleaseSRWLockExclusive(&g_offline_lock);
 }
 
@@ -267,6 +275,11 @@ uintptr_t frame(void* argument) {
                         g_game.watch_newgame();
                         g_game.watch_all(&archipelago_chosen);
                     });
+                    // Traps patch the game's code as they start (trap.h): never while an unload
+                    // runs (they wait, and are lost with the helper, as popups are). Guarded on
+                    // its own: a received trap's popup is shown here, and the popups behind it
+                    // wait for it, so a watch that throws must not keep it from running.
+                    guarded([] { g_game.pump_traps(GetTickCount64()); });
                 }
                 publish_blocker();
                 ReleaseSRWLockExclusive(&g_menu_lock);
@@ -378,19 +391,6 @@ struct Request {
     std::string (*run)(const std::string& request) = nullptr;
 };
 
-std::string disk_slots(const std::string& request) {
-    // The file select's disk count for the seed's slots (files.h; the format: requests.h).
-    std::map<int, int> counts;
-    std::string error = zap::parse_disk_slots(request, counts);
-    return on_game(
-        [&] {
-            bool on = !counts.empty();
-            g_game.set_disk_slots(std::move(counts));
-            return std::string(on ? "disk_slots on" : "disk_slots off");
-        },
-        true, error);
-}
-
 std::string discs(const std::string& request) {
     // The OS Install Disks goal's count and the scanner's line (scan.h; the format: requests.h).
     int count = 0, required = 0;
@@ -476,7 +476,8 @@ const Request kRequests[] = {
     {"mission_black", true, [] { return g_game.mission_black(); }},
     // The received scraps' drops (game_calls.h, drop_status): for live checks.
     {"drop_status", false, [] { return g_game.drop_status(); }},
-    {"disk_slots", false, nullptr, &disk_slots},
+    // The traps set off (game_calls.h, trap_status): for live checks.
+    {"trap_status", false, [] { return g_game.trap_status(); }},
     {"discs_status", false, [] { return g_game.equipment_status(); }},
     {"discs", false, nullptr, &discs},
     {"ap_labels", false, nullptr, &ap_labels},
@@ -536,6 +537,7 @@ std::string undo_for_unload() {
                 // The game's memory only: what the client asked for is kept, for the watches to
                 // apply again should the unload be refused (the client would not resend it).
                 g_game.put_back_game(&archipelago_chosen);
+                g_game.put_back_traps();  // none held: refused above while one is
                 g_game.hold_translated_popups();  // until a watch runs again
                 g_game.restore_feats();
                 g_game.hide_title();

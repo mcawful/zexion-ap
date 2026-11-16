@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import functools
+import logging
 import struct
 
 import pytest
 from fakes import CELLS, SECRET_CELLS, SECRET_LIST, plan, secret_plan, section
 
-from client import game, ids, native
+from client import game, ids, native, offline, reconcile
 from client import save_patch as sp
 from client import session as ss
 
 
 class FakeGame:
     def __init__(self, p: sp.SeedPlan):
+        self.plan = p
         self.state_value = game.IN_PLAY
         self.grid = bytearray(54 * 54)
         self.inv = bytearray(51)
@@ -29,6 +31,16 @@ class FakeGame:
         self.stamp = bytes(14)
         self.saved: int | None = None  # game_saved
         self.cell = (0, 0)  # the player state's, the game's (X, Y)
+        self.items = bytearray(54 * 54)  # each cell's item state (game.Game.cell_items)
+        self.live: set[tuple[int, int]] = set()  # the cells of the item objects in the rooms
+        self.loaded = bytearray(54 * 54)  # each cell's loaded byte (game.Game.loaded_cells)
+        # The game ends an item object once its cell's state reads collected or held (its
+        # update, each frame); False: not yet, as between two of the game's updates.
+        self.ends_items = True
+        self.spawn: set[tuple[int, int]] = set()  # rooms loaded between a mark's look and write
+        self.load_after_writes = False  # a load beginning as the marking's last write lands
+        self.pickups: int | None = 0  # the pickup counter (None: not found in this build)
+        self.timer = 0  # the transition timer: a TELEPORT TO counts it down while in play
 
     def state(self, energy: int | None = None) -> str:
         self.reads += 1
@@ -63,10 +75,47 @@ class FakeGame:
     def game_saved(self) -> int | None:
         return self.saved
 
+    def pickup_counter(self) -> int:
+        if self.pickups is None:
+            raise game.PatternError("pickup_counter was not found in this build of the game")
+        return self.pickups
+
+    def transition_timer(self) -> int:
+        return self.timer
+
     def set_item(self, item: int, expected: int, value: int) -> None:
         if self.inv[item] != expected:
             raise game.GameError("not the expected value")
         self.inv[item] = value
+
+    def cell_items(self) -> bytes:
+        return bytes(self.items)
+
+    def live_item_cells(self) -> set[tuple[int, int]]:
+        if self.ends_items:
+            self.live = {(x, y) for x, y in self.live if self.items[y * 54 + x] not in (1, 2)}
+        return set(self.live)
+
+    def loaded_cells(self) -> bytes:
+        return bytes(self.loaded)
+
+    def set_item_collected(self, cell: tuple[int, int]) -> None:
+        x, y = cell
+        if cell in self.spawn:  # the game loaded the room first: its item is there now
+            self.spawn.discard(cell)
+            self.live.add(cell)
+            self.loaded[y * 54 + x] = 1
+        if self.items[y * 54 + x] != game.ITEM_THERE:
+            raise game.GameError("not the expected state")
+        self.items[y * 54 + x] = game.ITEM_COLLECTED
+
+    def set_map_collected(self, cell: tuple[int, int], expected: int) -> None:
+        x, y = cell
+        if self.grid[y * 54 + x] != expected:
+            raise game.GameError("not the expected marker")
+        self.grid[y * 54 + x] = 0x1B
+        if self.load_after_writes:
+            self.state_value = game.MENU
 
     def set_supplies(self, expected, new) -> None:
         if tuple(self.sup) != tuple(expected):
@@ -77,8 +126,13 @@ class FakeGame:
         """A native pickup: the map cell and the item the table holds there."""
         x, y = CELLS[i]
         self.grid[y * 54 + x] = 0x1B
-        item = PLAN.location_items[i]
-        self.inv[item] += 1
+        self.items[y * 54 + x] = game.ITEM_COLLECTED
+        self.live.discard((x, y))
+        item = self.plan.location_items[i]
+        # Records 46 to 50 all raise Scrap Metal's byte (reconcile.COUNTED_AS_SCRAP).
+        self.inv[ids.SCRAP_METAL if item >= ids.SCRAP_METAL else item] += 1
+        if item not in reconcile.UNCOUNTED_PICKUPS and self.pickups is not None:
+            self.pickups += 1  # the game's pickup counter
 
 
 # The flags the goal reads, by number (docs/re/memory.md, "The ending: flag 250"): the ending's,
@@ -426,6 +480,109 @@ def test_a_lost_reply_counts_its_popups_as_handed_over(with_helper) -> None:
     assert session.announced == 1, "the helper may have shown it: not shown again"
 
 
+def test_a_lost_reply_counts_the_held_traps_handed_over(with_helper) -> None:
+    # The helper may have queued them: not sent again (each trap goes off at most once).
+    session, g, helper, _ = with_helper
+
+    def apply(text: str) -> str:
+        helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    helper.apply = apply
+    received, senders = [17, ids.DISORIENT_TRAP], ["Bob", "Alice"]
+    session.announced, session.held_traps = 2, [1]
+    session.step(g, received, gap=0, senders=senders)
+    step = session.step(g, received, gap=0, senders=senders)
+    assert isinstance(step.helper_error, native.ReplyLost)
+    assert helper.popups() == ["popup 103 from Alice"] and session.held_traps == []
+
+
+def test_a_big_batch_goes_in_requests_under_the_pipes_limit(with_helper) -> None:
+    # A release received while the client was closed: the helper drops a request over 64 KB,
+    # which the client would take for a lost reply and count every popup as shown.
+    session, g, helper, _ = with_helper
+    received = [ids.DISORIENT_TRAP] + [17] * 600
+    senders = ["x" * 400] * len(received)
+    session.announced, session.held_traps = 1, [0]
+    assert give(session, g, received, senders=senders) == {17: 1}
+    assert len(helper.requests) > 2, "more than one batch"
+    assert all(len(r.encode()) <= offline.MAX_REQUEST for r in helper.requests)
+    assert [r for r in helper.requests if "cas " in r] == helper.requests[:1], "writes go first"
+    popups = [line for r in helper.requests for line in r.splitlines() if line.startswith("popup")]
+    assert popups[0] == f"popup {ids.DISORIENT_TRAP} from {'x' * 400}", "the held trap first"
+    assert len(popups) == 1 + 600
+    assert session.announced == len(received) and session.held_traps == []
+
+
+def test_a_held_trap_the_count_has_not_reached_is_sent_once(with_helper) -> None:
+    # The record of the held traps is stored before the count: a client stopped between the two
+    # finds the trap in the record and past the count, and sends its popup with the rest.
+    session, g, helper, _ = with_helper
+    received = [17, ids.DISORIENT_TRAP]
+    session.announced, session.held_traps = 1, [1]
+    give(session, g, received, senders=["Ann", "Bob"])
+    assert helper.popups() == [f"popup {ids.DISORIENT_TRAP} from Bob"]
+    assert session.announced == 2 and session.held_traps == []
+
+
+def test_held_traps_in_later_batches_are_kept_until_their_batch_is_applied(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    received = [ids.DISORIENT_TRAP] * 300
+    senders = ["x" * 400] * len(received)
+    session.announced, session.held_traps = len(received), list(range(len(received)))
+    real = helper.apply
+
+    def apply(text: str) -> str:
+        helper.reply = "refused not in play" if len(helper.requests) == 1 else "applied"
+        return real(text)
+
+    helper.apply = apply
+    give(session, g, received, senders=senders)
+    first = helper.requests[0].count("popup")
+    assert 0 < first < len(received), "split in two"
+    assert session.held_traps == list(range(first, len(received))), "the second batch is still owed"
+
+
+def test_a_batch_refused_part_way_keeps_the_rest_for_the_next_poll(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    received, senders = [17] * 300, ["x" * 400] * 300
+    real = helper.apply
+
+    def apply(text: str) -> str:
+        helper.reply = "refused not in play" if len(helper.requests) == 1 else "applied"
+        return real(text)
+
+    helper.apply = apply
+    assert give(session, g, received, senders=senders) == {17: 1}, "the first batch went in"
+    assert 0 < session.announced < len(received)
+    sent = session.announced
+    for _ in range(2):  # the second poll agrees with the first
+        session.step(g, received, gap=0, senders=senders)
+    assert session.announced == len(received) > sent
+    applied = helper.requests[:1] + helper.requests[2:]  # the second was refused: not shown
+    popups = [line for r in applied for line in r.splitlines() if line.startswith("popup")]
+    assert len(popups) == len(received), "none twice, none lost"
+
+
+def test_a_lost_reply_part_way_counts_only_the_batches_sent(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    received, senders = [17] * 600, ["x" * 400] * 600
+    real = helper.apply
+
+    def apply(text: str) -> str:
+        if len(helper.requests) == 1:
+            helper.requests.append(text)
+            raise native.ReplyLost("no reply within 3.0 s")
+        return real(text)
+
+    helper.apply = apply
+    session.step(g, received, gap=0, senders=senders)
+    step = session.step(g, received, gap=0, senders=senders)
+    assert isinstance(step.helper_error, native.ReplyLost)
+    shown = sum(line.startswith("popup") for r in helper.requests for line in r.splitlines())
+    assert session.announced == shown < len(received), "the batches unsent are still to show"
+
+
 def test_a_helper_that_doesnt_match_is_kept_for_the_poll_to_say(with_helper) -> None:
     session, g, helper, writes = with_helper
     mismatch = native.ModMismatch("both are version 0, but from different builds")
@@ -462,6 +619,35 @@ def test_received_scrap_pops_up_as_itself_once(with_helper) -> None:
     ]
     session.step(g, scrap, gap=0, senders=["Bob"] * 3)
     assert len(helper.requests) == 1 and session.announced == 3, "no popup, no drop, twice"
+
+
+def test_a_received_trap_is_its_popup_alone_once(with_helper) -> None:
+    # No byte: the helper sets the trap off with its popup (native/README.md,
+    # "Traps"), so it rides on the popup count, as received scrap's drops do.
+    session, g, helper, writes = with_helper
+    traps = [ids.DISRUPTION_TRAP, ids.DISORIENT_TRAP]
+    assert give(session, g, traps, senders=["Bob", "Alice"]) == {}
+    assert helper.requests[-1].splitlines() == [
+        "apply",
+        "popup 102 from Bob",
+        "popup 103 from Alice",
+    ]
+    assert session.announced == 2 and writes == []
+    session.step(g, traps, gap=0, senders=["Bob", "Alice"])
+    assert len(helper.requests) == 1, "never again"
+
+
+def test_traps_held_at_the_first_connection_pop_up_once_before_the_rest(with_helper) -> None:
+    # announced_tick counted all three as handed over (no stored count), keeping the trap.
+    session, g, helper, _ = with_helper
+    received, senders = [17, ids.DISORIENT_TRAP, 22], ["Bob", "Alice", "Dan"]
+    session.announced, session.held_traps = 3, [1]
+    session.step(g, received, gap=0, senders=senders)
+    session.step(g, received, gap=0, senders=senders)
+    assert helper.popups() == ["popup 103 from Alice"], "the trap alone, no flood of old popups"
+    assert session.held_traps == [] and session.announced == 3
+    session.step(g, received, gap=0, senders=senders)
+    assert len(helper.requests) == 1, "once"
 
 
 def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:
@@ -597,6 +783,73 @@ def test_direct_writes_count_as_handed_over_without_a_replay(setup) -> None:
     assert g.inv[22] == 1 and session.announced == 2
 
 
+def test_direct_writes_drop_the_waiting_traps_and_say_so(setup, caplog) -> None:
+    # No helper: a trap rides on its popup, so those held and new ones do nothing, once.
+    session, g = setup
+    session.announced_read = True
+    received = [ids.DISORIENT_TRAP, 17, ids.DISRUPTION_TRAP]
+    session.announced, session.held_traps = 2, [0]
+    with caplog.at_level(logging.INFO, logger="Zexion"):
+        give(session, g, received)
+    assert session.held_traps == [] and session.announced == 3 and g.inv[17] == 1
+    assert "do nothing: Disorient Trap, Disruption Trap." in caplog.text
+
+
+def test_direct_writes_name_a_trap_once_when_it_is_held_and_past_the_count(setup, caplog) -> None:
+    # After a restart between the record and the count stores, the trap is in both.
+    session, g = setup
+    session.announced_read = True
+    received = [17, ids.DISRUPTION_TRAP]
+    session.announced, session.held_traps = 1, [1]
+    with caplog.at_level(logging.INFO, logger="Zexion"):
+        give(session, g, received)
+    assert "do nothing: Disruption Trap." in caplog.text
+
+
+def test_a_lost_reply_part_way_clears_only_the_held_traps_it_may_have_handed_over(
+    with_helper,
+) -> None:
+    session, g, helper, _ = with_helper
+    received, senders = [ids.DISORIENT_TRAP] * 300, ["x" * 400] * 300
+
+    def apply(text: str) -> str:
+        helper.requests.append(text)
+        raise native.ReplyLost("no reply within 3.0 s")
+
+    helper.apply = apply
+    session.announced, session.held_traps = len(received), list(range(len(received)))
+    session.step(g, received, gap=0, senders=senders)
+    session.step(g, received, gap=0, senders=senders)
+    first = helper.requests[0].count("popup")
+    assert 0 < first < len(received), "split in two"
+    assert session.held_traps == list(range(first, len(received)))
+
+
+def test_direct_writes_keep_the_waiting_traps_for_a_helper_about_to_replace_the_old(
+    setup, caplog
+) -> None:
+    # The old helper refuses to unload only because a trap is running (keep_traps): the traps
+    # received while the step goes on without a helper are held, not dropped, and the helper
+    # that replaces it shows their popups first.
+    session, g = setup
+    session.announced_read, session.keep_traps = True, True
+    received = [ids.DISORIENT_TRAP, 17, ids.DISRUPTION_TRAP]
+    session.announced, session.held_traps = 2, [0]
+    with caplog.at_level(logging.INFO, logger="Zexion"):
+        give(session, g, received, senders=["Ann", "Bob", "Cy"])
+    assert session.held_traps == [0, 2] and session.announced == 3 and g.inv[17] == 1
+    assert "do nothing" not in caplog.text
+    helper = FakeHelper(g)
+    through(session, helper)
+    session.keep_traps = False
+    give(session, g, received, senders=["Ann", "Bob", "Cy"])
+    assert helper.popups() == [
+        f"popup {ids.DISORIENT_TRAP} from Ann",
+        f"popup {ids.DISRUPTION_TRAP} from Cy",
+    ]
+    assert session.held_traps == [] and session.announced == 3
+
+
 def test_the_endings_hold_carries_over_a_reconnect(setup) -> None:
     session, g = setup
     assert begin_ending(session, g).goal and session.holding
@@ -681,3 +934,580 @@ def test_the_game_closing_while_disconnected_is_raised(setup) -> None:
     g.state = closed
     with pytest.raises(game.GameNotRunning):
         session.look_away(g, gap=0)  # the client then ends its load (game_closed)
+
+
+# --- other players' items kept collected (Session.mark) --------------------------------------
+
+# A seed whose location 3 holds another player's item (a stand-in, whose pickup gives one
+# Scrap Metal) and location 5 another's progression item.
+OTHERS_PLAN = plan(
+    location_items=tuple(
+        {3: ids.STAND_IN, 5: ids.STAND_IN_PROGRESSION}.get(i, i % 46) for i in range(sp.LOCATIONS)
+    )
+)
+
+
+@pytest.fixture
+def others():
+    g = FakeGame(OTHERS_PLAN)
+    g.cell = (40, 40)  # the player far from the locations marked here (ss.NEAR_CELLS)
+    return ss.Session(OTHERS_PLAN), g
+
+
+def at(i: int) -> int:
+    x, y = CELLS[i]
+    return y * 54 + x
+
+
+def marked(g: FakeGame, i: int) -> bool:
+    """Whether location i reads as a pickup leaves it: no item made, and collected on the map."""
+    return g.items[at(i)] == game.ITEM_COLLECTED and g.grid[at(i)] == 0x1B
+
+
+def test_a_checked_item_of_another_player_is_marked_collected_on_the_second_poll(others) -> None:
+    session, g = others
+    first = session.step(g, [], gap=0, gone={3})
+    assert not first.marked and not marked(g, 3), "one poll alone marks nothing"
+    second = session.step(g, [], gap=0, gone={3})
+    assert second.marked == {3} and marked(g, 3)
+    assert g.items[at(5)] == game.ITEM_THERE and g.grid[at(5)] == 0, "only what the server has"
+    third = session.step(g, [], gap=0, gone={3})
+    assert third.checked == {3} and not third.marked, "it reads as collected from then on"
+
+
+def test_a_reload_from_before_is_marked_again(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    session.step(g, [], gap=0, gone={3})
+    g.items[at(3)], g.grid[at(3)] = game.ITEM_THERE, 0x0D  # the save from before, hinted
+    session.step(g, [], gap=0, gone={3})
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_a_marked_cell_gives_no_scrap_metal(others) -> None:
+    session, g = others
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(6):
+        assert not session.step(g, [], gap=0, gone={3}).granted
+    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap, "only a pickup gives its own"
+
+
+def test_a_stand_in_picked_up_still_counts_beside_the_marked_ones(others) -> None:
+    session, g = others
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3})
+    assert marked(g, 3)
+    g.collect(5)  # the other stand-in, picked up: the game gives its one Scrap Metal
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).granted
+    # A Scrap Metal received on top is owed, the picked-up stand-in's not standing in for it.
+    for _ in range(3):
+        session.step(g, [ids.SCRAP_METAL], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap + 1
+    # A death takes the received one's byte back: given again, once.
+    g.inv[ids.SCRAP_METAL] = scrap
+    for _ in range(3):
+        session.step(g, [ids.SCRAP_METAL], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap + 1
+
+
+def test_a_counter_that_fails_to_read_fails_the_poll_and_is_not_no_counter(others) -> None:
+    # Only a counter not found in this build reads as None. A read that fails in a running
+    # game must not: every marked cell would count as picked up, and its Scrap Metal be given.
+    session, g = others
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3})
+    assert marked(g, 3)
+
+    def failing() -> int:
+        raise game.GameError("read at 0x1234 failed in a running game")
+
+    g.pickup_counter = failing
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(3):
+        with pytest.raises(game.GameError, match="failed in a running game"):
+            session.step(g, [], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap
+
+
+def test_a_stand_in_picked_up_then_lost_to_a_death_is_marked_and_gives_none(others) -> None:
+    session, g = others
+    g.collect(3)  # picked up: the game gives its Scrap Metal, and the check is sent
+    assert session.step(g, [], gap=0, gone=set()).checked == {3}
+    scrap = g.inv[ids.SCRAP_METAL]
+    # A death before the game saved: the cell, the byte and the counter are the save's again.
+    g.grid[at(3)], g.items[at(3)], g.pickups = 0, game.ITEM_THERE, 0
+    g.inv[ids.SCRAP_METAL] = scrap - 1
+    for _ in range(4):
+        session.step(g, [], gap=0, gone={3})  # the server has it as checked
+    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap - 1, "marked: no Scrap Metal"
+
+
+def test_a_save_marked_under_the_old_rule_keeps_its_scrap_metal(others) -> None:
+    session, g = others
+    g.grid[at(3)], g.items[at(3)] = 0x1B, game.ITEM_COLLECTED  # marked by an older client,
+    g.inv[ids.SCRAP_METAL] += 1  # which gave the Scrap Metal a pickup would have
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).granted
+    assert g.inv[ids.SCRAP_METAL] == scrap, "nothing is taken away, and nothing given again"
+    # That surplus stands in for a Scrap Metal received later: the byte stays.
+    for _ in range(3):
+        assert not session.step(g, [ids.SCRAP_METAL], gap=0, gone={3}).granted
+    assert g.inv[ids.SCRAP_METAL] == scrap
+
+
+def test_nothing_is_marked_while_the_pickup_counter_cannot_be_read(others, caplog) -> None:
+    session, g = others
+    g.pickups = None
+    with caplog.at_level(logging.WARNING, logger="Zexion"):
+        for _ in range(3):
+            step = session.step(g, [], gap=0, gone={3})
+            assert not step.marked and step.seed_matches
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0
+    assert sum("pickup counter was not found" in r.message for r in caplog.records) == 1
+    # A cell marked before (or picked up: they cannot be told apart) counts as picked up.
+    g.collect(5)
+    g.inv[ids.SCRAP_METAL] -= 1
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap + 1
+
+
+def in_the_room(g: FakeGame, i: int) -> None:
+    """Location i's item made by the game in a room loaded around the player (a reload at a
+    save point beside it)."""
+    x, y = CELLS[i]
+    g.cell = (y, x)
+    g.loaded[at(i)] = 1
+    g.live.add(CELLS[i])
+
+
+def test_an_item_object_in_the_loaded_rooms_is_ended_by_its_state_and_marked(others) -> None:
+    session, g = others
+    in_the_room(g, 3)
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and CELLS[3] in g.live, "two polls, as for any"
+    # The state written, the game's update ends the object; the map cell follows at once.
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+    assert CELLS[3] not in g.live_item_cells()
+    assert not session.step(g, [], gap=0, gone={3}).marked
+
+
+def test_the_map_cell_waits_for_an_item_object_the_game_has_not_ended_yet(others) -> None:
+    session, g = others
+    in_the_room(g, 3)
+    g.ends_items = False
+    session.step(g, [], gap=0, gone={3})
+    for _ in range(2):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+        assert g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0, "never under it"
+    # Ended and freed between two polls, the room still loaded around the player: marked, as
+    # the cell is known to have had an item object of its own.
+    g.live.clear()
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_a_save_death_or_reload_forgets_which_cells_had_an_item_object(others) -> None:
+    session, g = others
+    in_the_room(g, 3)
+    g.ends_items = False
+    session.step(g, [], gap=0, gone={3})
+    session.step(g, [], gap=0, gone={3})
+    g.live.clear()
+    g.stamp = bytes([0, 0, 0, 0, 9]) + bytes(9)  # the same slot, saved again
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked, "a loaded cell with no object"
+    g.loaded[at(3)] = 0
+    g.cell = (40, 40)
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_an_item_picked_up_before_the_game_ends_it_counts_once(others) -> None:
+    session, g = others
+    in_the_room(g, 3)
+    g.ends_items = False
+    scrap = g.inv[ids.SCRAP_METAL]
+    session.step(g, [], gap=0, gone={3})
+    session.step(g, [], gap=0, gone={3})  # the state written under it
+    g.collect(3)  # the player takes it in that frame: the game records the pickup
+    for _ in range(4):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap + 1
+
+
+@pytest.mark.parametrize("held", [2, 3])
+def test_an_item_an_object_holds_or_has_dropped_is_left(others, held) -> None:
+    session, g = others
+    g.items[at(3)] = held
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == held and g.grid[at(3)] == 0
+    g.items[at(3)] = game.ITEM_THERE  # its room left: the game puts the state back
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_a_room_loaded_between_the_look_and_the_write_gets_its_map_cell_later(others) -> None:
+    session, g = others
+    g.spawn.add(CELLS[3])
+    session.step(g, [], gap=0, gone={3})
+    step = session.step(g, [], gap=0, gone={3})
+    # The state is written, so the game ends the item it had just made; the map cell is not:
+    # the cell reads loaded, and no item object of its own was seen there before the write.
+    assert not step.marked and g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0
+    assert CELLS[3] not in g.live_item_cells()
+    scrap = g.inv[ids.SCRAP_METAL]
+    assert not session.step(g, [], gap=0, gone={3}).marked, "its cell still reads loaded"
+    g.loaded[at(3)] = 0
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap, "marked, not picked up: no Scrap Metal"
+
+
+def test_a_map_cell_the_game_changed_since_the_look_is_marked_by_a_later_poll(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    real = g.set_map_collected
+
+    def changed(cell, expected):
+        g.grid[at(3)] = 0x19  # the room's reveal, between the look and the write
+        real(cell, expected)
+
+    g.set_map_collected = changed
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0x19
+    g.set_map_collected = real
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_nothing_is_marked_out_of_play_or_in_another_save(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    g.state_value = game.MENU
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    g.state_value = game.IN_PLAY
+    assert not session.step(g, [], gap=0, gone={3}).marked, "two polls in play in a row again"
+    g.marker = 0  # a normal save loaded: the section in memory is still the seed's
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    g.marker = 1
+    g.blob = bytes(section(PLAN))  # a save of another seed with the same locations
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert not marked(g, 3) and g.items[at(3)] == game.ITEM_THERE
+    g.blob = bytes(section(OTHERS_PLAN))
+    session.step(g, [], gap=0, gone={3})
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_nothing_is_marked_once_the_ending_began(others) -> None:
+    session, g = others
+    begin_ending(session, g)
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert not marked(g, 3)
+
+
+def test_a_helper_to_attach_again_holds_the_grants_not_the_marking(others) -> None:
+    session, g = others
+    session.step(g, [17], gap=0, gone={3}, give=False)
+    assert session.step(g, [17], gap=0, gone={3}, give=False).marked == {3}
+    for _ in range(3):
+        session.step(g, [17], gap=0, gone={3}, give=False)
+    assert g.inv[17] == 0, "the received item waits"
+    for _ in range(2):
+        session.step(g, [17], gap=0, gone={3})
+    assert g.inv[17] == 1
+
+
+def test_locations_the_seed_does_not_list_are_not_marked(others) -> None:
+    session, g = others
+    for _ in range(2):
+        assert not session.step(g, [], gap=0, gone={-1, sp.LOCATIONS, 999}).marked
+    assert not any(g.items) and not any(g.grid)
+
+
+@pytest.mark.parametrize("state", [game.MENU, game.DEAD, game.NO_SAVE])
+def test_a_poll_out_of_play_starts_the_two_polls_over(others, state) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    g.state_value = state
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    g.state_value = game.IN_PLAY
+    assert not session.step(g, [], gap=0, gone={3}).marked and not marked(g, 3)
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+@pytest.mark.parametrize("between", ["connected", "hold_ending", "leave"])
+def test_a_new_connection_or_load_starts_the_two_polls_over(others, between) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    getattr(session, between)()
+    session.holding = False  # hold_ending's hold itself is tested above
+    assert not session.step(g, [], gap=0, gone={3}).marked, "one poll of the new one alone"
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_the_two_polls_are_of_one_save_slot_and_close_together(others, monkeypatch) -> None:
+    session, g = others
+    clock = [100.0]
+    monkeypatch.setattr(ss.time, "monotonic", lambda: clock[0])
+    session.step(g, [], gap=0, gone={3})
+    clock[0] += ss.MARK_AGREE_SECONDS + 1  # the polls paused: the helper attached again, say
+    assert not session.step(g, [], gap=0, gone={3}).marked, "too long since the poll before"
+    g.stamp = bytes([5]) + bytes(13)  # another slot of the seed, loaded during such a pause
+    clock[0] += 1
+    assert not session.step(g, [], gap=0, gone={3}).marked, "another save slot"
+    clock[0] += 1
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_the_cells_around_the_player_are_left(others) -> None:
+    session, g = others
+    x, y = CELLS[3]
+    # The player state gives the game's (X, Y): this repo's (y, x). An object of another kind
+    # may be the item there (a reversed-gravity room's), which the item pool does not show.
+    for dx, dy in ((0, 0), (ss.NEAR_CELLS, 0), (-ss.NEAR_CELLS, ss.NEAR_CELLS)):
+        g.cell = (y + dy, x + dx)
+        for _ in range(3):
+            assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0
+    g.cell = (y, x + ss.NEAR_CELLS + 1)  # far enough for its room to be unloaded
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_a_cell_the_game_has_loaded_is_left(others) -> None:
+    session, g = others
+    # The game's own word that the cell's objects are loaded, wherever the player stands and
+    # whatever kind of object the item is there (none of the item pool's here).
+    g.loaded[at(3)] = 1
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3, 5}).marked - {5}
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0 and marked(g, 5)
+    g.loaded[at(3)] = 0  # the room left
+    session.step(g, [], gap=0, gone={3, 5})
+    assert marked(g, 3)
+
+
+def test_a_cell_loaded_between_the_two_writes_keeps_its_map_cell(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    real = g.set_item_collected
+
+    def loads_right_after(cell: tuple[int, int]) -> None:
+        real(cell)
+        g.loaded[at(3)] = 1  # no item object: an item of another kind may be there
+
+    g.set_item_collected = loads_right_after
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_COLLECTED and g.grid[at(3)] == 0
+    g.loaded[at(3)] = 0
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_an_item_state_that_changed_since_the_look_is_not_written(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3, 5})
+    real = g.cell_items
+    calls = []
+
+    def taken_after_the_look() -> bytes:
+        states = real()
+        calls.append(1)
+        if len(calls) == 2:  # the read right before the writes: an object takes the item next
+            g.items[at(3)] = 2
+        return states
+
+    g.cell_items = taken_after_the_look
+    step = session.step(g, [], gap=0, gone={3, 5})
+    # The compare-and-set refuses: nothing of that cell is written, the other is marked.
+    assert step.marked == {5} and g.items[at(3)] == 2 and g.grid[at(3)] == 0
+    assert not session.step(g, [], gap=0, gone={3, 5}).marked, "held by an object: left"
+
+
+@pytest.mark.parametrize("change", ["stamp", "state", "marker", "no stamp", "teleport"])
+def test_the_save_is_checked_again_right_before_the_writes(others, change) -> None:
+    _, g = others
+    stamp = g.stamp
+    if change == "stamp":
+        g.stamp = bytes([1]) + bytes(13)  # a save, a death or a reload since the look
+    elif change == "state":
+        g.state_value = game.MENU
+    elif change == "marker":
+        g.marker = 0
+    elif change == "teleport":
+        g.timer = 53  # a TELEPORT TO counting down: in play, the stamp unchanged
+    else:
+        stamp = b""
+    assert ss.mark_collected(g, bytes(g.grid), CELLS, [3], stamp) == set()
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "nothing written"
+    g.stamp, g.state_value, g.marker, g.timer = bytes(14), game.IN_PLAY, 1, 0
+    assert ss.mark_collected(g, bytes(g.grid), CELLS, [3], bytes(14)) == {3} and marked(g, 3)
+
+
+def test_a_teleport_counting_down_marks_nothing_until_its_load_is_over(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    g.timer = 60  # TELEPORT TO START chosen: a second that reads as play, then its load
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "nothing written"
+    g.timer = 0
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_a_mark_a_load_that_reads_as_play_cut_is_not_reported_and_is_finished(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    write = g.set_map_collected
+
+    def state_taken_back(cell, expected):
+        write(cell, expected)
+        g.items[at(3)] = game.ITEM_THERE  # the load copied the state from before the mark
+
+    g.set_map_collected = state_taken_back
+    step = session.step(g, [], gap=0, gone={3})
+    assert not step.marked, "the map cell reads collected over an item that is there"
+    assert g.grid[at(3)] == 0x1B and g.items[at(3)] == game.ITEM_THERE
+    g.set_map_collected = write
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == 0, "and no Scrap Metal for it, cut or finished"
+
+
+def test_a_teleport_begun_under_the_last_write_reports_nothing(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    write = g.set_map_collected
+
+    def chosen_then(cell, expected):
+        write(cell, expected)
+        g.timer = 60
+
+    g.set_map_collected = chosen_then
+    assert not session.step(g, [], gap=0, gone={3}).marked
+
+
+def test_the_players_cell_is_read_again_right_before_the_writes(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    states = g.cell_items
+
+    def walked_up_since_the_look() -> bytes:
+        x, y = CELLS[3]
+        g.cell = (y, x + 1)  # the game's (X, Y): the cell next to the location's
+        return states()
+
+    g.cell_items = walked_up_since_the_look
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "left: its item may be here"
+    g.cell_items = states
+    g.cell = (40, 40)
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_a_load_beginning_under_the_marking_counts_nothing_as_marked(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    g.load_after_writes = True
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert not session.step(g, [], gap=0, gone={3}).marked  # the load, not in play
+    g.load_after_writes, g.state_value = False, game.IN_PLAY
+    g.items[at(3)], g.grid[at(3)] = game.ITEM_THERE, 0  # it put the item back
+    assert not session.step(g, [], gap=0, gone={3}).marked, "two polls again"
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_nothing_is_marked_while_the_slots_stamp_does_not_read(others) -> None:
+    session, g = others
+    g.stamp = b""
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0
+    g.stamp = bytes(14)
+    session.step(g, [], gap=0, gone={3})
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
+
+
+def test_a_room_that_waits_for_its_pickup_is_never_marked(others, monkeypatch) -> None:
+    session, g = others
+    # Exodia X20 Y0, in game 2026-11-14: marked from afar, the boss fight its pickup starts
+    # never began and the room could not be left. Its item stays, to pick up.
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset({CELLS[3]}))
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3, 5})
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "nothing written"
+    assert marked(g, 5), "any other square is marked as before"
+    # Nor with its item made already in the room around the player.
+    in_the_room(g, 3)
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3, 5}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0 and CELLS[3] in g.live
+    # Picked up as usual, it counts once, and is not marked again after.
+    scrap = g.inv[ids.SCRAP_METAL]
+    g.collect(3)
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3, 5}).marked
+    assert g.inv[ids.SCRAP_METAL] == scrap + 1
+
+
+def test_only_a_pickup_rooms_item_to_keep_collected_reads_no_cell_state(
+    others, monkeypatch
+) -> None:
+    session, g = others
+    monkeypatch.setattr(ids, "PICKUP_ROOMS", frozenset({CELLS[3]}))
+    g.cell_items = None  # not read: nothing of what is gone can be marked
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+
+
+def test_the_rooms_listed_are_exodia_rtalva_and_kresezoa_x5_y23() -> None:
+    # The map grid's order: this repo's (x, y) is the game's (Y, X).
+    assert {(0, 20), (51, 34), (23, 5)} == ids.PICKUP_ROOMS
+
+
+def test_a_mark_a_load_cut_in_two_is_finished(others) -> None:
+    session, g = others
+    # The map cell collected over an item still there: a mark whose state a load took back
+    # between its two writes (the game's own pickup never leaves the two so).
+    g.grid[at(3)] = 0x1B
+    first = session.step(g, [], gap=0, gone={3})
+    assert first.checked == {3} and not first.marked
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+    assert not session.step(g, [], gap=0, gone={3}).marked
+
+
+def test_a_failing_read_of_the_marking_holds_back_no_check_or_grant(others, caplog) -> None:
+    session, g = others
+
+    def broken() -> bytes:
+        raise game.GameError("short read")
+
+    g.cell_items = broken
+    g.collect(7)
+    caplog.set_level(logging.WARNING, logger="Zexion")
+    steps = [session.step(g, [17], gap=0, gone={3}) for _ in range(3)]
+    assert all(step.checked == {7} and not step.marked for step in steps)
+    assert g.inv[17] == 1, "the received item is given"
+    said = [r.message for r in caplog.records if "mark" in r.message]
+    assert len(said) == 1 and "items and checks still work" in said[0]
+
+
+def test_the_game_closing_in_the_marking_is_raised(others) -> None:
+    session, g = others
+
+    def closed() -> bytes:
+        raise game.GameNotRunning("the game exited")
+
+    g.cell_items = closed
+    with pytest.raises(game.GameNotRunning):
+        session.step(g, [], gap=0, gone={3})
+
+
+def test_nothing_is_read_for_the_marking_with_nothing_to_keep_collected(others) -> None:
+    session, g = others
+    g.cell_items = None  # not called
+    assert not session.step(g, [], gap=0).marked

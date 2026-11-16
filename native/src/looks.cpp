@@ -6,6 +6,7 @@
 
 #include "apitem.h"  // the stand-ins and their logo frames
 #include "game_mem.h"
+#include "offline.h"  // kCollectedCell
 
 namespace zap {
 
@@ -20,6 +21,29 @@ constexpr int32_t kOwnStyle = 34;
 constexpr int kPalettes = 65;       // the table's filled entries in a live B1 game, 0 to 64
 constexpr int kScanFrames = 30;     // frames between scans of the general pool
 constexpr int16_t kMarkerFirstState = 8210;  // type 1146's first state (Enemies, B1)
+// Type 2026's first state (Enemies, B1): the general object that draws the item in a
+// reversed-gravity room (docs/re/memory.md, "Live item objects").
+constexpr int16_t kFlippedFirstState = 13867;
+
+// A live reversed-gravity room's item object (`o`: its copy), whatever frame it shows: it is
+// dressed once, when made, from its item's record as that reads then, so one made while the
+// stand-ins were not restyled (a load from a menu) shows the game's scrap, not a logo.
+bool flipped_item(const BYTE* o) {
+    return field<int32_t>(o, obj::kSpawn) != 0 &&
+           field<int16_t>(o, obj::kFirstState) == kFlippedFirstState;
+}
+
+// A reversed-gravity room's item object (`seen`: its copy) that holds no item, over a map cell
+// that reads collected: what is left of another player's item the client marked collected, a
+// picture that gives nothing when touched (docs/re/memory.md, "What decides whether an item
+// appears"). One that holds its cell's item is the pickup, whatever the map says. A pickup of
+// the game's own ends the object, so none is left to hide then.
+bool collected_flipped(const BYTE* seen, const GameAddresses& at) {
+    const uint8_t row = seen[obj::kGeneralRow], column = seen[obj::kGeneralColumn];
+    return flipped_item(seen) && seen[obj::kHoldsItem] == 0 && at.map_grid != nullptr &&
+           row < kMapSide && column < kMapSide &&
+           at.map_grid[row * kMapSide + column] == kCollectedCell;
+}
 constexpr int kMarkerFlag = 154;             // its wait ends once set (state 8210's branch)
 
 // How item `item` looks at `clock`: the frame its record's animation is on, and its palette.
@@ -338,9 +362,10 @@ void ItemLooks::scan(const GameAddresses& at, BYTE* base) {
     objects_.resize(obj::kGeneralSize * kObjectSlots);
     if (safe_read(at.object_pool, objects_.data(), objects_.size())) {
         for (int slot = 0; slot < kObjectSlots; ++slot) {
-            if (shows_stand_in(objects_.data() + slot * obj::kGeneralSize, base)) {
-                flipped_slots_.push_back(slot);
-            }
+            const BYTE* o = objects_.data() + slot * obj::kGeneralSize;
+            // A reversed-gravity room's item too, on any frame (hide_marker hides one over a
+            // collected cell); each use of the list checks what it needs again.
+            if (shows_stand_in(o, base) || flipped_item(o)) flipped_slots_.push_back(slot);
         }
     }
     // Any dressed, hidden or colored earlier and not found now is put back if it is still ours.
@@ -374,9 +399,12 @@ void ItemLooks::hide_marker(const GameAddresses& at, BYTE* base) {
         if (h.spawn != 0 && h.spawn != spawn) h = {};  // another object now: not ours to put back
         const int stand_in = logo_index(field<int32_t>(seen, sprite::kFrameIndex));
         // Hidden while it waits on the helper's logo frame, if the game shows it (one the game
-        // hid is left to the game); shown again otherwise, whatever its frame.
-        if (base != nullptr && shows_stand_in(seen, base) &&
-            is_marker(slot, seen, at) && stand_in >= 0 && ours[stand_in] && waits) {
+        // hid is left to the game); shown again otherwise, whatever its frame. A reversed-gravity
+        // room's item over a collected cell is hidden the same way, for as long as the cell
+        // reads collected (a reload that takes the mark back shows it again).
+        const bool marker = base != nullptr && shows_stand_in(seen, base) &&
+                            is_marker(slot, seen, at) && stand_in >= 0 && ours[stand_in] && waits;
+        if (marker || collected_flipped(seen, at)) {
             if (h.spawn != 0 || seen[sprite::kVisible] != 0) {
                 if (seen[sprite::kVisible] != 0) put<BYTE>(object, sprite::kVisible, 0);
                 h = {spawn};
@@ -424,7 +452,7 @@ void ItemLooks::apply_flipped(const GameAddresses& at, BYTE* base, BYTE* standin
     }
 }
 
-void ItemLooks::restore(const GameAddresses& at) {
+void ItemLooks::restore(const GameAddresses& at, bool keep_collected) {
     // The colors first: an object dressed as a Zexion item keeps its style until it is undressed
     // below, and its palette is then the game's already.
     if (colored() > 0) {
@@ -451,11 +479,21 @@ void ItemLooks::restore(const GameAddresses& at) {
     frames_to_scan_ = 0;
     if (hidden_markers() > 0) {
         for (int slot = 0; slot < kObjectSlots; ++slot) {
+            Hidden& h = hidden_[slot];
             if (at.object_pool == nullptr) {
-                hidden_[slot] = {};
-            } else {
-                unhide_live(at.object_pool + slot * obj::kGeneralSize, hidden_[slot]);
+                h = {};
+                continue;
             }
+            if (h.spawn == 0) continue;
+            BYTE* object = at.object_pool + slot * obj::kGeneralSize;
+            BYTE seen[obj::kGeneralSize];
+            // Kept hidden through a menu: still that object, still over a collected cell.
+            if (keep_collected && safe_read(object, seen, sizeof(seen)) &&
+                field<int32_t>(seen, obj::kSpawn) == h.spawn && collected_flipped(seen, at)) {
+                if (seen[sprite::kVisible] != 0) put<BYTE>(object, sprite::kVisible, 0);
+                continue;
+            }
+            unhide_live(object, h);
         }
     }
     if (at.item_pool == nullptr || !dressed()) {

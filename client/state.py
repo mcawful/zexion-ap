@@ -21,10 +21,10 @@ build them from slot data.
 from __future__ import annotations
 
 import enum
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
-from . import aplabels, deathlink, discs, game, native, save_patch, session, shields
+from . import aplabels, deathlink, discs, game, ids, native, save_patch, session, shields
 
 
 class UnsupportedSeed(ValueError):
@@ -56,11 +56,28 @@ class Connection:
     intel_chip: bool  # the seed's Area Maps are Intel Chips
     death_link_on: bool
     hunt: discs.DiscHunt | None  # the OS Install Disks goal, or None for the core goal
+    # This world's own traps in its own locations, by location index: the trap's item code
+    # (the helper sets each off at its pickup, from the seed's file: ticks.offline_seed). Empty
+    # for a seed from before the traps.
+    traps: dict[int, int] = field(default_factory=dict)
+    # The item each Zexion trap in this world's locations is shown as, by location index (the
+    # world's draw: client/aplabels.py, trap_label).
+    trap_looks: dict[int, int] = field(default_factory=dict)
+    # This world's locations whose item belongs to another player (or an item link's group):
+    # the stand-ins but this player's own OS Install Disks and traps. Kept collected in the
+    # save once the server has them as checked (others_gone; session.Session.mark).
+    others: frozenset[int] = frozenset()
     # The server's full item list has come (the packet after Connected may be it).
     items_listed: bool = False
     awaiting_backlog: bool = True
-    # Received items' popups (announced_tick): the count last stored.
+    # Received items' popups (announced_tick): the count last stored, and the waiting held traps
+    # last stored, or read from the server's record at the connection's first read (None: not
+    # yet).
     announced_sent: int | None = None
+    held_sent: list[int] | None = None
+    # This connection has stored the held traps' record once: later stores replace it, even
+    # before the server's reply says so (announced_tick).
+    held_stored: bool = False
     found_sent_at: float = 0.0  # when the locations found were last stored (store_found)
     # The stored hints' CreateHints sent again (hints_tick); cleared when a send of new ones
     # fails, so all are created again.
@@ -82,18 +99,26 @@ class Connection:
         try:
             plan = save_patch.plan_from_slot_data(slot_data)
             kept = frozenset(slot_data["kept_locations"])
+            foreign = aplabels.foreign_locations(slot_data["location_items"], kept)
+            hunt = discs.from_slot_data(slot_data)
+            traps = own_traps(slot_data.get("trap_locations", []))
+            # Never an own disk, whatever the goal (the slot data lists them for every one).
+            own = set(traps) | {int(i) for i in slot_data["disc_locations"]}
             return cls(
                 team=team,
                 slot=slot,
                 mode=str(slot_data["mode"]),
                 plan=plan,
                 kept=kept,
-                foreign=aplabels.foreign_locations(slot_data["location_items"], kept),
+                foreign=foreign,
                 hint_targets=[list(t) for t in slot_data["hints"]],  # empty with the hints off
                 lock_assists=not slot_data["allow_assists"],
                 intel_chip=bool(slot_data["intel_chip"]),
                 death_link_on=bool(slot_data["death_link"]),
-                hunt=discs.from_slot_data(slot_data),
+                hunt=hunt,
+                traps=traps,
+                trap_looks=trap_looks(slot_data.get("trap_looks", [])),
+                others=frozenset(foreign) - own,
             )
         except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise UnsupportedSeed(
@@ -109,14 +134,48 @@ class Connection:
         # This slot's data storage keys: received Energy Shields counted as given (client/
         # shields.py); this world's locations found in game, in any save of the seed
         # (own_found: a release, which checks every location on the server, never writes it);
-        # the follow-up popups shown for this world's own finds, by location index; how many
+        # the hints shown for this world's own Area Maps found, by location index; how many
         # received items have had their popup (announced_tick); which entry each Area Map
         # used (client/hints.py).
         self.shield_key = self.key("shields")
         self.found_key = self.key("found")
         self.popped_key = self.key("popped")
         self.announced_key = self.key("announced")
+        # The traps held at the slot's first connection still to pop up (held_traps), so a
+        # reconnect or a restarted client keeps them.
+        self.held_key = self.key("held")
         self.hints_key = self.key("hints")
+
+
+def others_gone(conn: Connection, checked: Iterable[int]) -> set[int]:
+    """The locations to keep collected in this seed's saves (session.Session.mark), by index:
+    other players' items in this world (``Connection.others``) that the server has as checked
+    (``checked``: its location ids), whoever checked them: this player in any save of the seed,
+    the item's owner with ``!collect``, or this player's ``!release``. Never one of this
+    world's own items, which follow the save."""
+    return {loc - ids.LOCATION_ID_BASE for loc in checked} & conn.others
+
+
+def own_traps(entries: list) -> dict[int, int]:
+    """The slot data's ``trap_locations`` ([location index, item code] each) by location index;
+    ValueError for one this client does not know (UnsupportedSeed)."""
+    out: dict[int, int] = {}
+    for index, code in entries:  # TypeError for another form
+        if code not in ids.TRAPS or not 0 <= index < ids.MAX_LOCATIONS:
+            raise ValueError(f"trap_locations entry {[index, code]}")
+        out[int(index)] = int(code)
+    return out
+
+
+def trap_looks(entries: list) -> dict[int, int]:
+    """The slot data's ``trap_looks`` ([location index, item code] each) by location index;
+    ValueError for an entry this client does not know (UnsupportedSeed)."""
+    out: dict[int, int] = {}
+    for index, code in entries:  # TypeError for another form
+        if code not in ids.GAME_ITEMS or not 0 <= index < ids.MAX_LOCATIONS:
+            raise ValueError(f"trap_looks entry {[index, code]}")
+        out[int(index)] = int(code)
+    return out
 
 
 def goal_reached(ended: bool, required: int | None, have: int) -> bool:
@@ -124,7 +183,12 @@ def goal_reached(ended: bool, required: int | None, have: int) -> bool:
     session's goal), and with the OS Install Disks goal (``required``) only with enough disks
     (``have``). Whether or not the client saw that ending begin: one it missed (closed during
     it, or the save played without it) is the goal all the same, sent as such a save loads, not
-    only if the player plays the ending again (RETURN HOME is offered past the ending too)."""
+    only if the player plays the ending again (RETURN HOME is offered past the ending too).
+    An ended save short of disks can only come from 1.1.0, whose count every save of the seed
+    shared: under this goal the keys are not in the seed and RETURN HOME needs enough disks
+    (when the ending writes its save was not measured). In such a save the goal is sent as
+    its last disk is picked up, before the game saves the pickup (kept so: native/README.md,
+    "The OS Install Disks goal")."""
     return ended and (required is None or have >= required)
 
 
@@ -135,7 +199,9 @@ def stored_count(raw: object) -> int | None:
     The server keeps how many received items' popups have been handed over (announced_key:
     Session.announced), so items received offline still pop up and a reconnect replays none.
     Popups still queued when the game closes or the helper unloads are lost (the items are
-    given); a client closed between handing some over and storing the count shows them twice."""
+    given; a trap waiting in the save loaded holds the unload back, one for another save is lost
+    with its popup); a client closed between handing some over and storing the count shows them
+    twice."""
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
         return raw
     return None
@@ -159,6 +225,31 @@ def announced_start(raw: object, held: int, handed: int) -> int:
     stored = stored_count(raw)
     start = held if stored is None else min(stored, held)
     return max(start, min(handed, held))
+
+
+def held_traps(raw: object, codes: list[int], handed: int) -> list[int]:
+    """The indices of the traps among ``codes`` (the received items) that announced_start counts
+    as handed over with no popup: those past what the session handed over itself (``handed``),
+    where the server has no count stored (a slot's first connection). A trap rides on its popup
+    (native/README.md, "Traps"), so these still get theirs (Session.held_traps)."""
+    if stored_count(raw) is not None:
+        return []
+    return [i for i in range(min(handed, len(codes)), len(codes)) if codes[i] in ids.TRAPS]
+
+
+def stored_held(raw: object, codes: list[int]) -> list[int]:
+    """The waiting held traps the server's record (``held_key``) lists: indices into ``codes``
+    (the received items) that are traps. The key is open to any client in the room: anything
+    else is skipped."""
+    if not isinstance(raw, list):
+        return []
+    out = {
+        i
+        for i in raw
+        if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(codes)
+        if codes[i] in ids.TRAPS
+    }
+    return sorted(out)
 
 
 def announced_to_store(handed: int, raw: object, sent: int | None) -> int | None:
@@ -213,13 +304,11 @@ class HelperState:
     discs: Toggle = field(default_factory=Toggle)
     discs_status: str = ""
     discs_status_at: float = 0.0
-    # The file select's count (discs.slots_request), and when the slots are read again.
-    slots: Toggle = field(default_factory=Toggle)
-    slots_read_at: float = 0.0
     # The labels: whether it may hold some (this client's, or an earlier client's), the
     # seed and slot whose labels it holds, whether it refused them (not asked again).
     labels_held: bool = True
     labels_for: SeedState | None = None
+    labels_sent: dict[tuple[int, int], str] | None = None  # those it took for labels_for
     labels_refused: bool = False
     labels_retry_at: float = 0.0
     client_back_sent: bool = False  # asked once (client_back_tick)
@@ -319,7 +408,12 @@ class LoadState:
     """What the polls found of the loaded save of this seed."""
 
     seed_loaded: bool = False  # the last poll found this seed's save loaded
+    in_play: bool = False  # and found it in play (ticks.client_back_tick)
     save_collected: set[int] = field(default_factory=set)  # its collected locations
+    # This world's own OS Install Disks in it whose count notice is not owed (discs.counted);
+    # None until the load's second look (a first one may be of a load half way).
+    disks_counted: set[int] | None = None
+    disks_slot: bytes = b""  # the save slot they are of (the stamp's first four bytes)
     # The landing-pod reminder and RETURN HOME WITH THE DISKS? for this load (mission_tick).
     return_home: discs.ReturnHome = field(default_factory=discs.ReturnHome)
     # RETURN HOME queued on this save past its ending: its YES plays the ending again, which flag

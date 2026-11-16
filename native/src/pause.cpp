@@ -232,12 +232,30 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
             show_translated_glyphs(keys_label);
         }
     };
-    // Turned already (each frame, as the screen stays up): nothing more to check.
+    const int cells[4] = {0, 1, 6, 7};  // the key slots: two characters each side of the label
+    // Turned already (each frame, as the screen stays up): only its characters again, once the
+    // text is another than the helper wrote on this screen (the count changed under it: a
+    // screen opened right after a reload from save, before the client's count; a disk received).
     int32_t icon = -1;
     BYTE* shown = nullptr;
     read(sprite[4], sprite::kFrameIndex, icon);
     read(sprite[4], sprite::kFrameShown, shown);
     if (icon == kDiskIcon || (entry_ != nullptr && shown == entry_)) {
+        if (menu == turned_ && text != written_) {
+            bool ok = true;
+            for (int k = 0; k < 4; ++k) ok = ok && writable(sprite[k], sprite::kSize);
+            for (BYTE* g : glyph) ok = ok && writable(g, sprite::kSize);
+            if (ok) {
+                for (int i = 0; i < kKeysGlyphs; ++i) {
+                    set_frame(glyph[i], static_cast<unsigned char>(capital(text[2 + i])));
+                }
+                for (int k = 0; k < 4; ++k) {
+                    set_frame(sprite[k], static_cast<unsigned char>(capital(text[cells[k]])));
+                }
+                written_ = text;
+                hd_.label = nullptr;  // in a translation: built again as this text (keep_row)
+            }
+        }
         keep_row();
         return;
     }
@@ -256,9 +274,8 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
         set_frame(glyph[i], static_cast<unsigned char>(capital(text[2 + i])));
         *(glyph[i] + sprite::kVisible) = 1;
     }
-    // The key slots, given the font: two characters each side of the label.
+    // The key slots, given the font.
     const double text_local[4] = {0, 0, 8, 8};
-    const int cells[4] = {0, 1, 6, 7};
     for (int k = 0; k < 4; ++k) {
         BYTE* s = sprite[k];
         reinterpret_cast<void (*)(void*, void*)>(a.sprite_sheet_fn)(s, font);
@@ -284,6 +301,8 @@ void PauseDiskRow::turn(const GameAddresses& a, BYTE* menu, const std::string& t
     // A fresh pause screen: its label is the game's, even at the address and with the mark of
     // the last one the helper built.
     hd_.label = nullptr;
+    turned_ = menu;
+    written_ = text;
     keep_row();
 }
 

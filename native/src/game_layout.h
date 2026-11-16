@@ -165,6 +165,9 @@ constexpr size_t kGeneralSize = 0x5C8;
 constexpr ptrdiff_t kGeneralRow = 0x210, kGeneralColumn = 0x211;
 // A general object's first script state, 16-bit (docs/re/memory.md, "Other players' items").
 constexpr ptrdiff_t kFirstState = 0x32E;
+// A byte, 1 while a general object holds its cell's item (the type-23 step: docs/re/memory.md,
+// "What decides whether an item appears").
+constexpr ptrdiff_t kHoldsItem = 0x32C;
 }  // namespace obj
 
 // Item records behind [item_records] (docs/re/memory.md, "Other players' items", "Game functions
