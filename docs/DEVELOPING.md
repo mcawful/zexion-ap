@@ -170,7 +170,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   once its item is checked, whose pickup starts the fight. Marked, an arena and a
   reversed-gravity room played with no harm (the latter still shows the item as a picture
   that gives nothing); a boss's reward, R'Talva X34 Y51's, still showed too, and the warp
-  gate waited for the touch of that picture: 2026-11-15 (the same branch at a17904b).
+  gate waited for the touch of that picture: 2026-11-15 (the same branch at a17904b). The
+  helper hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at
+  399f57e; kept hidden under a menu: stand-in tested only).
   So R'Talva X34 Y51 is left unmarked too since, and showed as scrap in game: 2026-11-15
   (the client of PR #145's branch at 399f57e with the room listed on top).
   In those runs each mark gave one Scrap Metal; a mark gives none since (the second review

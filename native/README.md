@@ -979,7 +979,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   names carry no icon: working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`: the owner's
   screenshot of the pickup popup, not kept in `lab/`, the logo, then Progression Item over for
   AneziaDS2, both lines centered; the map cursor's AP Item, "The map").
-- **Kept collected** (the client alone; the helper has no part): another player's item (not
+- **Kept collected** (the client; the helper's one part is to hide what is left of such an
+  item in a reversed-gravity room: "The marker", below): another player's item (not
   this world's own disks and traps, which follow the save) stays collected once the server has
   its location as checked, whoever checked it: found in any save of the seed, or before a death
   or a reload without saving, collected by its owner (`!collect`), or released (`!release`).
@@ -1030,7 +1031,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   player's (a margin on top of the loaded cells, which are the squares next to the one the
   game tracks): an object of another kind may be the item there, as in a reversed-gravity
   room, which a written state does not end (marked from afar, such a room still shows the
-  item, as a picture that gives nothing: the third run below). That one stays to pick up as
+  item, as a picture that gives nothing: the third run below; with the helper that picture is
+  hidden, "The marker" below). That one stays to pick up as
   usual, and is marked once its room is unloaded and the player is three squares away. Right
   before the writes the client checks the save again (in play, a randomizer save, the slot's
   stamp as at the look) and reads the states, the loaded cells, the item objects and the
@@ -1137,10 +1139,12 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
 - **Safety:** it writes only stand-ins with the template's base and palette 8 or 26 (the
   helper's own colors, "Other players' items"), or ones it dressed (the same spawn); and, for
   R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared and set again, only
-  while it is the spawn it hid.
+  while it is the spawn it hid; the same byte, the same way, for a reversed-gravity room's
+  item object over a collected square (below).
 - **Other pool:** some rooms show an item through the general object pool; a scan of that pool
   every 31st frame call finds any live object drawing a logo frame and dresses it the same way
-  (R'Talva X34 Y51's marker, below, is hidden instead).
+  (R'Talva X34 Y51's marker, below, is hidden instead, and so is a reversed-gravity room's
+  item object over a collected square, whatever frame it draws).
 - **The marker:** R'Talva X34 Y51's marker (type 1146, known by its first script state, 8210, at
   `+0x32E`) draws logo frame 63 in its own palette while it waits for the boss (flag 154 clear),
   empty in the game's art, so it showed the helper's logo swaying in the gate's center; after the
@@ -1153,7 +1157,35 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   leaves the logo frame (its reward), when the stand-ins are put back and on an unload, if it is
   still that spawn and still hidden. Other objects on a logo frame in their own palette (a boss's
   drop showing another game's item, type 1998) are left as they are, drawing the logo frame
-  through their own palette. The marker can show
+  through their own palette. **A reversed-gravity room's item over a collected square** is
+  hidden the same way, in the same pass: the general object that draws the item there (type
+  2026, known by its first script state, 13867, at `+0x32E`) is not ended when the client
+  marks its square collected, so it is left showing a picture that gives nothing when touched
+  (in game, 2026-11-15, Exodia X22 Y1; the owner's request to hide it). While the stand-ins
+  are restyled and the object's map cell reads collected (`0x1B`), every frame call clears
+  its shown byte, on whatever frame it shows (one made while the stand-ins were not restyled,
+  a load from a menu, shows the game's scrap, not a logo) and unless it holds its cell's item
+  (its `+0x32C`: then it is the pickup, whatever the map says); it is shown again when the
+  cell no longer reads collected (a reload from before the mark), when a client goes and on
+  an unload. Under a menu, where the records and every other look are put back for the
+  menu's own screens, it stays hidden while it is still that object over a collected cell
+  (`ItemLooks::restore`, `keep_collected`; the third review's finding, 2026-11-15: it would
+  have shown under the pause or map screen). An unload is refused outright while a menu is
+  open over a save; the hidden object counts among what a frame must put back first only
+  for an unload no frame comes for (`ap_items_restyled`). A pickup of the game's own ends
+  the object, so nothing is hidden then. A boss's reward is left showing: its touch is what
+  turns the warp gate on. The
+  hidden object can still be touched, which does what it did shown: it ends, giving nothing.
+  A new object of the kind (the room made again by a RELOAD FROM SAVE beside it) shows until
+  the next scan of the general pool, up to 30 frame calls.
+  Stand-in test (`tests/game_tests.cpp`,
+  `test_a_collected_item_in_a_reversed_gravity_room_is_hidden`, failing with the hiding taken
+  out, and its part under a menu with that kept out; the menu not run in game). Working in game, 2026-11-15 (B1, `zexion_ap.dll` `5ef5eeb1…`, the build of PR #145's
+  branch at 399f57e, slot 5, a new game of the seed `lab/ap/live65` with the other player's
+  items all checked; the owner's report, `lab/ingame-collected-checks.md`, "Check I"): at
+  Exodia X22 Y1, over its marked square, the owner found nothing ("no item is there"), and
+  confirmed having done the RELOAD FROM SAVE beside it, without describing what showed after
+  that reload. The marker can show
   the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame
   in a hit's blink. Hiding it by that byte worked in game
   (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: working in game
@@ -2077,7 +2109,10 @@ unload.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill
   (an AP save's only, each icon once, by item ID, up to 26), R'Talva X34 Y51's marker hidden
   (every frame while flag 154 is clear, by its shown byte; shown again on the flag, off the logo
-  frame and on restore; no stand-in for names; another type left alone), the stand-ins drawn
+  frame and on restore; no stand-in for names; another type left alone), a reversed-gravity
+  room's item hidden over a collected square
+  (`test_a_collected_item_in_a_reversed_gravity_room_is_hidden`: shown again when the square
+  no longer reads collected, or it holds the item; kept hidden under a menu), the stand-ins drawn
   in palette 26 at style 34 (their first style kept; a dressed one, one not as expected and this
   world's items left alone; put back when not restyled and on restore),
   the popup queue, the text window's cut repaired and put back (and a model of the game's
