@@ -733,6 +733,7 @@ def test_every_shells_env_var_spelling_expands(spelling: str, monkeypatch) -> No
 # The mod's offline files, %LOCALAPPDATA%\ZexionAP: only the helper writes them.
 LOCAL = "C:/Users/someone/AppData/Local"
 OFFLINE = f"{LOCAL}/ZexionAP"
+SCRATCH = f"{LOCAL}/Temp/claude/2745d331536e48bf/7c00b8f6-7f48-4f26-95c9-decf1adcccd1/scratchpad"
 
 
 @pytest.mark.parametrize(
@@ -961,6 +962,17 @@ def test_the_offline_folder_with_a_different_local_appdata(monkeypatch) -> None:
         f'pytest tests -k ZexionAP --basetemp "{LOCAL}/Temp/scratch/pt"',
         f'Q="{LOCAL}/Temp/scratch"; grep -rn ZexionAP . > "$Q/hits.txt"',
         f'python -c "print(1)" > "{LOCAL}/Temp/scratch/out.txt" # ZexionAP',
+        # A ``..`` or a parent word beside a scratch path is not TEMP's parent.
+        "mkdir -p /tmp/x && ls .. > /tmp/x/l # ZexionAP",
+        f'python tools/x.py "{SCRATCH}/../x" ZexionAP',
+        f'cd "{SCRATCH}/b" && ctest -C Release -R ZexionAP && cd ..',
+        f'python -m pytest tests -k ZexionAP --basetemp "{SCRATCH}/pt" && cd ..',
+        f'cd native && cmake -S . -B "{SCRATCH}/b" && cmake --build "{SCRATCH}/b" '
+        "&& cd .. # ZexionAP",
+        f'cp "{SCRATCH}/../x.txt" lab/ # ZexionAP',
+        f'python "{SCRATCH}/p.py" --root "{SCRATCH}/.." ZexionAP',
+        f'python -c "import os; print(os.path.dirname(\'a/b\'))" > "{SCRATCH}/o.txt" # ZexionAP',
+        f'rm -rf "{SCRATCH}/r155/old" # ZexionAP notes in ../',
     ],
 )
 def test_a_scratch_path_beside_the_word_is_not_the_offline_folder(command: str) -> None:

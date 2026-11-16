@@ -994,7 +994,11 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     # The TEMP and TMP folders are ``AppData/Local/Temp``: their parent is the folder. A command
     # that names one and takes its parent, with a ``..`` piece (``'..'``, ``TMP=..``) or a
     # parent function (``dirname``, ``Split-Path``, ``.Parent``, ``GetParent``), builds it.
-    temp = re.search(r"\b(?:temp|tmp)\b|gettempdir|tempfile", low)
+    # Only the folder itself: ``/Temp`` at a path's end, or before ``/..`` or a variable, not
+    # ``/Temp/scratch/…``, which every scratch path holds.
+    temp = re.search(
+        r"(?<!/)\b(?:temp|tmp)\b|/(?:temp|tmp)(?=/\.\.|/[$%]|(?![/\w]))|gettempdir|tempfile", low
+    )
     dotdot = any(re.fullmatch(r"(?:[^=]*=)?\.\.[;&|]*", c) for p in parts for c in p)
     parent = re.search(r"dirname|split-path|\.parent\b|getparent|\bparent\b", low)
     if temp and (dotdot or parent) and names_folder:
