@@ -1139,10 +1139,12 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
 - **Safety:** it writes only stand-ins with the template's base and palette 8 or 26 (the
   helper's own colors, "Other players' items"), or ones it dressed (the same spawn); and, for
   R'Talva X34 Y51's marker (below), only its shown byte (`+0x120`), cleared and set again, only
-  while it is the spawn it hid.
+  while it is the spawn it hid; the same byte, the same way, for a reversed-gravity room's
+  item object over a collected square (below).
 - **Other pool:** some rooms show an item through the general object pool; a scan of that pool
   every 31st frame call finds any live object drawing a logo frame and dresses it the same way
-  (R'Talva X34 Y51's marker, below, is hidden instead).
+  (R'Talva X34 Y51's marker, below, is hidden instead, and so is a reversed-gravity room's
+  item object over a collected square, whatever frame it draws).
 - **The marker:** R'Talva X34 Y51's marker (type 1146, known by its first script state, 8210, at
   `+0x32E`) draws logo frame 63 in its own palette while it waits for the boss (flag 154 clear),
   empty in the game's art, so it showed the helper's logo swaying in the gate's center; after the
@@ -1168,8 +1170,9 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   an unload. Under a menu, where the records and every other look are put back for the
   menu's own screens, it stays hidden while it is still that object over a collected cell
   (`ItemLooks::restore`, `keep_collected`; the third review's finding, 2026-11-15: it would
-  have shown under the pause or map screen), and an unload waits for a frame to show it
-  again (`ap_items_restyled`). A pickup of the game's own ends the object, so nothing is
+  have shown under the pause or map screen). An unload is refused outright while a menu is
+  open over a save; the hidden object counts among what a frame must put back first only
+  for an unload no frame comes for (`ap_items_restyled`). A pickup of the game's own ends the object, so nothing is
   hidden then. A boss's reward is left showing: its touch is what turns the warp gate on. The
   hidden object can still be touched, which does what it did shown: it ends, giving nothing.
   A new object of the kind (the room made again by a RELOAD FROM SAVE beside it) shows until
@@ -1178,9 +1181,10 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   `test_a_collected_item_in_a_reversed_gravity_room_is_hidden`, failing with the hiding taken
   out, and its part under a menu with that kept out; the menu not run in game). Working in game, 2026-11-15 (B1, `zexion_ap.dll` `5ef5eeb1…`, the build of PR #145's
   branch at 399f57e, slot 5, a new game of the seed `lab/ap/live65` with the other player's
-  items all checked; the owner's report, `lab/ingame-collected-checks.md`): nothing showed at
-  Exodia X22 Y1 over its marked square, as entered in play and after a RELOAD FROM SAVE
-  beside it. The marker can show
+  items all checked; the owner's report, `lab/ingame-collected-checks.md`, "Check I"): at
+  Exodia X22 Y1, over its marked square, the owner found nothing ("no item is there"), and
+  confirmed having done the RELOAD FROM SAVE beside it, without describing what showed after
+  that reload. The marker can show
   the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame
   in a hit's blink. Hiding it by that byte worked in game
   (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: working in game
