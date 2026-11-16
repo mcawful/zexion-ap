@@ -266,6 +266,16 @@ Windows only:
 - finding the game by itself: Steam's path comes from the registry. Elsewhere, set
   `ZEXION_GAME_DIR`; the saves' folder comes from `%APPDATA%`, else `ZEXION_SAVE_DIR`.
 
+Zexion also has a native Linux build on Steam (the store's platform list shows Linux, read
+2026-11-16), which Steam runs by default on Linux and a Steam Deck (a Deck's Properties showed
+"Steam Linux Runtime 3.0", 2026-11-16). Nothing here supports it: the helper is a Windows DLL
+and the client's process calls are the Windows API. The Linux build's version, binary and save
+folder are unread. Running the Windows build under Proton (a forced compatibility tool), with
+the proxy needing `WINEDLLOVERRIDES="version=n,b"` and the Windows Archipelago run inside the
+game's prefix, is an untried route: the Steam Deck run stopped before it, at the owner's
+choice, with no Proton run of the game at all. The setup guide says so ("Linux and Steam
+Deck").
+
 Tests that need Windows skip elsewhere and say why (`tests/test_process.py`, parts of
 `tests/test_native.py` and `tests/test_pe.py`), as does `tests/test_native.py`'s load test
 without a built helper and `tests/test_hook_runner.py`'s runner tests without `sh`.

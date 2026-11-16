@@ -3,7 +3,8 @@
 ## What you need
 
 - Zexion on Steam (Windows), Steam build 23943567: the only version of the game this release
-  supports. The client tells you if yours isn't supported.
+  supports. The client tells you if yours isn't supported. Not Linux or the Steam Deck: see
+  "Linux and Steam Deck" below.
 - Archipelago 0.6.8 or newer.
 - The latest release of this world, from the
   [Releases page](https://github.com/mcawful/zexion-ap/releases): `zexion.apworld`,
@@ -79,6 +80,25 @@ Archipelago logo beside the file number.
   game page); your normal saves earn them as usual.
 
 Goals, options and what's changed in the game: see the game page (`zexion-game-page.md`).
+
+## Linux and Steam Deck
+
+**Not supported, and not tried with the mod.** The mod and the client are made for Zexion's
+Windows version, and it has been played only on Windows.
+
+- Zexion on Steam has a Linux version of its own. On a Steam Deck or a Linux PC, Steam runs that
+  one unless you force a compatibility tool (Proton) in the game's Properties, Compatibility. A
+  Steam Deck with Zexion's default settings said it runs in "Steam Linux Runtime 3.0", the
+  Linux version's runtime (2026-11-16). `zexion_ap.dll` and `version.dll` are Windows files and
+  can't load into the Linux version, and the client reads the game's memory through Windows
+  functions, so with the Linux version there is no ARCHIPELAGO choice and no seed can be
+  played.
+- Playing the Windows version under Proton, with the mod and the Windows version of
+  Archipelago inside Zexion's Proton folder, is **not tried**: nobody has run the game that way
+  with this world yet. If you try it, a report at
+  [github.com/mcawful/zexion-ap/issues](https://github.com/mcawful/zexion-ap/issues) helps,
+  with the Proton version, your device and what the client said. Steam's Cloud may sync saves
+  between the Windows version and the Linux one: keep a copy of your saves first.
 
 ## Languages
 
