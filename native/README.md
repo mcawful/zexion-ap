@@ -1100,7 +1100,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   Exodia X20 Y0 left unmarked and labeled Scrap Metal: the client marked the other 78 a
   second after the save loaded; at Exodia X20 Y0 the item was scrap, its pickup started the
   boss fight, and the fight could be won and the way on taken. What marking leaves behind,
-  each harmless: in a reversed-gravity room (Exodia X22 Y1) the item still shows over its
+  each harmless but the boss reward's, which is why that room is listed since: in a
+  reversed-gravity room (Exodia X22 Y1) the item still shows over its
   marked square until touched, and touching it gives nothing (no popup or sound; the
   inventory and the pickup counter read the same after), while a marked item drawn the usual
   way in that area (Exodia X27 Y0) was gone; a boss's reward (R'Talva X34 Y51) still shows
