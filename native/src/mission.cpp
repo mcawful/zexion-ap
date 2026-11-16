@@ -405,7 +405,7 @@ bool MissionPrompt::ending_queued(const GameAddresses& a) const {
 void MissionPrompt::cancel(const GameAddresses& a) {
     requested_ = false;
     ending_ = false;
-    end_dark(a, "ended: cancelled, faded back in");  // no ending to come: out of the black
+    end_dark(a, "ended: canceled, faded back in");  // no ending to come: out of the black
     void* fn = nullptr;
     if (armed_ && read(a.transition_fn, 0, fn)) {
         if (fn != a.hooks.mission_open) {
