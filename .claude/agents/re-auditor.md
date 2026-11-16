@@ -69,10 +69,12 @@ around the change.
    game's pickup counter does not account for (`reconcile.marked_count`; `docs/re/memory.md`,
    "The pickup counter and the collected cells"), so that is not a lost grant; a mark that
    gives Scrap Metal, or anything that takes Scrap Metal away, is a finding, and nothing may
-   be marked while the counter cannot be read. The one stored index is the
-   popup count in the server's data storage (`announced_tick`, `client/storage.py`): check that
-   it cannot replay or skip a popup across reconnects, client restarts, game restarts and
-   reloads of an older save. Measured on B1: a grant is lost when the player dies before the
+   be marked while the counter cannot be read. The stored indexes are the
+   popup count in the server's data storage (`announced_tick`, `client/storage.py`) and the
+   held-traps record beside it (`held_key`, `held_stored`): a trap rides on its popup, so a
+   record lost or counted twice runs a trap twice or never. Check that neither can replay or
+   skip a popup or a trap across reconnects, client restarts, game restarts and reloads of an
+   older save. Measured on B1: a grant is lost when the player dies before the
    game saves, and kept once it saves (`docs/re/memory.md`, "Granting each kind of item"); the
    next poll must give it again. Counted items (Energy Tanks, Missile Containers, Mega Bombs)
    need their player-state fields written too; a grant of the byte alone is incomplete.

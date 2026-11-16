@@ -4,9 +4,11 @@
 outside: work on the game's own thread, between frames. It gets in two ways: **the proxy**
 `version.dll` in the game's folder loads it as the game starts, or the client loads it on
 attaching (`client/native.py`; `tools/helper.py` too, for tests). The client talks to it over a
-named pipe. With no client it changes only the title screen, the look of AP saves and, in every
-save, how the game's text window cuts tall text ("Popups"), and keeps Feats and Steam achievements
-out of AP saves.
+named pipe. With no client it changes the title screen, the look of AP saves (the file select's
+disk count too) and, in every save, how the game's text window cuts tall text ("Popups"); it sets
+this world's own traps off at their pickup ("Traps") and shows an own OS Install Disk's count
+popup at its pickup ("The OS Install Disks goal"); and it keeps Feats and Steam achievements out
+of AP saves.
 
 An **AP save** is a randomizer save whose item table and start match a seed a client has
 played (and its location list's size: 154, or 155 with Secret Shuffle, `src/game_layout.h`,
@@ -634,10 +636,7 @@ dealt on the next load ("DeathLink").
   does nothing. A seed's file merged with another list of traps starts the two looks over,
   so a pickup in those two frames is missed (neither seen). With no helper attached an own
   trap does nothing, and nothing makes it up later: the client says so once.
-  The client sends nothing for an own trap and keeps no record of one: until 2026-11-14 it sent
-  `trap ITEM` in an `apply` once per location, from the server's record of the follow-ups
-  shown, so a trap picked up with no client went off at the next connection, and never again
-  after a reload. A seed file written before the `traps` line lists none: its traps do nothing
+  The client sends nothing for an own trap and keeps no record of one. A seed file written before the `traps` line lists none: its traps do nothing
   with no client until a client has connected once (only development builds made such files:
   1.1.0 has no traps). Stand-in tests (`tests/game_tests.cpp`,
   `test_own_traps_go_off_at_each_pickup`; `tests/apply_test.cpp`, through the frame hook and
@@ -811,7 +810,8 @@ shows; stand-in tests `test_a_trap_popup_takes_its_turn` and
 paused, an OS Install Disk then a Disorient Trap sent; on unpausing the disk's popup and its count
 came first, then the trap's popup with the trap ("those came in the right order"). That run was on
 932411b; keeping a popup's own follow-ups ahead of a trap it passed ("When") was added after it, in
-the fixes from the review of 1ead60c, and has stand-in tests only. **Not run in game:** an unload
+the fixes from the review of 1ead60c, and has stand-in tests only. **Not run in game:** a trap's popup
+in a translation (the name in the translation's case: by the code, `layout_popup`); an unload
 refused while a trap waits (the client hands a trap over only in play, and a menu's refusal comes
 first: tried with one received in the pause, refused for the menu, the trap then going off at full
 length); a trap through the ending or RETURN HOME; a key-look trap's missing marker after the
@@ -1002,22 +1002,16 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   leaves both (`client/session.py`, `mark`; `docs/re/memory.md`, "What decides whether an item
   appears"): compare-and-set writes, only for a location two polls in a row (in the same save
   slot, seconds apart at most) found still to mark. **Never in a room that waits for its
-  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0 and R'Talva X34 Y51). In game,
-  2026-11-14, the first of those squares
-  marked from afar was a soft-lock: its item gone, the boss fight its pickup starts never
-  began, and the room could not be left. There the item stays, and once the server has it as
+  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0 and R'Talva X34 Y51): marked from afar,
+  Exodia's was a soft-lock (its item gone, the boss fight its pickup starts never began, and the
+  room could not be left), and R'Talva's reward, whose pickup turns the warp gate on, still
+  showed after the fight and gave nothing while the gate waited for its touch (the runs below).
+  There the item stays, and once the server has it as
   checked the client labels it as the game's Scrap Metal, for no one (`@46`: `client/ticks.py`,
   `foreign_labels`; the labels are sent again when one changes), so what is left looks like
   what it is, a pickup the room needs, and gives its Scrap Metal as any stand-in does (the
   owner's decision, 2026-11-15); with the helper it is picked up as the game's own Scrap
-  Metal ("This player's own Scrap Metal" below). R'Talva X34 Y51, a boss's reward whose
-  pickup turns the warp gate on, was listed the same day: marked, the reward still showed
-  after the fight as the item it had been and gave nothing, while the gate waited for its
-  touch; left unmarked, it showed as scrap in game (2026-11-15, B1, slot 6, a new game of
-  the seed `lab/ap/live65`, the client with the room listed and the helper of PR #145's
-  399f57e; the owner's report, `lab/ingame-collected-checks.md`, "Check J": its popup read
-  Scrap Metal with the logo, as a stand-in's does; whether the gate turned on at that
-  pickup was not said; the fourth run below). Those
+  Metal ("This player's own Scrap Metal" below). Those
   two rooms are the ones listed, by the owner's judgment of
   the game: 50 other location squares have an after-pickup event in the game's per-cell table
   (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
@@ -1026,8 +1020,7 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   (a reload at a save point beside it, its owner collecting while the player stands by it)
   goes too: the item's own update ends its object once its cell's state reads collected, with
   the writes a pickup ends it with (`docs/re/memory.md`, "What decides whether an item
-  appears": found by the re-auditor, 2026-11-14, in place of a helper request written for
-  it), so for a cell with an item object in the loaded rooms the client writes the state,
+  appears"), so for a cell with an item object in the loaded rooms the client writes the state,
   waits a moment, and writes the map cell once no such object is left, never under one still
   there. After a reload beside it the item shows until the second poll and is gone (by the
   code: not run in game). The state written under a live item object also lets an object of
@@ -1071,10 +1064,7 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   leaves alone: the collected cells that count does not account for are the marked ones
   (`client/reconcile.py`, `marked_count`; `docs/re/memory.md`, "The pickup counter and the
   collected cells": the count equals the collected cells in every lab save copy looked at
-  but the marked one, short by its marks). Nothing is ever taken away: a save marked before
-  this rule, when each mark gave one Scrap Metal, keeps them, and that surplus then stands
-  in for as many Scrap Metal, Area Maps or Energy Shields received later (their popups show,
-  the count stays; only the lab's saves predate the rule). A stand-in picked up and then
+  but the marked one, short by its marks). Nothing is ever taken away. A stand-in picked up and then
   lost to a death or a reload is marked once the save is back, and gives none then either:
   its Scrap Metal went with the load; the same for one picked up in another save of the
   seed, marked in this one. A marked square reads explored on the map. A mark
@@ -1161,9 +1151,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   without a frame call is restyled again by this helper, but is not known to one built
   before this change, which leaves it so until the game starts again. A fourth run (2026-11-15, B1, slot 6, a new game of
   `lab/ap/live65`, the client with R'Talva X34 Y51 unmarked, the helper of PR #145's 399f57e,
-  before this change; the owner's report, `lab/ingame-collected-checks.md`): R'Talva X34
-  Y51's reward showed as scrap, its popup read Scrap Metal with the AP symbol, nothing
-  dropped, and the map showed the square as a major's (ADVANCED TECH); hence this. Stand-in
+  before this change; the owner's report, `lab/ingame-collected-checks.md`, "Check J"):
+  R'Talva X34 Y51's reward showed as scrap, its popup read Scrap Metal with the AP symbol, nothing
+  dropped (whether the gate turned on at that pickup was not said), and the map showed the square as a major's (ADVANCED TECH); hence this. Stand-in
   tests (`tests/apitem_tests.cpp`, `test_own_scrap_metal_names_scrap_metals_event`;
   `tests/game_tests.cpp`, `test_own_scrap_metal_is_picked_up_as_the_games`;
   `tests/mapmarks_tests.cpp`, `test_own_scrap_metals_square_is_a_minors`, and
@@ -1478,8 +1468,7 @@ over `0xDA`, rows 3 and 4: its middle 7.5 px below row 3's top, a digit's 3, so 
 game). Nothing shows for a save with no disk. The count is the save's own: what the seed's
 file holds (the disks the slot starts with and those received, which the client keeps up to
 date while connected) plus each of this player's own disks the save's map shows collected
-(`offline_disk_count`). Until 2026-11-14 a client sent one count for all its seed's slots
-(`disk_slots`), which counted a disk found in any save of the seed.
+(`offline_disk_count`).
 
 **The count follows the save** (the owner's decision, 2026-11-14): the disks the slot starts
 with, those received from other players, and this world's own disk locations collected in the
@@ -1707,8 +1696,8 @@ disconnected.
   randomizer save is never touched), raises the map squares of item 48 at the section's
   locations (154, or 155 with Secret Shuffle; one labeled this player's own Scrap Metal is
   lowered to a minor's instead: "Other players' items") (this player's OS
-  Install Disks and other players' progression items, but not a Zexion player's supplies:
-  `worlds/zexion/world.py`, `important_elsewhere`) from the game's basic marker to its
+  Install Disks and own traps, and other players' progression items and any game's traps, but
+  not a Zexion player's supplies: `worlds/zexion/world.py`, `important_elsewhere`) from the game's basic marker to its
   important one (`src/mapmarks.cpp`), obscured or shown as the game's own majors are under
   the seed's Obscure Majors, Obscure Minors and Obscure Class. Under Majors on with Minors and
   Class off a stand-in shown as a minor in a square a hint, a map room or Hints Revealed
@@ -2177,7 +2166,8 @@ lands, not only the place passed.
     capitals in the pixel font, the title lines and ARCHIPELAGO, as before.
   - Not run in game: in French, the map cursor's name for another Zexion player's item, the
     scanner's line and an Intel Chip picked up (ItemNames 49); Japanese since the HD icons; the
-    unload's refusal while a popup shows; Assist Unlock in a translation; a save-state load.
+    unload's refusal while a popup shows; Assist Unlock in a translation; a trap's popup (its name
+    in the translation's case, `layout_popup`: "Traps"); a save-state load.
 
 ## Building
 
@@ -2337,7 +2327,7 @@ unload.
 | `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
-| `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access; code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut` and `SeenMarker`); the layouts several parts share |
+| `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access; code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
 | `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
 `proxy/` is the proxy `version.dll`.
