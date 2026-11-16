@@ -1323,9 +1323,9 @@ def test_only_a_pickup_rooms_item_to_keep_collected_reads_no_cell_state(
         assert not session.step(g, [], gap=0, gone={3}).marked
 
 
-def test_the_room_listed_is_exodia_x20_y0() -> None:
+def test_the_rooms_listed_are_exodia_x20_y0_and_rtalva_x34_y51() -> None:
     # The map grid's order: this repo's (x, y) is the game's (Y, X).
-    assert {(0, 20)} == ids.PICKUP_ROOMS
+    assert {(0, 20), (51, 34)} == ids.PICKUP_ROOMS
 
 
 def test_a_mark_a_load_cut_in_two_is_finished(others) -> None:
