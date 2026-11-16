@@ -49,13 +49,13 @@ worlds/zexion/ → generation → slot data → client
   is not there to pick up again. Never in a room that waits for its item's pickup (Exodia
   X20 Y0, where the pickup starts the boss fight): there the item stays and shows as Scrap
   Metal once it is checked. An item the game has made already is ended by the game itself
-  once its state is written; one that may be
-  there as another kind of object (in a room the game has loaded or within two map squares
-  of the player) stays until the player is farther from it
-  ([`native/README.md`](../native/README.md), "Other players' items").
-  With `--verbose` each
-  marking is logged ("Marked collected in this save (...)"). This world's own items follow
-  the save. Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
+  once its state is written; one that may be there as another kind of object (in a room the
+  game has loaded or within two map squares of the player) stays until the player is farther
+  from it ([`native/README.md`](../native/README.md), "Other players' items"). A marked
+  item gives nothing: the one Scrap Metal a stand-in gives is counted only where it was
+  picked up, which the game's own pickup count tells apart. With `--verbose` each marking is
+  logged ("Marked collected in this save (...)"). This world's own items follow the save.
+  Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
   count up: any other item's byte is written as 1 at most, so a second copy (a server console's
   `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
@@ -149,7 +149,10 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   (its pickup starts the boss fight): that room is left unmarked since and shows Scrap Metal
   once its item is checked, whose pickup starts the fight; and a marked boss reward, arena
   and reversed-gravity room played with no harm (the first and the last still show the item
-  as a picture that gives nothing): 2026-11-15 (the same branch at a17904b). Not run in game: a
+  as a picture that gives nothing): 2026-11-15 (the same branch at a17904b). In those runs
+  each mark gave one Scrap Metal; a mark gives none since (the second review round,
+  2026-11-15), which, with the marking's wait through a TELEPORT TO, is tested only.
+  Not run in game: a
   death, another save of the seed, `!release`, a reload beside an item ("Other players'
   items", "Kept collected"; "What decides whether an item appears").
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28

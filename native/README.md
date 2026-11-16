@@ -961,13 +961,28 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   before the writes the client checks the save again (in play, a randomizer save, the slot's
   stamp as at the look) and reads the states, the loaded cells, the item objects and the
   player's cell afresh; the save, the loaded cells and the item objects once more before the
-  map cell; and it counts nothing as marked if the game is not in play after the last write.
-  `cell_state`, the one
-  target the marking alone reads, may be missing: on a game build where its patterns no longer
-  match, the client still attaches and only the marking stops, said once
-  (`patterns.CLIENT_ONLY_TARGETS`). The one Scrap Metal a stand-in's pickup gives
-  comes with the client's grants, which count a marked cell as collected; the game's ITEMS
-  count is not raised, and a marked square reads explored on the map. A mark stays in the
+  map cell. No write starts while a transition counts down (the game's transition timer not
+  0): a TELEPORT TO reads as play, under the same stamp, for the second before its load,
+  which takes back what was written since its entry was chosen. After the last write the
+  client looks once more, and reports as marked only what still reads so: nothing if the
+  game does not read as in play with no transition counting, and not a cell whose item
+  state reads there again, which the next polls finish. That look sees less than happened
+  both ways: a pause or a death right after the writes leaves them in place unreported, and
+  a load that begins after it takes back marks it reported; the next polls read the bytes
+  again either way. `cell_state` and `pickup_counter`, the two targets the marking alone
+  needs, may be missing: on a game build where the patterns of either no longer match, the
+  client still attaches and only the marking stops, said once
+  (`patterns.CLIENT_ONLY_TARGETS`). **A marked cell gives nothing** (the owner's decision,
+  2026-11-15: no Scrap Metal for marks). The one Scrap Metal a stand-in's pickup gives is
+  the game's own, at the pickup, and the client's sum counts a stand-in's only for the cells
+  picked up (so one a death took back is given again, and a Scrap Metal received is still
+  owed on top). It tells them by the game's ITEMS count, which a pickup raises and a mark
+  leaves alone: the collected cells that count does not account for are the marked ones
+  (`client/reconcile.py`, `marked_count`; `docs/re/memory.md`, "The pickup counter and the
+  collected cells": the count equals the collected cells in every lab save copy looked at
+  but the marked one, short by its marks). Nothing is ever taken away: a save marked before
+  this rule, when each mark gave one Scrap Metal, keeps them. A marked square reads explored
+  on the map. A mark stays in the
   save once the game saves: such a save played against another room of the same seed sends
   its marked locations as checks. With no client connected nothing is marked, and a failing
   read or write of the marking is said once while items and checks go on. Stand-in tests
@@ -983,11 +998,14 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   coming back), and the rest were gone from rooms not yet visited and found on the map; all 84
   of the other player's items were marked by the end, and none was marked again while the
   owner walked and used the map; the marks were in the save file once the game saved (a lab
-  copy: item state 1 and `0x1B`). Each marked cell gave its one Scrap Metal: 82 after the
-  collect. Not run in game: a death, another save of the seed, `!release`, a cell whose item
-  an object holds, and the client connecting with locations already checked; nor, added after
-  that run (c77879d and after) and stand-in tested only, the loaded-cell test, the checks
-  right before the writes and the attach without `cell_state`. A second run
+  copy: item state 1 and `0x1B`). By that day's rule each marked cell gave one Scrap Metal:
+  82 after the collect, which that save keeps. Not run in game: a death, another save of the
+  seed, `!release`, a cell whose item an object holds, and the client connecting with
+  locations already checked; nor, added after that run (c77879d and after) and stand-in
+  tested only, the loaded-cell test (the loaded byte itself was not read live in any run),
+  the checks right before the writes, the attach without `cell_state` or `pickup_counter`,
+  a marked cell giving no Scrap Metal, the transition timer's test and the look after the
+  writes. A second run
   (2026-11-14, B1, slot 5, the seed `lab/ap/live65`, the client and helper of PR #144's
   branch at 79bee7a; the owner's reports and read-only looks, same record): with the player
   beside another player's item at Kresezoa X22 Y13, its owner's `!collect` marked all 79 of

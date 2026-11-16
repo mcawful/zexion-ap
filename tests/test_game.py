@@ -82,11 +82,13 @@ def test_patterns_that_disagree_are_refused() -> None:
 
 
 def test_the_client_does_not_locate_the_targets_only_the_tools_read() -> None:
-    # A pattern of the pickup counter breaking with an update cannot stop the client attaching.
-    assert {"pickup_counter"} == TOOL_TARGETS
+    # None now: the client reads the pickup counter too, as an optional target, so a pattern
+    # of it breaking with an update still cannot stop the client attaching.
+    assert not TOOL_TARGETS
     assert {t.name for t in CLIENT_TARGETS} == {t.name for t in TARGETS} - TOOL_TARGETS
-    # The per-cell state is the client's alone: read and written by it, not sent to the helper.
-    assert {"cell_state"} == CLIENT_ONLY_TARGETS <= {t.name for t in CLIENT_TARGETS}
+    # The per-cell state and the pickup counter are the client's alone: not sent to the helper.
+    client_only = {"cell_state", "pickup_counter"}
+    assert client_only == CLIENT_ONLY_TARGETS <= {t.name for t in CLIENT_TARGETS}
     assert game.Game.attach.__func__.__defaults__ == (CLIENT_TARGETS, None)
 
 
@@ -100,10 +102,12 @@ def test_a_client_only_target_that_no_longer_matches_does_not_stop_the_attach() 
     assert game.locate_all(code, 0, targets, optional={"gone"}) == {"there": 0x40 + 7 + 0x100}
     with pytest.raises(game.PatternError):
         game.locate_all(code, 0, targets, optional={"there"})
-    g = fake_game(map_grid=GRID_AT)  # attached with no cell_state
+    g = fake_game(map_grid=GRID_AT)  # attached with no cell_state and no pickup_counter
     for call in (g.cell_items, g.loaded_cells, lambda: g.set_item_collected((1, 1))):
         with pytest.raises(game.PatternError, match="cell_state was not found"):
             call()
+    with pytest.raises(game.PatternError, match="pickup_counter was not found"):
+        g.pickup_counter()
 
 
 # --- PE header and build identity ----------------------------------------------------------
@@ -217,6 +221,15 @@ def test_each_cells_item_state_is_its_ninth_byte() -> None:
     states = g.cell_items()
     assert len(states) == 54 * 54 and states[25 * 54 + 25] == 1 and states[-1] == 2
     assert states.count(0) == 54 * 54 - 2, "the eight object states before each are not read"
+
+
+def test_the_transition_timer_is_a_signed_32_bit_count() -> None:
+    g = fake_game(transition_timer=0x1800)
+    assert g.transition_timer() == 0
+    g.pm.memory[0x1800:0x1804] = struct.pack("<i", 53)  # a TELEPORT TO counting down
+    assert g.transition_timer() == 53
+    g.pm.memory[0x1800:0x1804] = struct.pack("<i", -1)
+    assert g.transition_timer() == -1
 
 
 def test_each_cells_loaded_byte_is_read_from_right_after_the_states() -> None:

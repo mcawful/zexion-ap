@@ -541,12 +541,21 @@ class Game:
         return second if second == first else CHANGING
 
     def pickup_counter(self) -> int:
-        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45. Only the RE tools
-        locate it (``patterns.TOOL_TARGETS``).
+        """The ITEMS counter (16-bit): pickups, except items 27-31 and 38-45
+        (reconcile.UNCOUNTED_PICKUPS). A cell the client marks collected leaves it alone, which
+        is how the client's sum tells such a cell from one picked up
+        (reconcile.marked_count). Optional for the client (``patterns.CLIENT_ONLY_TARGETS``).
 
         Not a per-location signal; the map grid is (docs/re/memory.md).
         """
         return struct.unpack("<H", self._read("pickup_counter", 0, 2))[0]
+
+    def transition_timer(self) -> int:
+        """Frames left before the game runs its queued transition routine (signed 32-bit); 0
+        with none queued. A TELEPORT TO counts it down for a second that reads as play before
+        its load, which takes back what was written since the entry was chosen
+        (docs/re/memory.md, "Telling play from menus, the title screen and death")."""
+        return struct.unpack("<i", self._read("transition_timer", 0, 4))[0]
 
     def rando_marker(self) -> int:
         """1 when the loaded save is a randomizer save, 0 for a normal one. Loading a normal
