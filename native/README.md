@@ -1201,12 +1201,19 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   the next scan of the general pool, up to 30 frame calls.
   Stand-in test (`tests/game_tests.cpp`,
   `test_a_collected_item_in_a_reversed_gravity_room_is_hidden`, failing with the hiding taken
-  out, and its part under a menu with that kept out; the menu not run in game). Working in game, 2026-11-15 (B1, `zexion_ap.dll` `5ef5eeb1…`, the build of PR #145's
+  out, and its part under a menu with that kept out). Working in game, 2026-11-15 (B1, `zexion_ap.dll` `5ef5eeb1…`, the build of PR #145's
   branch at 399f57e, slot 5, a new game of the seed `lab/ap/live65` with the other player's
   items all checked; the owner's report, `lab/ingame-collected-checks.md`, "Check I"): at
   Exodia X22 Y1, over its marked square, the owner found nothing ("no item is there"), and
   confirmed having done the RELOAD FROM SAVE beside it, without describing what showed after
-  that reload. The marker can show
+  that reload. Again on 2026-11-15, with the helper of PR #146's branch at c7186e9 (the same
+  slot and seed; the owner's report and a read-only trace of the general pool's type-2026
+  objects, four samples a second, "Check P"): "nothing showed up through multiple reloads";
+  each new object of the kind read shown in one sample and hidden in the next; under the
+  pause menu, for 13 s, the hidden one's shown byte read 0 throughout; after the owner
+  walked through it, after a RELOAD FROM SAVE made in the room and after a quit to the
+  title from there, the object read freed and not shown (nothing written into it). The
+  marker can show
   the logo when it comes into view, until the next scan (up to 30 frame calls), and for a frame
   in a hit's blink. Hiding it by that byte worked in game
   (written by hand, 2026-11-03, `docs/re/memory.md`); the helper's own hiding: working in game

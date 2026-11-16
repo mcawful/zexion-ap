@@ -172,7 +172,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   that gives nothing); a boss's reward, R'Talva X34 Y51's, still showed too, and the warp
   gate waited for the touch of that picture: 2026-11-15 (the same branch at a17904b). The
   helper hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at
-  399f57e; kept hidden under a menu: stand-in tested only).
+  399f57e; kept hidden under a menu, through reloads and a quit to the title: 2026-11-15,
+  PR #146's branch at c7186e9, by the owner's report and a read-only trace).
   So R'Talva X34 Y51 is left unmarked too since, and showed as scrap in game: 2026-11-15
   (the client of PR #145's branch at 399f57e with the room listed on top).
   In those runs each mark gave one Scrap Metal; a mark gives none since (the second review
