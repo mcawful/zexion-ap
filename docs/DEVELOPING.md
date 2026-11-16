@@ -162,8 +162,13 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   WITH THE DISKS?, the equipment screen's count after a reload, a disk received right after
   a reload, a death, and the sound of the count popup the helper shows with no client; for
   the traps: a death, one queued behind one of its kind, a pause on the pickup's frame, one
-  queued through a TELEPORT TO or carried to another slot, a load from the file select
-  traced frame by frame, and no helper ("The OS Install Disks goal", "Traps").
+  queued through a TELEPORT TO or carried to another slot, a load from the file select over
+  a different map (two were traced on 2026-11-15 over a map that already held the save's
+  cells, which left the question open), and no helper. The second review round's fixes (the
+  disk count's reset when the helper is attached again, a queued own trap dropped in
+  another slot's save and queued once a pickup, the offline seed handed to the helper
+  before the folder and size checks) are stand-in tested only ("The OS Install Disks goal",
+  "Traps").
 - Other players' items kept collected once the server has them as checked: after a pickup and
   a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
   the player has left, as the client then left it alone): 2026-11-14 (PR #144's branch at
@@ -175,19 +180,24 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   that gives nothing); a boss's reward, R'Talva X34 Y51's, still showed too, and the warp
   gate waited for the touch of that picture: 2026-11-15 (the same branch at a17904b). The
   helper hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at
-  399f57e; kept hidden under a menu: stand-in tested only).
+  399f57e; kept hidden under a menu, through reloads and a quit to the title: 2026-11-15,
+  PR #146's branch at c7186e9, by the owner's report and a read-only trace).
   So R'Talva X34 Y51 is left unmarked too since, and showed as scrap in game: 2026-11-15
   (the client of PR #145's branch at 399f57e with the room listed on top); the helper
   making such a scrap's pickup the game's own Scrap Metal's: both rooms gave "the regular
   scrap metal and the pickups from it" (the owner's words), and its map square showed as a
-  minor's under the presets' Obscure settings, 2026-11-15 (PR #146's branch at fe4fe1b).
-  Not run in game with this helper: whether the fight at Exodia X20 Y0 and the gate at
-  R'Talva X34 Y51 follow the pickup, the map square under the other Obscure settings, and
-  the square while the item is on screen.
+  minor's under the presets' Obscure settings, 2026-11-15 (PR #146's branch at fe4fe1b);
+  the fight at Exodia X20 Y0 (started, won, the room left) and the gate and the music at
+  R'Talva X34 Y51 following that pickup, and each square steady with its item on screen:
+  2026-11-15 (the same branch at c7186e9). Not run in game: the map square under the other
+  Obscure settings, and a square of item 48 the game's on-screen write raises.
   In those runs each mark gave one Scrap Metal; a mark gives none since (the second review
-  round, 2026-11-15), which, with the marking's wait through a TELEPORT TO, is tested only.
+  round, 2026-11-15): run in game the same day with the client of PR #146's branch at
+  c7186e9 (a pickup lost to a reload, then marked, and 74 marked at their owner's collect
+  gave none; a received Scrap Metal counted on top; an event square's item marked with the
+  player in its room). The marking's wait through a TELEPORT TO is tested only.
   Not run in game: a death, another save of the seed, `!release`, a reload beside an item,
-  an item with an after-pickup event (an arena's, say) marked while the player stands in its
+  an arena's item marked while the player stands in its
   room, and a room that shows its item as an object of another kind beside the item object
   (Guardia X22 Y7) marked ("Other players' items", "Kept collected"; "What decides whether
   an item appears").
