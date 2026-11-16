@@ -183,7 +183,12 @@ def goal_reached(ended: bool, required: int | None, have: int) -> bool:
     session's goal), and with the OS Install Disks goal (``required``) only with enough disks
     (``have``). Whether or not the client saw that ending begin: one it missed (closed during
     it, or the save played without it) is the goal all the same, sent as such a save loads, not
-    only if the player plays the ending again (RETURN HOME is offered past the ending too)."""
+    only if the player plays the ending again (RETURN HOME is offered past the ending too).
+    An ended save short of disks can only come from 1.1.0, whose count every save of the seed
+    shared: under this goal the keys are not in the seed, RETURN HOME needs enough disks and
+    the ending saves as it begins. In such a save the goal is sent as its last disk is picked
+    up, before the game saves the pickup (kept so: native/README.md, "The OS Install Disks
+    goal")."""
     return ended and (required is None or have >= required)
 
 

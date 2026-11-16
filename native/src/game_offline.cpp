@@ -311,7 +311,15 @@ void Game::own_trap_found(uint8_t item, int cell) {
     if (rando_save_loaded()) {
         origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
     }
-    traps_.push_back({item, origin, cell});
+    const int slot = cell >= 0 ? at<int32_t>(at_.current_slot, 0) : -1;
+    // One still queued for this cell in this save: its pickup was undone by a load and made
+    // again before play settled (so before pump_traps dropped it). The one pickup that stands
+    // sets it off once.
+    const bool queued =
+        cell >= 0 && std::any_of(traps_.begin(), traps_.end(), [&](const QueuedTrap& t) {
+            return t.cell == cell && t.slot == slot && origin_loaded(t.origin);
+        });
+    if (!queued) traps_.push_back({item, origin, cell, slot});
 }
 
 std::string Game::other_save() {

@@ -284,7 +284,9 @@ public:
     void watch_own_traps();
     // Queues one of this world's own traps for the save loaded, as watch_own_traps does:
     // `cell` its map cell (-1: none known), by which pump_traps drops one whose pickup a load
-    // undid before it went off.
+    // undid before it went off, or that waits in another slot's save of the seed than the one
+    // it was picked up in. One still queued for that cell in this save is not queued twice (a
+    // pickup undone and made again before play settled).
     void own_trap_found(uint8_t item, int cell = -1);
     // Game thread, every frame (watch_all): with no client, in a known disk seed's save, an own
     // OS Install Disk's pickup queues its count notice, as the client's follow-up does with one
@@ -485,6 +487,7 @@ private:
         uint8_t item;
         std::shared_ptr<const OfflineSeed> origin;
         int cell = -1;  // an own trap's map cell (own_trap_found)
+        int slot = -1;  // and the save slot it was picked up in (0-based)
     };
     std::deque<QueuedTrap> traps_;
     // watch_own_traps: the seed's own traps as last looked at, each one's cell collected or not

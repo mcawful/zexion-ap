@@ -520,13 +520,15 @@ TARGETS = (
 )
 # fmt: on
 
-# Targets only the RE tools read (tools/grant.py, tools/check_patterns.py). The client does not
-# locate them (CLIENT_TARGETS), so one of their patterns breaking cannot stop it attaching.
-TOOL_TARGETS = frozenset({"pickup_counter"})
+# Targets only the RE tools read (tools/grant.py, tools/check_patterns.py), which the client
+# does not locate (CLIENT_TARGETS): none, since the client reads the pickup counter too.
+TOOL_TARGETS: frozenset[str] = frozenset()
 CLIENT_TARGETS = tuple(t for t in TARGETS if t.name not in TOOL_TARGETS)
 # Targets the client reads and writes that the helper is not given (native.CONFIG_KEYS): it has
 # no use for them, and a key added to its config makes the offline cache written before it
 # refused until the client runs again. The client attaches without one whose patterns no
 # longer match (game.Game.attach): only what reads it stops, the marking of other players'
-# items (client/session.py, ``mark``), which says so once, while items and checks go on.
-CLIENT_ONLY_TARGETS = frozenset({"cell_state"})
+# items (client/session.py, ``mark``, which needs both: the per-cell state to write, and the
+# pickup counter to tell a marked cell from one picked up), which says so once, while items
+# and checks go on.
+CLIENT_ONLY_TARGETS = frozenset({"cell_state", "pickup_counter"})

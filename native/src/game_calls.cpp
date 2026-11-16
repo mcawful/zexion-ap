@@ -705,9 +705,13 @@ void Game::pump_traps(uint64_t now_ms) {
     if (*at_.halt_flag != 0) return;
     // This world's own whose pickup a load undid while it waited (behind one of its kind still
     // running, or through a death): its item lies in its room again, and picking it up again
-    // queues it again, so this one is dropped.
-    std::erase_if(traps_, [this](const QueuedTrap& t) {
-        return t.cell >= 0 && origin_loaded(t.origin) && at_.map_grid[t.cell] != kCollectedCell;
+    // queues it again, so this one is dropped. So is one picked up in another slot's save of
+    // the seed (quit to the title while it waited, another save of the seed loaded): that
+    // save's cell reading collected is no pickup made in it.
+    const int slot = at<int32_t>(at_.current_slot, 0);
+    std::erase_if(traps_, [this, slot](const QueuedTrap& t) {
+        return t.cell >= 0 && origin_loaded(t.origin) &&
+               (at_.map_grid[t.cell] != kCollectedCell || t.slot != slot);
     });
     // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a
     // trap started still runs, and starts as it ends; an enemy's own effect does not hold it.

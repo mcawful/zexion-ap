@@ -877,6 +877,30 @@ def test_a_disk_picked_up_while_the_helper_was_lost_is_the_helpers_to_count(monk
     assert helper.notices == ["notice 44 OS Install Disk 3"]
 
 
+def test_a_disk_picked_up_in_an_outage_longer_than_a_poll_is_counted_once(monkeypatch) -> None:
+    # A poll with no helper takes the disks the save then holds for counted again, so one
+    # picked up after it would look new to the client once the helper is back, though the
+    # helper, with no client, showed its count itself: the attach starts the count over.
+    ctx, look = disks_poll(monkeypatch)
+    look({12})
+    look({12})
+    helper = ctx.helper
+    ctx.drop_helper()  # the mod stopped responding
+    look({12})  # a poll without it (the next try is not due yet)
+    assert ctx.helper is None and ctx.load.disks_counted == {12}
+    monkeypatch.setattr(native, "attach", lambda g, dll, notes=None: helper)
+    ctx.helper_retry_at = 0.0
+    look({12, 40})  # the one at 40 picked up meanwhile; this poll attaches the helper again
+    assert ctx.helper is helper
+    ctx.told.client_back_sent = True
+    look({12, 40})
+    look({12, 40})
+    assert helper.notices == [], "counted by the helper's own notice: not again"
+    look({12})  # a reload, then the pickup again
+    look({12, 40})
+    assert helper.notices == ["notice 44 OS Install Disk 3"]
+
+
 def test_own_traps_with_no_mod_are_said_once(monkeypatch, caplog) -> None:
     conn = connection(trap_locations=[[3, ids.DISRUPTION_TRAP]])
     ctx = context(conn, Running(game.IN_PLAY))
