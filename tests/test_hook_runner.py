@@ -146,6 +146,7 @@ def test_candidates_in_order(repo, fake_bin, working: list[str], chosen: str) ->
         ("guard_protected.py", "rm SteamApps/x", 2),
         ("guard_protected.py", "rm userdata/1/3392510/x", 2),
         ("guard_protected.py", "rm gAlLaNt/x", 2),
+        ("guard_protected.py", "rm %LOCALAPPDATA%/zEXIONap/x", 2),
         ("guard_protected.py", "ls", 1),  # elsewhere: goes ahead, with a hook error notice
         ("ruff_on_edit.py", f"cp lab/a '{SAVES}/x.sav'", 1),  # after the call: never "blocked"
     ],

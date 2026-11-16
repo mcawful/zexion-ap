@@ -1,8 +1,9 @@
 # Developing zexion-ap
 
 For contributors. Players start at the [README](../README.md). The project's rules (evidence,
-no hard-coded addresses, the game and save folders read-only, what never gets committed) are in
-[`CLAUDE.md`](../CLAUDE.md), "Rules": read them before changing anything.
+no hard-coded addresses, the game and save folders and the mod's offline files read-only, what
+never gets committed) are in [`CLAUDE.md`](../CLAUDE.md), "Rules": read them before changing
+anything.
 
 Zexion has no modding API, so everything here rests on reverse engineering, recorded with its
 evidence in [`docs/re/`](re/README.md).
