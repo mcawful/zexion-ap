@@ -65,7 +65,9 @@ worlds/zexion/ → generation → slot data → client
   Disks count and the Area Map hints read; sent again until the server holds them). A failing
   side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
   and the goal go on, and so is a failing marking of other players' items ("Can't mark other
-  players' items collected right now"), which is part of the poll's step, not a side task.
+  players' items collected right now"; or, on a game build where the pickup counter's
+  patterns no longer match, "Can't mark other players' items collected in this build of the
+  game", after which nothing is marked), which is part of the poll's step, not a side task.
   With no server connection, while a save it has not dressed is loaded and
   no ending is on its way, it lets the helper go, so the helper gives AP saves their look as
   with no client, and attaches it again on connecting
