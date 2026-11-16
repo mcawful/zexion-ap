@@ -3013,6 +3013,68 @@ void test_a_scrap_square_is_left_while_its_item_is_live() {
     settings[41] = obscure[2];
 }
 
+// With the item pool unreadable, which cells hold a live item object is not known: every
+// scrap-labeled square is held as it is, none lowered, until the pool reads again.
+void test_scrap_squares_are_held_while_the_item_pool_cannot_be_read() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    std::memset(g_section, 0, 4);
+    g_section[0] = 3;  // location 0 at (3, 4)
+    g_section[2] = 4;
+    g_section[0x26C] = 48;
+    BYTE* settings = g_section + 0x87B;
+    const BYTE obscure[] = {settings[29], settings[38], settings[41]};
+    settings[29] = settings[38] = settings[41] = 0;
+    const int cell = 4 * 54 + 3;
+    g_map_grid[cell] = 0x1A;
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 3 4 " + hex("@46"), labels);
+    game.set_labels(labels);
+    std::memset(g_item_pool, 0, sizeof(g_item_pool));  // no item object anywhere
+    // The pool's inner pages made unreadable (its first and last share pages with other data).
+    const auto begin = reinterpret_cast<uintptr_t>(g_item_pool);
+    const uintptr_t first = (begin + 0xFFF) & ~uintptr_t{0xFFF};
+    const uintptr_t last = (begin + sizeof(g_item_pool)) & ~uintptr_t{0xFFF};
+    DWORD old = 0;
+    VirtualProtect(reinterpret_cast<void*>(first), last - first, PAGE_NOACCESS, &old);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    const BYTE held = g_map_grid[cell];
+    VirtualProtect(reinterpret_cast<void*>(first), last - first, old, &old);
+    check(held == 0x1A, "held while the pool cannot be read");
+    for (int i = 0; i < 17; ++i) game.watch_all(&chosen);
+    check(g_map_grid[cell] == 0x19, "lowered once the pool reads again, no item object there");
+    game.client_gone(&chosen);
+    g_map_grid[cell] = 0;
+    g_rando_marker = 0;
+    settings[29] = obscure[0];
+    settings[38] = obscure[1];
+    settings[41] = obscure[2];
+}
+
+// A record that cannot be read (the pointer the game holds gone bad) refuses a received scrap's
+// drop: the read of the record's event is checked, every frame call it is made.
+void test_a_drop_with_an_unreadable_record_is_refused() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    apply(game, "apply\npopup 46 FROM ALICE");
+    game.note_play(5000);
+    game.pump_popups();
+    check(game.queued_drops() == 1 && g_spawn_calls == 0, "queued as its popup shows");
+    auto* gone = static_cast<BYTE*>(
+        VirtualAlloc(nullptr, 0x2000, MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS));
+    BYTE* records = g_records_ptr;
+    g_records_ptr = gone;
+    game.pump_drops(10100);
+    g_records_ptr = records;
+    check(g_spawn_calls == 0, "no event run from a record that cannot be read");
+    check(game.drop_status().find("no item record") != std::string::npos,
+          "and the drop says why");
+    VirtualFree(gone, 0, MEM_RELEASE);
+    reset_events();
+}
+
 // The map's squares are raised in the labels' seed's save with a menu open too (the player may
 // pause and open the map at once), after two looks in a row (every 16th frame) read that seed.
 void test_map_marks_with_a_menu_open() {
@@ -3908,6 +3970,8 @@ int main() {
     test_return_home_lapses_away_from_the_pod();
     test_map_marks_with_a_menu_open();
     test_a_scrap_square_is_left_while_its_item_is_live();
+    test_scrap_squares_are_held_while_the_item_pool_cannot_be_read();
+    test_a_drop_with_an_unreadable_record_is_refused();
     test_pickup_list();
     test_popups_wait_for_their_save();
     test_a_refused_unload_keeps_what_the_client_asked();

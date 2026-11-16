@@ -1158,13 +1158,14 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   tests (`tests/apitem_tests.cpp`, `test_own_scrap_metal_names_scrap_metals_event`;
   `tests/game_tests.cpp`, `test_own_scrap_metal_is_picked_up_as_the_games`;
   `tests/mapmarks_tests.cpp`, `test_own_scrap_metals_square_is_a_minors`, and
-  `tests/game_tests.cpp`, `test_a_scrap_square_is_left_while_its_item_is_live`; each failing with
+  `tests/game_tests.cpp`, `test_a_scrap_square_is_left_while_its_item_is_live` and
+  `test_scrap_squares_are_held_while_the_item_pool_cannot_be_read`; each failing with
   `Label::scrap` false). The pickup reads the record's event when the item is taken, as it
   reads its name (`docs/re/memory.md`, "What a scrap's pickup runs"). Working in game,
   2026-11-15 (B1, `zexion_ap.dll` `8c4202ad…`, PR #146's fe4fe1b, slot 6 of `lab/ap/live65`,
   the owner's report, `lab/ingame-collected-checks.md`, "Check K"): the scrap at R'Talva X34
   Y51 and the one at Exodia X20 Y0 were each picked up as the game's regular Scrap Metal,
-  with its drops. The client was connected for the first minute after the save's load and
+  with "the pickups from it" (the owner's words). The client was connected for the first minute after the save's load and
   then stopped (its session ended), the helper running on alone; which of the two each
   pickup ran under is not known. The map square, the same day and helper (a new game of
   that seed in slot 5, the client connected, the presets' Obscure Majors and Minors; "Check
@@ -2210,7 +2211,9 @@ unload.
 - `menu`: the game-mode panel and the options menu (relabeling, putting back, closed menus and
   released widgets, the ASSIST lock's look and cursor order, the options menu built again after
   Video, GENERAL or the assist menu with another widget in the locked ASSIST's place).
-- `apitem`: the stand-in records restyled and named, the logo (in its own colors, the arrow
+- `apitem`: the stand-in records restyled and named (one named after a cell labeled this
+  player's own Scrap Metal naming Scrap Metal's pickup event:
+  `test_own_scrap_metal_names_scrap_metals_event`), the logo (in its own colors, the arrow
   yellow then white), the font glyphs, the pause
   row's disc and the file select's logo in its colors painted through a fake OpenGL, the
   translations' icon sheets painted and cleared (and left alone where not as traced; each
