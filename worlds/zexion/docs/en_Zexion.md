@@ -277,11 +277,12 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
 
 Yes, while the client is connected: an item for another player that you picked up, or that its owner
 collected (`!collect`) or you released (`!release`), is gone from its room and marked on the map.
-The client does this, so the mod isn't needed for it.
+The client does this, so the mod isn't needed for it, apart from what's under "What the mod
+adds".
 
 - **What stays collected:** if you die or reload without saving after picking one up, or play
   another save of your seed, it's still gone. An item in a room around you disappears a moment
-  later. A save keeps what was marked: played against a new room of the same seed, or after the
+  later, and an enemy that would have dropped a checked item drops nothing. A save keeps what was marked: played against a new room of the same seed, or after the
   server went back to an older state, it sends those locations as found.
 - **What it gives:** nothing. Picking one up gives you one Scrap Metal, but an item kept
   collected this way gives none, also one you picked up and then lost to a death or a reload, or
@@ -290,11 +291,12 @@ The client does this, so the mod isn't needed for it.
   (it starts the boss fight) and R'Talva 34,51 (the boss's reward, which opens the warp gate). Once
   such an item is checked, Scrap Metal lies there instead and you still pick it up: with the mod,
   as the game's own Scrap Metal. Your own items aren't touched either: they follow your save, so
-  after a death or a reload they're back in their rooms. An enemy that would have dropped a
-  checked item drops nothing.
+  after a death or a reload they're back in their rooms.
 - **What needs the client:** all of the above. With it closed, an item you found before a death or a
-  reload is back in its room. In an upside-down room the mod hides a checked item (without the mod it
-  shows, and touching it gives nothing).
+  reload is back in its room.
+- **What the mod adds:** in an upside-down room the mod hides a checked item (without the mod it
+  shows, and touching it gives nothing), and in the two rooms above it makes the Scrap Metal's
+  pickup the game's own.
 
 Checked in the game: an item gone after a reload, and one in a room around you gone when its owner
 collects; a kept item giving no Scrap Metal, for a reload and for an owner's collect; both left-out
@@ -377,8 +379,9 @@ world, with their look and pickup popups; with Hints Revealed, a key-look trap h
 marker; a trap sent just after an OS Install Disk; and one sent while paused, then TELEPORT TO
 START, RELOAD FROM CHECKPOINT or RELOAD FROM SAVE. Not checked in the game: a trap through RETURN
 HOME or the ending, a key-look trap after the scanner has shown your keys, other popups showing
-first while a trap waits for one of its kind to end, and the mod refusing to reload while a trap
-waits to go off. Every run is recorded in `native/README.md` ("Traps") in the repository.
+first while a trap waits for one of its kind to end, a trap's popup in a translation, and the mod
+refusing to reload while a trap waits to go off. Every run is recorded in `native/README.md`
+("Traps") in the repository.
 
 ## Can I use the assist menu?
 

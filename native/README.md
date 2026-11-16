@@ -1064,7 +1064,7 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   leaves alone: the collected cells that count does not account for are the marked ones
   (`client/reconcile.py`, `marked_count`; `docs/re/memory.md`, "The pickup counter and the
   collected cells": the count equals the collected cells in every lab save copy looked at
-  but the marked one, short by its marks). A stand-in picked up and then
+  but the marked one, short by its marks). Nothing is ever taken away. A stand-in picked up and then
   lost to a death or a reload is marked once the save is back, and gives none then either:
   its Scrap Metal went with the load; the same for one picked up in another save of the
   seed, marked in this one. A marked square reads explored on the map. A mark

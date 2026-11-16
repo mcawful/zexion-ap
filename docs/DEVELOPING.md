@@ -164,8 +164,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   PR #145's 399f57e, PR #146's fe4fe1b and c7186e9: the two rooms left unmarked, the hidden
   picture, a mark giving no Scrap Metal), B1. What each run showed and what is not run (a
   death, another save of the seed, `!release`, a reload beside an item, an arena's item marked
-  with the player in its room, a type-715 room, the marking's wait through a TELEPORT TO, the
-  map square under the other Obscure settings): `native/README.md`, "Other players' items"
+  with the player in its room, a type-715 room such as Guardia X22 Y7, the marking's wait
+  through a TELEPORT TO, the map square under the other Obscure settings, and a scrap-labeled
+  square of item 48 that the game's on-screen write raises): `native/README.md`, "Other players' items"
   ("Kept collected", "This player's own Scrap Metal", "Run in game after the review rounds");
   `docs/re/memory.md`, "What decides whether an item appears".
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
@@ -184,8 +185,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their first
   design 2026-11-11 (PR #138's 57381bf); the design since, 2026-11-11 (81dd8cc, `lab/ap/live60`;
   5f66f1b, `live61`; `develop` e500ab9, `live62` and `live63`; the popup order at 932411b); a
-  trap waiting out RELOAD FROM CHECKPOINT, RELOAD FROM SAVE and a death's respawn, 2026-11-13
-  (907abfd), and a TELEPORT TO, 2026-11-14; this world's own traps set off at their pickup by
+  trap waiting out RELOAD FROM CHECKPOINT, RELOAD FROM SAVE, a death's respawn and a TELEPORT TO,
+  2026-11-13 (907abfd); this world's own traps set off at their pickup by
   the helper, 2026-11-14 (the line above); B1. What each run showed and what is not run (the
   ending or RETURN HOME, a key-look trap after the scanner, an unload refused while a trap
   waits, a trap's popup passed by others, a connection's first held-traps record beside
