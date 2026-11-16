@@ -147,8 +147,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
 - This world's own OS Install Disks and traps following the save: 2026-11-14. With the
-  client: a disk's count dropping after a RELOAD FROM SAVE and the disk counted again at its
-  next pickup; an own trap set off by the helper at its pickup and back in its room after a
+  client: a disk's count dropping after a RELOAD FROM SAVE (the disk counted again at its
+  next pickup by the owner's "worked as expected" alone); an own trap set off by the helper at its pickup and back in its room after a
   reload (set off again at the second pickup by the owner's word alone). With none: the
   helper's own count popup at a disk's pickup; an own trap set off at its pickup and again
   after a RELOAD FROM SAVE. Not run in game: the count dropping with no client, the file

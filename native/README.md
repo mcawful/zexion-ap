@@ -614,11 +614,14 @@ dealt on the next load ("DeathLink").
   queued one is for the save slot it was picked up in: still waiting when the player quits to
   the title and loads another slot's save of the seed that holds the cell collected, it is
   dropped, not set off there (`pump_traps`; both the re-auditor's, 2026-11-15, stand-in
-  tests). The helper has the list from the client's `offline_put` even when the file cannot
+  tests). Dropped, not kept for its own save: loading that save again, or a COPY FILE of it
+  in another slot, does not set it off, its cell reading collected already. The helper has the list from the client's `offline_put` even when the file cannot
   be kept: with no `LOCALAPPDATA` folder, a file over 48 KB, or a write that fails, the
   request is refused (the client then says so) after the seed has been handed to the
   running helper, and the client sends a file over 48 KB all the same while the pipe takes
-  the request (64 KB). Until the client's first `offline_put` of a seed, which waits for
+  the request (64 KB). A seed the helper took but cannot keep (no folder, too large) is not
+  put again until its text changes, and one put again before a frame took the last replaces
+  it in the helper's queue (`note_put_seed`). Until the client's first `offline_put` of a seed, which waits for
   the received items' list and the scouted locations (asked for every 5 s), a helper with no
   file of that seed from an earlier run knows no own trap: one picked up in those seconds
   does nothing. A seed's file merged with another list of traps starts the two looks over,
@@ -1337,9 +1340,14 @@ is left. One queued stays when a client attaches, and the cells are watched with
 too, so a disk picked up with one is no pickup once it goes; a client that lost the helper
 takes the disks the save holds for counted when it is back (`drop_helper`, and, as a poll
 with no helper fills that set again, `attach_helper` once more when the helper is attached:
-an outage longer than a poll), so a disk picked up meanwhile gets the helper's count alone
+an outage longer than a poll; not when that attach loaded the helper itself, none having
+been in the game to count), so a disk picked up meanwhile gets the helper's count alone
 (the re-auditor's findings, 2026-11-14 and 15: two count popups for one pickup; stand-in
-tests on both sides) (stand-in test, `tests/game_tests.cpp`,
+tests on both sides). A count is still missed, the screens' count being right all the
+same, when the helper in the game had no file of the seed during the outage (the client's
+first put not made yet, or a file too large to keep, which the helper has no more once the
+client goes), and in the moment after the helper is configured, a client's again and before
+that client's first look (stand-in test, `tests/game_tests.cpp`,
 `test_an_own_disk_shows_its_count_with_no_client`, failing with the watch taken out of
 `watch_all`; in game 2026-11-14, `7859b9e7…`, no client: the count popup showed at the pickup,
 silent then; its sound, `Popup::sounds`, added after, has its stand-in check only and is not
@@ -1348,9 +1356,9 @@ the save, so right after a reload that put an own disk back it can read one too 
 the count on the screens is the save's. The goal is sent for an ending in
 a save that holds enough. A save past its ending that holds too few can only come from
 1.1.0, whose count every save of the seed shared (a disk found in another save counted):
-under this goal the keys are not in the seed, RETURN HOME is offered only with enough
-disks, and the ending saves as it begins, so a save that ended under the save's own count
-holds them. In such an old save the goal is sent as its last disk is picked up, before the
+under this goal the keys are not in the seed and RETURN HOME is offered only with enough
+disks, so a save that ended under the save's own count holds them (by the code; when the
+ending writes its save was not measured). In such an old save the goal is sent as its last disk is picked up, before the
 game has saved the pickup: kept so (the owner's decision, 2026-11-15: once the ending has
 begun, how the count is reached no longer matters). The server's checked locations and the
 client's found record no longer count a disk. Stand-in tests (`tests/test_ticks.py`,
@@ -1359,7 +1367,8 @@ Working in game, 2026-11-14 (B1, slot 6, the seed `lab/ap/live64`; the owner's r
 read-only watcher's times, `lab/ingame-collected-checks.md`). With the client and
 `zexion_ap.dll` `5f19e4d4…` (bbaf3c5): the own disk at Kresezoa 24,24 picked up, reloaded
 from before it and picked up again "worked as expected" (the reload RELOAD FROM SAVE, by
-the owner's later words; what the second pickup showed was not described apart), but for a
+the owner's later words; what the second pickup showed was not described apart, so the
+count showing again there rests on those words alone), but for a
 pause screen opened within a second of the reload, which still read 1 of 4 (fixed after
 that run: the row follows a changed count). With the client and `7859b9e7…` (1b04f24): the
 disk picked up, its count popup with its sound; RELOAD FROM SAVE (through the menu in
@@ -1447,7 +1456,8 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   each counted in a save whose map shows it collected), this player's own traps (each one's
   cell and item: "Traps") and the item labels.
 - **Where:** `offline_put` checks each file as the reader will (the config with at least 8
-  function checks; NAME in `<seed>-<team>-<slot>` form; each file at most 48 KB). A seed's
+  function checks; NAME in `<seed>-<team>-<slot>` form) and keeps none over 48 KB; the client
+  sends none whose request is over the pipe's 64 KB. A seed's
   file that parses is handed to the running helper before the checks that concern keeping it
   alone (the folder, the size, the write: "Traps", "This world's own"). The helper
   writes it on the pipe's thread into `%LOCALAPPDATA%\ZexionAP` (`config-<build>.txt`,

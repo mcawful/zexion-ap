@@ -38,8 +38,9 @@ Set with the Goal option.
     does, with who sent it), on the pause screen and on the file select. It's your save's own:
     the disks sent to you, plus your own that the save holds. If you die or reload without
     saving after picking up one of your own, it's back in its room and off your count until you
-    pick it up again, which shows the count again (checked in the game for a reload, on the
-    pause screen; not yet for a death, nor the file select's count as it is now). With the
+    pick it up again, which shows the count again (checked in the game for a reload: the
+    count dropping on the pause screen; the count showing again at the second pickup was not
+    looked at apart; not yet a death, nor the file select's count as it is now). With the
     client closed, the mod shows the count itself when you pick up one of your own (checked
     in the game).
   - The scanner at Guardia 42,26, outside the core's door, which shows where the keys are in
