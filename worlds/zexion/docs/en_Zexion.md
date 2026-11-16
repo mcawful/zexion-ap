@@ -330,11 +330,11 @@ after it don't wait for it meanwhile). It waits through the pause menu, other me
 load, and through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load
 then). It also waits through a teleport from the pause menu, such as TELEPORT TO START (the other
 TELEPORT TO entries work the same way but were not tried), and goes off once you arrive. Each trap
-sent to you happens at most once, including one sent while your client was closed, or before you first connected
-(it comes when you connect); if the client closes just as a trap goes off, it may come again; a trap
-still waiting for its popup is lost if the game closes, or if the mod is reloaded while it waits for
-a save that isn't loaded; and with no mod running a trap does nothing, your own when you pick it up
-as much as one sent to you (the client says so). A second trap of
+sent to you happens at most once, including one sent while your client was closed, or before you
+first connected (it comes when you connect); if the client closes just as a trap goes off, it may
+come again; a trap still waiting for its popup is lost if the game closes, or if the mod is reloaded
+while it waits for a save that isn't loaded; and with no mod running a trap does nothing: not one
+sent to you, and not your own when you pick it up (the client says so). A second trap of
 the same kind waits for the first to end and then goes off, so each lasts its full 12 seconds. The
 game's AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change
 traps: while one runs, it is left out for that effect, so an enemy's touch of the same kind during a

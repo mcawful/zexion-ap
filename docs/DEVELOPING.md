@@ -67,9 +67,9 @@ worlds/zexion/ → generation → slot data → client
   hints read; sent again until the server holds them). This world's own OS Install Disks and
   traps follow the save instead: the disk count is the loaded save's own, and the helper sets an
   own trap off at each pickup ([`native/README.md`](../native/README.md), "The OS Install Disks
-  goal", "Traps"). A failing
-  side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
-  and the goal go on, and so is a failing marking of other players' items ("Can't mark other
+  goal", "Traps"). A failing side task (labels, disk count, DeathLink, follow-up popups) is
+  logged once while items, checks and the goal go on, and so is a failing marking of other
+  players' items ("Can't mark other
   players' items collected right now"; or, on a game build where the pickup counter's
   patterns no longer match, "Can't mark other players' items collected in this build of the
   game", after which nothing is marked), which is part of the poll's step, not a side task.
@@ -148,16 +148,20 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04; another
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
-- This world's own OS Install Disks and traps following the save: 2026-11-14. With the
-  client: a disk's count dropping after a RELOAD FROM SAVE (the disk counted again at its
-  next pickup by the owner's "worked as expected" alone); an own trap set off by the helper at its pickup and back in its room after a
-  reload (set off again at the second pickup by the owner's word alone). With none: the
-  helper's own count popup at a disk's pickup; an own trap set off at its pickup and again
-  after a RELOAD FROM SAVE. Not run in game: the count dropping with no client, the file
-  select's count as it is now, the goal from a save's count, RETURN HOME WITH THE DISKS?,
-  the equipment screen's count after a reload, a disk received right after a reload, a
-  death, and the sound of the count popup the helper shows with no client ("The OS Install
-  Disks goal", "Traps").
+- This world's own OS Install Disks and traps following the save: 2026-11-14 (B1; the
+  helpers `zexion_ap.dll` `5f19e4d4…` from bbaf3c5 and, for the pause row and the count with
+  no client, `7859b9e7…` from 1b04f24). With the client: a disk's count dropping after a
+  RELOAD FROM SAVE (the disk counted again at its next pickup by the owner's "worked as
+  expected" alone); an own trap set off by the helper at its pickup and back in its room
+  after a reload (set off again at the second pickup by the owner's word alone). With none:
+  the helper's own count popup at a disk's pickup; an own trap set off at its pickup and
+  again after a RELOAD FROM SAVE. Not run in game, for the disks: the count dropping with no
+  client, the file select's count as it is now, the goal from a save's count, RETURN HOME
+  WITH THE DISKS?, the equipment screen's count after a reload, a disk received right after
+  a reload, a death, and the sound of the count popup the helper shows with no client; for
+  the traps: a death, one queued behind one of its kind, a pause on the pickup's frame, one
+  queued through a TELEPORT TO or carried to another slot, a load from the file select
+  traced frame by frame, and no helper ("The OS Install Disks goal", "Traps").
 - Other players' items kept collected once the server has them as checked: after a pickup and
   a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
   the player has left, as the client then left it alone): 2026-11-14 (PR #144's branch at
