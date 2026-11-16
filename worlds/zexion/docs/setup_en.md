@@ -139,7 +139,8 @@ play as normal.
   the mod back on.
 - **Remove it:** close Zexion and delete `zexion_ap.dll` and `version.dll` from its folder. Your
   saves of a seed still load, as plain randomizer games (other players' items, OS Install Disks
-  and traps look like Scrap, and a trap sent to you does nothing), and they can earn Feats and
+  and traps look like Scrap, and a trap does nothing, your own when you pick it up as much
+  as one sent to you), and they can earn Feats and
   Steam achievements again. To play a seed again, install the mod again. The mod's small files for
   playing without the client stay in `%LOCALAPPDATA%\ZexionAP`; you can delete that folder.
 

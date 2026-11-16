@@ -2606,12 +2606,105 @@ void test_an_own_trap_whose_pickup_was_undone_is_dropped() {
     game.watch_all(&chosen);
     game.pump_traps(6100);
     check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "the new pickup sets it off");
+
+    // Undone and picked up again before play settles (pump_traps not yet past the load): the
+    // one still queued stands for the pickup made, and it goes off once.
+    g_map_grid[cell] = 0x19;
+    play_looks(game);
+    g_map_grid[cell] = zap::kCollectedCell;  // picked up while one of its kind runs
+    game.watch_all(&chosen);
+    game.pump_traps(6200);
+    check(game.queued_traps() == 1 && field<int16_t>(0xDC2) == 660, "waiting behind its kind");
+    field<int16_t>(0xCEA) = -1;  // a death; the respawn resets the timer and puts the item back
+    game.watch_all(&chosen);
+    field<int16_t>(0xDC2) = 0;
+    g_map_grid[cell] = 0x19;
+    field<int16_t>(0xCEA) = 48;
+    play_looks(game);
+    g_map_grid[cell] = zap::kCollectedCell;  // and it is picked up again at once
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "queued once for the pickup that stands");
+    game.note_play(7000);
+    game.pump_traps(9000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "set off once");
+
+    // Still waiting when the player quits to the title and loads another slot's save of the
+    // seed, which holds that cell collected: not set off there.
+    g_map_grid[cell] = 0x19;
+    play_looks(game);
+    g_map_grid[cell] = zap::kCollectedCell;  // picked up while the one before still runs
+    game.watch_all(&chosen);
+    game.pump_traps(9100);
+    check(game.queued_traps() == 1, "waiting again");
+    const int32_t slot = g_current_slot;
+    g_save_loaded = 0xFF;  // the title
+    game.watch_all(&chosen);
+    g_current_slot = slot + 1;  // the other save, the cell collected in it too
+    g_save_loaded = 0;
+    field<int16_t>(0xDC2) = 0;
+    game.note_play(10000);
+    play_looks(game);
+    game.pump_traps(12000);
+    check(game.queued_traps() == 0 && field<int16_t>(0xDC2) == 0,
+          "dropped: no pickup was made in this save");
+    g_current_slot = slot;
     game.put_back_traps();
     field<int16_t>(0xDC2) = 0;
     g_map_grid[cell] = 0;
     g_rando_marker = 0;
     game.set_offline({});
     game.watch_all(&chosen);
+}
+
+// This world's own trap, queued by its cell's pickup, through a TELEPORT TO: held while the
+// countdown reads as play; set off after the load when the pickup stands, dropped when the load
+// took it back (the teleport loads the play state as it was when its entry was chosen).
+void test_an_own_trap_by_its_cell_waits_out_a_teleport() {
+    for (bool stands : {true, false}) {
+        zap::Game game;
+        ready(game);
+        trap_records();
+        g_rando_marker = 1;
+        const int cell = 4 * 54 + 3;
+        zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+        seed.traps = {{cell, 102}};
+        game.set_offline({seed});
+        g_map_grid[cell] = 0x19;
+        in_play_since(game, 5000);
+        play_looks(game);
+        if (stands) {  // picked up, then the pause menu at once: copied with the play state
+            g_map_grid[cell] = zap::kCollectedCell;
+            game.watch_all(&chosen);
+        }
+        teleport_from_pause(game, 5000);
+        game.watch_all(&chosen);
+        if (!stands) {  // picked up during the countdown, which the load takes back
+            g_map_grid[cell] = zap::kCollectedCell;
+            game.watch_all(&chosen);
+        }
+        check(game.queued_traps() == 1, "queued by its pickup");
+        play_frames(game, 5016, 6000);
+        check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1,
+              "held through the countdown, though it reads as play");
+        g_transition_timer = 0;  // the load
+        if (!stands) g_map_grid[cell] = 0x19;
+        play_frames(game, 6016, 6200);
+        check(field<int16_t>(0xDC2) == 0, "not in the moment after the load");
+        play_frames(game, 6216, 6600);
+        if (stands) {
+            check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0,
+                  "set off once play has settled: its pickup stands");
+        } else {
+            check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 0,
+                  "dropped with the pickup the load took back");
+        }
+        game.put_back_traps();
+        field<int16_t>(0xDC2) = 0;
+        g_map_grid[cell] = 0;
+        g_rando_marker = 0;
+        game.set_offline({});
+        game.watch_all(&chosen);
+    }
 }
 
 // A config with none of the AILMENTS keys (an offline cache written before the traps): the traps
@@ -3720,6 +3813,7 @@ int main() {
     test_own_traps_go_off_at_each_pickup();
     test_an_own_disk_shows_its_count_with_no_client();
     test_an_own_trap_whose_pickup_was_undone_is_dropped();
+    test_an_own_trap_by_its_cell_waits_out_a_teleport();
     test_a_trap_popup_takes_its_turn();
     test_a_popups_notices_stay_ahead_of_a_trap_it_passed();
     test_a_trap_popup_with_no_record_waits();

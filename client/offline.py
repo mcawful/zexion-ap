@@ -19,7 +19,8 @@ from collections.abc import Iterable, Sequence
 from .ids import MAP_SIZE
 
 CHECK_BYTES = 16  # of each function, for the helper's check (native/src/offline.cpp)
-MAX_FILE = 48 * 1024  # the helper's kMaxFile: the pipe takes no message much over 64 KB
+MAX_FILE = 48 * 1024  # the helper's kMaxFile: it keeps no file larger
+MAX_REQUEST = 64 * 1024  # the pipe's kBufferSize: a longer request ends the connection
 # Code the helper itself patches while it runs: its bytes are not the game's to check.
 NOT_CHECKED = frozenset(
     {

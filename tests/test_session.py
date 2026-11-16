@@ -9,7 +9,7 @@ import struct
 import pytest
 from fakes import CELLS, SECRET_CELLS, SECRET_LIST, plan, secret_plan, section
 
-from client import game, ids, native
+from client import game, ids, native, reconcile
 from client import save_patch as sp
 from client import session as ss
 
@@ -39,6 +39,8 @@ class FakeGame:
         self.ends_items = True
         self.spawn: set[tuple[int, int]] = set()  # rooms loaded between a mark's look and write
         self.load_after_writes = False  # a load beginning as the marking's last write lands
+        self.pickups: int | None = 0  # the pickup counter (None: not found in this build)
+        self.timer = 0  # the transition timer: a TELEPORT TO counts it down while in play
 
     def state(self, energy: int | None = None) -> str:
         self.reads += 1
@@ -72,6 +74,14 @@ class FakeGame:
 
     def game_saved(self) -> int | None:
         return self.saved
+
+    def pickup_counter(self) -> int:
+        if self.pickups is None:
+            raise game.PatternError("pickup_counter was not found in this build of the game")
+        return self.pickups
+
+    def transition_timer(self) -> int:
+        return self.timer
 
     def set_item(self, item: int, expected: int, value: int) -> None:
         if self.inv[item] != expected:
@@ -121,6 +131,8 @@ class FakeGame:
         item = self.plan.location_items[i]
         # Records 46 to 50 all raise Scrap Metal's byte (reconcile.COUNTED_AS_SCRAP).
         self.inv[ids.SCRAP_METAL if item >= ids.SCRAP_METAL else item] += 1
+        if item not in reconcile.UNCOUNTED_PICKUPS and self.pickups is not None:
+            self.pickups += 1  # the game's pickup counter
 
 
 # The flags the goal reads, by number (docs/re/memory.md, "The ending: flag 250"): the ending's,
@@ -831,12 +843,60 @@ def test_a_reload_from_before_is_marked_again(others) -> None:
     assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
 
 
-def test_marking_gives_the_scrap_metal_its_pickup_would_have_once(others) -> None:
+def test_a_marked_cell_gives_no_scrap_metal(others) -> None:
     session, g = others
     scrap = g.inv[ids.SCRAP_METAL]
     for _ in range(6):
+        assert not session.step(g, [], gap=0, gone={3}).granted
+    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap, "only a pickup gives its own"
+
+
+def test_a_stand_in_picked_up_still_counts_beside_the_marked_ones(others) -> None:
+    session, g = others
+    for _ in range(3):
         session.step(g, [], gap=0, gone={3})
-    assert marked(g, 3) and g.inv[ids.SCRAP_METAL] == scrap + 1
+    assert marked(g, 3)
+    g.collect(5)  # the other stand-in, picked up: the game gives its one Scrap Metal
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).granted
+    # A Scrap Metal received on top is owed, the picked-up stand-in's not standing in for it.
+    for _ in range(3):
+        session.step(g, [ids.SCRAP_METAL], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap + 1
+    # A death takes the received one's byte back: given again, once.
+    g.inv[ids.SCRAP_METAL] = scrap
+    for _ in range(3):
+        session.step(g, [ids.SCRAP_METAL], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap + 1
+
+
+def test_a_save_marked_under_the_old_rule_keeps_its_scrap_metal(others) -> None:
+    session, g = others
+    g.grid[at(3)], g.items[at(3)] = 0x1B, game.ITEM_COLLECTED  # marked by an older client,
+    g.inv[ids.SCRAP_METAL] += 1  # which gave the Scrap Metal a pickup would have
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).granted
+    assert g.inv[ids.SCRAP_METAL] == scrap, "nothing is taken away, and nothing given again"
+
+
+def test_nothing_is_marked_while_the_pickup_counter_cannot_be_read(others, caplog) -> None:
+    session, g = others
+    g.pickups = None
+    with caplog.at_level(logging.WARNING, logger="Zexion"):
+        for _ in range(3):
+            step = session.step(g, [], gap=0, gone={3})
+            assert not step.marked and step.seed_matches
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0
+    assert sum("pickup counter was not found" in r.message for r in caplog.records) == 1
+    # A cell marked before (or picked up: they cannot be told apart) counts as picked up.
+    g.collect(5)
+    g.inv[ids.SCRAP_METAL] -= 1
+    scrap = g.inv[ids.SCRAP_METAL]
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == scrap + 1
 
 
 def in_the_room(g: FakeGame, i: int) -> None:
@@ -927,7 +987,7 @@ def test_a_room_loaded_between_the_look_and_the_write_gets_its_map_cell_later(ot
     assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
     for _ in range(3):
         session.step(g, [], gap=0, gone={3})
-    assert g.inv[ids.SCRAP_METAL] == scrap + 1
+    assert g.inv[ids.SCRAP_METAL] == scrap, "marked, not picked up: no Scrap Metal"
 
 
 def test_a_map_cell_the_game_changed_since_the_look_is_marked_by_a_later_poll(others) -> None:
@@ -975,15 +1035,14 @@ def test_nothing_is_marked_once_the_ending_began(others) -> None:
 
 def test_a_helper_to_attach_again_holds_the_grants_not_the_marking(others) -> None:
     session, g = others
-    scrap = g.inv[ids.SCRAP_METAL]
-    session.step(g, [], gap=0, gone={3}, give=False)
-    assert session.step(g, [], gap=0, gone={3}, give=False).marked == {3}
+    session.step(g, [17], gap=0, gone={3}, give=False)
+    assert session.step(g, [17], gap=0, gone={3}, give=False).marked == {3}
     for _ in range(3):
-        session.step(g, [], gap=0, gone={3}, give=False)
-    assert g.inv[ids.SCRAP_METAL] == scrap, "its Scrap Metal waits with the other grants"
+        session.step(g, [17], gap=0, gone={3}, give=False)
+    assert g.inv[17] == 0, "the received item waits"
     for _ in range(2):
-        session.step(g, [], gap=0, gone={3})
-    assert g.inv[ids.SCRAP_METAL] == scrap + 1
+        session.step(g, [17], gap=0, gone={3})
+    assert g.inv[17] == 1
 
 
 def test_locations_the_seed_does_not_list_are_not_marked(others) -> None:
@@ -1091,7 +1150,7 @@ def test_an_item_state_that_changed_since_the_look_is_not_written(others) -> Non
     assert not session.step(g, [], gap=0, gone={3, 5}).marked, "held by an object: left"
 
 
-@pytest.mark.parametrize("change", ["stamp", "state", "marker", "no stamp"])
+@pytest.mark.parametrize("change", ["stamp", "state", "marker", "no stamp", "teleport"])
 def test_the_save_is_checked_again_right_before_the_writes(others, change) -> None:
     _, g = others
     stamp = g.stamp
@@ -1101,12 +1160,76 @@ def test_the_save_is_checked_again_right_before_the_writes(others, change) -> No
         g.state_value = game.MENU
     elif change == "marker":
         g.marker = 0
+    elif change == "teleport":
+        g.timer = 53  # a TELEPORT TO counting down: in play, the stamp unchanged
     else:
         stamp = b""
     assert ss.mark_collected(g, bytes(g.grid), CELLS, [3], stamp) == set()
     assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "nothing written"
-    g.stamp, g.state_value, g.marker = bytes(14), game.IN_PLAY, 1
+    g.stamp, g.state_value, g.marker, g.timer = bytes(14), game.IN_PLAY, 1, 0
     assert ss.mark_collected(g, bytes(g.grid), CELLS, [3], bytes(14)) == {3} and marked(g, 3)
+
+
+def test_a_teleport_counting_down_marks_nothing_until_its_load_is_over(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    g.timer = 60  # TELEPORT TO START chosen: a second that reads as play, then its load
+    for _ in range(3):
+        assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "nothing written"
+    g.timer = 0
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+
+
+def test_a_mark_a_load_that_reads_as_play_cut_is_not_reported_and_is_finished(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    write = g.set_map_collected
+
+    def state_taken_back(cell, expected):
+        write(cell, expected)
+        g.items[at(3)] = game.ITEM_THERE  # the load copied the state from before the mark
+
+    g.set_map_collected = state_taken_back
+    step = session.step(g, [], gap=0, gone={3})
+    assert not step.marked, "the map cell reads collected over an item that is there"
+    assert g.grid[at(3)] == 0x1B and g.items[at(3)] == game.ITEM_THERE
+    g.set_map_collected = write
+    assert session.step(g, [], gap=0, gone={3}).marked == {3} and marked(g, 3)
+    for _ in range(3):
+        session.step(g, [], gap=0, gone={3})
+    assert g.inv[ids.SCRAP_METAL] == 0, "and no Scrap Metal for it, cut or finished"
+
+
+def test_a_teleport_begun_under_the_last_write_reports_nothing(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    write = g.set_map_collected
+
+    def chosen_then(cell, expected):
+        write(cell, expected)
+        g.timer = 60
+
+    g.set_map_collected = chosen_then
+    assert not session.step(g, [], gap=0, gone={3}).marked
+
+
+def test_the_players_cell_is_read_again_right_before_the_writes(others) -> None:
+    session, g = others
+    session.step(g, [], gap=0, gone={3})
+    states = g.cell_items
+
+    def walked_up_since_the_look() -> bytes:
+        x, y = CELLS[3]
+        g.cell = (y, x + 1)  # the game's (X, Y): the cell next to the location's
+        return states()
+
+    g.cell_items = walked_up_since_the_look
+    assert not session.step(g, [], gap=0, gone={3}).marked
+    assert g.items[at(3)] == game.ITEM_THERE and g.grid[at(3)] == 0, "left: its item may be here"
+    g.cell_items = states
+    g.cell = (40, 40)
+    assert session.step(g, [], gap=0, gone={3}).marked == {3}
 
 
 def test_a_load_beginning_under_the_marking_counts_nothing_as_marked(others) -> None:

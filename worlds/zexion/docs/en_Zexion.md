@@ -38,8 +38,10 @@ Set with the Goal option.
     does, with who sent it), on the pause screen and on the file select. It's your save's own:
     the disks sent to you, plus your own that the save holds. If you die or reload without
     saving after picking up one of your own, it's back in its room and off your count until you
-    pick it up again, which shows the count again (checked in the game). With the client
-    closed, the mod shows the count itself when you pick up one of your own.
+    pick it up again, which shows the count again (checked in the game for a reload, on the
+    pause screen; not yet for a death, nor the file select's count as it is now). With the
+    client closed, the mod shows the count itself when you pick up one of your own (checked
+    in the game).
   - The scanner at Guardia 42,26, outside the core's door, which shows where the keys are in
     the normal game, tells you how many you need. Until you have been there, the pause screen
     shows "OF ?". With Hints Revealed (Custom), the game counts you as told from the start, so
@@ -267,8 +269,10 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   a boss, a checked reward still shows; touching it gives you nothing and opens the warp
   gate, as picking up the reward does. An enemy that would have dropped a checked item drops
   nothing (both checked in the game). In an upside-down room the mod hides a checked item
-  (checked in the game; without the mod it shows, and touching it gives you nothing).
-  Your own items aren't touched: they follow your save, so after a death or a reload they're
+  (checked in the game; without the mod it shows, and touching it gives you nothing). An
+  item kept collected this way gives you nothing, not the Scrap Metal you get for picking
+  one up (not yet checked in the game; a save from before this keeps the Scrap Metal it
+  got). Your own items aren't touched: they follow your save, so after a death or a reload they're
   back in their rooms. This needs the client connected (a death, another save and `!release`
   are not yet checked in the game). A save keeps what was marked: played against a
   new room of the same seed, or after the server went back to an older state, it sends those
@@ -326,7 +330,8 @@ TELEPORT TO entries work the same way but were not tried), and goes off once you
 sent to you happens at most once, including one sent while your client was closed, or before you first connected
 (it comes when you connect); if the client closes just as a trap goes off, it may come again; a trap
 still waiting for its popup is lost if the game closes, or if the mod is reloaded while it waits for
-a save that isn't loaded; and with no mod running a trap sent to you does nothing. A second trap of
+a save that isn't loaded; and with no mod running a trap does nothing, your own when you pick it up
+as much as one sent to you (the client says so). A second trap of
 the same kind waits for the first to end and then goes off, so each lasts its full 12 seconds. The
 game's AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change
 traps: while one runs, it is left out for that effect, so an enemy's touch of the same kind during a
@@ -344,7 +349,8 @@ scanner, or a map revealed in full (Hints Revealed, in Custom mode), has shown y
 a trap that looks like one of your keys has no key marker there: just an important item's (checked
 in the game with Hints Revealed; after the scanner, not yet checked). Picking up your own sets it
 off at once, with the client open or closed, and every time: if you die or reload without saving,
-it's back in its room, and picking it up again sets it off again (checked in the game).
+it's back in its room, and picking it up again sets it off again (checked in the game for a
+reload, with the client open and closed; not yet for a death).
 Other games' traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a

@@ -94,6 +94,11 @@ async def attach_helper(ctx: ZexionContext) -> bool:
     ctx.helper = helper
     ctx.told = state.HelperState()
     ctx.load.return_home = discs.ReturnHome()  # and any reminder or prompt of the one before
+    # A disk picked up while the helper had no client was the helper's to count (its own
+    # notice), however many polls ran without it meanwhile: the next look takes the disks the
+    # save holds for counted (ZexionContext.drop_helper's reset lasts one poll only, as a poll
+    # with no helper fills the set again).
+    ctx.load.disks_counted = None
     for note in notes:
         # Where the helper came from is a detail; a copy to update is not.
         (detail if note.startswith("The helper was loaded with the game") else logger.info)(note)
@@ -291,13 +296,15 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
     for kind, text, file in (("config", config, ""), ("seed", seed, name)):
         if text is None or told.offline_sent.get(kind) == text:
             continue
-        if len(text) > offline.MAX_FILE:
-            reply = f"error larger than {offline.MAX_FILE} bytes"
+        request = offline.put_request(kind, text, file)
+        if len(request.encode()) > offline.MAX_REQUEST:
+            reply = f"error larger than the {offline.MAX_REQUEST} bytes the pipe takes"
         else:
+            # A file over offline.MAX_FILE is sent all the same: the helper refuses to keep it
+            # ("error too large"), but takes a seed's text for its own use first (its own
+            # traps and the disk count come from it with a client too).
             try:
-                reply = await asyncio.to_thread(
-                    helper.request, offline.put_request(kind, text, file)
-                )
+                reply = await asyncio.to_thread(helper.request, request)
             except (native.ReplyLost, native.ModMismatch):
                 raise  # side_tick drops the helper before this poll's step gives through it
             except native.HelperError as exc:

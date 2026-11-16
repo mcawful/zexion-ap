@@ -189,6 +189,21 @@ void test_the_helper_writes_what_the_client_sends() {
     check(zap::put_offline_file(nowhere, "B1", seed_put, &unwritten).rfind("error", 0) == 0 &&
               unwritten.name == "AP_1-0-1" && unwritten.count == 3,
           "a seed whose file cannot be written is still handed over");
+    // The same with no folder at all (LOCALAPPDATA unusable), and for a file too large to
+    // keep: said, and the seed still handed over.
+    zap::OfflineSeed homeless;
+    check(zap::put_offline_file(L"", "B1", seed_put, &homeless) == "error no LOCALAPPDATA" &&
+              homeless.name == "AP_1-0-1" && homeless.count == 3,
+          "a seed with nowhere to be written is still handed over");
+    zap::OfflineSeed large;
+    const std::string padded = seed_put + std::string(49 * 1024, '\n');
+    check(zap::put_offline_file(folder, "B1", padded, &large) == "error too large" &&
+              large.name == "AP_1-0-1" && large.count == 3,
+          "a seed too large to keep is still handed over");
+    check(zap::put_offline_file(L"", "B1", "offline_put config\n" + cached_config("config"),
+                                &none) == "error no LOCALAPPDATA" &&
+              none.name.empty(),
+          "a config with nowhere to be written: refused");
     check(zap::put_offline_file(folder, "B1", "offline_put seed AP_2-0-1\nnot a seed\n", &none)
                   .rfind("error", 0) == 0 &&
               none.name.empty(),

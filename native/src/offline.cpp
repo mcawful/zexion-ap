@@ -248,11 +248,9 @@ std::string write_whole(const std::wstring& path, const std::string& text, bool&
 
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request, OfflineSeed* seed_out) {
-    if (folder.empty()) return "error no LOCALAPPDATA";
     size_t eol = request.find('\n');
     if (eol == std::string::npos) return "error no file";
     std::string head = request.substr(0, eol), body = request.substr(eol + 1);
-    if (body.size() > kMaxFile) return "error too large";
     std::istringstream words(head);
     std::string op, kind, name, extra;
     std::optional<OfflineSeed> parsed;  // a seed's file, once checked
@@ -279,9 +277,14 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     } else {
         return "error not config or seed";
     }
-    // The seed is the running helper's whether the file can be written or not: its own traps
-    // and its saves' disk counts come from it with a client too (Game::watch_own_traps).
+    // The seed is the running helper's whether the file can be kept or not (no folder, a
+    // file too large to read back, a write that fails): its own traps and its saves' disk
+    // counts come from it with a client too (Game::watch_own_traps). So it is handed over
+    // before the checks that concern the file alone. The pipe takes no request much over its
+    // 64 KB buffer, which bounds what is parsed here.
     if (parsed && seed_out != nullptr) *seed_out = std::move(*parsed);
+    if (folder.empty()) return "error no LOCALAPPDATA";
+    if (body.size() > kMaxFile) return "error too large";
     CreateDirectoryW(folder.c_str(), nullptr);
     if (parsed) CreateDirectoryW((folder + L"\\seeds").c_str(), nullptr);
     bool changed = false;

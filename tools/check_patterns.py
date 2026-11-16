@@ -54,7 +54,7 @@ def offline(exe: Path) -> int:
 
 def live() -> int:
     try:
-        g = game.Game.attach(TARGETS)  # the pickup counter too
+        g = game.Game.attach(TARGETS)  # every target required, the client's optional two too
     except game.GameError as exc:
         print(f"FAILED: {exc}")
         return 1

@@ -49,13 +49,13 @@ worlds/zexion/ → generation → slot data → client
   is not there to pick up again. Never in a room that waits for its item's pickup (Exodia
   X20 Y0, where the pickup starts the boss fight): there the item stays and shows as Scrap
   Metal once it is checked. An item the game has made already is ended by the game itself
-  once its state is written; one that may be
-  there as another kind of object (in a room the game has loaded or within two map squares
-  of the player) stays until the player is farther from it
-  ([`native/README.md`](../native/README.md), "Other players' items").
-  With `--verbose` each
-  marking is logged ("Marked collected in this save (...)"). This world's own items follow
-  the save. Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
+  once its state is written; one that may be there as another kind of object (in a room the
+  game has loaded or within two map squares of the player) stays until the player is farther
+  from it ([`native/README.md`](../native/README.md), "Other players' items"). A marked
+  item gives nothing: the one Scrap Metal a stand-in gives is counted only where it was
+  picked up, which the game's own pickup count tells apart. With `--verbose` each marking is
+  logged ("Marked collected in this save (...)"). This world's own items follow the save.
+  Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
   count up: any other item's byte is written as 1 at most, so a second copy (a server console's
   `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
@@ -144,11 +144,16 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04; another
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
-- This world's own OS Install Disks and traps following the save (the count dropping after a
-  reload and a disk's count showing again at its next pickup, with a client or none; an own
-  trap set off by the helper at each pickup, with a client or none): 2026-11-14. Not run in
-  game: the file select's count, the goal from a save's count, a death, and the sound of the
-  count popup the helper shows with no client ("The OS Install Disks goal", "Traps").
+- This world's own OS Install Disks and traps following the save: 2026-11-14. With the
+  client: a disk's count dropping after a RELOAD FROM SAVE and the disk counted again at its
+  next pickup; an own trap set off by the helper at its pickup and back in its room after a
+  reload (set off again at the second pickup by the owner's word alone). With none: the
+  helper's own count popup at a disk's pickup; an own trap set off at its pickup and again
+  after a RELOAD FROM SAVE. Not run in game: the count dropping with no client, the file
+  select's count as it is now, the goal from a save's count, RETURN HOME WITH THE DISKS?,
+  the equipment screen's count after a reload, a disk received right after a reload, a
+  death, and the sound of the count popup the helper shows with no client ("The OS Install
+  Disks goal", "Traps").
 - Other players' items kept collected once the server has them as checked: after a pickup and
   a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
   the player has left, as the client then left it alone): 2026-11-14 (PR #144's branch at
@@ -159,6 +164,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   and reversed-gravity room played with no harm (the first and the last still show the item
   as a picture that gives nothing): 2026-11-15 (the same branch at a17904b). The helper
   hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at 399f57e).
+  In those runs each mark gave one Scrap Metal; a mark gives none since (the second review
+  round, 2026-11-15), which, with the marking's wait through a TELEPORT TO, is tested only.
   Not run in game: a
   death, another save of the seed, `!release`, a reload beside an item ("Other players'
   items", "Kept collected"; "What decides whether an item appears").
@@ -179,8 +186,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   design (after the trap's popup, the enemies' durations, a shield and AILMENTS applying) run in
   game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one held
   through the pause, one received while disconnected (once), this world's own (then set off
-  once by the client's follow-up; by the helper at each pickup since 2026-11-14, not run in
-  game) and another Zexion
+  once by the client's follow-up; by the helper at each pickup since 2026-11-14, run in game
+  that day: the own disks' and traps' line above) and another Zexion
   player's in this world, AILMENTS REDUCED and IMMUNE ("Traps"; `docs/re/memory.md`, "Ailments: the
   script step that sets them"). The design since (at once, about 12 s, one of each kind at a time,
   past a shield, AILMENTS's tests patched while one runs, disguised (then as a Zexion upgrade),

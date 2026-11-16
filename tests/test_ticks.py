@@ -172,6 +172,32 @@ def test_an_offline_file_the_helper_refused_keeps_the_helper(caplog) -> None:
     assert ctx.helper.requests and "config" not in ctx.told.offline_sent
 
 
+class Refusing(Helper):
+    """A helper that answers every request with ``reply``."""
+
+    def __init__(self, reply: str) -> None:
+        super().__init__()
+        self.reply = reply
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        self.requests.append(text)
+        return self.reply
+
+
+@pytest.mark.parametrize("size, sent", [(offline.MAX_FILE + 1, True), (offline.MAX_REQUEST, False)])
+def test_a_seed_file_too_large_to_keep_still_reaches_the_helper(monkeypatch, size, sent) -> None:
+    # The running helper takes a seed's text for its own use (its own traps, the disk count)
+    # before it refuses to keep the file, so the client sends one over offline.MAX_FILE all
+    # the same; only a request the pipe would not take is never sent.
+    ctx = offline_ctx(native.HelperError("unused"))
+    ctx.helper = Refusing("error too large")
+    ctx.offline_config = (ctx.game_conn, None)  # no config file to send here
+    monkeypatch.setattr(ticks, "offline_seed", lambda c, p: "x" * size)
+    run(ticks.offline_tick(ctx, no_finds()))
+    assert [r.startswith("offline_put seed ") for r in ctx.helper.requests] == [True] * sent
+    assert "seed" not in ctx.told.offline_sent, "not kept: sent again later"
+
+
 def test_the_offline_file_locks_assist_until_assist_unlock_is_received() -> None:
     # Before this seed's save is seen in a connection, conn.lock_assists is the slot data's:
     # the file follows Assist Unlock, received on an earlier connection, all the same.
