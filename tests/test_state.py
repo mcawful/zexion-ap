@@ -299,3 +299,49 @@ def test_the_language_is_said_outside_the_default_english_and_english_hd() -> No
     assert line is not None and line.startswith("Zexion is set to Brazilian Portuguese:")
     assert "default English" in line and "English(HD)" in line
     assert state.language_line("Japanese") is not None
+
+
+def test_the_others_are_the_stand_ins_but_the_own_disks_and_traps() -> None:
+    items = [46] * 154
+    items[3], items[20], items[30], items[40], items[9] = 47, 48, 48, 48, 48
+    conn = state.Connection.from_slot_data(
+        slot_data(
+            location_items=items,
+            goal="os_install_disks",
+            discs_required=1,
+            discs_placed=1,
+            disc_locations=[20],
+            trap_locations=[[30, ids.DISRUPTION_TRAP]],
+        ),
+        team=0,
+        slot=1,
+    )
+    assert conn.foreign == [3, 20, 30, 40], "location 9 is not kept"
+    assert conn.others == {3, 40}, "the own disk (20) and the own trap (30) follow the save"
+
+
+def test_an_own_disk_is_never_among_the_others_whatever_the_goal() -> None:
+    items = [46] * 154
+    items[3], items[20] = 47, 48
+    conn = state.Connection.from_slot_data(
+        slot_data(location_items=items, goal="core", disc_locations=[20]), team=0, slot=1
+    )
+    assert conn.hunt is None and conn.foreign == [3, 20]
+    assert conn.others == {3}, "the slot data's own disks follow the save with the core goal too"
+
+
+def test_only_the_others_the_server_has_checked_are_kept_collected() -> None:
+    items = [46] * 154
+    items[3], items[20], items[40] = 47, 48, 48
+    conn = connection(
+        location_items=items,
+        goal="os_install_disks",
+        discs_required=1,
+        discs_placed=1,
+        disc_locations=[20],
+    )
+    base = ids.LOCATION_ID_BASE
+    # A release checks every location: the others' are kept collected, the rest are not.
+    assert state.others_gone(conn, {base + i for i in range(154)}) == {3, 40}
+    assert state.others_gone(conn, {base + 3, base + 20, base + 7}) == {3}
+    assert state.others_gone(conn, set()) == set()

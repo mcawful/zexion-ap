@@ -923,6 +923,138 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   names carry no icon: working in game 2026-11-03 (B1, `zexion_ap.dll` `12f090c6…`: the owner's
   screenshot of the pickup popup, not kept in `lab/`, the logo, then Progression Item over for
   AneziaDS2, both lines centered; the map cursor's AP Item, "The map").
+- **Kept collected** (the client alone; the helper has no part): another player's item (not
+  this world's own disks and traps, which follow the save) stays collected once the server has
+  its location as checked, whoever checked it: found in any save of the seed, or before a death
+  or a reload without saving, collected by its owner (`!collect`), or released (`!release`).
+  While this seed's save is in play the client writes the cell's item state to collected, so
+  the game makes no item there when it loads the room, then its map cell to `0x1B`, as a pickup
+  leaves both (`client/session.py`, `mark`; `docs/re/memory.md`, "What decides whether an item
+  appears"): compare-and-set writes, only for a location two polls in a row (in the same save
+  slot, seconds apart at most) found still to mark. **Never in a room that waits for its
+  item's pickup** (`ids.PICKUP_ROOMS`: Exodia X20 Y0 and R'Talva X34 Y51). In game,
+  2026-11-14, the first of those squares
+  marked from afar was a soft-lock: its item gone, the boss fight its pickup starts never
+  began, and the room could not be left. There the item stays, and once the server has it as
+  checked the client labels it as the game's Scrap Metal, for no one (`@46`: `client/ticks.py`,
+  `foreign_labels`; the labels are sent again when one changes), so what is left looks like
+  what it is, a pickup the room needs, and gives its Scrap Metal as any stand-in does (the
+  owner's decision, 2026-11-15). R'Talva X34 Y51, a boss's reward whose
+  pickup turns the warp gate on, was listed the same day: marked, the reward still showed
+  after the fight as the item it had been and gave nothing, while the gate waited for its
+  touch; left unmarked, it showed as scrap in game (2026-11-15, B1, slot 6, a new game of
+  the seed `lab/ap/live65`, the client with the room listed and the helper of PR #145's
+  399f57e; the owner's report, `lab/ingame-collected-checks.md`, "Check J": its popup read
+  Scrap Metal with the logo, as a stand-in's does; whether the gate turned on at that
+  pickup was not said). Those
+  two rooms are the ones listed, by the owner's judgment of
+  the game: 50 other location squares have an after-pickup event in the game's per-cell table
+  (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
+  an arena and one more event square were played marked with no harm
+  (below), the rest not. **An item the game has made already**
+  (a reload at a save point beside it, its owner collecting while the player stands by it)
+  goes too: the item's own update ends its object once its cell's state reads collected, with
+  the writes a pickup ends it with (`docs/re/memory.md`, "What decides whether an item
+  appears": found by the re-auditor, 2026-11-14, in place of a helper request written for
+  it), so for a cell with an item object in the loaded rooms the client writes the state,
+  waits a moment, and writes the map cell once no such object is left, never under one still
+  there. After a reload beside it the item shows until the second poll and is gone (by the
+  code: not run in game). The state written under a live item object also lets an object of
+  the cell run the cell's after-pickup event then, with the player in the room
+  (`docs/re/memory.md`, "A cell's event after its item is collected"): the one cell run this
+  way in game, Kresezoa X22 Y13, has no such event, so an arena's or another event square's
+  item marked while the player stands in its room is not run. And a cell once seen with an
+  item object is marked without the loaded and near tests for the rest of that load
+  (`mark_collected`, `ended`), which is what lets its map cell follow; a room that shows its
+  item as an object of another kind beside the item-pool object (type 715: Guardia X22 Y7)
+  was not run marked. **Left
+  out** is a cell whose item may be in the loaded rooms as something else: one an object
+  holds or has dropped, and, with no item object of its own, one the game has loaded (its
+  loaded byte, in the array right after the per-cell state) or within two map squares of the
+  player's (a margin on top of the loaded cells, which are the squares next to the one the
+  game tracks): an object of another kind may be the item there, as in a reversed-gravity
+  room, which a written state does not end (marked from afar, such a room still shows the
+  item, as a picture that gives nothing: the third run below). That one stays to pick up as
+  usual, and is marked once its room is unloaded and the player is three squares away. Right
+  before the writes the client checks the save again (in play, a randomizer save, the slot's
+  stamp as at the look) and reads the states, the loaded cells, the item objects and the
+  player's cell afresh; the save, the loaded cells and the item objects once more before the
+  map cell. No write starts while a transition counts down (the game's transition timer not
+  0): a TELEPORT TO reads as play, under the same stamp, for the second before its load,
+  which takes back what was written since its entry was chosen. After the last write the
+  client looks once more, and reports as marked only what still reads so: nothing if the
+  game does not read as in play with no transition counting, and not a cell whose item
+  state reads there again, which the next polls finish. That look sees less than happened
+  both ways: a pause or a death right after the writes leaves them in place unreported, and
+  a load that begins after it takes back marks it reported; the next polls read the bytes
+  again either way. `cell_state` and `pickup_counter`, the two targets the marking alone
+  needs, may be missing: on a game build where the patterns of either no longer match, the
+  client still attaches and only the marking stops, said once
+  (`patterns.CLIENT_ONLY_TARGETS`). **A marked cell gives nothing** (the owner's decision,
+  2026-11-15: no Scrap Metal for marks). The one Scrap Metal a stand-in's pickup gives is
+  the game's own, at the pickup, and the client's sum counts a stand-in's only for the cells
+  picked up (so one a death took back is given again, and a Scrap Metal received is still
+  owed on top). It tells them by the game's ITEMS count, which a pickup raises and a mark
+  leaves alone: the collected cells that count does not account for are the marked ones
+  (`client/reconcile.py`, `marked_count`; `docs/re/memory.md`, "The pickup counter and the
+  collected cells": the count equals the collected cells in every lab save copy looked at
+  but the marked one, short by its marks). Nothing is ever taken away: a save marked before
+  this rule, when each mark gave one Scrap Metal, keeps them, and that surplus then stands
+  in for as many Scrap Metal, Area Maps or Energy Shields received later (their popups show,
+  the count stays; only the lab's saves predate the rule). A stand-in picked up and then
+  lost to a death or a reload is marked once the save is back, and gives none then either:
+  its Scrap Metal went with the load; the same for one picked up in another save of the
+  seed, marked in this one. A marked square reads explored on the map. A mark
+  stays in the
+  save once the game saves: such a save played against another room of the same seed sends
+  its marked locations as checks. With no client connected nothing is marked, and a failing
+  read or write of the marking is said once while items and checks go on. Stand-in tests
+  (`tests/test_session.py`). Working in game, 2026-11-14 (B1, slot 6, the seed
+  `lab/ap/live64` with a second Zexion player; the client of PR #144's branch at bbaf3c5,
+  which holds this marking unchanged, with the helper `zexion_ap.dll` `5f19e4d4…`; the owner's
+  reports and the client's log, `lab/ingame-collected-checks.md`): another player's item
+  picked up, then RELOAD FROM SAVE without saving, was gone from its room, its square
+  collected on the map (marked 3 s after the check was sent; marked twice more in the next two
+  minutes, a load before each being the likely cause, not confirmed); its owner's `!collect`
+  while the player stood beside one of the items marked 81 in one pass 4 s later, left the two
+  within two squares until the player had walked away (then marked them, and they were gone on
+  coming back), and the rest were gone from rooms not yet visited and found on the map; all 84
+  of the other player's items were marked by the end, and none was marked again while the
+  owner walked and used the map; the marks were in the save file once the game saved (a lab
+  copy: item state 1 and `0x1B`). By that day's rule each marked cell gave one Scrap Metal:
+  82 after the collect, which that save keeps. Not run in game: a death, another save of the
+  seed, `!release`, and a cell whose item an object holds while its room is loaded (the
+  client connecting with locations already checked is the third run below); nor, added
+  after that run (c77879d and after) and stand-in
+  tested only, the loaded-cell test (the loaded byte itself was not read live in any run),
+  the checks right before the writes, the attach without `cell_state` or `pickup_counter`,
+  a marked cell giving no Scrap Metal, the transition timer's test and the look after the
+  writes. A second run
+  (2026-11-14, B1, slot 5, the seed `lab/ap/live65`, the client and helper of PR #144's
+  branch at 79bee7a; the owner's reports and read-only looks, same record): with the player
+  beside another player's item at Kresezoa X22 Y13, its owner's `!collect` marked all 79 of
+  that player's items in one pass a second later, the item object beside the player gone
+  from the pool and its square collected (the owner: it disappeared, and the map marked every
+  one of that player's squares); the rooms looked at held nothing where an item was. That
+  build still marked squares with an after-pickup event: Exodia X20 Y0 was the soft-lock
+  above, and at Exodia X22 Y1, a reversed-gravity room, an Energy Tank still showed over a
+  marked square. A third run (2026-11-15, B1, slot 5, a new game of the same seed with every
+  one of that player's items checked on the server already; the client of PR #144's branch at
+  a17904b, the same helper; the owner's reports and read-only looks, same record), with
+  Exodia X20 Y0 left unmarked and labeled Scrap Metal: the client marked the other 78 a
+  second after the save loaded; at Exodia X20 Y0 the item was scrap, its pickup started the
+  boss fight, and the fight could be won and the way on taken. What marking leaves behind,
+  each harmless but the boss reward's, which is why that room is listed since: in a
+  reversed-gravity room (Exodia X22 Y1) the item still shows over its
+  marked square until touched, and touching it gives nothing (no popup or sound; the
+  inventory and the pickup counter read the same after), while a marked item drawn the usual
+  way in that area (Exodia X27 Y0) was gone; a boss's reward (R'Talva X34 Y51) still shows
+  after the fight, gives nothing when touched, and that touch is what turns the warp gate on
+  and brings the area's music back, so the room does wait for it; in the arena (Guardia X51
+  Y10 and Y11 marked) the enemies holding the two marked items dropped nothing, those holding
+  this world's own two dropped them, and the room was left as usual; Kresezoa X23 Y21, an
+  event square of Exodia X20 Y0's kind, marked, showed nothing unusual. Not run in game: a
+  death, another save of the seed, `!release`, and a reload beside an item.
 - **Limits:** two stand-ins of one kind for different locations within reach share the nearer
   one's name (not seen); and Scrap Energy in another seed's save would look the same, so the
   client sends labels only while this seed's save is loaded.

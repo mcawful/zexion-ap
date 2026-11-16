@@ -21,7 +21,7 @@ build them from slot data.
 from __future__ import annotations
 
 import enum
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from . import aplabels, deathlink, discs, game, ids, native, save_patch, session, shields
@@ -62,6 +62,10 @@ class Connection:
     # The item each Zexion trap in this world's locations is shown as, by location index (the
     # world's draw: client/aplabels.py, trap_label). Empty for a seed from before it.
     trap_looks: dict[int, int] = field(default_factory=dict)
+    # This world's locations whose item belongs to another player (or an item link's group):
+    # the stand-ins but this player's own OS Install Disks and traps. Kept collected in the
+    # save once the server has them as checked (others_gone; session.Session.mark).
+    others: frozenset[int] = frozenset()
     # The server's full item list has come (the packet after Connected may be it).
     items_listed: bool = False
     awaiting_backlog: bool = True
@@ -94,20 +98,26 @@ class Connection:
         try:
             plan = save_patch.plan_from_slot_data(slot_data)
             kept = frozenset(slot_data["kept_locations"])
+            foreign = aplabels.foreign_locations(slot_data["location_items"], kept)
+            hunt = discs.from_slot_data(slot_data)
+            traps = own_traps(slot_data.get("trap_locations", []))
+            # Never an own disk, whatever the goal (the slot data lists them for every one).
+            own = set(traps) | {int(i) for i in slot_data["disc_locations"]}
             return cls(
                 team=team,
                 slot=slot,
                 mode=str(slot_data["mode"]),
                 plan=plan,
                 kept=kept,
-                foreign=aplabels.foreign_locations(slot_data["location_items"], kept),
+                foreign=foreign,
                 hint_targets=[list(t) for t in slot_data["hints"]],  # empty with the hints off
                 lock_assists=not slot_data["allow_assists"],
                 intel_chip=bool(slot_data["intel_chip"]),
                 death_link_on=bool(slot_data["death_link"]),
-                hunt=discs.from_slot_data(slot_data),
-                traps=own_traps(slot_data.get("trap_locations", [])),
+                hunt=hunt,
+                traps=traps,
                 trap_looks=trap_looks(slot_data.get("trap_looks", [])),
+                others=frozenset(foreign) - own,
             )
         except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise UnsupportedSeed(
@@ -134,6 +144,15 @@ class Connection:
         # reconnect or a restarted client keeps them.
         self.held_key = self.key("held")
         self.hints_key = self.key("hints")
+
+
+def others_gone(conn: Connection, checked: Iterable[int]) -> set[int]:
+    """The locations to keep collected in this seed's saves (session.Session.mark), by index:
+    other players' items in this world (``Connection.others``) that the server has as checked
+    (``checked``: its location ids), whoever checked them: this player in any save of the seed,
+    the item's owner with ``!collect``, or this player's ``!release``. Never one of this
+    world's own items, which follow the save."""
+    return {loc - ids.LOCATION_ID_BASE for loc in checked} & conn.others
 
 
 def own_traps(entries: list) -> dict[int, int]:
@@ -286,6 +305,7 @@ class HelperState:
     # seed and slot whose labels it holds, whether it refused them (not asked again).
     labels_held: bool = True
     labels_for: SeedState | None = None
+    labels_sent: dict[tuple[int, int], str] | None = None  # those it took for labels_for
     labels_refused: bool = False
     labels_retry_at: float = 0.0
     client_back_sent: bool = False  # asked once (client_back_tick)

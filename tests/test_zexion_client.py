@@ -25,6 +25,7 @@ class CommonContext:
     def __init__(self, server_address: str | None, password: str | None) -> None:
         self.items_received: list = []
         self.locations_checked: set[int] = set()
+        self.checked_locations: set[int] = set()  # the server's
         self.stored_data: dict = {}
         self.stored_data_notification_keys: set[str] = set()
         self.gets: list[list[str]] = []  # the keys of each Get sent, as CommonClient sends them
@@ -843,6 +844,32 @@ def test_a_received_disks_count_leaves_out_a_found_disk_whose_count_is_still_to_
     monkeypatch.setattr(ctx.seed_state.session, "step", step)
     asyncio.run(zc.poll(ctx))
     assert passed["followups"] == {0: f"OS Install Disk {2 if shown else 1}"}
+
+
+def test_the_step_is_given_the_other_players_items_the_server_has_checked(monkeypatch) -> None:
+    # Location 3 holds another player's item, 12 this player's own disk, 7 its own Scrap Metal.
+    # The server has all three as checked (a release, say); the client itself reported none.
+    hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
+    items = list(slot_data()["location_items"])
+    items[12] = ids.STAND_IN_PROGRESSION  # as the world places an own disk
+    ctx = context(connection(location_items=items, **hunt), Showing(game.IN_PLAY))
+    ctx.checked_locations = {zc.LOCATION_ID_BASE + i for i in (3, 7, 12)}
+    monkeypatch.setattr(zc, "hints_tick", nothing)
+    passed: dict = {}
+
+    def step(g, received, **kwargs):
+        passed.update(kwargs)
+        raise game.GameNotRunning("Zexion is not running")  # the poll ends here
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert passed["gone"] == {3}, "never one of this world's own items"
+    # After a drop the checked locations are the last connection's until the next Connected:
+    # nothing is kept collected from them (a server back with an older save has fewer).
+    ctx.conn.items_listed = False  # as reset_server_state leaves the connection
+    ctx.game_conn = Showing(game.IN_PLAY)
+    asyncio.run(zc.poll(ctx))
+    assert not passed["gone"]
 
 
 @pytest.mark.parametrize("hints", [[], [[1, 3392510_520, 16]]])

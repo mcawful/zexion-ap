@@ -2,9 +2,10 @@
 
 Archipelago comes from .ap/Archipelago (or ``ZEXION_AP_DIR``), or is the Launcher's own when
 started as Zexion Client. While this seed's save is loaded it sends the locations the map marks
-collected, gives items from other worlds (client/session.py) and sends the goal when the ending
-begins; the side tasks with the in-game helper are in client/ticks.py. This world's own items
-are in the save's item table, so it asks the server only for other worlds' (items_handling).
+collected, gives items from other worlds, marks other players' items the server has as
+checked collected in the save (client/session.py) and sends the goal when the ending begins;
+the side tasks with the in-game helper are in client/ticks.py. This world's own items are in
+the save's item table, so it asks the server only for other worlds' (items_handling).
 """
 
 from __future__ import annotations
@@ -571,6 +572,11 @@ async def poll(ctx: ZexionContext) -> None:
             followups=followups,
             helper=ctx.helper,
             give=not waiting,
+            # Other players' items the server has as checked stay collected in the save. Not
+            # before this connection's item list has come: after a drop the checked locations
+            # are the last connection's until the next Connected (a server that came back with
+            # an older save has fewer).
+            gone=state.others_gone(conn, ctx.checked_locations) if conn.items_listed else (),
         )
     except game.GameNotRunning:
         game_closed(ctx, seed)
@@ -583,6 +589,16 @@ async def poll(ctx: ZexionContext) -> None:
         await asyncio.sleep(2)
         return
     ctx.said.clear("read", "read detail")
+    if step.marked:
+        n = len(step.marked)
+        places = ", ".join(
+            ctx.location_names.lookup_in_slot(LOCATION_ID_BASE + i, ctx.slot)
+            for i in sorted(step.marked)
+        )
+        detail(
+            f"Marked collected in this save ({n} other players' "
+            f"{'item' if n == 1 else 'items'} found or collected already): {places}."
+        )
     if step.helper_error is not None:
         # Nothing was given (session.py); the checks and the goal go on below. The helper is
         # attached again before the next step, once: one that fails the step again (a request

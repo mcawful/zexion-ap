@@ -28,10 +28,13 @@ DLL_NAME = "zexion_ap.dll"
 # game folder's helper.
 DISABLED_NAME = "zexion_ap.disabled"
 VERSION = "1.1.0"  # the helper's, in its hello (native/src/dllmain.cpp)
-# The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS;
-# native/src/game_calls.cpp, kConfigKeys; it takes them in any order). A key added later makes the
-# offline cache written before it refused until the client runs: native/README.md, "The pipe".
-CONFIG_KEYS = tuple(t.name for t in patterns.CLIENT_TARGETS)
+# The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS)
+# but those it alone uses (patterns.CLIENT_ONLY_TARGETS; native/src/game_calls.cpp, kConfigKeys;
+# it takes them in any order). A key added later makes the offline cache written before it
+# refused until the client runs: native/README.md, "The pipe".
+CONFIG_KEYS = tuple(
+    t.name for t in patterns.CLIENT_TARGETS if t.name not in patterns.CLIENT_ONLY_TARGETS
+)
 APPLY_SECONDS = 3.0  # longer than the 1 s the helper waits for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0

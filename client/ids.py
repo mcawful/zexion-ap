@@ -50,4 +50,16 @@ SECRET_SHUFFLE = 37
 MAX_LOCATIONS = LOCATIONS + 1
 MAP_SIZE = 54  # the map grid's cells along each side
 COLLECTED = 0x1B  # a map cell's value once its item is collected (docs/re/memory.md)
+# Map cells (x, y) whose room waits for its item's pickup. There another player's item is never
+# marked collected (client/session.py, ``plain``) and, once the server has it as checked, shows
+# as the game's Scrap Metal, to pick up for the room's sake (client/ticks.py, foreign_labels).
+# Exodia X20 Y0: the pickup starts its boss fight; marked from afar, the fight never began and
+# the room could not be left (in game, 2026-11-14: docs/re/memory.md, "What decides whether an
+# item appears"). R'Talva X34 Y51: the boss's reward, whose pickup turns the warp gate on;
+# marked, the reward still showed after the fight as the item it had been, gave nothing, and
+# the gate waited for its touch (in game, 2026-11-15, the same record). The two listed are the
+# owner's judgment of the game (2026-11-15); the other squares with an after-pickup event are
+# marked as any other (an arena and one more event square played marked with no harm that day;
+# not each of them).
+PICKUP_ROOMS = frozenset({(0, 20), (51, 34)})
 SECTION_SIZE = 0x908  # the randomizer section, as loaded and in each slot's copy

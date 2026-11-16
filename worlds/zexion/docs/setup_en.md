@@ -70,7 +70,8 @@ Archipelago logo beside the file number.
 - Keep the client open while you play.
 - Locations you check are sent at once.
 - Items for you arrive while you play (not in menus).
-- If you die or reload, you don't lose the items sent to you: they're given back.
+- If you die or reload, you don't lose the items sent to you: they're given back. Other
+  players' items you had found stay found too (see the game page).
 - The client says when your seed's save is loaded. When you leave it, or play a save of
   another seed, nothing is sent, and items sent to you wait until you load your seed's save
   again. Plain (not Archipelago) normal or randomizer saves are left alone.
@@ -99,6 +100,8 @@ shows ARCHIPELAGO CLIENT NOT CONNECTED (in English(HD), Archipelago client not c
 same goes for a save you load while the client is
 open but not connected (the server down, say), and for the one you are in when you disconnect.
 
+- Other players' items are kept found only while the client is connected: with it closed,
+  one you had found before a death or a reload is back in its room.
 - Locations you check are sent the next time you connect with that save loaded, and so is
   your goal if you reached the core goal's ending meanwhile.
 - Items from other players, hints and RETURN HOME WITH THE DISKS? wait for the client.
