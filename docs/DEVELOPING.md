@@ -49,10 +49,9 @@ worlds/zexion/ → generation → slot data → client
   is not there to pick up again. Never in a room that waits for its item's pickup (Exodia
   X20 Y0, where the pickup starts the boss fight, and R'Talva X34 Y51, the boss's reward,
   whose pickup turns the warp gate on): there the item stays and shows as Scrap Metal once
-  it is checked. An item the game has made
-  already is ended by the game itself once its state is written; one that may be there as
-  another kind of object (in a room the game has loaded or within two map squares of the
-  player) stays until the player is farther from it
+  it is checked. An item the game has made already is ended by the game itself once its
+  state is written; one that may be there as another kind of object (in a room the game has
+  loaded or within two map squares of the player) stays until the player is farther from it
   ([`native/README.md`](../native/README.md), "Other players' items"). A marked item gives
   nothing: the one Scrap Metal a stand-in gives is counted only where it was picked up,
   which the game's own pickup count tells apart. With `--verbose` each marking is logged
@@ -151,17 +150,19 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   bbaf3c5); an item beside the player gone when its owner collects: 2026-11-14 (the same
   branch at 79bee7a). That run also found a soft-lock at Exodia X20 Y0, marked from afar
   (its pickup starts the boss fight): that room is left unmarked since and shows Scrap Metal
-  once its item is checked, whose pickup starts the fight; and a marked boss reward, arena
-  and reversed-gravity room played with no harm (the first and the last still show the item
-  as a picture that gives nothing): 2026-11-15 (the same branch at a17904b).
-  R'Talva X34 Y51, the boss's reward, is left unmarked too since, and showed as scrap in
-  game: 2026-11-15.
+  once its item is checked, whose pickup starts the fight. Marked, an arena and a
+  reversed-gravity room played with no harm (the latter still shows the item as a picture
+  that gives nothing); a boss's reward, R'Talva X34 Y51's, still showed too, and the warp
+  gate waited for the touch of that picture: 2026-11-15 (the same branch at a17904b).
+  So R'Talva X34 Y51 is left unmarked too since, and showed as scrap in game: 2026-11-15
+  (the client of PR #145's branch at 399f57e with the room listed on top).
   In those runs each mark gave one Scrap Metal; a mark gives none since (the second review
   round, 2026-11-15), which, with the marking's wait through a TELEPORT TO, is tested only.
-  Not run in game: a
-  death, another save of the seed, `!release`, a reload beside an item, and an item with an
-  after-pickup event (an arena's, say) marked while the player stands in its room ("Other
-  players' items", "Kept collected"; "What decides whether an item appears").
+  Not run in game: a death, another save of the seed, `!release`, a reload beside an item,
+  an item with an after-pickup event (an arena's, say) marked while the player stands in its
+  room, and a room that shows its item as an object of another kind beside the item object
+  (Guardia X22 Y7) marked ("Other players' items", "Kept collected"; "What decides whether
+  an item appears").
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
