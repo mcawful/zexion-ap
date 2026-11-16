@@ -266,8 +266,9 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   that would have dropped a checked item drops nothing (both checked in the game). An item
   kept collected this way gives you nothing, not the Scrap Metal you get for picking one
   up: that goes for one you picked up and then lost to a death or a reload, and for one you
-  picked up in another save, too (not yet checked in the game; a save from before this
-  keeps the Scrap Metal it got). Your own
+  picked up in another save, too (checked in the game for a reload and for an owner's
+  collect; not yet for a death or another save; a save from before this keeps the Scrap
+  Metal it got). Your own
   items aren't touched: they follow your save, so after a death or a reload they're back in
   their rooms. This needs the client connected (a death, another save and `!release` are not
   yet checked in the game). A save keeps what was marked: played against a
