@@ -1,8 +1,9 @@
 // The map in AP saves: item 48's squares drawn as important, and the cursor's name for stand-in
 // squares (docs/re/memory.md, "Map markers"; native/README.md, "The map"). The game picks a
 // square's class by item ID where it writes it (0x7E980 and eleven other places), so item 48
-// shows as minor; mark_important raises it as the game would. The grid is saved, so nothing is
-// put back.
+// shows as minor; mark_important raises it as the game would, but for a square labeled this
+// player's own Scrap Metal, which it lowers to a minor's. The grid is saved, so nothing is put
+// back.
 #pragma once
 
 #include <windows.h>
@@ -10,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 
 #include "addresses.h"
@@ -19,7 +21,14 @@ namespace zap {
 
 // The loaded randomizer section (game_layout.h, rando) and the map grid (54 x 54, index
 // y * 54 + x); `ended`: flag 250 (no obscuring once finished). Returns the squares changed.
-int mark_important(const BYTE* section, BYTE* grid, bool ended);
+// A square of item 48 that `labels` (by the grid's index) names this player's own Scrap Metal
+// (Label::scrap) is not raised, and one raised already is lowered (minor_value), but for those
+// in `held` (by the grid's index), left as they are: the cells with a live item object, where
+// the game's own write gives the square a major's class each frame the item is in view, so a
+// lowering would flip it back and forth (and the client, which waits for two equal reads of
+// the grid, would hold its checks and grants meanwhile).
+int mark_important(const BYTE* section, BYTE* grid, bool ended,
+                   const std::map<int, Label>& labels = {}, const std::set<int>& held = {});
 
 // The randomizer's three Obscure settings, from the loaded section: Obscure Majors (t29),
 // Obscure Minors (t38) and Obscure Class (t41). All off with no section.
@@ -31,6 +40,14 @@ Obscure obscure_settings(const BYTE* section);
 // One square's value raised from the minor class to the major one, as the game would have set
 // it for a major item under `obscure`; any other value unchanged.
 uint8_t important_value(uint8_t value, Obscure obscure, bool ended);
+
+// One square's value lowered from the major class to the minor one: what important_value
+// raised it from under `obscure` (a shown major from a shown minor, an obscured major from an
+// obscured minor, or from a shown one under Obscure Majors alone, where no minor is obscured).
+// Left as they are: an obscured major under Obscure Class, which is what the game writes for a
+// minor there too; and a shown major under Obscure Minors alone in an unfinished game, where
+// the raise is not one to one. Any other value unchanged.
+uint8_t minor_value(uint8_t value, Obscure obscure, bool ended);
 
 // The item update's write of the square under an item on screen in a randomizer game (0x19E5A5
 // on B1, each frame the item is in view), which would undo mark_important's raise of item 48.

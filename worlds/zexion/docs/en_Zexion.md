@@ -258,7 +258,9 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   one reads as the game's own important items do under your seed's Obscure settings: UNKNOWN
   ITEM, as every item does, with Obscure Class on; otherwise ADVANCED TECH with Obscure Majors
   on (every preset mode has it), and its name with Obscure Majors off. Whose it is shows only
-  when you pick it up.
+  when you pick it up. The Scrap Metal left in the two rooms that wait for their pickup
+  (below) is a minor item on the map: UNKNOWN ITEM before you have seen it (checked in the
+  game under the preset modes' Obscure settings only).
 - Another player's item stays collected once its location is checked, by you, by its owner's
   `!collect` or by a release: if you die or reload without saving after picking it up, or
   play another save of your seed, it's gone from its room, and so are items another player
@@ -268,7 +270,10 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   item up is what moves the game on: Exodia 20,0 (it starts the boss fight) and R'Talva
   34,51 (the boss's reward, which opens the warp gate). Once such an item is checked, a
   Scrap Metal lies there instead, and you still pick it up (checked in the game at Exodia
-  20,0, where it started the fight; the gate at R'Talva 34,51 is not yet checked). An enemy
+  20,0, where it started the fight, before the mod made its pickup the game's own; the gate
+  at R'Talva 34,51 is not yet checked). With the mod it is picked up as the game's own Scrap
+  Metal: in the game, both rooms gave the regular Scrap Metal and the pickups from it
+  (whether the fight and the gate still follow with this mod is not yet checked). An enemy
   that would have dropped a checked item drops nothing (checked in the
   game). In an upside-down room the mod hides a checked item
   (checked in the game; without the mod it shows, and touching it gives you nothing). An

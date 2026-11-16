@@ -80,6 +80,79 @@ void test_the_values() {
     }
 }
 
+// A stand-in's square the labels name this player's own Scrap Metal: never raised, and one
+// raised already lowered to what it was raised from.
+void test_own_scrap_metals_square_is_a_minors() {
+    struct Row {
+        BYTE in;
+        zap::Obscure obscure;
+        bool finished;
+        BYTE out;
+        const char* what;
+    };
+    for (const Row& r : {
+             Row{0x02, kNone, false, 0x01, "2 -> 1"},
+             Row{0x0E, kNone, false, 0x0D, "0xE -> 0xD"},
+             Row{0x1A, kPresets, false, 0x19, "presets: seen, a shown minor"},
+             Row{0x15, kPresets, false, 0x13, "presets: an obscured major -> an obscured minor"},
+             Row{0x21, kPresets, false, 0x1F, "presets: seen after a hint"},
+             Row{0x15, kMajorsOnly, false, 0x0D, "majors only: a hinted minor is shown"},
+             Row{0x0E, kMinorsOnly, false, 0x0E, "minors only: not one to one, left"},
+             Row{0x0E, kMinorsOnly, true, 0x0D, "minors only, finished game: shown"},
+             Row{0x15, kClass, false, 0x15, "class: the game's own value for a minor, left"},
+             Row{0x15, kAll, false, 0x15, "all three: left too"},
+             Row{0x0E, kClass, false, 0x0D, "class: a shown major -> a shown minor"},
+             Row{0x19, kPresets, false, 0x19, "a minor is left"},
+             Row{0x1B, kNone, false, 0x1B, "collected is left"},
+             Row{0x26, kNone, false, 0x26, "a value above the classes is left"},
+         }) {
+        check(zap::minor_value(r.in, r.obscure, r.finished) == r.out, r.what);
+    }
+    // What important_value raises, minor_value lowers again, where the raise is one to one.
+    for (zap::Obscure o : {kNone, kPresets, kClass, kAll, kMajorsAndClass}) {
+        for (BYTE v : std::vector<BYTE>{0x01, 0x0D, 0x19, 0x07, 0x13, 0x1F}) {
+            // An obscured minor: raised to a shown major with majors shown, and under Obscure
+            // Class to the value left as it is.
+            if (v % 12 == 7 && (!o.majors || o.by_class)) continue;
+            check(zap::minor_value(zap::important_value(v, o, false), o, false) == v, "and back");
+        }
+    }
+
+    Save s;
+    s.place(0, 3, 4, 48);  // labeled this player's own Scrap Metal
+    s.place(1, 5, 6, 48);  // another Zexion player's Scrap Metal: still their item
+    s.place(2, 7, 8, 48);  // labeled Scrap Metal, raised before the label came
+    s.at(3, 4) = 0x19;
+    s.at(5, 6) = 0x19;
+    s.at(7, 8) = 0x1A;
+    std::map<int, zap::Label> labels;
+    zap::Label scrap;
+    scrap.item = 46;
+    labels[4 * 54 + 3] = labels[8 * 54 + 7] = scrap;
+    zap::Label theirs;
+    theirs.item = 46;
+    theirs.who = "for Bob";
+    labels[6 * 54 + 5] = theirs;
+    check(zap::mark_important(s.section.data(), s.grid.data(), false, labels) == 2, "two changed");
+    check(s.at(3, 4) == 0x19, "not raised");
+    check(s.at(5, 6) == 0x1A, "another player's item raised as before");
+    check(s.at(7, 8) == 0x19, "one raised already is lowered");
+    check(zap::mark_important(s.section.data(), s.grid.data(), false, labels) == 0, "once");
+
+    // With its item object live (in view, the game's write gives the square a major's class
+    // each frame), the square is left: lowered, it would flip back and forth.
+    s.at(3, 4) = 0x1A;
+    s.at(5, 6) = 0x19;
+    const std::set<int> held = {4 * 54 + 3, 6 * 54 + 5};
+    check(zap::mark_important(s.section.data(), s.grid.data(), false, labels, held) == 1,
+          "one changed with the scrap's item live");
+    check(s.at(3, 4) == 0x1A, "the scrap's square is left under its live item");
+    check(s.at(5, 6) == 0x1A, "another player's item is raised all the same");
+    check(zap::mark_important(s.section.data(), s.grid.data(), false, labels) == 1 &&
+              s.at(3, 4) == 0x19,
+          "lowered once the item object is gone");
+}
+
 void test_only_the_stand_ins_squares() {
     Save s;
     s.place(0, 3, 4, 48);   // the progression stand-in
@@ -562,6 +635,7 @@ int main() {
     test_no_stand_in_wraps_nothing();
     test_one_slot_and_a_read_only_child();
     test_the_values();
+    test_own_scrap_metals_square_is_a_minors();
     test_only_the_stand_ins_squares();
     test_secret_shuffles_155th();
     test_obscure_majors_from_the_settings();

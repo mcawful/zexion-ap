@@ -1551,6 +1551,56 @@ void show_next(zap::Game& game) {
     for (int i = 0; i < 100 && g_messages == before; ++i) game.pump_popups();
 }
 
+// Another player's checked item in a room that waits for its pickup, labeled "@46" for no one
+// (this player's own Scrap Metal): the stand-in there reads SCRAP METAL with no icon and names
+// Scrap Metal's pickup event, so the game's pickup spawns its drops, while that event is the
+// one traced; a received Scrap Energy still drops meanwhile.
+void test_own_scrap_metal_is_picked_up_as_the_games() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    std::map<int, zap::Label> labels;
+    check(zap::parse_labels("ap_labels\nlabel 8 2 " + hex("@46") + "\nlabel 9 2 " +
+                                hex("@46\nfor Bob"),
+                            labels)
+                  .empty() &&
+              labels[2 * 54 + 8].scrap() && !labels[2 * 54 + 9].scrap(),
+          "@46 for no one is this player's own Scrap Metal; for another player it is theirs");
+    game.set_labels(labels);
+    auto event_of = [](int item) { return get<int16_t>(g_records, item * 100 + 0x40); };
+    player_cell(8, 2);
+    game.watch_ap_items();
+    check(record_name(47) == "SCRAP METAL" && record_name(48) == "SCRAP METAL",
+          "the game's name for it, no icon");
+    check(event_of(47) == 3548 && event_of(48) == 3548, "Scrap Metal's pickup event");
+    check(event_of(46) == 3548 && record_name(46) == "SCRAP METAL", "Scrap Metal's record as is");
+
+    // A received Scrap Energy meanwhile: its own event still runs.
+    apply(game, "apply\npopup 47 FROM BOB");
+    game.note_play(5000);
+    show_next(game);
+    game.pump_drops(6100);
+    check(g_spawn_calls == 1 && g_spawn_event == g_events + 3549 * 0x28,
+          "a received Scrap Energy drops as before");
+
+    player_cell(9, 2);  // another Zexion player's Scrap Metal: their item, no drops
+    game.watch_ap_items();
+    check(event_of(47) == -1 && event_of(48) == -1 &&
+              record_name(47).find('\xEE') != std::string::npos,
+          "another player's: the logo and no event");
+
+    put<int16_t>(g_events + 3548 * 0x28, 4, 2011);  // Scrap Metal's event not as traced
+    player_cell(8, 2);
+    game.watch_ap_items();
+    check(event_of(47) == -1 && event_of(48) == -1 && record_name(47) == "SCRAP METAL",
+          "an event not as traced is not named");
+    put<int16_t>(g_events + 3548 * 0x28, 4, 2010);
+    game.watch_ap_items();
+    check(event_of(47) == 3548, "named again once it is");
+    game.restore_ap_items();
+    check(event_of(47) == 3549 && event_of(48) == 3550, "restore: the game's own events");
+}
+
 // A received scrap's drop: its pickup's event, run once after its popup shows, once the player
 // has been in one cell for a second, in the save its popup was for.
 void test_received_scrap_drops() {
@@ -2928,6 +2978,103 @@ void test_pickup_list() {
     check(g_pickups[zap::pickups::kCount] == 0, "a normal save: untouched");
 }
 
+// A square labeled this player's own Scrap Metal is lowered to a minor's, but not while its
+// item object is live: the game's write raises it each frame the item is in view, and the two
+// would flip the square every pass (the client's poll waits for two equal reads of the grid).
+void test_a_scrap_square_is_left_while_its_item_is_live() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    std::memset(g_section, 0, 4);
+    g_section[0] = 3;  // location 0 at (3, 4)
+    g_section[2] = 4;
+    g_section[0x26C] = 48;
+    // No Obscure setting on (t29, t38, t41), so a shown major lowers to a shown minor.
+    BYTE* settings = g_section + 0x87B;
+    const BYTE obscure[] = {settings[29], settings[38], settings[41]};
+    settings[29] = settings[38] = settings[41] = 0;
+    const int cell = 4 * 54 + 3;
+    g_map_grid[cell] = 0x1A;  // seen: the game's patched write gave it a major's class
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 3 4 " + hex("@46"), labels);
+    check(labels.count(cell) == 1 && labels[cell].scrap(), "labeled the game's Scrap Metal");
+    game.set_labels(labels);
+    put_object(5, 911, 48, 3, 4);  // its item object, live in the loaded rooms
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    check(g_map_grid[cell] == 0x1A, "left as the game wrote it while the item is live");
+    std::memset(pool_slot(5), 0, 0x3B0);  // the room left: the object freed
+    for (int i = 0; i < 17; ++i) game.watch_all(&chosen);
+    check(g_map_grid[cell] == 0x19, "lowered to a minor's once no item object is there");
+    game.client_gone(&chosen);
+    g_map_grid[cell] = 0;
+    g_rando_marker = 0;
+    settings[29] = obscure[0];
+    settings[38] = obscure[1];
+    settings[41] = obscure[2];
+}
+
+// With the item pool unreadable, which cells hold a live item object is not known: every
+// scrap-labeled square is held as it is, none lowered, until the pool reads again.
+void test_scrap_squares_are_held_while_the_item_pool_cannot_be_read() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    std::memset(g_section, 0, 4);
+    g_section[0] = 3;  // location 0 at (3, 4)
+    g_section[2] = 4;
+    g_section[0x26C] = 48;
+    BYTE* settings = g_section + 0x87B;
+    const BYTE obscure[] = {settings[29], settings[38], settings[41]};
+    settings[29] = settings[38] = settings[41] = 0;
+    const int cell = 4 * 54 + 3;
+    g_map_grid[cell] = 0x1A;
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 3 4 " + hex("@46"), labels);
+    game.set_labels(labels);
+    std::memset(g_item_pool, 0, sizeof(g_item_pool));  // no item object anywhere
+    // The pool's inner pages made unreadable (its first and last share pages with other data).
+    const auto begin = reinterpret_cast<uintptr_t>(g_item_pool);
+    const uintptr_t first = (begin + 0xFFF) & ~uintptr_t{0xFFF};
+    const uintptr_t last = (begin + sizeof(g_item_pool)) & ~uintptr_t{0xFFF};
+    DWORD old = 0;
+    VirtualProtect(reinterpret_cast<void*>(first), last - first, PAGE_NOACCESS, &old);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    const BYTE held = g_map_grid[cell];
+    VirtualProtect(reinterpret_cast<void*>(first), last - first, old, &old);
+    check(held == 0x1A, "held while the pool cannot be read");
+    for (int i = 0; i < 17; ++i) game.watch_all(&chosen);
+    check(g_map_grid[cell] == 0x19, "lowered once the pool reads again, no item object there");
+    game.client_gone(&chosen);
+    g_map_grid[cell] = 0;
+    g_rando_marker = 0;
+    settings[29] = obscure[0];
+    settings[38] = obscure[1];
+    settings[41] = obscure[2];
+}
+
+// A record that cannot be read (the pointer the game holds gone bad) refuses a received scrap's
+// drop: the read of the record's event is checked, every frame call it is made.
+void test_a_drop_with_an_unreadable_record_is_refused() {
+    zap::Game game;
+    ready(game);
+    scrap_records();
+    apply(game, "apply\npopup 46 FROM ALICE");
+    game.note_play(5000);
+    game.pump_popups();
+    check(game.queued_drops() == 1 && g_spawn_calls == 0, "queued as its popup shows");
+    auto* gone = static_cast<BYTE*>(
+        VirtualAlloc(nullptr, 0x2000, MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS));
+    BYTE* records = g_records_ptr;
+    g_records_ptr = gone;
+    game.pump_drops(10100);
+    g_records_ptr = records;
+    check(g_spawn_calls == 0, "no event run from a record that cannot be read");
+    check(game.drop_status().find("no item record") != std::string::npos,
+          "and the drop says why");
+    VirtualFree(gone, 0, MEM_RELEASE);
+    reset_events();
+}
+
 // The map's squares are raised in the labels' seed's save with a menu open too (the player may
 // pause and open the map at once), after two looks in a row (every 16th frame) read that seed.
 void test_map_marks_with_a_menu_open() {
@@ -3822,6 +3969,9 @@ int main() {
     test_the_mission_request_gives_home();
     test_return_home_lapses_away_from_the_pod();
     test_map_marks_with_a_menu_open();
+    test_a_scrap_square_is_left_while_its_item_is_live();
+    test_scrap_squares_are_held_while_the_item_pool_cannot_be_read();
+    test_a_drop_with_an_unreadable_record_is_refused();
     test_pickup_list();
     test_popups_wait_for_their_save();
     test_a_refused_unload_keeps_what_the_client_asked();
@@ -3846,6 +3996,7 @@ int main() {
     test_received_disk_popup();
     test_received_intel_chip_popup();
     test_received_shield();
+    test_own_scrap_metal_is_picked_up_as_the_games();
     test_received_scrap_drops();
     test_received_scrap_drops_held();
     test_received_death();

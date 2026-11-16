@@ -49,9 +49,12 @@ worlds/zexion/ → generation → slot data → client
   is not there to pick up again. Never in a room that waits for its item's pickup (Exodia
   X20 Y0, where the pickup starts the boss fight, and R'Talva X34 Y51, the boss's reward,
   whose pickup turns the warp gate on): there the item stays and shows as Scrap Metal once
-  it is checked. An item the game has made already is ended by the game itself once its
-  state is written; one that may be there as another kind of object (in a room the game has
-  loaded or within two map squares of the player) stays until the player is farther from it
+  it is checked, and with the helper it is picked up as the game's own Scrap Metal: in
+  game, both rooms gave "the regular scrap metal and the pickups from it" (the owner's
+  words), and its map square showed as a minor's under the presets' Obscure settings. An
+  item the game has made already is ended by the game itself once its state is written; one
+  that may be there as another kind of object (in a room the game has loaded or within two
+  map squares of the player) stays until the player is farther from it
   ([`native/README.md`](../native/README.md), "Other players' items"). A marked item gives
   nothing: the one Scrap Metal a stand-in gives is counted only where it was picked up,
   which the game's own pickup count tells apart. With `--verbose` each marking is logged
@@ -174,7 +177,13 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   helper hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at
   399f57e; kept hidden under a menu: stand-in tested only).
   So R'Talva X34 Y51 is left unmarked too since, and showed as scrap in game: 2026-11-15
-  (the client of PR #145's branch at 399f57e with the room listed on top).
+  (the client of PR #145's branch at 399f57e with the room listed on top); the helper
+  making such a scrap's pickup the game's own Scrap Metal's: both rooms gave "the regular
+  scrap metal and the pickups from it" (the owner's words), and its map square showed as a
+  minor's under the presets' Obscure settings, 2026-11-15 (PR #146's branch at fe4fe1b).
+  Not run in game with this helper: whether the fight at Exodia X20 Y0 and the gate at
+  R'Talva X34 Y51 follow the pickup, the map square under the other Obscure settings, and
+  the square while the item is on screen.
   In those runs each mark gave one Scrap Metal; a mark gives none since (the second review
   round, 2026-11-15), which, with the marking's wait through a TELEPORT TO, is tested only.
   Not run in game: a death, another save of the seed, `!release`, a reload beside an item,
