@@ -47,17 +47,19 @@ worlds/zexion/ → generation → slot data → client
   location as checked (found before a death or a reload, or in another save of the seed;
   collected by its owner; released): the client marks it collected in the loaded save, so it
   is not there to pick up again. Never in a room that waits for its item's pickup (Exodia
-  X20 Y0, where the pickup starts the boss fight): there the item stays and shows as Scrap
-  Metal once it is checked. An item the game has made already is ended by the game itself
-  once its state is written; one that may be there as another kind of object (in a room the
-  game has loaded or within two map squares of the player) stays until the player is farther
-  from it ([`native/README.md`](../native/README.md), "Other players' items"). A marked
-  item gives nothing: the one Scrap Metal a stand-in gives is counted only where it was
-  picked up, which the game's own pickup count tells apart. With `--verbose` each marking is
-  logged ("Marked collected in this save (...)"). This world's own items follow the save.
-  Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal
-  count up: any other item's byte is written as 1 at most, so a second copy (a server console's
-  `/send`) changes nothing in the game but its popup, except that with Guns First a weapon's
+  X20 Y0, where the pickup starts the boss fight, and R'Talva X34 Y51, the boss's reward,
+  whose pickup turns the warp gate on): there the item stays and shows as Scrap Metal once
+  it is checked. An item the game has made
+  already is ended by the game itself once its state is written; one that may be there as
+  another kind of object (in a room the game has loaded or within two map squares of the
+  player) stays until the player is farther from it
+  ([`native/README.md`](../native/README.md), "Other players' items"). A marked item gives
+  nothing: the one Scrap Metal a stand-in gives is counted only where it was picked up,
+  which the game's own pickup count tells apart. With `--verbose` each marking is logged
+  ("Marked collected in this save (...)"). This world's own items follow the save.
+  Only Energy Tanks, Missile Containers, Mega Bombs, the boxes and Scrap Metal count up: any
+  other item's byte is written as 1 at most, so a second copy (a server console's `/send`)
+  changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
   items handed to the helper for their popup, the traps held at the slot's first connection still
   to pop up, the hints shown for this world's own Area Maps found, the Intel Chip hints
@@ -65,16 +67,16 @@ worlds/zexion/ → generation → slot data → client
   hints read; sent again until the server holds them). This world's own OS Install Disks and
   traps follow the save instead: the disk count is the loaded save's own, and the helper sets an
   own trap off at each pickup ([`native/README.md`](../native/README.md), "The OS Install Disks
-  goal", "Traps"). A failing
-  side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
-  and the goal go on, and so is a failing marking of other players' items ("Can't mark other
+  goal", "Traps"). A failing side task (labels, disk count, DeathLink, follow-up popups) is
+  logged once while items, checks and the goal go on, and so is a failing marking of other
+  players' items ("Can't mark other
   players' items collected right now"; or, on a game build where the pickup counter's
   patterns no longer match, "Can't mark other players' items collected in this build of the
   game", after which nothing is marked), which is part of the poll's step, not a side task.
-  With no server connection, while a save it has not dressed is loaded and
-  no ending is on its way, it lets the helper go, so the helper gives AP saves their look as
-  with no client, and attaches it again on connecting
-  ([`native/README.md`](../native/README.md), "AP saves without the client").
+  With no server connection, while a save it has not dressed is loaded and no ending is on
+  its way, it lets the helper go, so the helper gives AP saves their look as with no client,
+  and attaches it again on connecting ([`native/README.md`](../native/README.md), "AP saves
+  without the client").
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
   the look of other players' items, and the rest of the features below. It hooks the game's
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
@@ -146,16 +148,20 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04; another
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
-- This world's own OS Install Disks and traps following the save: 2026-11-14. With the
-  client: a disk's count dropping after a RELOAD FROM SAVE (the disk counted again at its
-  next pickup by the owner's "worked as expected" alone); an own trap set off by the helper at its pickup and back in its room after a
-  reload (set off again at the second pickup by the owner's word alone). With none: the
-  helper's own count popup at a disk's pickup; an own trap set off at its pickup and again
-  after a RELOAD FROM SAVE. Not run in game: the count dropping with no client, the file
-  select's count as it is now, the goal from a save's count, RETURN HOME WITH THE DISKS?,
-  the equipment screen's count after a reload, a disk received right after a reload, a
-  death, and the sound of the count popup the helper shows with no client ("The OS Install
-  Disks goal", "Traps").
+- This world's own OS Install Disks and traps following the save: 2026-11-14 (B1; the
+  helpers `zexion_ap.dll` `5f19e4d4…` from bbaf3c5 and, for the pause row and the count with
+  no client, `7859b9e7…` from 1b04f24). With the client: a disk's count dropping after a
+  RELOAD FROM SAVE (the disk counted again at its next pickup by the owner's "worked as
+  expected" alone); an own trap set off by the helper at its pickup and back in its room
+  after a reload (set off again at the second pickup by the owner's word alone). With none:
+  the helper's own count popup at a disk's pickup; an own trap set off at its pickup and
+  again after a RELOAD FROM SAVE. Not run in game, for the disks: the count dropping with no
+  client, the file select's count as it is now, the goal from a save's count, RETURN HOME
+  WITH THE DISKS?, the equipment screen's count after a reload, a disk received right after
+  a reload, a death, and the sound of the count popup the helper shows with no client; for
+  the traps: a death, one queued behind one of its kind, a pause on the pickup's frame, one
+  queued through a TELEPORT TO or carried to another slot, a load from the file select
+  traced frame by frame, and no helper ("The OS Install Disks goal", "Traps").
 - Other players' items kept collected once the server has them as checked: after a pickup and
   a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
   the player has left, as the client then left it alone): 2026-11-14 (PR #144's branch at
@@ -166,11 +172,14 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   and reversed-gravity room played with no harm (the first and the last still show the item
   as a picture that gives nothing): 2026-11-15 (the same branch at a17904b). The helper
   hiding that picture in a reversed-gravity room: 2026-11-15 (PR #145's branch at 399f57e).
+  R'Talva X34 Y51, the boss's reward, is left unmarked too since, and showed as scrap in
+  game: 2026-11-15.
   In those runs each mark gave one Scrap Metal; a mark gives none since (the second review
   round, 2026-11-15), which, with the marking's wait through a TELEPORT TO, is tested only.
   Not run in game: a
-  death, another save of the seed, `!release`, a reload beside an item ("Other players'
-  items", "Kept collected"; "What decides whether an item appears").
+  death, another save of the seed, `!release`, a reload beside an item, and an item with an
+  after-pickup event (an arena's, say) marked while the player stands in its room ("Other
+  players' items", "Kept collected"; "What decides whether an item appears").
 - Map markers and names under the cursor: 2026-10-25; under Obscure settings: 2026-10-27 and 28
   ("The map"; "Map markers").
 - Received Energy Shields: 2026-10-23; spawned once when the client attaches in play:
