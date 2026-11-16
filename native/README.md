@@ -1172,8 +1172,9 @@ on the map cursor, other Zexion players' supplies minor ("Map markers").
   (`ItemLooks::restore`, `keep_collected`; the third review's finding, 2026-11-15: it would
   have shown under the pause or map screen). An unload is refused outright while a menu is
   open over a save; the hidden object counts among what a frame must put back first only
-  for an unload no frame comes for (`ap_items_restyled`). A pickup of the game's own ends the object, so nothing is
-  hidden then. A boss's reward is left showing: its touch is what turns the warp gate on. The
+  for an unload no frame comes for (`ap_items_restyled`). A pickup of the game's own ends
+  the object, so nothing is hidden then. A boss's reward is left showing: its touch is what
+  turns the warp gate on. The
   hidden object can still be touched, which does what it did shown: it ends, giving nothing.
   A new object of the kind (the room made again by a RELOAD FROM SAVE beside it) shows until
   the next scan of the general pool, up to 30 frame calls.
