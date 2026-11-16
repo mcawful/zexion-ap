@@ -2160,6 +2160,37 @@ void test_a_trap_popup_takes_its_turn() {
     game.put_back_traps();
 }
 
+// An unload refused after its put-back (a later blocker, say a popup still showing the helper's
+// translated text): a trap running with no patch held (AILMENTS's loads reading another word)
+// still holds its kind, so a second one of it waits for the timer, not goes off over it.
+void test_a_refused_unload_keeps_a_running_trap_in_its_kind() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    in_play_since(game, 5000);
+    build_ailments_code(&g_halt_flag);  // not AILMENTS: the trap's timer runs unpatched
+    apply(game, "apply\npopup 102 FROM ALICE");
+    next_frames(game, 5000);
+    check(field<int16_t>(0xDC2) == 660 && hit_jumps_are(0x75) && !game.ailments_patched(),
+          "the first set, no patch held");
+    field<int16_t>(0xDC2) = 300;  // counting down
+    game.watch_all(&chosen);
+    game.put_back_traps();  // the unload frame; then another blocker refuses it
+    apply(game, "apply\npopup 102 FROM BOB");
+    next_frames(game, 5100);
+    game.watch_all(&chosen);
+    check(field<int16_t>(0xDC2) == 300 && game.queued_traps() == 1,
+          "a second one still waits for the timer");
+    field<int16_t>(0xDC2) = 0;  // it runs out
+    game.watch_all(&chosen);
+    next_frames(game, 5200);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "and goes off after it");
+    build_ailments_code();
+    field<int16_t>(0xDC2) = 0;
+    game.watch_all(&chosen);
+    game.put_back_traps();
+}
+
 // A popup that goes ahead of a parked trap's keeps its follow-ups (a disk's count, a chip's hint)
 // right behind it, though the trap's kind runs out while it shows.
 void test_a_popups_notices_stay_ahead_of_a_trap_it_passed() {
@@ -2409,7 +2440,7 @@ void test_own_traps() {
     check(field<int16_t>(0xDC4) == 660 && game.queued_traps() == 0, "set at once");
 }
 
-// Looks in play, as many as a pickup needs before it (kOwnTrapPlayLooks).
+// Looks in play, as many as a pickup needs before it (kCellWatchPlayLooks).
 void play_looks(zap::Game& game) {
     for (int i = 0; i < 2; ++i) game.watch_all(&chosen);
 }
@@ -4007,6 +4038,7 @@ int main() {
     test_an_own_trap_whose_pickup_was_undone_is_dropped();
     test_an_own_trap_by_its_cell_waits_out_a_teleport();
     test_a_trap_popup_takes_its_turn();
+    test_a_refused_unload_keeps_a_running_trap_in_its_kind();
     test_a_popups_notices_stay_ahead_of_a_trap_it_passed();
     test_a_trap_popup_with_no_record_waits();
     test_a_later_batchs_notice_stays_behind_a_trap_passed();

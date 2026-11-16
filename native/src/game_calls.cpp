@@ -1759,7 +1759,10 @@ void Game::forget_client() {
 void Game::put_back_traps() {
     hit_patch_.restore();  // AILMENTS applies again to what is left of a trap (trap.h)
     wave_patch_.restore();
-    trap_hit_ = trap_wave_ = false;
+    // trap_hit_ and trap_wave_ stay: a later blocker can still refuse this unload, and a timer
+    // that runs with no patch (AILMENTS not read, or its site not matching) must keep its kind
+    // from a second trap. watch_trap_patches clears each once its timer has run out, and the
+    // patches come back there while a trap runs.
 }
 
 void Game::client_gone(WidgetCallback callback) {

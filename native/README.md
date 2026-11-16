@@ -1401,12 +1401,12 @@ the helper:
   waits only for a menu to close, a popup of the helper's already up and the gap after it; counted from the
   game's frame clock, `frame_clock`, which stands still while a menu has the game paused, so frames
   with a menu open, the pause, which saves the fade and puts it back, don't count), and when the
-  prompt is cancelled (the save left, `discs` off, the client gone); asked for with a menu open, the fade back waits until it has closed and put its
+  prompt is canceled (the save left, `discs` off, the client gone); asked for with a menu open, the fade back waits until it has closed and put its
   saved black back. Another fade since (a death's) is left alone, and an unload is refused while the
   screen is kept black (below, "Unloading"); leaving the save (the title, which owns the fade) drops
   it. `mission_black` says how the last black ended (`kept black` while it lasts; `ended: the
   ending, faded in from black`, `ended: kDarkFrames in play with no ending, faded back in`,
-  `ended: cancelled…`, `ended: the save left`, or another `ended: …` note:
+  `ended: canceled…`, `ended: the save left`, or another `ended: …` note:
   another fade, the ending not faded in or with the fade no longer the helper's), for a live check.
   Two things could end the black before the ending, by disassembly: the limit above (when it counted
   the helper's frame calls, which a fast monitor runs out first, a run's numbers fit that as the
@@ -2213,7 +2213,8 @@ unload.
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), `game_mem.h`'s menu, panel and label readers, its handler-slot swap, its memory check
   (page by page, a guard page left armed), a sprite's frame bounds and the code patches' put-back
-  (one that fails held), the build check and the pipe.
+  (one that fails held), the build check, the pipe and `CellWatch` (cell_watch.h: a pickup
+  needs two looks in play, a list that changed or a reset starts over, a cell put back is told).
 - `requests`: the request parsers, the popup text's layout and the mailbox.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill
   (an AP save's only, each icon once, by item ID, up to 26), R'Talva X34 Y51's marker hidden
@@ -2330,6 +2331,7 @@ unload.
 | `trap.h`, `trap.cpp` | the traps' codes, names, the player state's fields and sounds the game's touch sets, and the AILMENTS tests' patches |
 | `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
 | `game_offline.cpp` | `Game`'s offline look, and its watches of this world's own traps and disks by their map cells (`watch_own_traps`, `watch_own_disks`), which run with a client too |
+| `cell_watch.h` | `CellWatch`: a list of map cells looked at every frame, which turned collected or back since the look before, and after how many looks in play (the two watches above share it) |
 | `requests.cpp` | the requests' parsers |
 | `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws; the text window's cut patch (`text_cut_patch`) |
 | `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread |
