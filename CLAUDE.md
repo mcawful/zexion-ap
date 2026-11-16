@@ -289,5 +289,5 @@ Committed under `.claude/`, so they apply to anyone working here:
   `re-auditor` (hard-coded addresses, unchecked reads, unsafe hooks, double or lost items in
   client, tool and helper diffs). Each sets its model and effort in its frontmatter:
   `docs-reviewer` runs on Sonnet at high effort; `logic-reviewer` on Opus at high, since a
-  missed soft-lock breaks seeds; `re-auditor` on Fable at high, since what it misses can lose
+  missed soft-lock breaks seeds; `re-auditor` on Opus at high too, since what it misses can lose
   or double an item.
