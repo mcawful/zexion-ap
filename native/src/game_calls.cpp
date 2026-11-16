@@ -825,7 +825,8 @@ std::string Game::item_event_ready(uint8_t item, BYTE*& ev, BYTE*& handler) {
     // The stand-ins' records read -1 while the helper restyles them (apitem.cpp, which restyles
     // only a record holding the game's own event), or Scrap Metal's event while named after a
     // cell labeled this player's own Scrap Metal (ApItems::watch).
-    int16_t named = at<int16_t>(rec, record::kEvent);
+    int16_t named = 0;
+    if (!read(rec, record::kEvent, named)) return "no item record";
     if (named != traced->event &&
         !(stand_in_index(item) >= 0 && (named == -1 || named == kScrapMetalEvent))) {
         return "event not as traced";
@@ -1414,8 +1415,26 @@ void Game::watch_map_marks() {
     if (map_seed_passes_ < 2) return;
     // Before the raise, so an item on screen stays raised.
     seen_marker_.watch(at_.seen_marker_code);
+    // The cells with a live item object: a square labeled this player's own Scrap Metal is
+    // not lowered there (the game's write raises it each frame the item is in view, which
+    // would flip the square under the client's two reads of the grid). With no pool read,
+    // every such square is held.
+    std::set<int> held;
+    const BYTE* pool = read_item_pool();
+    if (pool == nullptr) {
+        for (const auto& [cell, label] : ap_items_.labels()) {
+            if (label.scrap()) held.insert(cell);
+        }
+    } else {
+        for (int slot = 0; slot < ItemLooks::kSlots; ++slot) {
+            const BYTE* o = pool + slot * obj::kItemSize;
+            if (field<int32_t>(o, obj::kSpawn) == 0) continue;
+            const uint8_t row = o[obj::kItemRow], column = o[obj::kItemColumn];
+            if (row < kMapSide && column < kMapSide) held.insert(row * kMapSide + column);
+        }
+    }
     mark_important(at_.rando_blob, at_.map_grid, at_.flags[flag::kEnding] != 0,
-                   ap_items_.labels());
+                   ap_items_.labels(), held);
 }
 
 void Game::watch_title() {

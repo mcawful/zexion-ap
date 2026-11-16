@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 
 #include "addresses.h"
@@ -21,9 +22,13 @@ namespace zap {
 // The loaded randomizer section (game_layout.h, rando) and the map grid (54 x 54, index
 // y * 54 + x); `ended`: flag 250 (no obscuring once finished). Returns the squares changed.
 // A square of item 48 that `labels` (by the grid's index) names this player's own Scrap Metal
-// (Label::scrap) is not raised, and one raised already is lowered (minor_value).
+// (Label::scrap) is not raised, and one raised already is lowered (minor_value), but for those
+// in `held` (by the grid's index), left as they are: the cells with a live item object, where
+// the game's own write gives the square a major's class each frame the item is in view, so a
+// lowering would flip it back and forth (and the client, which waits for two equal reads of
+// the grid, would hold its checks and grants meanwhile).
 int mark_important(const BYTE* section, BYTE* grid, bool ended,
-                   const std::map<int, Label>& labels = {});
+                   const std::map<int, Label>& labels = {}, const std::set<int>& held = {});
 
 // The randomizer's three Obscure settings, from the loaded section: Obscure Majors (t29),
 // Obscure Minors (t38) and Obscure Class (t41). All off with no section.

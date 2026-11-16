@@ -138,6 +138,19 @@ void test_own_scrap_metals_square_is_a_minors() {
     check(s.at(5, 6) == 0x1A, "another player's item raised as before");
     check(s.at(7, 8) == 0x19, "one raised already is lowered");
     check(zap::mark_important(s.section.data(), s.grid.data(), false, labels) == 0, "once");
+
+    // With its item object live (in view, the game's write gives the square a major's class
+    // each frame), the square is left: lowered, it would flip back and forth.
+    s.at(3, 4) = 0x1A;
+    s.at(5, 6) = 0x19;
+    const std::set<int> held = {4 * 54 + 3, 6 * 54 + 5};
+    check(zap::mark_important(s.section.data(), s.grid.data(), false, labels, held) == 1,
+          "one changed with the scrap's item live");
+    check(s.at(3, 4) == 0x1A, "the scrap's square is left under its live item");
+    check(s.at(5, 6) == 0x1A, "another player's item is raised all the same");
+    check(zap::mark_important(s.section.data(), s.grid.data(), false, labels) == 1 &&
+              s.at(3, 4) == 0x19,
+          "lowered once the item object is gone");
 }
 
 void test_only_the_stand_ins_squares() {

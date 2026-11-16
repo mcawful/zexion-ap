@@ -912,7 +912,9 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   location holding another player's item (48 for progression and traps, but not for another Zexion
   player's supplies), this world's own OS Install Disks and traps (48). HEX is the item and whom
   it is for, joined by a newline; or `@N` and whom it is for (another Zexion player's item N,
-  named from its record); or `@N NAME` (item N under that name: this player's own OS Install Disk,
+  named from its record); or `@46` alone, for no one (this player's own Scrap Metal: a checked
+  item left in a room that waits for its pickup, "This player's own Scrap Metal" below); or
+  `@N NAME` (item N under that name: this player's own OS Install Disk,
   or another Zexion player's disk, Area Map or Intel Chip). A trap looks important: the world
   gives it the progression stand-in (48), another game's labeled as its progression items are, and
   a Zexion trap, this player's own or another Zexion player's, as `@N/PICKUP` (`@N NAME/PICKUP`
@@ -1120,7 +1122,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   the label the client gives another player's checked item in a room that waits for its
   pickup (above). The square still holds the stand-in, so the helper makes its pickup the
   game's Scrap Metal's. Its popup reads the name alone, with no icon, as the game's does (the
-  record's own has none; in a translation too). While a stand-in's record is named after such
+  record's own has none; in a translation too, by the code: not run in one). While a
+  stand-in's record is named after such
   a cell it names Scrap Metal's pickup event, 3548, where it otherwise names none, so the
   game's own pickup spawns Scrap Metal's drops (`ApItems::watch`): only while that event, its
   record and its handler are as traced on B1 (`Game::item_event_ready`, the check a received
@@ -1131,9 +1134,15 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   under Obscure Class, which the game writes for a minor there too; and a shown major under
   Obscure Minors alone in an unfinished game, the raise there not being one to one. While
   the item is on screen the game's patched write still gives a square of item 48 a major's
-  class each frame ("The map"), lowered again within 16 frame calls, so a save made with the
-  item in view may hold the major's value, lowered again after its load while the label
-  holds; under Obscure Minors alone it stays a shown major until the item is picked up.
+  class each frame ("The map"), so the square is left as it is while an item object of its
+  cell is live (`watch_map_marks`, the item pool read at each pass; with no read of the pool
+  every such square is left): lowered between those writes, it flipped back and forth every
+  pass, and the client, whose poll waits for two equal reads of the map, held its checks and
+  grants while the player stood there (the third review's finding, 2026-11-15; stand-in
+  tests, not run in game). So with the item in its loaded room and seen, the square is a
+  major's, and a save made then holds that; it is lowered once no item object of the cell is
+  left (the room left), and again after a load while the label holds. Under Obscure Minors
+  alone it stays a shown major until the item is picked up.
   Another Zexion player's Scrap Metal (`@46` and whom it is for) stays their item: the logo,
   no event. A stand-in of another cell taken while its record is named after the scrap cell
   (two of one record within reach, or one taken in the frame call after the player's cell
@@ -1147,7 +1156,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   dropped, and the map showed the square as a major's (ADVANCED TECH); hence this. Stand-in
   tests (`tests/apitem_tests.cpp`, `test_own_scrap_metal_names_scrap_metals_event`;
   `tests/game_tests.cpp`, `test_own_scrap_metal_is_picked_up_as_the_games`;
-  `tests/mapmarks_tests.cpp`, `test_own_scrap_metals_square_is_a_minors`; each failing with
+  `tests/mapmarks_tests.cpp`, `test_own_scrap_metals_square_is_a_minors`, and
+  `tests/game_tests.cpp`, `test_a_scrap_square_is_left_while_its_item_is_live`; each failing with
   `Label::scrap` false). The pickup reads the record's event when the item is taken, as it
   reads its name (`docs/re/memory.md`, "What a scrap's pickup runs"). Working in game,
   2026-11-15 (B1, `zexion_ap.dll` `8c4202ad…`, PR #146's fe4fe1b, slot 6 of `lab/ap/live65`,
@@ -2159,7 +2169,11 @@ unload.
 - `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill
   (an AP save's only, each icon once, by item ID, up to 26), R'Talva X34 Y51's marker hidden
   (every frame while flag 154 is clear, by its shown byte; shown again on the flag, off the logo
-  frame and on restore; no stand-in for names; another type left alone), a reversed-gravity
+  frame and on restore; no stand-in for names; another type left alone), this player's own
+  Scrap Metal (`test_own_scrap_metal_is_picked_up_as_the_games`: a stand-in's record naming
+  Scrap Metal's event while named after such a cell, its popup with no icon;
+  `test_a_scrap_square_is_left_while_its_item_is_live`; `mapmarks` has
+  `test_own_scrap_metals_square_is_a_minors`), a reversed-gravity
   room's item hidden over a collected square
   (`test_a_collected_item_in_a_reversed_gravity_room_is_hidden`: shown again when the square
   no longer reads collected, or it holds the item; kept hidden under a menu), the stand-ins drawn

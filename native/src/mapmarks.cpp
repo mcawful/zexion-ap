@@ -66,7 +66,7 @@ uint8_t minor_value(uint8_t value, Obscure obscure, bool ended) {
 }
 
 int mark_important(const BYTE* section, BYTE* grid, bool ended,
-                   const std::map<int, Label>& labels) {
+                   const std::map<int, Label>& labels, const std::set<int>& held) {
     if (section == nullptr || grid == nullptr) return 0;
     const Obscure obscure = obscure_settings(section);
     int changed = 0;
@@ -76,9 +76,11 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended,
         auto x = field<uint16_t>(section, 4 * i), y = field<uint16_t>(section, 4 * i + 2);
         if (x >= kMapSide || y >= kMapSide) continue;
         BYTE& cell = grid[y * kMapSide + x];
-        // This player's own Scrap Metal (a stand-in picked up as it): a minor's square.
+        // This player's own Scrap Metal (a stand-in picked up as it): a minor's square, left
+        // as it is while its item object is live (the game's write would raise it again).
         auto label = labels.find(y * kMapSide + x);
         const bool scrap = label != labels.end() && label->second.scrap();
+        if (scrap && held.count(y * kMapSide + x) != 0) continue;
         uint8_t raised = scrap ? minor_value(cell, obscure, ended)
                                : important_value(cell, obscure, ended);
         if (raised != cell) {

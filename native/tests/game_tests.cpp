@@ -2978,6 +2978,41 @@ void test_pickup_list() {
     check(g_pickups[zap::pickups::kCount] == 0, "a normal save: untouched");
 }
 
+// A square labeled this player's own Scrap Metal is lowered to a minor's, but not while its
+// item object is live: the game's write raises it each frame the item is in view, and the two
+// would flip the square every pass (the client's poll waits for two equal reads of the grid).
+void test_a_scrap_square_is_left_while_its_item_is_live() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    std::memset(g_section, 0, 4);
+    g_section[0] = 3;  // location 0 at (3, 4)
+    g_section[2] = 4;
+    g_section[0x26C] = 48;
+    // No Obscure setting on (t29, t38, t41), so a shown major lowers to a shown minor.
+    BYTE* settings = g_section + 0x87B;
+    const BYTE obscure[] = {settings[29], settings[38], settings[41]};
+    settings[29] = settings[38] = settings[41] = 0;
+    const int cell = 4 * 54 + 3;
+    g_map_grid[cell] = 0x1A;  // seen: the game's patched write gave it a major's class
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 3 4 " + hex("@46"), labels);
+    check(labels.count(cell) == 1 && labels[cell].scrap(), "labeled the game's Scrap Metal");
+    game.set_labels(labels);
+    put_object(5, 911, 48, 3, 4);  // its item object, live in the loaded rooms
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    check(g_map_grid[cell] == 0x1A, "left as the game wrote it while the item is live");
+    std::memset(pool_slot(5), 0, 0x3B0);  // the room left: the object freed
+    for (int i = 0; i < 17; ++i) game.watch_all(&chosen);
+    check(g_map_grid[cell] == 0x19, "lowered to a minor's once no item object is there");
+    game.client_gone(&chosen);
+    g_map_grid[cell] = 0;
+    g_rando_marker = 0;
+    settings[29] = obscure[0];
+    settings[38] = obscure[1];
+    settings[41] = obscure[2];
+}
+
 // The map's squares are raised in the labels' seed's save with a menu open too (the player may
 // pause and open the map at once), after two looks in a row (every 16th frame) read that seed.
 void test_map_marks_with_a_menu_open() {
@@ -3872,6 +3907,7 @@ int main() {
     test_the_mission_request_gives_home();
     test_return_home_lapses_away_from_the_pod();
     test_map_marks_with_a_menu_open();
+    test_a_scrap_square_is_left_while_its_item_is_live();
     test_pickup_list();
     test_popups_wait_for_their_save();
     test_a_refused_unload_keeps_what_the_client_asked();
