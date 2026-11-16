@@ -269,18 +269,18 @@ start with `start_room`), its randomizer doesn't move bosses, and it has no hint
   where you may see it for a second, not yet). Two rooms are left out, where picking the
   item up is what moves the game on: Exodia 20,0 (it starts the boss fight) and R'Talva
   34,51 (the boss's reward, which opens the warp gate). Once such an item is checked, a
-  Scrap Metal lies there instead, and you still pick it up (checked in the game at Exodia
-  20,0, where it started the fight, before the mod made its pickup the game's own; the gate
-  at R'Talva 34,51 is not yet checked). With the mod it is picked up as the game's own Scrap
-  Metal: in the game, both rooms gave the regular Scrap Metal and the pickups from it
-  (whether the fight and the gate still follow with this mod is not yet checked). An enemy
+  Scrap Metal lies there instead, and you still pick it up. With the mod it is picked up as
+  the game's own Scrap Metal (checked in the game: both rooms gave the regular Scrap Metal
+  and the pickups from it; at Exodia 20,0 the fight started, and at R'Talva 34,51 the gate
+  opened and the music came back; without the mod, only Exodia 20,0's fight is checked). An enemy
   that would have dropped a checked item drops nothing (checked in the
   game). In an upside-down room the mod hides a checked item
   (checked in the game; without the mod it shows, and touching it gives you nothing). An
   item kept collected this way gives you nothing, not the Scrap Metal you get for picking
   one up: that goes for one you picked up and then lost to a death or a reload, and for one
-  you picked up in another save, too (not yet checked in the game; a save from before this
-  keeps the Scrap Metal it got). Your own items aren't touched: they follow your save, so
+  you picked up in another save, too (checked in the game for a reload and for an owner's
+  collect; not yet for a death or another save; a save from before this keeps the Scrap
+  Metal it got). Your own items aren't touched: they follow your save, so
   after a death or a reload they're
   back in their rooms. This needs the client connected (a death, another save and `!release`
   are not yet checked in the game). A save keeps what was marked: played against a
