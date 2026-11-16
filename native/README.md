@@ -1023,8 +1023,10 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   what it is, a pickup the room needs, and gives its Scrap Metal as any stand-in does (the
   owner's decision, 2026-11-15); with the helper it is picked up as the game's own Scrap
   Metal ("This player's own Scrap Metal" below). Kresezoa X5 Y23 was listed on 2026-11-16: left
-  unmarked, the boss's drop shows as scrap and is an actual Scrap Metal (B1, `zexion_ap.dll`
-  `ca19c141…`, the owner's reports, `lab/ingame-event-rooms-checks.md`; `docs/re/memory.md`,
+  unmarked, the boss's drop shows as scrap and is an actual Scrap Metal (B1, a second run of the
+  same game session, `zexion_ap.dll` `ca19c141…`, the client restarted with the room listed, the
+  owner's words "it was an actual scrap this time with the pickups", no time recorded,
+  `lab/ingame-event-rooms-checks.md`, "Kresezoa X5 Y23 re-check"; `docs/re/memory.md`,
   "What decides whether an item appears", "The type-28 events"). That run marked the 14 squares
   of the seed `lab/event-rooms/live66` from afar: Fijedar X5 Y39, Guardia X25 Y11, Vallahar X9
   Y14 and Machinus X27 Y24 played with no soft-lock; **not run:** nine (Guardia X41 Y10 and X22
@@ -1033,8 +1035,8 @@ the proxy, `zexion_ap.dll` SHA-256 `9b609b92…`; "Starting a new game").
   boss holds the item (the scan for them missed this one). The three listed are the ones found
   so far: 49 other location squares have an after-pickup event in the game's per-cell table
   (`docs/re/memory.md`, "What decides whether an item appears") and are marked as any other;
-  an arena and one more event square were played marked with no harm
-  (below), the rest not. **An item the game has made already**
+  an arena, one more event square and four more of the type-28 squares (Fijedar X5 Y39, Guardia X25
+  Y11, Vallahar X9 Y14, Machinus X27 Y24, above) were played marked with no harm, the rest not. **An item the game has made already**
   (a reload at a save point beside it, its owner collecting while the player stands by it)
   goes too: the item's own update ends its object once its cell's state reads collected, with
   the writes a pickup ends it with (`docs/re/memory.md`, "What decides whether an item
