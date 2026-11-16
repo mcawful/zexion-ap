@@ -33,6 +33,14 @@ def braced(text: str, opening: str) -> str:
     return text.split(opening, 1)[1].split("};", 1)[0]
 
 
+def test_the_client_knows_the_helpers_size_limits() -> None:
+    kept = re.findall(r"constexpr size_t kMaxFile = (\d+) \* 1024;", source("offline.cpp"))
+    assert [int(n) * 1024 for n in kept] == [offline.MAX_FILE]
+    pipe = re.findall(r"constexpr DWORD kBufferSize = (\d+) \* 1024;", source("pipe.cpp"))
+    assert [int(n) * 1024 for n in pipe] == [offline.MAX_REQUEST]
+    assert offline.MAX_FILE < offline.MAX_REQUEST
+
+
 def test_the_helper_is_the_version_the_client_asks_for() -> None:
     versions = re.findall(r'constexpr char kVersion\[\] = "([^"]+)";', source("dllmain.cpp"))
     assert versions == [native.VERSION]
@@ -156,7 +164,7 @@ def test_the_randomizer_section_is_laid_out_alike() -> None:
 
 
 def test_the_save_slots_are_laid_out_alike() -> None:
-    # docs/re/memory.md, "The file select": 30 blocks of 0x9408 (client/game.py, slot_markers).
+    # docs/re/memory.md, "The file select": 30 blocks of 0x9408 (client/game.py, save_stamp).
     slot = layout("slot")
     assert (slot["kCount"], slot["kStride"]) == (game.SLOTS, game.SLOT_STRIDE) == (30, 0x9408)
     assert (slot["kEmpty"], slot["kRandoMarker"]) == (0x935E, 0x9400)

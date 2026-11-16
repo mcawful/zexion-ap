@@ -38,6 +38,9 @@ struct Popup {
     std::shared_ptr<const OfflineSeed> origin;
     // The `apply` that queued it (Game::apply numbers them from 1); 0: one of the helper's own.
     uint32_t batch = 0;
+    // One of the helper's own that plays its item's pickup sound, as a client's does: an own
+    // disk's count with no client (Game::watch_own_disks).
+    bool sounds = false;
 };
 
 struct Batch {
@@ -45,8 +48,6 @@ struct Batch {
     bool refresh = false;
     bool intel = false;  // its Area Maps are Intel Chips
     std::vector<Popup> popups;
-    // Traps set off with no popup of their own (`trap ITEM`: this world's own, found in it).
-    std::vector<uint8_t> traps;
 };
 
 // Bytes at an offset into the loaded randomizer section (kSectionSize bytes at rando_blob).
@@ -120,11 +121,6 @@ std::string parse_batch(const std::string& request, Batch& out);
 // [TOLD]", the scanner's line in hex (scan.h), TOLD 1 (the default) or 0.
 std::string parse_discs(const std::string& request, int& count, int& required, std::string& line,
                         bool& told);
-
-// A `disk_slots` request: "disk_slots" (off: no slot) or "disk_slots COUNT SLOTS", SLOTS a comma
-// list of slots 1 to 30, or "-": `counts` gets COUNT for each slot (the file select shows the
-// count alone: files.h).
-std::string parse_disk_slots(const std::string& request, std::map<int, int>& counts);
 
 // A `mission_prompt` request: "mission_prompt COLUMN ROW", home's save point in tiles (the
 // Landing Pod's, as a save's continue point holds it: column first), on the 54 x 54 map (column

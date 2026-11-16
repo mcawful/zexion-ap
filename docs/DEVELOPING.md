@@ -61,14 +61,17 @@ worlds/zexion/ → generation → slot data → client
   changes nothing in the game but its popup, except that with Guns First a weapon's
   second copy is its upgrade. It keeps a few records in the server's data storage (the received
   items handed to the helper for their popup, the traps held at the slot's first connection still
-  to pop up, the follow-up popups shown (and this world's own traps set off), the Intel Chip hints
-  made, the Energy Shields given, and this world's locations found in game, which the OS Install
-  Disks count and the Area Map hints read; sent again until the server holds them). A failing
-  side task (labels, disk count, DeathLink, follow-up popups) is logged once while items, checks
-  and the goal go on, and so is a failing marking of other players' items ("Can't mark other
-  players' items collected right now"; or, on a game build where the pickup counter's
-  patterns no longer match, "Can't mark other players' items collected in this build of the
-  game", after which nothing is marked), which is part of the poll's step, not a side task.
+  to pop up, the hints shown for this world's own Area Maps found, the Intel Chip hints
+  made, the Energy Shields given, and this world's locations found in game, which the Area Map
+  hints read; sent again until the server holds them). This world's own OS Install Disks and
+  traps follow the save instead: the disk count is the loaded save's own, and the helper sets an
+  own trap off at each pickup ([`native/README.md`](../native/README.md), "The OS Install Disks
+  goal", "Traps"). A failing side task (labels, disk count, DeathLink, follow-up popups) is
+  logged once while items, checks and the goal go on, and so is a failing marking of other
+  players' items ("Can't mark other players' items collected right now"; or, on a game build
+  where the pickup counter's patterns no longer match, "Can't mark other players' items
+  collected in this build of the game", after which nothing is marked), which is part of the
+  poll's step, not a side task.
   With no server connection, while a save it has not dressed is loaded and no ending is on
   its way, it lets the helper go, so the helper gives AP saves their look as with no client,
   and attaches it again on connecting ([`native/README.md`](../native/README.md), "AP saves
@@ -144,6 +147,20 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   outline in every area: 2026-11-04; R'Talva X34 Y51's marker hidden: 2026-11-04; another
   Zexion player's Scrap Chunk shown as itself: 2026-11-09 ("Other players' items"; "Other Zexion
   players' items, as themselves"; its Scrap Energy not run in game).
+- This world's own OS Install Disks and traps following the save: 2026-11-14 (B1; the
+  helpers `zexion_ap.dll` `5f19e4d4…` from bbaf3c5 and, for the pause row and the count with
+  no client, `7859b9e7…` from 1b04f24). With the client: a disk's count dropping after a
+  RELOAD FROM SAVE (the disk counted again at its next pickup by the owner's "worked as
+  expected" alone); an own trap set off by the helper at its pickup and back in its room
+  after a reload (set off again at the second pickup by the owner's word alone). With none:
+  the helper's own count popup at a disk's pickup; an own trap set off at its pickup and
+  again after a RELOAD FROM SAVE. Not run in game, for the disks: the count dropping with no
+  client, the file select's count as it is now, the goal from a save's count, RETURN HOME
+  WITH THE DISKS?, the equipment screen's count after a reload, a disk received right after
+  a reload, a death, and the sound of the count popup the helper shows with no client; for
+  the traps: a death, one queued behind one of its kind, a pause on the pickup's frame, one
+  queued through a TELEPORT TO or carried to another slot, a load from the file select
+  traced frame by frame, and no helper ("The OS Install Disks goal", "Traps").
 - Other players' items kept collected once the server has them as checked: after a pickup and
   a RELOAD FROM SAVE, and after their owner's `!collect` (one beside the player staying until
   the player has left, as the client then left it alone): 2026-11-14 (PR #144's branch at
@@ -179,7 +196,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 - Traps (Disruption Trap and Disorient Trap: the Phazo's and the Balorb wave's touch): their first
   design (after the trap's popup, the enemies' durations, a shield and AILMENTS applying) run in
   game 2026-11-11 (PR #138's 57381bf): both received, a Disruption Trap taken by a shield, one held
-  through the pause, one received while disconnected (once), this world's own and another Zexion
+  through the pause, one received while disconnected (once), this world's own (then set off
+  once by the client's follow-up; by the helper at each pickup since 2026-11-14, run in game
+  that day: the own disks' and traps' line above) and another Zexion
   player's in this world, AILMENTS REDUCED and IMMUNE ("Traps"; `docs/re/memory.md`, "Ailments: the
   script step that sets them"). The design since (at once, about 12 s, one of each kind at a time,
   past a shield, AILMENTS's tests patched while one runs, disguised (then as a Zexion upgrade),
@@ -226,10 +245,14 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   load: 2026-11-04. A received disk's own popup before its count, two at once, and both held
   at YES for the next load: 2026-11-08 ("Popups"); a received and a found disk's counts going
   up in order, then the reminder: 2026-11-08 (develop 5597753; the counts' text not quoted).
+  Those runs were of the count as it was until 2026-11-14, shared by every save of the seed
+  (a found disk from the found record, the file select's from the client): the screens, the
+  notices and their order stand; the count's source since, the loaded save: 2026-11-14.
   Not run in game: RELOAD FROM CHECKPOINT and
   a teleport at the pod, and the map right after saving.
-- Follow-up popups for this world's finds (a disk's count, an Intel Chip's hint), once each,
-  offline finds included: 2026-10-25.
+- An Intel Chip's hint for each of this world's own found, once each, offline finds
+  included: 2026-10-25 (then with a found disk's count, once each too; a disk's count now
+  shows at each pickup: the own disks' line above).
 - The helper loaded with the game by the proxy: 2026-10-25 ("The proxy").
 - `/reload_mod`: 2026-10-26; refused with a menu open or the ending on its way: 2026-10-27
   ("Unloading").

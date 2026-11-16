@@ -7,6 +7,7 @@
 
 #include "game_mem.h"
 #include "requests.h"  // parse_config, parse_discs, parse_hex
+#include "trap.h"      // trap::is_trap
 
 namespace zap {
 
@@ -113,6 +114,31 @@ bool good_seed_name(const std::string& name) {
 
 }  // namespace
 
+namespace {
+
+// "I:T,J:T,...": each a map grid index and a trap's item (trap.h), no cell twice.
+bool parse_own_traps(const std::string& text, std::vector<OfflineSeed::OwnTrap>& out) {
+    std::istringstream entries(text);
+    std::string entry;
+    while (std::getline(entries, entry, ',')) {
+        const size_t colon = entry.find(':');
+        if (colon == std::string::npos) return false;
+        std::vector<int> cell, item;
+        if (!parse_number_list(entry.substr(0, colon), 4, 0, kMapCells - 1, cell) ||
+            !parse_number_list(entry.substr(colon + 1), 3, 0, 255, item) || cell.size() != 1 ||
+            item.size() != 1 || !trap::is_trap(item[0])) {
+            return false;
+        }
+        for (const OfflineSeed::OwnTrap& t : out) {
+            if (t.cell == cell[0]) return false;
+        }
+        out.push_back({cell[0], static_cast<uint8_t>(item[0])});
+    }
+    return !out.empty() && text.back() != ',';
+}
+
+}  // namespace
+
 std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
     out = OfflineSeed{};
     std::istringstream lines(text);
@@ -163,6 +189,9 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
             if (a != "-" && !parse_number_list(a, 4, 0, kMapCells - 1, out.unfound)) {
                 return "bad unfound";
             }
+        } else if (key == "traps") {
+            if (!(words >> a)) return "bad traps";
+            if (a != "-" && !parse_own_traps(a, out.traps)) return "bad traps";
         }
         // Unknown keys are ignored (a newer client).
     }
@@ -219,11 +248,9 @@ std::string write_whole(const std::wstring& path, const std::string& text, bool&
 
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request, OfflineSeed* seed_out) {
-    if (folder.empty()) return "error no LOCALAPPDATA";
     size_t eol = request.find('\n');
     if (eol == std::string::npos) return "error no file";
     std::string head = request.substr(0, eol), body = request.substr(eol + 1);
-    if (body.size() > kMaxFile) return "error too large";
     std::istringstream words(head);
     std::string op, kind, name, extra;
     std::optional<OfflineSeed> parsed;  // a seed's file, once checked
@@ -250,12 +277,19 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     } else {
         return "error not config or seed";
     }
+    // The seed is the running helper's whether the file can be kept or not (no folder, a
+    // file too large to read back, a write that fails): its own traps and its saves' disk
+    // counts come from it with a client too (Game::watch_own_traps). So it is handed over
+    // before the checks that concern the file alone. The pipe takes no request much over its
+    // 64 KB buffer, which bounds what is parsed here.
+    if (parsed && seed_out != nullptr) *seed_out = std::move(*parsed);
+    if (folder.empty()) return "error no LOCALAPPDATA";
+    if (body.size() > kMaxFile) return "error too large";
     CreateDirectoryW(folder.c_str(), nullptr);
     if (parsed) CreateDirectoryW((folder + L"\\seeds").c_str(), nullptr);
     bool changed = false;
     std::string why = write_whole(path, body, changed);
     if (!why.empty()) return "error " + why;
-    if (parsed && seed_out != nullptr) *seed_out = std::move(*parsed);
     return changed ? "stored" : "unchanged";
 }
 

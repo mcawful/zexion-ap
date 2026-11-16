@@ -375,9 +375,6 @@ std::string Game::apply(const Batch& batch) {
         popup.intel = batch.intel && !popup.bare && popup.item == kAreaMapItem;
         popups_.push_back(std::move(popup));
     }
-    // This world's own traps, found in it: set off at once, with no popup of the helper's (the
-    // game's pickup popup names it: pump_traps).
-    for (uint8_t item : batch.traps) traps_.push_back({item, origin});
     return "applied";
 }
 
@@ -484,7 +481,8 @@ bool Game::show_popup(std::deque<Popup>::iterator next) {
     }
     BYTE* p = player();
     auto sound = at<int16_t>(rec, record::kSound);
-    if (popup.counted && sound >= 0) {  // the helper's own notices make no sound
+    // The helper's own notices make no sound, but a disk's count (watch_own_disks).
+    if ((popup.counted || popup.sounds) && sound >= 0) {
         reinterpret_cast<SoundFn>(at_.sound_fn)(
             at_.sound_system, sound, static_cast<float>(at<double>(p, kX)),
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);
@@ -703,9 +701,20 @@ void Game::pump_traps(uint64_t now_ms) {
     }
     if (mission_.opening() || mission_.ending() || mission_.dark() || mission_.started()) return;
     if (*at_.halt_flag != 0) return;
+    // This world's own whose pickup a load undid while it waited (behind one of its kind still
+    // running, or through a death): its item lies in its room again, and picking it up again
+    // queues it again, so this one is dropped. So is one picked up in another slot's save of
+    // the seed (quit to the title while it waited, another save of the seed loaded): that
+    // save's cell reading collected is no pickup made in it.
+    const int slot = at<int32_t>(at_.current_slot, 0);
+    std::erase_if(traps_, [this, slot](const QueuedTrap& t) {
+        return t.cell >= 0 && origin_loaded(t.origin) &&
+               (at_.map_grid[t.cell] != kCollectedCell || t.slot != slot);
+    });
     // One of each kind at a time (the owner's choice): a trap waits while one of its kind that a
     // trap started still runs, and starts as it ends; an enemy's own effect does not hold it.
-    // This world's own, found in it: at once (the game's pickup popup names it).
+    // This world's own, picked up in it (watch_own_traps): at once (the game's pickup popup
+    // names it).
     uint8_t item = 0;
     auto own = std::find_if(traps_.begin(), traps_.end(), [this](const QueuedTrap& t) {
         return origin_loaded(t.origin) && !trap_running(t.item);
@@ -927,6 +936,8 @@ void Game::watch_all(WidgetCallback callback) {
     watch_ap_items();
     watch_map_marks();
     watch_pickups();
+    watch_own_traps();  // before pump_traps: one picked up this frame goes off this frame
+    watch_own_disks();
     watch_translation();
     text_cut_.watch(at_.text_cut_code);  // tall popups' lines cut right (text.h)
     watch_trap_patches();                 // AILMENTS left out while a trap runs (trap.h)
@@ -1697,8 +1708,6 @@ void Game::put_back_game(WidgetCallback callback) {
 void Game::forget_client() {
     disarm_newgame();
     drop_save_look();  // with the disks, a RETURN HOME prompt asked for (set_discs)
-    client_file_counts_.clear();
-    apply_file_counts();
 }
 
 void Game::put_back_traps() {

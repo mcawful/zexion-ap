@@ -126,13 +126,6 @@ std::string parse_batch(const std::string& request, Batch& out) {
             while (!text.empty() && text.back() == ' ') text.pop_back();
             if (bare && text.empty()) return "bad line " + line;
             out.popups.push_back({static_cast<uint8_t>(item), std::move(text), bare, true});
-        } else if (op == "trap") {
-            unsigned item = 0;
-            std::string extra;
-            if (!(words >> item) || !trap::is_trap(static_cast<int>(item)) || (words >> extra)) {
-                return "bad line " + line;
-            }
-            out.traps.push_back(static_cast<uint8_t>(item));
         } else if (!op.empty()) {
             return "unknown line " + line;
         }
@@ -235,22 +228,6 @@ std::string parse_mission(const std::string& request, int& column, int& row) {
     }
     column = c;
     row = r;
-    return "";
-}
-
-std::string parse_disk_slots(const std::string& request, std::map<int, int>& counts) {
-    counts.clear();
-    if (request == "disk_slots") return "";
-    if (request.rfind("disk_slots ", 0) != 0) return "not a disk_slots request";
-    std::istringstream words(request.substr(11));
-    std::string list, extra;
-    int count = 0;
-    std::vector<int> slots;
-    if (!(words >> count >> list) || (words >> extra) || count < 0 || count > 255 ||
-        (list != "-" && !parse_number_list(list, 2, 1, slot::kCount, slots))) {
-        return "bad disk_slots request";
-    }
-    for (int slot : slots) counts[slot] = count;
     return "";
 }
 

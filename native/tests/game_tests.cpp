@@ -1940,7 +1940,8 @@ void test_received_traps() {
     // A trap's popup is never a notice, and only the two traps' codes are taken.
     check(apply(game, "apply\nnotice 102 HELLO").rfind("parse: bad line", 0) == 0, "no notice");
     check(apply(game, "apply\npopup 104 FROM X").rfind("parse: bad line", 0) == 0, "not 104");
-    check(apply(game, "apply\ntrap 46").rfind("parse: bad line", 0) == 0, "no trap 46");
+    check(apply(game, "apply\ntrap 102").rfind("parse: unknown line", 0) == 0,
+          "no trap line: this world's own are the helper's to set off (watch_own_traps)");
     reset_events();
 }
 
@@ -2092,8 +2093,8 @@ void test_traps_wait_out_a_teleport() {
     check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1 && game.queued_popups() == 1 &&
               g_messages == 0,
           "not set through the teleport, a second past the menu, nor its popup shown");
-    check(apply(game, "apply\ntrap 103") == "applied" && game.queued_traps() == 2,
-          "this world's own found meanwhile");
+    game.own_trap_found(103);
+    check(game.queued_traps() == 2, "this world's own picked up meanwhile");
     play_frames(game, 6016, 6200);
     check(field<int16_t>(0xDC4) == 0 && game.queued_traps() == 2, "it waits too");
     g_transition_timer = 0;  // the load: the player reset
@@ -2121,7 +2122,7 @@ void test_traps_wait_out_a_teleport() {
     trap_records();
     in_play_since(other, 5000);
     g_transition_timer = 60;
-    apply(other, "apply\ntrap 102");
+    other.own_trap_found(102);
     other.pump_traps(9000);
     check(field<int16_t>(0xDC2) == 0 && other.queued_traps() == 1,
           "a transition queued holds it at once");
@@ -2245,12 +2246,401 @@ void test_own_traps() {
     zap::Game game;
     ready(game);
     trap_records();
-    check(apply(game, "apply\ntrap 103") == "applied", "applied");
+    game.own_trap_found(103);
     check(game.queued_traps() == 1 && game.queued_popups() == 0, "queued, with no popup");
     message_showing(60);  // the game's pickup popup
     in_play_since(game, 3000);
     game.pump_traps(3000);
     check(field<int16_t>(0xDC4) == 660 && game.queued_traps() == 0, "set at once");
+}
+
+// Looks in play, as many as a pickup needs before it (kOwnTrapPlayLooks).
+void play_looks(zap::Game& game) {
+    for (int i = 0; i < 2; ++i) game.watch_all(&chosen);
+}
+
+// With no client, an own OS Install Disk's pickup shows the save's count, as the client's
+// follow-up does with one: every pickup, so again after a reload put the disk back; a load is
+// no pickup, and a count queued for a pickup a load undid is withdrawn.
+void test_an_own_disk_shows_its_count_with_no_client() {
+    zap::Game game;
+    ready(game);
+    g_rando_marker = 1;
+    const int first = 4 * 54 + 3, second = 7 * 54 + 9;
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.discs = true;
+    seed.count = 1;  // the disks the slot starts with and those received
+    seed.required = 4;
+    seed.scan_line = "Collect 4 OS Install Disks!";
+    seed.unfound = {first, second};
+    g_map_grid[first] = 0x19;
+    g_map_grid[second] = 0;
+    g_flags[39] = 0;  // the scanner has not said how many
+    put<int16_t>(g_records + 44 * 100, 0x5A, 77);  // the disk's pickup sound
+    put<float>(g_records + 44 * 100, 0x5C, 1.0f);
+    game.set_offline({seed});
+
+    // With a client: its own follow-up shows the count.
+    in_play_since(game, 3000);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    g_map_grid[first] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 0, "with a client: the count is the client's to show");
+    g_map_grid[first] = 0x19;
+
+    game.client_gone(&chosen);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);  // dressed, its warning queued
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(game.queued_popups() == 0 && g_sound == -1, "the offline warning shown, silent");
+    const int shown = g_messages;
+    g_map_grid[first] = zap::kCollectedCell;  // the pickup
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "an own disk's pickup queues its count");
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "once a pickup");
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(g_messages == shown + 1 && g_text.find("OS INSTALL DISK 2") != std::string::npos &&
+              g_text.find(" OF ") == std::string::npos,
+          "the save's count, before the scanner has said how many");
+    check(g_sound == 77, "with the disk's pickup sound, as the client's count has");
+
+    // RELOAD FROM SAVE without saving: the disk back, then picked up again.
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_map_grid[first] = 0x19;
+    g_menu = 0;
+    play_looks(game);
+    check(game.queued_popups() == 0, "the reload queues nothing");
+    g_flags[39] = 1;
+    g_map_grid[first] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(g_messages == shown + 2 && g_text.find("OS INSTALL DISK 2 OF 4") != std::string::npos,
+          "counted, and said, again; with how many are needed once told");
+
+    // A load is no pickup: a save holding the second disk, loaded from the menu.
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_map_grid[second] = zap::kCollectedCell;
+    g_menu = 0;
+    play_looks(game);
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 0 && g_messages == shown + 2, "a load is no pickup");
+
+    // A count still queued when a load undoes its pickup is withdrawn.
+    g_map_grid[second] = 0;
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_menu = 0;
+    play_looks(game);
+    g_map_grid[second] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "queued by the pickup");
+    g_menu = 2;  // paused before it showed, then RELOAD FROM SAVE
+    game.watch_all(&chosen);
+    g_map_grid[second] = 0;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 0, "withdrawn: its count is no longer the save's");
+    g_menu = 0;
+
+    // A client attaching (one that lost the helper and is back) leaves a count queued: the
+    // pickup was the helper's to count. A disk picked up with it is not counted once it goes.
+    play_looks(game);
+    g_map_grid[second] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "queued with no client");
+    check(configure(game).empty(), "a client attaches");
+    game.watch_all(&chosen);
+    check(game.queued_popups() == 1, "kept when a client attaches");
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    g_map_grid[first] = 0x19;
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_menu = 0;
+    play_looks(game);
+    g_map_grid[first] = zap::kCollectedCell;  // picked up with the client attached
+    game.watch_all(&chosen);
+    game.client_gone(&chosen);
+    for (int i = 0; i < 40; ++i) game.watch_all(&chosen);
+    for (int i = 0; i < 100 && game.queued_popups() > 0; ++i) next_frames(game, 3000);
+    check(g_text.find("OS INSTALL DISK") == std::string::npos,
+          "one picked up with a client is not counted by the helper once the client goes");
+    g_rando_marker = 0;
+    g_flags[39] = 0;
+    g_map_grid[first] = g_map_grid[second] = 0;
+}
+
+// This world's own trap goes off at its pickup, every pickup: the helper watches the cells the
+// loaded save's seed file lists, with a client or none, and takes no load for a pickup.
+void test_own_traps_go_off_at_each_pickup() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    g_rando_marker = 1;
+    const int disorient = 4 * 54 + 3, disruption = 7 * 54 + 9;
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.traps = {{disorient, 103}, {disruption, 102}};
+    game.set_offline({seed});
+    g_map_grid[disorient] = 0x19;  // seen, not picked up
+    g_map_grid[disruption] = 0;
+    in_play_since(game, 3000);
+    play_looks(game);
+    check(game.queued_traps() == 0, "looks alone queue nothing");
+    g_map_grid[disorient] = zap::kCollectedCell;  // the pickup
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "queued by its pickup, with no request");
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660 && field<int16_t>(0xDC2) == 0 && game.queued_traps() == 0,
+          "its own trap, set off at once");
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "once a pickup");
+    game.put_back_traps();
+    field<int16_t>(0xDC4) = 0;
+
+    // RELOAD FROM SAVE without saving: the menu, then the save from before, the item back.
+    g_menu = 2;
+    game.watch_all(&chosen);
+    g_map_grid[disorient] = 0x19;
+    g_menu = 0;
+    play_looks(game);
+    check(game.queued_traps() == 0, "the reload queues nothing");
+    g_map_grid[disorient] = zap::kCollectedCell;  // picked up again
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "queued again by the pickup after the reload");
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660, "and set off again");
+    game.put_back_traps();
+    field<int16_t>(0xDC4) = 0;
+
+    // A pause taken on the pickup's frame: the look that first sees it is of the menu.
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_map_grid[disruption] = zap::kCollectedCell;
+    g_menu = 2;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "a pickup first seen with the pause menu up");
+    game.watch_all(&chosen);
+    g_menu = 0;
+    play_looks(game);
+    check(game.queued_traps() == 1, "once");
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "set off once play goes on");
+    game.put_back_traps();
+    field<int16_t>(0xDC2) = 0;
+
+    // A load is no pickup: a save holding it collected, loaded from a menu, after a death, or
+    // from the file select; nor is a cell collected in the first looks in play after one.
+    for (int way = 0; way < 4; ++way) {
+        g_map_grid[disruption] = 0;
+        play_looks(game);  // in play, not collected
+        if (way == 0 || way == 3) g_menu = 2;
+        if (way == 1) field<int16_t>(0xCEA) = -1;
+        if (way == 2) g_save_loaded = 0xFF;
+        game.watch_all(&chosen);
+        game.watch_all(&chosen);
+        if (way != 3) g_map_grid[disruption] = zap::kCollectedCell;  // the load
+        g_menu = 0;
+        field<int16_t>(0xCEA) = 48;
+        g_save_loaded = 3;
+        game.watch_all(&chosen);  // the first look in play
+        if (way == 3) g_map_grid[disruption] = zap::kCollectedCell;  // filled a frame late
+        game.watch_all(&chosen);
+        game.watch_all(&chosen);
+        check(game.queued_traps() == 0, "a load with it collected is no pickup");
+    }
+
+    // Another seed's save, or a normal one: its cells are not this seed's traps.
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_section[0x26C] ^= 1;  // another seed's item table
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "not in another seed's save");
+    g_section[0x26C] ^= 1;
+    play_looks(game);
+    check(game.queued_traps() == 0, "nor on coming back to this seed's with it collected");
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_rando_marker = 0;  // a normal save
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "not in a normal save");
+    g_rando_marker = 1;
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+
+    // A seed file a client puts meanwhile with another list (merge_offline): looked at afresh,
+    // though the cell it now lists first was not collected at the last look and is now.
+    g_map_grid[disorient] = zap::kCollectedCell;
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    seed.traps = {{disruption, 103}, {disorient, 102}, {9 * 54 + 9, 102}};
+    g_map_grid[disruption] = zap::kCollectedCell;
+    g_map_grid[9 * 54 + 9] = zap::kCollectedCell;
+    game.merge_offline({seed});
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "a new list starts over");
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    game.pump_traps(3000);
+    check(field<int16_t>(0xDC4) == 660 && field<int16_t>(0xDC2) == 0,
+          "the trap the file names for the cell");
+    game.put_back_traps();
+    field<int16_t>(0xDC4) = 0;
+
+    // A seed with no traps listed (a file from before them): nothing.
+    seed.traps.clear();
+    game.set_offline({seed});
+    g_map_grid[disruption] = 0;
+    play_looks(game);
+    g_map_grid[disruption] = zap::kCollectedCell;
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 0, "no list, no trap");
+    g_map_grid[disorient] = 0;
+    g_map_grid[disruption] = 0;
+    g_map_grid[9 * 54 + 9] = 0;
+    g_rando_marker = 0;
+    game.set_offline({});
+    game.watch_all(&chosen);
+}
+
+// An own trap whose pickup a load undid while it waited is dropped: its item is back in its
+// room, and picking it up again queues it again.
+void test_an_own_trap_whose_pickup_was_undone_is_dropped() {
+    zap::Game game;
+    ready(game);
+    trap_records();
+    g_rando_marker = 1;
+    const int cell = 4 * 54 + 3;
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.traps = {{cell, 102}};
+    game.set_offline({seed});
+    g_map_grid[cell] = 0x19;
+    in_play_since(game, 3000);
+    play_looks(game);
+    check(apply(game, "apply\npopup 102 FROM ALICE") == "applied", "a received one of its kind");
+    next_frames(game, 3000);
+    check(field<int16_t>(0xDC2) == 660, "running");
+    g_map_grid[cell] = zap::kCollectedCell;  // the own one picked up while it runs
+    game.watch_all(&chosen);
+    game.pump_traps(3100);
+    check(game.queued_traps() == 1, "it waits for the one of its kind running");
+    // A death, then the respawn from the save: the timer reset, the item back in its room.
+    field<int16_t>(0xCEA) = -1;
+    game.watch_all(&chosen);
+    field<int16_t>(0xDC2) = 0;
+    g_map_grid[cell] = 0x19;
+    field<int16_t>(0xCEA) = 48;
+    game.note_play(4000);
+    play_looks(game);
+    game.pump_traps(6000);
+    check(game.queued_traps() == 0 && field<int16_t>(0xDC2) == 0,
+          "dropped with its pickup, not set off after the respawn");
+    g_map_grid[cell] = zap::kCollectedCell;  // picked up again
+    game.watch_all(&chosen);
+    game.pump_traps(6100);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "the new pickup sets it off");
+
+    // Undone and picked up again before play settles (pump_traps not yet past the load): the
+    // one still queued stands for the pickup made, and it goes off once.
+    g_map_grid[cell] = 0x19;
+    play_looks(game);
+    g_map_grid[cell] = zap::kCollectedCell;  // picked up while one of its kind runs
+    game.watch_all(&chosen);
+    game.pump_traps(6200);
+    check(game.queued_traps() == 1 && field<int16_t>(0xDC2) == 660, "waiting behind its kind");
+    field<int16_t>(0xCEA) = -1;  // a death; the respawn resets the timer and puts the item back
+    game.watch_all(&chosen);
+    field<int16_t>(0xDC2) = 0;
+    g_map_grid[cell] = 0x19;
+    field<int16_t>(0xCEA) = 48;
+    play_looks(game);
+    g_map_grid[cell] = zap::kCollectedCell;  // and it is picked up again at once
+    game.watch_all(&chosen);
+    check(game.queued_traps() == 1, "queued once for the pickup that stands");
+    game.note_play(7000);
+    game.pump_traps(9000);
+    check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0, "set off once");
+
+    // Still waiting when the player quits to the title and loads another slot's save of the
+    // seed, which holds that cell collected: not set off there.
+    g_map_grid[cell] = 0x19;
+    play_looks(game);
+    g_map_grid[cell] = zap::kCollectedCell;  // picked up while the one before still runs
+    game.watch_all(&chosen);
+    game.pump_traps(9100);
+    check(game.queued_traps() == 1, "waiting again");
+    const int32_t slot = g_current_slot;
+    g_save_loaded = 0xFF;  // the title
+    game.watch_all(&chosen);
+    g_current_slot = slot + 1;  // the other save, the cell collected in it too
+    g_save_loaded = 0;
+    field<int16_t>(0xDC2) = 0;
+    game.note_play(10000);
+    play_looks(game);
+    game.pump_traps(12000);
+    check(game.queued_traps() == 0 && field<int16_t>(0xDC2) == 0,
+          "dropped: no pickup was made in this save");
+    g_current_slot = slot;
+    game.put_back_traps();
+    field<int16_t>(0xDC2) = 0;
+    g_map_grid[cell] = 0;
+    g_rando_marker = 0;
+    game.set_offline({});
+    game.watch_all(&chosen);
+}
+
+// This world's own trap, queued by its cell's pickup, through a TELEPORT TO: held while the
+// countdown reads as play; set off after the load when the pickup stands, dropped when the load
+// took it back (the teleport loads the play state as it was when its entry was chosen).
+void test_an_own_trap_by_its_cell_waits_out_a_teleport() {
+    for (bool stands : {true, false}) {
+        zap::Game game;
+        ready(game);
+        trap_records();
+        g_rando_marker = 1;
+        const int cell = 4 * 54 + 3;
+        zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+        seed.traps = {{cell, 102}};
+        game.set_offline({seed});
+        g_map_grid[cell] = 0x19;
+        in_play_since(game, 5000);
+        play_looks(game);
+        if (stands) {  // picked up, then the pause menu at once: copied with the play state
+            g_map_grid[cell] = zap::kCollectedCell;
+            game.watch_all(&chosen);
+        }
+        teleport_from_pause(game, 5000);
+        game.watch_all(&chosen);
+        if (!stands) {  // picked up during the countdown, which the load takes back
+            g_map_grid[cell] = zap::kCollectedCell;
+            game.watch_all(&chosen);
+        }
+        check(game.queued_traps() == 1, "queued by its pickup");
+        play_frames(game, 5016, 6000);
+        check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1,
+              "held through the countdown, though it reads as play");
+        g_transition_timer = 0;  // the load
+        if (!stands) g_map_grid[cell] = 0x19;
+        play_frames(game, 6016, 6200);
+        check(field<int16_t>(0xDC2) == 0, "not in the moment after the load");
+        play_frames(game, 6216, 6600);
+        if (stands) {
+            check(field<int16_t>(0xDC2) == 660 && game.queued_traps() == 0,
+                  "set off once play has settled: its pickup stands");
+        } else {
+            check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 0,
+                  "dropped with the pickup the load took back");
+        }
+        game.put_back_traps();
+        field<int16_t>(0xDC2) = 0;
+        g_map_grid[cell] = 0;
+        g_rando_marker = 0;
+        game.set_offline({});
+        game.watch_all(&chosen);
+    }
 }
 
 // A config with none of the AILMENTS keys (an offline cache written before the traps): the traps
@@ -2265,7 +2655,8 @@ void test_traps_without_ailments() {
     zap::Game game;
     check(game.configure(self, older, false).empty(), "configures without them");
     trap_records();
-    apply(game, "apply\ntrap 103\ntrap 102");
+    game.own_trap_found(103);
+    game.own_trap_found(102);
     in_play_since(game, 3000);
     game.pump_traps(3000);
     game.pump_traps(3000);
@@ -2281,7 +2672,7 @@ void test_traps_held_for_the_ending() {
     g_flags[250] = 0;
     in_play_since(game, 1000);
     game.pump_traps(1000);  // the load's first frame in play: flag 250 clear
-    apply(game, "apply\ntrap 102");
+    game.own_trap_found(102);
     g_flags[250] = 1;  // the ending began in this load
     game.pump_traps(5000);
     check(field<int16_t>(0xDC2) == 0 && game.queued_traps() == 1, "held through the ending");
@@ -2533,7 +2924,6 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
     game.set_assists_locked(true);
     game.set_intel(true);
     game.set_discs(3, 15, "COLLECT 15 OS INSTALL DISKS!", true);
-    game.set_disk_slots({{2, 3}, {5, 3}});
     player_cell(3, 4);  // the label's cell
     // The stand-ins and INTEL CHIP restyled, ASSIST locked, the scanner's line written.
     auto applied = [&] {
@@ -2555,16 +2945,15 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
     check(game.newgame_status() == "armed" && game.assists_locked() && game.intel_on() &&
               game.disc_count() == 3 && game.discs_required() == 15 && game.discs_told() &&
               game.scan_line() == "COLLECT 15 OS INSTALL DISKS!" &&
-              game.files().counts() == std::map<int, int>{{2, 3}, {5, 3}} &&
               game.labels().count(4 * 54 + 3) == 1 && game.mission_status() == "asked",
           "what the client asked for kept: the new game, ASSIST, INTEL CHIP, the disks, the "
-          "file select's counts, the labels, RETURN HOME WITH THE DISKS?");
+          "labels, RETURN HOME WITH THE DISKS?");
     for (int i = 0; i < 32; ++i) game.watch_all(&chosen);  // the scanner's look every 30th
     check(applied(), "the unload refused: the watches apply it all again");
 
     game.client_gone(&chosen);
     check(games() && game.newgame_status() == "idle" && !game.assists_locked() &&
-              !game.intel_on() && game.scan_line().empty() && game.files().counts().empty() &&
+              !game.intel_on() && game.scan_line().empty() &&
               game.labels().empty() && game.mission_status() == "not asked",
           "a client gone: put back and dropped");
     for (int i = 0; i < 32; ++i) game.watch_all(&chosen);
@@ -3356,6 +3745,10 @@ int main() {
     test_received_death();
     test_received_traps();
     test_own_traps();
+    test_own_traps_go_off_at_each_pickup();
+    test_an_own_disk_shows_its_count_with_no_client();
+    test_an_own_trap_whose_pickup_was_undone_is_dropped();
+    test_an_own_trap_by_its_cell_waits_out_a_teleport();
     test_a_trap_popup_takes_its_turn();
     test_a_popups_notices_stay_ahead_of_a_trap_it_passed();
     test_a_trap_popup_with_no_record_waits();

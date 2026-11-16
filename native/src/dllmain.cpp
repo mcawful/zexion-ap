@@ -231,7 +231,15 @@ void take_offline() {
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
 void note_put_seed(zap::OfflineSeed seed) {
     AcquireSRWLockExclusive(&g_offline_lock);
-    g_put_seeds.push_back(std::move(seed));
+    // One of the same name still waiting (no frame since: the game in the background) is
+    // replaced, so the queue holds one a seed however often a client puts it.
+    auto same = std::find_if(g_put_seeds.begin(), g_put_seeds.end(),
+                             [&](const zap::OfflineSeed& s) { return s.name == seed.name; });
+    if (same != g_put_seeds.end()) {
+        *same = std::move(seed);
+    } else {
+        g_put_seeds.push_back(std::move(seed));
+    }
     ReleaseSRWLockExclusive(&g_offline_lock);
 }
 
@@ -383,19 +391,6 @@ struct Request {
     std::string (*run)(const std::string& request) = nullptr;
 };
 
-std::string disk_slots(const std::string& request) {
-    // The file select's disk count for the seed's slots (files.h; the format: requests.h).
-    std::map<int, int> counts;
-    std::string error = zap::parse_disk_slots(request, counts);
-    return on_game(
-        [&] {
-            bool on = !counts.empty();
-            g_game.set_disk_slots(std::move(counts));
-            return std::string(on ? "disk_slots on" : "disk_slots off");
-        },
-        true, error);
-}
-
 std::string discs(const std::string& request) {
     // The OS Install Disks goal's count and the scanner's line (scan.h; the format: requests.h).
     int count = 0, required = 0;
@@ -483,7 +478,6 @@ const Request kRequests[] = {
     {"drop_status", false, [] { return g_game.drop_status(); }},
     // The traps set off (game_calls.h, trap_status): for live checks.
     {"trap_status", false, [] { return g_game.trap_status(); }},
-    {"disk_slots", false, nullptr, &disk_slots},
     {"discs_status", false, [] { return g_game.equipment_status(); }},
     {"discs", false, nullptr, &discs},
     {"ap_labels", false, nullptr, &ap_labels},

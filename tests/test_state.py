@@ -100,7 +100,7 @@ def test_the_data_storage_keys_are_per_team_and_slot() -> None:
 def test_a_new_helper_is_told_everything_again() -> None:
     told = state.HelperState()
     assert told.assists.sent is None and told.intel.sent is None
-    assert told.discs.sent is None and told.slots.sent is None and told.offline_sent == {}
+    assert told.discs.sent is None and told.offline_sent == {}
     # It may hold an earlier client's labels: taken back unless this seed's are sent.
     assert told.labels_held and told.labels_for is None and not told.labels_refused
     assert not told.client_back_sent and not told.other_save_sent

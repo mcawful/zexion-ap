@@ -30,7 +30,9 @@ logger = logging.getLogger("Client")  # CommonClient's: the client's window show
 # and the console, not the window (Archipelago's window shows the "Client" logger only).
 log = logging.getLogger("Zexion")
 OFFLINE_FAILED = (
-    "Couldn't save this seed for playing without the client; playing with it is unaffected."
+    "Couldn't save this seed's file for the mod (details in the log): playing without the "
+    "client won't have it, and if the mod didn't get it at all, the file select's disk counts "
+    "and your own traps won't work either."
 )
 
 # The client's window shows what the player acts on (the connection, the mod, ARCHIPELAGO,
@@ -45,7 +47,6 @@ def detail(message: str) -> None:
 
 NEWGAME_POLL_SECONDS = 1.0
 REFUSED_RETRY_SECONDS = 5.0  # before asking the helper again after it refused a request
-SLOTS_READ_SECONDS = 2.0  # between reads of the save slots for the file select's count
 OFFLINE_WRITE_SECONDS = 5.0  # between looks at what the helper needs without the client
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
 
@@ -93,6 +94,14 @@ async def attach_helper(ctx: ZexionContext) -> bool:
     ctx.helper = helper
     ctx.told = state.HelperState()
     ctx.load.return_home = discs.ReturnHome()  # and any reminder or prompt of the one before
+    # A disk picked up while a helper in the game had no client was that helper's to count
+    # (its own notice), however many polls ran without it meanwhile: the next look takes the
+    # disks the save holds for counted (ZexionContext.drop_helper's reset lasts one poll only,
+    # as a poll with no helper fills the set again). Not when this attach loaded the helper
+    # itself (after /reload_mod, or a load that failed before): none was in the game to count,
+    # so a disk picked up meanwhile is still the client's to show.
+    if not helper.loaded_here:
+        ctx.load.disks_counted = None
     for note in notes:
         # Where the helper came from is a detail; a copy to update is not.
         (detail if note.startswith("The helper was loaded with the game") else logger.info)(note)
@@ -147,7 +156,8 @@ async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
     if hunt is not None and seed.dressed:
         if not conn.items_listed:
             return  # the items not listed yet, or a dropped connection: the count waits
-        have = discs.owned(hunt, p.codes, p.found)
+        # The loaded save's own count: it drops with a reload that put a disk back.
+        have = discs.owned(hunt, p.codes, ctx.load.save_collected)
         want = discs.request(have, hunt.required, seed.discs_told)
     else:
         want = discs.OFF
@@ -164,32 +174,6 @@ async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
         if status != told.discs_status:
             told.discs_status = status
             detail(f"The equipment screen's OS Install Disk count: {status}.")
-
-
-async def slots_tick(ctx: ZexionContext, p: Poll) -> None:
-    """With the OS Install Disks goal, give the helper the disk count for the file select's
-    entries of the slots holding this seed (read from the game every few seconds), and take it
-    back otherwise."""
-    told, conn, g = ctx.told, ctx.conn, ctx.game_conn
-    if time.monotonic() < told.slots_read_at:
-        return
-    told.slots_read_at = time.monotonic() + SLOTS_READ_SECONDS
-    hunt = conn.hunt if conn is not None else None
-    want = discs.SLOTS_OFF
-    if hunt is not None and not conn.items_listed:
-        return  # the items not listed yet, or a dropped connection: the count waits for them
-    if hunt is not None and g is not None:
-        try:
-            markers = await asyncio.to_thread(g.slot_markers)
-            copies = await asyncio.to_thread(g.rando_slot_copies)
-        except game.GameError:
-            return  # read again in a moment
-        slots = discs.seed_slots(markers, copies, conn.plan)
-        if slots:
-            have = discs.owned(hunt, p.codes, p.found)
-            want = discs.slots_request(have, slots)
-    ok = "disk_slots off" if want == discs.SLOTS_OFF else "disk_slots on"
-    await tell(ctx.helper, told.slots, want, want, ok)
 
 
 def foreign_labels(ctx: ZexionContext) -> tuple[dict[tuple[int, int], str], int] | None:
@@ -278,9 +262,14 @@ def offline_seed(ctx: ZexionContext, p: Poll) -> str | None:
     hunt = conn.hunt
     disc_info = None
     if hunt is not None:
-        have = discs.owned(hunt, p.codes, p.found)
-        unfound = offline.grid_cells(conn.plan.cells, hunt.locations - set(p.found))
-        disc_info = (have, hunt.required, discs.scan_line(hunt.required), unfound)
+        # What every save of the seed shares, and this world's own disks' cells: the helper
+        # counts each save's own from its map (the file select's entries, and a save loaded
+        # with no client), as the client counts the loaded one's (discs.owned).
+        shared = discs.owned(hunt, p.codes, ())
+        own = offline.grid_cells(conn.plan.cells, hunt.locations)
+        disc_info = (shared, hunt.required, discs.scan_line(hunt.required), own)
+    cells = conn.plan.cells
+    traps = [(cells[i][1] * ids.MAP_SIZE + cells[i][0], code) for i, code in conn.traps.items()]
     return offline.seed_text(
         conn.plan.table,
         conn.plan.start,
@@ -290,6 +279,7 @@ def offline_seed(ctx: ZexionContext, p: Poll) -> str | None:
         conn.lock_assists and not ctx.assists_unlocked(),
         disc_info,
         labels,
+        traps,
     )
 
 
@@ -309,19 +299,25 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
     for kind, text, file in (("config", config, ""), ("seed", seed, name)):
         if text is None or told.offline_sent.get(kind) == text:
             continue
-        if len(text) > offline.MAX_FILE:
-            reply = f"error larger than {offline.MAX_FILE} bytes"
+        request = offline.put_request(kind, text, file)
+        if len(request.encode()) > offline.MAX_REQUEST:
+            reply = f"error larger than the {offline.MAX_REQUEST} bytes the pipe takes"
         else:
+            # A file over offline.MAX_FILE is sent all the same: the helper refuses to keep it
+            # ("error too large"), but takes a seed's text for its own use first (its own
+            # traps and the disk count come from it with a client too).
             try:
-                reply = await asyncio.to_thread(
-                    helper.request, offline.put_request(kind, text, file)
-                )
+                reply = await asyncio.to_thread(helper.request, request)
             except (native.ReplyLost, native.ModMismatch):
                 raise  # side_tick drops the helper before this poll's step gives through it
             except native.HelperError as exc:
                 reply = f"error {exc}"
-        if reply in ("stored", "unchanged"):
+        # A seed the helper took for its own use but cannot keep (no folder for it, or too
+        # large) is not put again every few seconds: the same text would be refused the same.
+        taken = kind == "seed" and reply in ("error too large", "error no LOCALAPPDATA")
+        if reply in ("stored", "unchanged") or taken:
             told.offline_sent[kind] = text
+        if reply in ("stored", "unchanged"):
             ctx.said.clear("offline")
         elif ctx.said("offline", "failed"):  # said once until a file is kept again
             logger.warning(OFFLINE_FAILED)
@@ -713,64 +709,54 @@ async def client_back_tick(ctx: ZexionContext) -> None:
 
 
 async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
-    """The follow-up popup (an OS Install Disk's count, an Intel Chip's hint) for each of this
-    world's finds in the loaded save, found with or without a client, and this world's own trap
-    set off (its label disguises it, and the game's pickup popup names it; it goes off at once);
-    the server's popped_key keeps which were done, so each is done once."""
+    """The follow-up popup for this world's finds in the loaded save. An Intel Chip's hint,
+    found with or without a client: the server's popped_key keeps which were shown, so each
+    shows once. An OS Install Disk's count, for each one picked up while this load is watched
+    (LoadState.disks_counted): it follows the save, so one a death or a reload put back counts,
+    and shows its count, again when picked up again. This world's own traps are the helper's:
+    it sets each off at its pickup (native/README.md, "Traps")."""
     conn, helper, told, seed = ctx.conn, ctx.helper, ctx.told, ctx.seed_state
     if conn is None or not conn.items_listed or not step.seed_matches:
         return
     if not told.client_back_sent:
         return  # after the helper has been asked to say the client is back (client_back_tick)
-    done = popped(ctx)
-    if done is None:
-        return  # the server's record not read yet
-    await store_popped(ctx, conn, due_only=True)  # one lost with a closing connection, again
-    waiting = sorted(ctx.load.save_collected - done)
-    if not waiting:
-        return
-    hunt, plan, current = conn.hunt, conn.plan, seed.session
+    hunt, plan, current, load = conn.hunt, conn.plan, seed.session, ctx.load
     # A disk's count waits for the popup count's read: it counts the received disks handed over.
-    counts = hunt is not None and current.announced_read
-    disks = [i for i in waiting if counts and i in hunt.locations]
-    maps = [i for i in waiting if plan.location_items[i] == ids.AREA_MAP and conn.hint_targets]
+    disks: list[int] = []
+    if hunt is not None and current.announced_read:
+        disks = sorted(discs.uncounted(load.disks_counted, load.save_collected, hunt.locations))
+    maps: list[int] = []
     used = hints_used(ctx) or {}
-    maps = [i for i in maps if f"l{i}" in used]  # its hint assigned (hints_tick)
-    traps = [i for i in waiting if i in conn.traps]
-    if not disks and not maps and not traps:
+    done = popped(ctx)
+    if done is not None:  # the server's record read
+        await store_popped(ctx, conn, due_only=True)  # one lost with a closing connection, again
+        waiting = sorted(load.save_collected - done)
+        maps = [i for i in waiting if plan.location_items[i] == ids.AREA_MAP and conn.hint_targets]
+        maps = [i for i in maps if f"l{i}" in used]  # its hint assigned (hints_tick)
+    if not disks and not maps:
         return
     popups: list[tuple[int, str, bool]] = []
     if disks:
         # The ones shown now are the latest found: they count up from the disks the player has,
         # the received ones counted up to those whose popup has gone to the helper (a received
         # disk still to be handed over counts these in its own notice: discs.received_notes).
-        first = discs.owned(hunt, p.codes[: current.announced], p.found) - len(disks) + 1
+        have = discs.owned(hunt, p.codes[: current.announced], load.save_collected)
+        first = have - len(disks) + 1
         told_count = hunt.required if seed.discs_told else None
         popups += [
             (ids.DATA_DISC, discs.note(first + k, told_count), True) for k in range(len(disks))
         ]
     popups += [(ids.AREA_MAP, hint_note(ctx, used[f"l{i}"]), True) for i in maps]
-    found_traps = [conn.traps[i] for i in traps]
-    try:
-        reply = await asyncio.to_thread(
-            helper.apply, native.batch_text([], popups, traps=found_traps)
-        )
-    except native.ReplyLost:
-        # The helper may have queued the traps (its queue outlives this client): not sent again,
-        # so each is set off at most once, as Session.give counts a lost batch's popups. A disk's
-        # count or a hint is sent again (at worst shown twice). Stored now, as storing needs no
-        # helper: a client closed before one comes back would send the trap again.
-        ctx.seed_state.popped_mine |= set(traps)
-        if traps:
-            await store_popped(ctx, conn)
-        raise
+    # A reply lost (native.ReplyLost, raised to side_tick): sent again, at worst shown twice.
+    reply = await asyncio.to_thread(helper.apply, native.batch_text([], popups))
     if reply != "applied":
         return  # not shown: tried again
-    if found_traps:
-        detail(f"Found in this world: {', '.join(ids.TRAP_NAMES[c] for c in found_traps)}.")
-    # This client's record holds them until the server has them.
-    ctx.seed_state.popped_mine |= {*disks, *maps, *traps}
-    await store_popped(ctx, conn)
+    if load.disks_counted is not None:
+        load.disks_counted |= set(disks)
+    if maps:
+        # This client's record holds them until the server has them.
+        ctx.seed_state.popped_mine |= set(maps)
+        await store_popped(ctx, conn)
 
 
 async def replay_tick(ctx: ZexionContext) -> None:
@@ -813,14 +799,16 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     ):
         return
     hunt = conn.hunt
-    enough = discs.owned(hunt, p.codes, p.found) >= hunt.required
+    enough = discs.owned(hunt, p.codes, ctx.load.save_collected) >= hunt.required
     in_play = step.state == game.IN_PLAY
     home.see(step.save_stamp, in_play, step.at_home, enough, step.in_home_cell, step.game_saved)
     if not in_play or not enough or not told.client_back_sent:
         return
     # After the found disks' count popups (followups_tick), so the reminder comes last.
-    done = popped(ctx)
-    if done is None or any(i in hunt.locations for i in ctx.load.save_collected - done):
+    load = ctx.load
+    if load.disks_counted is None or discs.uncounted(
+        load.disks_counted, load.save_collected, hunt.locations
+    ):
         return
     if not home.reminded:
         current = ctx.seed_state.session

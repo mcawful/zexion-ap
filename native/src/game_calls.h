@@ -172,12 +172,9 @@ public:
         if (trap_waiting()) return kTrapWaitingRefusal;
         return nullptr;
     }
-    // The file select (files.h): `disk_slots` sets the counts by slot; the entries' wrapper calls
-    // the game's (file_entry_original), then file_event.
-    void set_disk_slots(std::map<int, int> counts) {
-        client_file_counts_ = std::move(counts);
-        apply_file_counts();
-    }
+    // The file select (files.h): the counts by slot are each save's own, from its seed's file
+    // and its map (watch_offline); the entries' wrapper calls the game's (file_entry_original),
+    // then file_event.
     void* file_entry_original(void* widget) const { return files_.original(widget); }
     const FileEntries& files() const { return files_; }
     void file_event(void* widget, intptr_t event);
@@ -265,13 +262,40 @@ public:
     std::string drop_status() const;
     size_t queued_drops() const { return drops_.size(); }
     // Game thread, every frame, and not while an unload runs (dllmain.cpp: with the watches,
-    // after watch_all): sets off each trap an `apply` took, as the game's touch does (trap.h),
+    // after watch_all): sets off each trap queued (this world's own by watch_own_traps, a
+    // received one's popup by an `apply`), as the game's touch does (trap.h),
     // one a frame, once in play for a moment in the save it was for, not halted, not from RETURN
     // HOME's fade through its ending, and not in an ending that began in the load (kept for the
-    // next), one of each kind at a time (the next waits for the last to run out): `trap` (this
-    // world's own) at once; a received one's popup as its turn in the queue comes, shown here,
-    // the trap going off as it is drawn. Keeps AILMENTS's tests patched while a trap's timer runs.
+    // next), one of each kind at a time (the next waits for the last to run out): this world's
+    // own (watch_own_traps) at once; a received one's popup as its turn in the queue comes, shown
+    // here, the trap going off as it is drawn. Keeps AILMENTS's tests patched while a trap's timer
+    // runs.
     void pump_traps(uint64_t now_ms);
+    // Game thread, every frame (watch_all), with a client or none: this world's own traps, as
+    // the loaded save's seed file lists them (offline.h, `traps`), each queued for pump_traps
+    // when its map cell turns collected after kOwnTrapPlayLooks looks in play in a row: its
+    // pickup, every time, so again after a reload that put the item back. The look that sees it
+    // may be of a menu or a death (a pause taken on the pickup's frame). A load is never taken
+    // for a pickup: it comes from a menu, a death or no save, and the first looks in play after
+    // any of those, or after another seed's save, only take the cells as they are; a TELEPORT
+    // TO's, at the end of a countdown that reads as play, loads the play state as it was at
+    // that end or before (docs/re/memory.md, "Received Energy Shields", "Limits"), which turns
+    // no cell collected.
+    void watch_own_traps();
+    // Queues one of this world's own traps for the save loaded, as watch_own_traps does:
+    // `cell` its map cell (-1: none known), by which pump_traps drops one whose pickup a load
+    // undid before it went off, or that waits in another slot's save of the seed than the one
+    // it was picked up in. One still queued for that cell in this save is not queued twice (a
+    // pickup undone and made again before play settled).
+    void own_trap_found(uint8_t item, int cell = -1);
+    // Game thread, every frame (watch_all): with no client, in a known disk seed's save, an own
+    // OS Install Disk's pickup queues its count notice, as the client's follow-up does with one
+    // (client/discs.py, `note`): "OS Install Disk 3 of 15", the save's count from the seed's
+    // file and the map (offline_disk_count), "of 15" once the scanner has said how many. A
+    // pickup is a cell turning collected, as for watch_own_traps (no load is taken for one);
+    // a load that puts a disk back withdraws the count notices not shown yet, as does the save
+    // being left: their count is no longer the save's. A client attaching leaves one queued.
+    void watch_own_disks();
     // `trap_status` (for live checks): "queued N; last <outcome>", the outcome "none", "set
     // <item>", or "nothing <item>" (its timer already longer: as the game's op does nothing).
     bool ailments_patched() const { return hit_patch_.patched() || wave_patch_.patched(); }
@@ -443,8 +467,9 @@ private:
     int offline_count_ = -1, offline_told_ = -1;
     int offline_frames_ = 0;
     bool offline_settled_ = false;  // the loaded save in play since it loaded
-    // The file select's counts: the client's (disk_slots) and the offline ones (offline.h).
-    std::map<int, int> client_file_counts_, offline_file_counts_;
+    // The file select's counts, each save's own (offline.h, offline_disk_count), with a client
+    // or none.
+    std::map<int, int> offline_file_counts_;
     void apply_file_counts();
     std::deque<Popup> popups_;
     uint32_t batches_ = 0;  // the last `apply`'s number (Popup::batch)
@@ -461,8 +486,22 @@ private:
     struct QueuedTrap {
         uint8_t item;
         std::shared_ptr<const OfflineSeed> origin;
+        int cell = -1;  // an own trap's map cell (own_trap_found)
+        int slot = -1;  // and the save slot it was picked up in (0-based)
     };
     std::deque<QueuedTrap> traps_;
+    // watch_own_traps: the seed's own traps as last looked at, each one's cell collected or not
+    // (own_traps_looked_: in the save loaded now), and how many looks in a row before this one
+    // were in play.
+    std::vector<OfflineSeed::OwnTrap> own_traps_seen_;
+    std::vector<bool> own_traps_collected_;
+    bool own_traps_looked_ = false;
+    int own_traps_play_looks_ = 0;
+    // watch_own_disks: the same for the seed's own disks' cells, while no client is attached.
+    std::vector<int> own_disks_seen_;
+    std::vector<bool> own_disks_collected_;
+    bool own_disks_looked_ = false;
+    int own_disks_play_looks_ = 0;
     std::string trap_status_ = "none";
     // Sets off trap `item` now: "set" or "nothing" (trap_status).
     std::string run_trap(uint8_t item);

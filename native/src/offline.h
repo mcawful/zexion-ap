@@ -12,11 +12,16 @@
 //   start HEX          the start record, 6 bytes (+0x310)
 //   intel 0|1          the Area Map named INTEL CHIP
 //   assists lock|free  the ASSIST lock
-//   discs COUNT REQUIRED HEX   (or "discs -") the disk count when the client last saw it,
-//                      the number needed, and the scanner's line in hex: read as the `discs`
-//                      request is (a TOLD after it is ignored)
-//   unfound I,J,...    (or "-") map grid indices (y * 54 + x) of this player's own disks
-//                      not counted in COUNT: each one the map shows collected counts one more
+//   discs COUNT REQUIRED HEX   (or "discs -") the disk count every save of the seed shares
+//                      (the disks the slot starts with and those received, when the client
+//                      last wrote it), the number needed, and the scanner's line in hex: read as
+//                      the `discs` request is (a TOLD after it is ignored)
+//   unfound I,J,...    (or "-") map grid indices (y * 54 + x) of this player's own disks, none
+//                      of them in COUNT: each one a save's map shows collected counts one more
+//                      in that save
+//   traps I:T,J:T,...  (or "-"; none in a file from before it) map grid indices of this
+//                      player's own traps, each with its trap's item (trap.h): set off when
+//                      its cell turns collected in play (Game::watch_own_traps)
 //   ap_labels          then "label X Y HEX" lines to the end, as the client's request
 #pragma once
 
@@ -44,6 +49,13 @@ struct OfflineSeed {
     int count = 0, required = 0;
     std::string scan_line;
     std::vector<int> unfound;
+    // This player's own traps: the map grid index of each one's cell, and its item (trap.h).
+    struct OwnTrap {
+        int cell = 0;
+        uint8_t item = 0;
+        bool operator==(const OwnTrap&) const = default;
+    };
+    std::vector<OwnTrap> traps;
     std::string labels;  // the "ap_labels" request, or empty
 };
 
@@ -80,8 +92,9 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build);
 
 // Pipe thread: an `offline_put` request, "offline_put config" or "offline_put seed NAME" then
 // the file's text, checked as the reader checks it and written in place of the old one, whole
-// or not at all: "stored", "unchanged" or "error <why>". A seed kept ("stored" or "unchanged") is
-// also given in `seed`, named NAME, if not null (Game::merge_offline).
+// or not at all: "stored", "unchanged" or "error <why>". A seed that reads right is also
+// given in `seed`, named NAME, if not null (Game::merge_offline), whether or not its file could
+// be written: the running helper works from it with a client too.
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request, OfflineSeed* seed = nullptr);
 

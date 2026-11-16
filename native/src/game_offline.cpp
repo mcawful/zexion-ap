@@ -22,6 +22,19 @@ constexpr char kOtherSeedNotice[] =
 // One of the helper's own notices: silent, for any save.
 Popup notice(const char* text) { return {kAreaMapItem, text, true}; }
 
+// An own disk's count with no client (watch_own_disks): the helper's own, with the disk's
+// pickup sound as the client's count has it; told apart by its item.
+Popup disk_notice(int count, int required) {
+    std::string text = std::string(kDiskName) + " " + std::to_string(count);
+    if (required > 0) text += " of " + std::to_string(required);
+    Popup popup{static_cast<uint8_t>(kDiskItem), std::move(text), true};
+    popup.sounds = true;
+    return popup;
+}
+bool is_disk_notice(const Popup& p) {
+    return p.bare && !p.counted && p.batch == 0 && p.item == kDiskItem;
+}
+
 }  // namespace
 
 void Game::set_offline(std::vector<OfflineSeed> seeds) {
@@ -105,10 +118,7 @@ void Game::leave_offline() {
 }
 
 void Game::apply_file_counts() {
-    // The client's counts for its seed's saves, the offline ones for the other known seeds'.
-    std::map<int, int> merged = offline_file_counts_;
-    for (const auto& [slot, count] : client_file_counts_) merged[slot] = count;
-    if (merged != files_.counts()) files_.set_counts(std::move(merged));
+    if (offline_file_counts_ != files_.counts()) files_.set_counts(offline_file_counts_);
 }
 
 bool Game::section_is(const OfflineSeed& seed, const BYTE* section) const {
@@ -198,7 +208,7 @@ void Game::watch_offline() {
         }
     }
     // The file select: each known disk seed's save by its own section copy, with or without a
-    // client (whose counts win for its seed's saves: apply_file_counts).
+    // client (which keeps the seed's file, and so what every save of it shares, up to date).
     std::map<int, int> counts;
     for (int n = 1; n <= slot::kCount; ++n) {
         const BYTE* copy = slot_section(n);
@@ -217,6 +227,99 @@ void Game::watch_offline() {
         offline_file_counts_ = std::move(counts);
         apply_file_counts();
     }
+}
+
+// A cell that turns collected is a pickup only after this many looks in play in a row: the
+// first looks after a load, a menu or a death only take the cells as they are (chosen; a load
+// taking more than one frame to fill the grid was not measured).
+constexpr int kOwnTrapPlayLooks = 2;
+
+void Game::watch_own_traps() {
+    // The loaded save's seed, by its section (loaded_seed: the marker first).
+    const int seed = configured_ && *at_.save_loaded != kNoSaveLoaded ? loaded_seed() : -1;
+    if (seed < 0) {
+        own_traps_looked_ = false;
+        own_traps_play_looks_ = 0;
+        return;
+    }
+    const std::vector<OfflineSeed::OwnTrap>& traps = offline_seeds_[static_cast<size_t>(seed)].traps;
+    std::vector<bool> collected(traps.size());
+    for (size_t i = 0; i < traps.size(); ++i) {
+        collected[i] = at_.map_grid[traps[i].cell] == kCollectedCell;
+    }
+    // The same list as the look before (a seed file merged meanwhile, or another seed's save,
+    // starts over), and play in the looks before this one: each cell collected now and not then
+    // was picked up in between, whatever this look is of (a pause on the pickup's frame).
+    if (own_traps_looked_ && own_traps_play_looks_ >= kOwnTrapPlayLooks && traps == own_traps_seen_) {
+        for (size_t i = 0; i < traps.size(); ++i) {
+            if (collected[i] && !own_traps_collected_[i]) {
+                own_trap_found(traps[i].item, traps[i].cell);
+            }
+        }
+    }
+    own_traps_seen_ = traps;
+    own_traps_collected_ = std::move(collected);
+    own_traps_looked_ = true;
+    own_traps_play_looks_ = in_play() ? std::min(own_traps_play_looks_ + 1, kOwnTrapPlayLooks) : 0;
+}
+
+void Game::watch_own_disks() {
+    // Watched with a client or none, so a disk picked up with one is not taken for a pickup
+    // once it goes; queued only with none: with a client its follow-up shows the count (and
+    // knows the disks received since the seed's file was written).
+    const int seed = configured_ && *at_.save_loaded != kNoSaveLoaded ? loaded_seed() : -1;
+    const OfflineSeed* sd = seed >= 0 ? &offline_seeds_[static_cast<size_t>(seed)] : nullptr;
+    if (sd == nullptr || !sd->discs) {
+        if (own_disks_looked_) std::erase_if(popups_, is_disk_notice);
+        own_disks_looked_ = false;
+        own_disks_play_looks_ = 0;
+        return;
+    }
+    const std::vector<int>& cells = sd->unfound;  // every own disk's cell (client/ticks.py)
+    std::vector<bool> collected(cells.size());
+    for (size_t i = 0; i < cells.size(); ++i) {
+        collected[i] = cells[i] >= 0 && cells[i] < kMapCells &&
+                       at_.map_grid[cells[i]] == kCollectedCell;
+    }
+    if (own_disks_looked_ && cells == own_disks_seen_) {
+        bool found = false, undone = false;
+        for (size_t i = 0; i < cells.size(); ++i) {
+            found = found || (collected[i] && !own_disks_collected_[i]);
+            undone = undone || (!collected[i] && own_disks_collected_[i]);
+        }
+        // A load put a disk back: the counts queued are no longer the save's.
+        if (undone) std::erase_if(popups_, is_disk_notice);
+        // One notice a look, with the count as it is now (two disks in one frame: one notice).
+        // One queued stays when a client attaches: the pickup was the helper's to count (the
+        // client takes the disks a save holds at its first look for counted).
+        if (found && !active_ && own_disks_play_looks_ >= kOwnTrapPlayLooks) {
+            const bool told = at_.flags[flag::kScannerTold] != 0;
+            popups_.push_back(
+                disk_notice(offline_disk_count(*sd, at_.map_grid), told ? sd->required : 0));
+        }
+    } else if (own_disks_looked_) {
+        std::erase_if(popups_, is_disk_notice);  // another seed's save, or its file merged
+    }
+    own_disks_seen_ = cells;
+    own_disks_collected_ = std::move(collected);
+    own_disks_looked_ = true;
+    own_disks_play_looks_ = in_play() ? std::min(own_disks_play_looks_ + 1, kOwnTrapPlayLooks) : 0;
+}
+
+void Game::own_trap_found(uint8_t item, int cell) {
+    std::shared_ptr<const OfflineSeed> origin;
+    if (rando_save_loaded()) {
+        origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
+    }
+    const int slot = cell >= 0 ? at<int32_t>(at_.current_slot, 0) : -1;
+    // One still queued for this cell in this save: its pickup was undone by a load and made
+    // again before play settled (so before pump_traps dropped it). The one pickup that stands
+    // sets it off once.
+    const bool queued =
+        cell >= 0 && std::any_of(traps_.begin(), traps_.end(), [&](const QueuedTrap& t) {
+            return t.cell == cell && t.slot == slot && origin_loaded(t.origin);
+        });
+    if (!queued) traps_.push_back({item, origin, cell, slot});
 }
 
 std::string Game::other_save() {

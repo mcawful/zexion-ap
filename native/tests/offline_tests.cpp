@@ -124,6 +124,27 @@ void test_the_file() {
     check(!zap::parse_offline_seed(seed_text("discs 3 12 4"), none).empty(), "odd hex");
     check(!zap::parse_offline_seed(seed_text("discs 3 12 41", "unfound 99999"), none).empty(),
           "a cell off the map");
+
+    // This player's own traps: a cell and a trap's item each.
+    check(s.traps.empty(), "a file from before the traps lists none");
+    zap::OfflineSeed traps;
+    check(zap::parse_offline_seed(seed_text("discs -", "unfound -\ntraps 1312:102,40:103"), traps)
+                  .empty() &&
+              traps.traps.size() == 2 && traps.traps[0].cell == 1312 &&
+              traps.traps[0].item == 102 && traps.traps[1].cell == 40 &&
+              traps.traps[1].item == 103,
+          "the own traps: each one's cell and item");
+    check(zap::parse_offline_seed(seed_text("discs -", "unfound -\ntraps -"), traps).empty() &&
+              traps.traps.empty(),
+          "none");
+    for (const char* bad : {"traps", "traps 1312", "traps 1312:44", "traps 2916:102",
+                            "traps 1312:102,", "traps 1312:102,1312:103", "traps x:102",
+                            "traps 1312:102:103"}) {
+        check(!zap::parse_offline_seed(seed_text("discs -", std::string("unfound -\n") + bad),
+                                       traps)
+                   .empty(),
+              bad);
+    }
 }
 
 void test_the_folder() {
@@ -162,6 +183,27 @@ void test_the_helper_writes_what_the_client_sends() {
                                 &none) == "stored" &&
               none.name.empty(),
           "the config stored, no seed handed back");
+    // A folder that cannot be written: refused, but the seed is the running helper's.
+    zap::OfflineSeed unwritten;
+    const std::wstring nowhere = folder + L"\\seeds\\AP_1-0-1.txt\\under-a-file";
+    check(zap::put_offline_file(nowhere, "B1", seed_put, &unwritten).rfind("error", 0) == 0 &&
+              unwritten.name == "AP_1-0-1" && unwritten.count == 3,
+          "a seed whose file cannot be written is still handed over");
+    // The same with no folder at all (LOCALAPPDATA unusable), and for a file too large to
+    // keep: said, and the seed still handed over.
+    zap::OfflineSeed homeless;
+    check(zap::put_offline_file(L"", "B1", seed_put, &homeless) == "error no LOCALAPPDATA" &&
+              homeless.name == "AP_1-0-1" && homeless.count == 3,
+          "a seed with nowhere to be written is still handed over");
+    zap::OfflineSeed large;
+    const std::string padded = seed_put + std::string(49 * 1024, '\n');
+    check(zap::put_offline_file(folder, "B1", padded, &large) == "error too large" &&
+              large.name == "AP_1-0-1" && large.count == 3,
+          "a seed too large to keep is still handed over");
+    check(zap::put_offline_file(L"", "B1", "offline_put config\n" + cached_config("config"),
+                                &none) == "error no LOCALAPPDATA" &&
+              none.name.empty(),
+          "a config with nowhere to be written: refused");
     check(zap::put_offline_file(folder, "B1", "offline_put seed AP_2-0-1\nnot a seed\n", &none)
                   .rfind("error", 0) == 0 &&
               none.name.empty(),
@@ -290,8 +332,11 @@ void test_a_save_of_the_seed_dressed_offline() {
     check(game.files().counts().at(3) == 4, "counted for that save on the file select");
 
     check(configure(game).empty() && game.active(), "a client's config");
-    check(game.files().counts().empty(), "the file select's counts left to the client");
+    check(game.files().counts().empty(), "the file select's counts dropped with the look, counted again at the next");
     check(game.queued_popups() == 0, "no notice: no save was dressed (the file select)");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.files().counts().size() == 1 && game.files().counts().at(3) == 4,
+          "with a client too: each save's own count, from the seed's file and its map");
 
     zap::Game again;
     dress_offline(again, s);
@@ -348,14 +393,9 @@ void test_a_save_of_the_seed_dressed_offline() {
     }
 
     g_save_loaded = 0xFF;  // the file select
-    other.set_disk_slots({{4, 7}});
     for (int i = 0; i < 16; ++i) other.watch_offline();
-    auto merged = other.files().counts();
-    check(merged.size() == 2 && merged.at(4) == 7 && merged.at(3) == 4,
-          "the client's slot 4 and the known seed's slot 3, together");
-    other.set_disk_slots({});
     check(other.files().counts().size() == 1 && other.files().counts().at(3) == 4,
-          "the client's taken back: the offline one stays");
+          "the known seed's slot 3 keeps its own count with a client of another seed");
 }
 
 // A dressed save stays dressed, ASSIST locked, through a menu; a client going away with the

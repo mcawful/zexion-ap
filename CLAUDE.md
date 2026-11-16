@@ -232,7 +232,7 @@ release's.
   | `newgame.py` | the seed as `ap_newgame` |
   | `aplabels.py` | other players' items as `ap_labels` |
   | `hints.py` | which item each Area Map or Intel Chip hints |
-  | `discs.py` | the OS Install Disks count: `discs`, `disk_slots` |
+  | `discs.py` | the OS Install Disks count, the loaded save's own: `discs` |
   | `deathlink.py` | deaths out, and received ones to deal (`die`) |
   | `shields.py` | received Energy Shields (`shield`) |
   | `offline.py` | `offline_put`: files for AP saves without the client |

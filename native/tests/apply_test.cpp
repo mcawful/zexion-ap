@@ -132,11 +132,37 @@ int wmain(int argc, wchar_t** argv) {
     check(slot != nullptr && zap::swap_slot(slot, other, g_next.load()), "the other hook gone");
     Sleep(50);  // no call left in chained_tick
 
-    // A trap for this save holds an unload while it waits (halted here) and while it runs, so
-    // undo_for_unload never drops it nor puts its AILMENTS patch back under it.
+    // The client of another seed puts seed B's file (a seed it started earlier in its run).
+    reply = zap_test::ask(pipe, "other_save");
+    check(reply == "unknown", "no file for seed B: unknown", reply);
+    const std::string file = "zexion-ap offline 1\ntable " + hex(g_table, sizeof(g_table)) +
+                             "\nstart " + hex(g_start, sizeof(g_start)) +
+                             "\nintel 1\nassists lock\ndiscs -\nunfound -\ntraps 5:102\n";
+    reply = zap_test::ask(pipe, "offline_put seed 12345-0-1\n" + file);
+    check(reply == "stored", "seed B put", reply);
+    check(std::filesystem::is_regular_file(base / L"ZexionAP" / L"seeds" / L"12345-0-1.txt"),
+          "written into the test's folder");
+    for (int i = 0; i < 200 && reply != "told"; ++i) {  // asked again until a frame has taken it
+        reply = zap_test::ask(pipe, "other_save");
+        if (reply != "told") Sleep(5);
+    }
+    check(reply == "told", "known to the look from the next frame: told", reply);
+    hello = zap_test::ask(pipe, "hello");
+    check(hello.find(" offline=1") != std::string::npos, "hello: one seed", hello);
+
+    // This world's own trap, as seed B's file lists it (map cell 5), picked up in the frames the
+    // game makes: the helper sets it off itself, with no request. It holds an unload while it
+    // waits (halted here) and while it runs, so undo_for_unload never drops it nor puts its
+    // AILMENTS patch back under it.
+    Sleep(50);  // frames in play that have looked at the cell, not collected
     stand_in::g_halt_flag = 1;
-    reply = zap_test::ask(pipe, "apply\ntrap 102");
-    check(reply == "applied", "a trap queued", reply);
+    stand_in::g_map_grid[5] = 0x1B;  // the pickup
+    reply = "";
+    for (int i = 0; i < 400 && reply != "queued 1; last none"; ++i) {
+        reply = zap_test::ask(pipe, "trap_status");
+        if (reply != "queued 1; last none") Sleep(5);
+    }
+    check(reply == "queued 1; last none", "its pickup queued the trap", reply);
     reply = zap_test::ask(pipe, "unload");
     check(reply == "error a trap is waiting to go off; not unloading", "refused while it waits",
           reply);
@@ -150,24 +176,7 @@ int wmain(int argc, wchar_t** argv) {
         reply = zap_test::ask(pipe, "trap_status");
     }
     check(reply == "queued 0; last set 102", "the trap ran once", reply);
-
-    // The client of another seed puts seed B's file (a seed it started earlier in its run).
-    reply = zap_test::ask(pipe, "other_save");
-    check(reply == "unknown", "no file for seed B: unknown", reply);
-    const std::string file = "zexion-ap offline 1\ntable " + hex(g_table, sizeof(g_table)) +
-                             "\nstart " + hex(g_start, sizeof(g_start)) +
-                             "\nintel 1\nassists lock\ndiscs -\nunfound -\n";
-    reply = zap_test::ask(pipe, "offline_put seed 12345-0-1\n" + file);
-    check(reply == "stored", "seed B put", reply);
-    check(std::filesystem::is_regular_file(base / L"ZexionAP" / L"seeds" / L"12345-0-1.txt"),
-          "written into the test's folder");
-    for (int i = 0; i < 200 && reply != "told"; ++i) {  // asked again until a frame has taken it
-        reply = zap_test::ask(pipe, "other_save");
-        if (reply != "told") Sleep(5);
-    }
-    check(reply == "told", "known to the look from the next frame: told", reply);
-    hello = zap_test::ask(pipe, "hello");
-    check(hello.find(" offline=1") != std::string::npos, "hello: one seed", hello);
+    stand_in::g_map_grid[5] = 0;
 
     check(zap_test::ask(pipe, "unload") == "bye", "unload");
     CloseHandle(pipe);

@@ -35,7 +35,14 @@ Set with the Goal option.
     pause menu's RANDO SETTINGS, an OHKO seed then shows as Custom mode, with OHKO's items and
     amounts and Gates Unlocked (checked in game). The spoiler log's header names the change.
   - Your count shows after each disk's popup (a disk sent to you first pops up as any item
-    does, with who sent it), on the pause screen and on the file select.
+    does, with who sent it), on the pause screen and on the file select. It's your save's own:
+    the disks sent to you, plus your own that the save holds. If you die or reload without
+    saving after picking up one of your own, it's back in its room and off your count until you
+    pick it up again, which shows the count again (checked in the game for a reload: the
+    count dropping on the pause screen; the count showing again at the second pickup was not
+    looked at apart; not yet a death, nor the file select's count as it is now). With the
+    client closed, the mod shows the count itself when you pick up one of your own (checked
+    in the game).
   - The scanner at Guardia 42,26, outside the core's door, which shows where the keys are in
     the normal game, tells you how many you need. Until you have been there, the pause screen
     shows "OF ?". With Hints Revealed (Custom), the game counts you as told from the start, so
@@ -323,10 +330,11 @@ after it don't wait for it meanwhile). It waits through the pause menu, other me
 load, and through RETURN HOME WITH THE DISKS? and the game's ending (it comes at your next load
 then). It also waits through a teleport from the pause menu, such as TELEPORT TO START (the other
 TELEPORT TO entries work the same way but were not tried), and goes off once you arrive. Each trap
-happens at most once, including one sent while your client was closed, or before you first connected
-(it comes when you connect); if the client closes just as a trap goes off, it may come again; a trap
-still waiting for its popup is lost if the game closes, or if the mod is reloaded while it waits for
-a save that isn't loaded; and with no mod running a trap sent to you does nothing. A second trap of
+sent to you happens at most once, including one sent while your client was closed, or before you
+first connected (it comes when you connect); if the client closes just as a trap goes off, it may
+come again; a trap still waiting for its popup is lost if the game closes, or if the mod is reloaded
+while it waits for a save that isn't loaded; and with no mod running a trap does nothing: not one
+sent to you, and not your own when you pick it up (the client says so). A second trap of
 the same kind waits for the first to end and then goes off, so each lasts its full 12 seconds. The
 game's AILMENTS assist setting (pause, OPTIONS, ASSIST, where assists are allowed) doesn't change
 traps: while one runs, it is left out for that effect, so an enemy's touch of the same kind during a
@@ -343,8 +351,10 @@ Zexion trap looks like any upgrade: maybe one they already have, or one not in t
 scanner, or a map revealed in full (Hints Revealed, in Custom mode), has shown your keys on the map,
 a trap that looks like one of your keys has no key marker there: just an important item's (checked
 in the game with Hints Revealed; after the scanner, not yet checked). Picking up your own sets it
-off at once; if you picked it up with the client closed, it goes off when you next connect with that
-save loaded. Other games' traps sent to you do nothing in Zexion.
+off at once, with the client open or closed, and every time: if you die or reload without saving,
+it's back in its room, and picking it up again sets it off again (checked in the game for a
+reload, with the client open and closed; not yet for a death).
+Other games' traps sent to you do nothing in Zexion.
 
 Checked in the game: both traps sent to you, at once, for about 12 seconds; two of one kind in a
 row; one past a shield; AILMENTS at both settings not changing them; one sent while paused, while

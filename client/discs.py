@@ -7,12 +7,15 @@ counts them,
 
     disks owned = the disks the slot starts with
                 + the disks received from other worlds
-                + this world's own disk locations the player has found
+                + this world's own disk locations collected in the loaded save
 
 Shown in a notice after each disk's popup ("OS Install Disk 3 of 15", "of 15" once the scanner
 has said how many; in capitals but in English(HD)).
-"Found" is what clients reported from the game's map (storage.own_found), not the server's
-checked set, which a release fills; the disc the game gives for its secret boss does not count.
+This world's own disks follow the save, as its other items do: after a death or a reload
+without saving, one picked up since lies in its room again and no longer counts, and picking it
+up again counts it again, with its notice. So the count is a save's own: neither the server's
+checked set, which a release fills, nor what another save of the seed has found; the disc the
+game gives for its secret boss does not count.
 Pure functions; client/ticks.py talks to the helper.
 """
 
@@ -23,7 +26,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from . import save_patch
-from .ids import DATA_DISC, SECTION_SIZE
+from .ids import DATA_DISC
 
 NAME = "OS Install Disk"  # what the game's record calls DATA DISC is called here
 
@@ -54,10 +57,33 @@ def from_slot_data(slot: Mapping[str, object]) -> DiscHunt | None:
     )
 
 
-def owned(hunt: DiscHunt, received: Sequence[int], checked: Iterable[int]) -> int:
-    """How many discs the player has: ``received`` are the item codes received from other
-    worlds, ``checked`` this world's checked location indices."""
-    return hunt.start + received.count(DATA_DISC) + len(hunt.locations & set(checked))
+def owned(hunt: DiscHunt, received: Sequence[int], collected: Iterable[int]) -> int:
+    """How many discs the player has in a save: ``received`` are the item codes received from
+    other worlds, ``collected`` the save's collected location indices (the loaded save's:
+    state.LoadState.save_collected; none for the count every save of the seed shares)."""
+    return hunt.start + received.count(DATA_DISC) + len(hunt.locations & set(collected))
+
+
+def counted(
+    before: set[int] | None, collected: Iterable[int], locations: Iterable[int]
+) -> set[int]:
+    """This world's own disks in the loaded save whose count notice is not owed (state.LoadState.
+    disks_counted), after a look at the save: at the first (``before`` None), every one the save
+    holds, picked up before this load was watched; later, those of ``before`` the save still
+    holds, so one a death or a reload put back in its room is owed its notice again once picked
+    up again."""
+    own = set(collected) & set(locations)
+    return own if before is None else before & own
+
+
+def uncounted(
+    before: set[int] | None, collected: Iterable[int], locations: Iterable[int]
+) -> set[int]:
+    """This world's own disks picked up in this load whose count notice is still to show: none
+    before the load's first look (``counted``)."""
+    if before is None:
+        return set()
+    return (set(collected) & set(locations)) - before
 
 
 def note(count: int, required: int | None = None) -> str:
@@ -71,16 +97,16 @@ def note(count: int, required: int | None = None) -> str:
 def received_notes(
     hunt: DiscHunt,
     received: Sequence[int],
-    checked: Iterable[int],
+    collected: Iterable[int],
     told: bool = True,
     pending: Iterable[int] = (),
 ) -> dict[int, str]:
     """The count shown after each received disk's popup, by its position in ``received``: the
     count with that disk, so a batch of them counts up; with how many are needed once ``told``.
-    Found disks whose own count is still to be shown (``pending``) are left out: they count in
-    that later notice instead (ticks.followups_tick), so each count shows once, in the order
-    the helper shows them."""
-    count = hunt.start + len(hunt.locations & (set(checked) - set(pending)))
+    ``collected`` as for ``owned``. Disks picked up whose own count is still to be shown
+    (``pending``: ``uncounted``) are left out: they count in that later notice instead
+    (ticks.followups_tick), so each count shows once, in the order the helper shows them."""
+    count = hunt.start + len(hunt.locations & (set(collected) - set(pending)))
     out = {}
     for index, code in enumerate(received):
         if code == DATA_DISC:
@@ -98,34 +124,6 @@ def request(count: int, required: int, told: bool = True) -> str:
 
 
 OFF = "discs"  # the request taking it all back
-
-SLOTS_OFF = "disk_slots"  # the file select's count taken back
-
-
-def seed_slots(
-    markers: Sequence[tuple[int, bool]], copies: bytes, plan: save_patch.SeedPlan
-) -> list[int]:
-    """The save slots (1 to 30) holding this seed: a randomizer save (marker 1) in use, whose
-    copy of its randomizer section holds this seed. The copy is not cleared when a slot is
-    deleted or given a normal game, hence the marker."""
-    out = []
-    for n, (marker, used) in enumerate(markers, start=1):
-        copy = copies[(n - 1) * SECTION_SIZE : n * SECTION_SIZE]
-        if (
-            marker == 1
-            and used
-            and len(copy) == SECTION_SIZE
-            and save_patch.section_matches(copy, plan)
-        ):
-            out.append(n)
-    return out
-
-
-def slots_request(count: int, slots: Sequence[int]) -> str:
-    """The helper's ``disk_slots`` request: the count and the slots holding the seed, whose
-    file select entries show the disks in place of the keys."""
-    listed = ",".join(str(n) for n in slots) if slots else "-"
-    return f"disk_slots {count} {listed}"
 
 
 def scan_line(required: int) -> str:

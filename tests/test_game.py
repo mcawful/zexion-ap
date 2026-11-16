@@ -510,14 +510,3 @@ def test_a_current_slot_out_of_range_has_no_stamp(slot) -> None:
     g.pm.memory[0x10:0x14] = struct.pack("<i", slot)
     with pytest.raises(game.GameError, match="current slot"):
         g.save_stamp()
-
-
-def test_each_slots_marker_and_use_are_read_from_its_own_block() -> None:
-    # A block's randomizer marker at +0x9400 (16-bit) and its empty mark, 0xFF at +0x935E (the
-    # file's 0x9360): docs/re/memory.md, "The file select".
-    g = slots_game()
-    for n in range(game.SLOTS):
-        block = 0x100 + n * 0x9408
-        g.pm.memory[block + 0x935E] = 0xFF if n % 3 == 0 else 0
-        struct.pack_into("<H", g.pm.memory, block + 0x9400, n + 0x100)
-    assert g.slot_markers() == [(n + 0x100, n % 3 != 0) for n in range(game.SLOTS)]
