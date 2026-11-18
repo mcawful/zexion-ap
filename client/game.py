@@ -16,13 +16,13 @@ IN_PLAY mid-load (the load sets two of its three values before restoring the inv
 writers use ``settled_state()`` and re-check after writing (docs/re/memory.md, "Telling play
 from menus, the title screen and death").
 
-On Linux ``attach`` refuses (the rest of the client is Windows-only), and ``attach_linux``
-attaches to the game's Linux build: a known build by its binary's build id and hash, its
-targets (client/linux_targets.py, the ones this module reads and writes) from the binary's
-symbol table, and every read and write through the Linux helper in the game
-(client/linux_helper.py), which must be loaded by the game's launch options. ``base`` is 0
-there and ``rva`` holds the targets' addresses. The Windows helper's own targets and
-``code_checks`` are Windows-only.
+On Linux ``attach`` attaches to the game's Linux build (``attach_linux``): a known build by
+its binary's build id and hash, its targets (client/linux_targets.py, the ones this module
+reads and writes) from the binary's symbol table, and every read and write through the Linux
+helper in the game (client/linux_helper.py), which must be loaded by the game's launch options.
+``base`` is 0 there and ``rva`` holds the targets' addresses. The Windows helper's own targets and
+``code_checks`` are Windows-only: with the Linux build the client runs as without the mod
+(native.attach refuses it), giving items with no popup.
 """
 
 from __future__ import annotations
@@ -309,12 +309,7 @@ class Game:
         targets named in ``optional`` (for the client's: patterns.CLIENT_ONLY_TARGETS; none
         for another list) may be missing: a read or write of one then raises PatternError."""
         if sys.platform.startswith("linux"):
-            # The rest of the client (the helper's parts, grants with popups) is Windows-only:
-            # attaching here would leave it writing with no helper. attach_linux is explicit.
-            raise GameError(
-                "this client does not support Zexion's Linux build yet (docs/DEVELOPING.md, "
-                '"Platforms")'
-            )
+            return cls.attach_linux()
         if optional is None:
             optional = CLIENT_ONLY_TARGETS if targets is CLIENT_TARGETS else ()
         try:

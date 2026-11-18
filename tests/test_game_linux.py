@@ -146,8 +146,21 @@ def test_code_checks_are_for_the_windows_helper(linux) -> None:
         game.Game.attach_linux().code_checks(["message_fn"], 16)
 
 
-def test_the_clients_attach_refuses_on_linux_for_now(monkeypatch) -> None:
+def test_the_clients_attach_is_the_linux_one_on_linux(monkeypatch) -> None:
     monkeypatch.setattr(game.sys, "platform", "linux")
-    monkeypatch.setattr(game.Game, "attach_linux", lambda: pytest.fail("attached"))
-    with pytest.raises(game.GameError, match="does not support Zexion's Linux build yet"):
-        game.Game.attach()
+    monkeypatch.setattr(game.Game, "attach_linux", classmethod(lambda cls: "linux game"))
+    assert game.Game.attach() == "linux game"
+
+
+def test_the_windows_helper_is_not_tried_with_the_linux_build(linux, tmp_path) -> None:
+    from client import native
+
+    g = game.Game.attach_linux()
+    with pytest.raises(native.ModFixable, match="Linux version") as caught:
+        native.attach(g, tmp_path / "zexion_ap.dll")
+    assert not caught.value.old_gone
+    from client import state
+
+    line = state.helper_failed(caught.value)
+    assert line.startswith("The Zexion mod isn't working: its parts inside the game")
+    assert "items arrive without popups" in line

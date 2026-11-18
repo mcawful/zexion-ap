@@ -1194,3 +1194,29 @@ def test_the_popup_count_and_the_hints_are_asked_for_in_one_get(hints, monkeypat
     assert conn.hints_key not in ctx.stored_data
     reread = [conn.announced_key, conn.held_key]
     assert ctx.gets == [reread + ([conn.hints_key] if hints else [])]
+
+
+def test_with_the_linux_build_the_step_goes_on_without_the_helper(monkeypatch, caplog) -> None:
+    """native.attach refuses the game's Linux build (its helper serves memory only): the step
+    is not held for a helper that won't come, gives what is owed without popups, and the
+    player is told once."""
+    ctx, _ = failing_reattach(monkeypatch)
+    ctx.game_conn.platform = "linux"
+    monkeypatch.setattr(zc, "attach_helper", ticks.attach_helper)
+    steps: list[dict] = []
+
+    def step(g, received, **kwargs):
+        steps.append(kwargs)
+        raise game.GameNotRunning("Zexion is not running")
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    with caplog.at_level("WARNING"):
+        asyncio.run(zc.poll(ctx))
+        asyncio.run(zc.poll(ctx))
+    assert steps and steps[0]["helper"] is None and steps[0]["give"]
+    said = [  # the client's window; the log file has the detail as well
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "Client" and native.LINUX_NOT_READY in r.getMessage()
+    ]
+    assert len(said) == 1 and said[0].startswith("The Zexion mod isn't working")

@@ -520,8 +520,20 @@ def _hello(helper: Helper) -> dict[str, str]:
         return {"version": ""}
 
 
+# Why the helper can't be used with the game's Linux build: a clause for the player, after "The
+# Zexion mod isn't working: " (state.helper_failed).
+LINUX_NOT_READY = (
+    "its parts inside the game (popups, new games, other players' items, traps) aren't ready "
+    "for the game's Linux version yet"
+)
+
+
 def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
-    """``_attach``, its HelperErrors marked ``old_gone`` once the old helper has unloaded."""
+    """``_attach``, its HelperErrors marked ``old_gone`` once the old helper has unloaded. With
+    the game's Linux build (``g.platform``), ModFixable: the Linux helper serves memory only
+    (native/README.md, "The Linux helper"), so the client goes on without the helper's parts."""
+    if getattr(g, "platform", "windows") == "linux":
+        raise ModFixable(LINUX_NOT_READY)
     unloaded: list[bool] = []
     try:
         return _attach(g, dll, notes, unloaded)

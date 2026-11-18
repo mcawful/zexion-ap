@@ -290,14 +290,17 @@ and Steam Deck"). What exists so far:
   "The Linux helper"). `tools/helper.py status` finds the game,
   checks its build, makes sure the socket is the game's, and reads its memory through it
   (`client/linux_helper.py`); `helper.py load` and `unload` are Windows-only;
-- the client's memory layer: `game.Game.attach_linux()` attaches to the Linux build, its
+- the client: on Linux `game.Game.attach()` attaches to the Linux build (`attach_linux()`), its
   targets from the binary's symbol table (`client/linux_targets.py`, the ones `game.py` reads
   and writes), every read and write through the helper, one request at a time, connecting
   again once a connection drops (a request with no reply closes it, so a late reply is never
   read as the next one's). It writes nothing through a target `re/linux.md` only assumes
   (`rando_blob`, `slot_array`), and reports play only while the player state is where the
-  layout puts it. Tested against stand-ins only; not yet run in the game. The client itself does not use it: on Linux `Game.attach()` refuses, since
-  the rest of the client (loading and using the helper, grants with popups) is Windows-only;
+  layout puts it. The rest of the client runs as without the mod: `native.attach` refuses the
+  Linux build (`native.LINUX_NOT_READY`, said once in the client's window), so items are
+  written directly with no popup and no seed can be started, ARCHIPELAGO or RANDOMIZER, both
+  armed through the Windows helper; checks, the goal, DeathLink's deaths out and marking other
+  players' items collected go on. Tested against stand-ins only; not run in the game;
 
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak

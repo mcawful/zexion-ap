@@ -2180,7 +2180,8 @@ lands, not only the place passed.
 
 `libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
 it reads the running game's memory for the client and counts its frames. None of the parts above
-runs on Linux yet, and no client uses it yet; `tools/helper.py status` talks to it. Tested
+runs on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`)
+and otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested
 against a stand-in game (`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this

@@ -144,7 +144,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   without: [`native/README.md`](native/README.md), "Other players' items", "Kept collected".
 - On attaching it uses or loads the helper (which one: [`native/README.md`](native/README.md),
   "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written
-  directly with no popup and no seed can be started. `/reload_mod` unloads it and loads it
+  directly with no popup and no seed can be started. On Linux it attaches to the game's Linux
+  build through the Linux helper (preloaded by the game's launch options) and runs that way, as
+  without a helper: [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and loads it
   again a few seconds later (for a misbehaving mod; popups still queued are lost).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper, and the client says so (its own build, `native/build` or

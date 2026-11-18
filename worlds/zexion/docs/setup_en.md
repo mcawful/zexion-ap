@@ -90,9 +90,9 @@ Windows version, and it has been played only on Windows.
   one unless you force a compatibility tool (Proton) in the game's Properties, Compatibility. A
   Steam Deck with Zexion's default settings said it runs in "Steam Linux Runtime 3.0", the
   Linux version's runtime (2026-11-16). `zexion_ap.dll` and `version.dll` are Windows files and
-  can't load into the Linux version, and the client reads the game's memory through Windows
-  functions, so with the Linux version there is no ARCHIPELAGO choice and no seed can be
-  played.
+  can't load into the Linux version, and this release has no mod for it, so with the Linux
+  version there is no ARCHIPELAGO choice and no seed can be played: the client says it can't
+  use that Zexion. A mod for the Linux version is being built.
 - Playing the Windows version under Proton, with the mod and the Windows version of
   Archipelago inside Zexion's Proton folder, is **not tried**: nobody has run the game that way
   with this world yet. If you try it, a report at
