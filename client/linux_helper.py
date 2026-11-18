@@ -1,7 +1,7 @@
 """The Linux helper (native/linux/, native/README.md "The Linux helper") from outside the game:
 find the running game, check its build, talk to the helper's socket, read the game's memory
 through it, and drive the helper's own parts (``LinuxMod``: its ``config``, new games,
-``apply`` and ``ap_labels``).
+``apply``, ``ap_labels`` and ``offline_put seed``).
 
 The game is found in the host's ``/proc`` by its kernel name or its binary's (``procfs``; not
 by command line, which Steam's launch wrappers share) and its build checked by the binary it
@@ -51,6 +51,11 @@ class UnknownLinuxBuild(LinuxHelperError):
 class HelperBusy(LinuxHelperError):
     """The helper is serving another client (one at a time): a connection waits in its queue,
     so the first request goes unanswered."""
+
+
+class HelperTooOld(LinuxHelperError):
+    """The helper in the game takes the client's addresses but not a request this client
+    needs: a build of the same version from before it, still preloaded."""
 
 
 class NoReply(LinuxHelperError):
@@ -316,7 +321,8 @@ class LinuxProcess:
         self._closed = False
         self._helper = LinuxHelper(game, timeout).__enter__()
         # Counts the connections made: the helper drops a client's plan and labels when its
-        # connection closes, so what was told on an earlier one is told again (LinuxMod).
+        # connection closes, so what was told on an earlier one is told again (LinuxMod; the
+        # seed's text too, which the helper keeps: told again, it replaces the same record).
         self.connection = 1
 
     def _connection(self) -> LinuxHelper:
@@ -361,14 +367,14 @@ class LinuxMod:
     """The parts of the Linux helper the client drives (native/README.md, "The Linux helper"),
     over ``pm``, the game's connection, configured when made with their addresses from the
     game's binary (linux_targets.helper_config): new games (``request``, for the client's
-    newgame_tick), grants with their popups (``apply``, for session.give_through_helper) and
-    other players' items' labels (``request``, for ticks.linux_labels_tick).
-    LinuxHelperError when the helper refuses the addresses. ``traps`` False: the Linux helper
-    sets none off (session.give_through_helper sends none). ``told``: what the labels tick told
-    it (ticks.labels_tick), as the Windows helper's ctx.told. It holds for one connection of
-    ``pm`` only (``current``): the helper drops the plan and the labels when it closes."""
-
-    traps = False
+    newgame_tick), grants with their popups, traps among them (``apply``, for
+    session.give_through_helper), other players' items' labels (``request``, for
+    ticks.linux_labels_tick) and the seed's own traps (``request``, for ticks.linux_seed_tick).
+    LinuxHelperError when the helper refuses the addresses. ``told``: what the labels tick and
+    the seed's tick told it (ticks.labels_tick, linux_seed_tick), as the Windows helper's
+    ctx.told. It holds for one connection of ``pm`` only (``current``): the helper drops the plan
+    and the labels when it closes (it keeps the seed's text, which is told again all the same and
+    replaces its own record: Game::merge_offline)."""
 
     def __init__(self, pm: LinuxProcess) -> None:
         from . import linux_targets, state  # here: neither imports this module
@@ -378,6 +384,11 @@ class LinuxMod:
         reply = pm.request(linux_targets.helper_config(pm.game.image))
         if reply != "ok":
             raise LinuxHelperError(f"the helper did not take the game's addresses: {reply}")
+        # A helper of this version built before traps were ported refuses their popups, which
+        # would hold every grant back for good (session.give_through_helper retries a refusal).
+        reply = pm.request("trap_status")
+        if not reply.startswith("queued "):
+            raise HelperTooOld(f"the helper does not know trap_status: {reply}")
         self.connection = pm.connection
 
     def current(self) -> bool:

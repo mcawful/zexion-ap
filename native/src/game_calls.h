@@ -295,6 +295,9 @@ public:
     // that end or before (docs/re/memory.md, "Received Energy Shields", "Limits"), which turns
     // no cell collected.
     void watch_own_traps();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): each timer's
+    // AILMENTS tests patched while a trap's runs (trap.h).
+    void watch_trap_patches();
     // Queues one of this world's own traps for the save loaded, as watch_own_traps does:
     // `cell` its map cell (-1: none known), by which pump_traps drops one whose pickup a load
     // undid before it went off, or that waits in another slot's save of the seed than the one
@@ -517,8 +520,6 @@ private:
     // Sets off trap `item` now: "set" or "nothing" (trap_status).
     std::string run_trap(uint8_t item);
     std::string disorient(BYTE* player);  // op 5's writes: run_trap's outcome
-    // Game thread: each timer's AILMENTS tests patched while a trap's runs (trap.h).
-    void watch_trap_patches();
     trap::HitPatch hit_patch_;
     trap::WavePatch wave_patch_;
     bool trap_hit_ = false, trap_wave_ = false;  // a trap started the timer, and it runs

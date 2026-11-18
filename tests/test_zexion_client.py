@@ -1230,7 +1230,7 @@ class LinuxHelperStandIn:
         from test_linux_targets import b1_like
 
         self.game = types.SimpleNamespace(image=b1_like(extra=True))
-        self.replies = replies
+        self.replies = {"trap_status": "queued 0; last none", **replies}
         self.sent: list[str] = []
         self.connection = 1  # linux_helper.LinuxProcess's: the connections made
         self.connected = True
@@ -1264,7 +1264,8 @@ def test_on_linux_the_seed_is_armed_with_archipelago_through_the_linux_helper(ca
     sent = ctx.game_conn.pm.sent
     assert sent[0].startswith("config rando_blob=0x12f6e00 randomizer_menu=0x12f6ce0 ")
     assert "current_menu=0x12f5700" in sent[0] and "tr_flag=0x12b48d1" in sent[0]
-    assert sent[1].startswith("ap_newgame\n") and sent[1].endswith("\nchoice")  # ARCHIPELAGO
+    assert sent[1] == "trap_status"  # a helper from before the traps is refused
+    assert sent[2].startswith("ap_newgame\n") and sent[2].endswith("\nchoice")  # ARCHIPELAGO
     assert ctx.conn.newgame is state.NewGame.ARMED
     assert ctx.conn.newgame_lines == newgame.choice_message(ctx.conn.plan)
     asyncio.run(ticks.linux_newgame_tick(ctx))
@@ -1296,7 +1297,6 @@ def test_on_linux_a_helper_that_cant_be_reached_is_told_once_and_armed_again(cap
 def test_the_linux_helper_takes_an_apply_as_the_windows_helper_does() -> None:
     pm = LinuxHelperStandIn({"config": "ok", "apply": "applied"})
     mod = linux_helper.LinuxMod(pm)
-    assert mod.traps is False  # it sets none off: session.give_through_helper sends none
     text = native.batch_text([(17, 0, 1)], [(17, "from Bob")])
     assert mod.apply(text) == "applied" and pm.sent[-1] == text
     pm.replies["apply"] = "refused not in play"
@@ -1369,6 +1369,42 @@ def test_on_linux_the_labels_go_through_the_linux_helper() -> None:
     ctx.game_conn.pm.replies["ap_labels"] = linux_helper.NoReply("the helper closed its socket")
     asyncio.run(ticks.linux_labels_tick(ctx))
     assert ctx.linux_mod is None, "configured again on a later poll"
+
+
+def test_on_linux_the_seeds_own_traps_are_handed_to_the_linux_helper(monkeypatch) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "taken"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx: "zexion-ap offline 1\ntraps 100:103")
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    sent = ctx.game_conn.pm.sent[-1]
+    assert sent.startswith("offline_put seed ") and sent.endswith("traps 100:103")
+    ctx.linux_mod.told.offline_at = 0.0
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
+    assert puts == [sent], "once a text"
+
+
+def test_the_linux_seed_needs_only_the_connection() -> None:
+    # Known from the slot data: no wait for the items or the server's scouts.
+    conn = connection()
+    conn.items_listed = False
+    ctx = context(conn, linux_game({}))
+    text = ticks.linux_seed(ctx)
+    assert text is not None and "\ntraps " in text and "\ndiscs -" in text
+
+
+def test_a_linux_helper_from_before_the_traps_is_told_too_old(caplog) -> None:
+    # Same version, older build: it would refuse every batch with a trap's popup.
+    ctx = context(
+        connection(), linux_game({"config": "ok", "trap_status": "error unknown request"})
+    )
+    with caplog.at_level("WARNING"):
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is None and ctx.linux_back_by == 0.0, "items written directly meanwhile"
+    said = [r for r in caplog.records if r.name == "Client" and "older" in r.getMessage()]
+    assert len(said) == 1
 
 
 def test_on_windows_the_linux_tick_does_nothing() -> None:

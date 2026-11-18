@@ -124,7 +124,8 @@ address less `0x3CF6A0`, plus `gGameState`'s address ("`gGameState` has the Wind
 
 Every target in `client/patterns.py` now has a Linux counterpart: the first rows from `LoadGame`,
 the live reads and the shift (the sections below the Lookup), the rest by group (the first four
-"Mapped by disassembly" sections; the fifth maps the item looks' fields, not targets). Functions
+"Mapped by disassembly" sections; the fifth maps the item looks' fields, not targets, and the
+sixth what the traps write and patch). Functions
 and globals are named symbols; the code points the helper patches sit in GCC's unoptimized code,
 so their bytes and patch shapes differ from the Windows ones, and each section's "What differs"
 says how.
@@ -385,6 +386,36 @@ disassembly, as in the sections above. None was read in the running game.
 | Method | `memory.md`'s description of each field matched against `all.asm` (the Linux disassembly) and the symbol table (`nm -C`); two `.rodata` values (the float 1.0 at `0x68C650`, the string `Enemies` at `0x68D7D8`) read from the binary through its `LOAD` segments |
 | Build | B1 (Linux), against B1 (Windows) as `memory.md` records it |
 | Evidence | `lab/linux-b1/all.asm`, 2026-11-18, at the addresses each row cites. Each was read by hand, in one pass and with no second review: `createEnemy`, `spawnScreen`, `PowerupEnemyAction`, `createUpgrade`, `SWCloneSprite`, `SWDisposeSprite`, `SWSetSpriteVisible`, `SWMoveSprite`, `SWSetCurrentFrameIndex`, `SWUpdateParallaxSpriteWorld`, `IndexedColorDrawProc`, `loadStuff`, and the stores into `gEnemyActionProcs`. Re-checked by hand the same day: the cell's stores at `0x41A8F6` and `0x41A904` (`mov BYTE PTR [rax+0x210],dl`, `[rax+0x211]`), the type-23 step's `mov BYTE PTR [rax+0x32c],0x1` at `0x43DE0C`, and the draw loop's test of `+0x120` at `0x66CB51`–`0x66CB5A`. |
+
+## Mapped by disassembly: traps
+
+What the helper's traps write and patch (`native/src/trap.h`, `trap.cpp`; `Game::run_trap`),
+against the Linux code that does what `memory.md` describes for Windows ("Ailments: the script
+step that sets them", "The Phazo's disruption", "The Balorb's disorienting wave"). Addresses are
+the Linux binary's; "measured" means by disassembly, as in the sections above.
+
+| What | Windows (B1) | Linux (B1) | How found | Status |
+|---|---|---|---|---|
+| the type-74 state handler, ops 4 and 5 | `0x46BE0`, ops at `0x47910` to `0x47AE6` | `ChangePlayerStateEnemyAction(SpriteRec*, EnemyAction*)` `0x41CF6C` | Op 4 (`cmp ax,0x4` at `0x41E333`): the duration from `GetRandom` (`0x41E369`), the shield branch on player `+0x103C` (`0x41E39B`–`0x41E3D8`, with `PlayGameSound` and the rumble), else `+0xDC2` set to the duration unless it is already longer and the state's float `+0x50` is 0 (`0x41E460`–`0x41E497`). Op 5 (`cmp ax,0x5` at `0x41E4AE`): AILMENTS (`gGameState+0x13724`) tested for 2 first (`0x41E4B8`–`0x41E4BF`); then, unless `+0xDC4` is already longer and the state's float `+0x50` is 0 (`0x41E52E`–`0x41E550`, as op 4's), `+0xDDB` (a byte) turns by 4 mod 8 with C's `%` while `+0xDC4` is 0 or less (`0x41E556`–`0x41E58E`), `+0xD20` (16-bit) becomes 2 if it is 1 or less (`0x41E594`–`0x41E5A9`), and `+0xDC4` takes the duration (`0x41E5B2`–`0x41E5BA`). | measured (by disassembly, 2026-11-18) |
+| the AILMENTS tests the trap's patches skip | `kHitGame` and `kWaveGame` in `trap.cpp`, B1's | `weaponCool` at `0x507FCB` (`0x35` bytes) and `0x50805B` (`0x38` bytes): each `movzx eax,[rip+d]` (AILMENTS), `cmp ax,1`, `jne` past the REDUCED effect (`+0xB`), the effect, a second load, `cmp ax,2`, `jne` past the store of 0 (`+0x33`, `+0x36`) | `trap.cpp`'s Linux `kHitGame` and `kWaveGame` read back from the binary through its `LOAD` segments (`client/elf.py`) equal those bytes with the loads' displacements masked, and each of the four loads leads to `0x9FAF64` (2026-11-18). The rows `ailments_hit_code` and `ailments_wave_code` above give the instructions. | measured (by disassembly and a read of the binary, 2026-11-18) |
+
+### What differs from Windows
+
+- **The patch shapes:** the unoptimized code loads AILMENTS into `eax` (`0F B7 05`, not `0F B7 0D`)
+  and compares with `cmp ax, imm` (not `cmp cx, r12w`), and its effects go through `[rbp-0x18]`,
+  so the patches are longer (`0x35`, `0x38`) and their jumps further in (`+0x33`, `+0x36`); the
+  first jump of each is at `+0xB`, as on Windows. The patch is the same: each `jne` (`75`) made a
+  `jmp` (`EB`).
+- **Nothing else:** the player fields (`+0xDC2`, `+0xDC4`, `+0xDDB`, `+0xD20`, `+0x103C`) and the
+  ops' order and tests are Windows'.
+
+| Field | |
+|---|---|
+| Value | The table above. |
+| Status | measured (by disassembly, 2026-11-18); not run in the game |
+| Method | `memory.md`'s description matched against `all.asm`; the patch bytes compared with the binary's, read through its `LOAD` segments with `client/elf.py` |
+| Build | B1 (Linux), against B1 (Windows) as `memory.md` records it |
+| Evidence | `lab/linux-b1/all.asm`, 2026-11-18, at the addresses the table cites, read by hand in one pass; the docs review the same day re-checked the ops' addresses and the patch bytes. The bytes' comparison: `elf.parse(lab/linux-b1/Zexion).read(0x507FCB, 0x35)` and `.read(0x50805B, 0x38)` (`client/elf.py`), each load's 4 displacement bytes zeroed, equal to `trap.cpp`'s Linux `kHitGame` and `kWaveGame`; each load's target, its next instruction's address plus its displacement, `0x9FAF64` (a scratch script, not kept). |
 
 ## The save record is the file less its first two bytes
 

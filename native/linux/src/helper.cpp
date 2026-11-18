@@ -29,11 +29,11 @@
 
 #include "core.h"
 #include "addresses.h"   // GameAddresses (native/src)
-#include "game_calls.h"  // Game: the parts the Linux helper runs (new games, the choice, grants)
+#include "game_calls.h"  // Game: the parts the Linux helper runs (below)
 #include "game_mem.h"    // in_image_code
 #include "mailbox.h"
 #include "requests.h"  // parse_newgame, parse_batch
-#include "trap.h"      // is_trap
+#include "offline.h"  // put_offline_file: a seed's own traps
 
 namespace {
 
@@ -84,8 +84,9 @@ int g_writable_count = 0;
 
 // The game's thread's work (native/src/mailbox.h), and the Windows helper's Game, configured by
 // a client's `config` (native/src/game_calls.h). Of Game, only the parts ported run here: new
-// games and the ARCHIPELAGO choice, `apply` and its popups (native/README.md, "The Linux
-// helper"); the rest's addresses stay null and nothing calls them.
+// games and the ARCHIPELAGO choice, `apply` and its popups, other players' items, this world's
+// own traps and the received ones (native/README.md, "The Linux helper"); the rest's addresses
+// stay null and nothing calls them.
 constexpr DWORD kFrameWaitMs = 1000;  // as the Windows helper's
 zap::Mailbox g_mailbox;
 zap::Game g_game;  // game thread only
@@ -284,6 +285,13 @@ constexpr ConfigKey kConfigKeys[] = {
     {"event_table", &G::event_table, sizeof(void*), "gAreaEvents", 0},
     {"event_count", &G::event_count, sizeof(int16_t), "gAreaEventCount", 0},
     {"event_handlers", &G::event_handlers, kEventHandlers, "gAreaEventProcs", 0},
+    // Traps (Game::pump_traps, run_trap; trap.h): AILMENTS, its two tests in weaponCool that the
+    // trap's patches skip (docs/re/linux.md, `ailments_hit_code`, `ailments_wave_code`), and the
+    // game's halt byte.
+    {"ailments", &G::ailments, sizeof(int16_t), "gGameState", 0x13724},
+    {"ailments_hit_code", &G::ailments_hit_code, 0, "_Z10weaponCoolP12PlayerStruct", 0xAD5},
+    {"ailments_wave_code", &G::ailments_wave_code, 0, "_Z10weaponCoolP12PlayerStruct", 0xB65},
+    {"halt_flag", &G::halt_flag, 1, "gEditorMode", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -333,6 +341,10 @@ constexpr ConfigKey kConfigKeys[] = {
     {"event_table", &G::event_table, sizeof(void*), "zap_events", 0},
     {"event_count", &G::event_count, sizeof(int16_t), "zap_event_count", 0},
     {"event_handlers", &G::event_handlers, kEventHandlers, "zap_event_procs", 0},
+    {"ailments", &G::ailments, sizeof(int16_t), "zap_ailments", 0},
+    {"ailments_hit_code", &G::ailments_hit_code, 0, "zap_weapon_cool", 0},
+    {"ailments_wave_code", &G::ailments_wave_code, 0, "zap_weapon_cool", 0x35},
+    {"halt_flag", &G::halt_flag, 1, "zap_halt", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -474,6 +486,25 @@ std::optional<std::string> game_request(std::string_view request) {
             },
             true, error);
     }
+    if (request == "trap_status") {
+        return on_game([] { return g_game.trap_status(); }, true);
+    }
+    if (request.starts_with("offline_put ")) {
+        // No offline files here (offline.cpp): a seed's text is taken for the running helper's
+        // own traps, from the next frame, and kept until the game closes.
+        zap::OfflineSeed seed;
+        std::string reply =
+            zap::put_offline_file(std::wstring(), g_build, std::string(request), &seed);
+        if (seed.name.empty()) return reply;
+        return on_game(
+            [&] {
+                std::vector<zap::OfflineSeed> seeds;
+                seeds.push_back(std::move(seed));
+                g_game.merge_offline(std::move(seeds));
+                return reply;
+            },
+            false);
+    }
     if (request == "newgame_status") {
         return on_game([] { return g_game.newgame_status(); }, false);
     }
@@ -481,17 +512,7 @@ std::optional<std::string> game_request(std::string_view request) {
         zap::Batch batch;
         std::string error = zap::parse_batch(std::string(request), batch);
         return on_game(
-            [&] {
-                // A received trap's popup holds the popups behind it until the trap goes off,
-                // which is not ported here: none is taken (the client sends none: session.py).
-                for (const zap::Popup& popup : batch.popups) {
-                    if (!popup.bare && zap::trap::is_trap(popup.item)) {
-                        return std::string("refused traps are not ported to the Linux build");
-                    }
-                }
-                return g_game.apply(batch);
-            },
-            true, error);
+            [&] { return g_game.apply(batch); }, true, error);
     }
     return std::nullopt;
 }
@@ -609,8 +630,9 @@ namespace {
 
 // The game's thread, at its frame swap (SWHardwareEnd's call: `site`, the return address): a
 // client gone's plan and labels dropped, the mailbox's work, an armed new game watched, the
-// ARCHIPELAGO choice, other players' items, then the next popup. Each part guarded on its own, so one that throws keeps none of
-// the others from running, and nothing reaches the game. A fault in the game's own placement is
+// ARCHIPELAGO choice, other players' items, the traps, then the next popup. Each part guarded on
+// its own, so one that throws keeps none of the others from running, and nothing reaches the
+// game. A fault in the game's own placement is
 // not an exception: it stays the game's crash.
 void game_frame(uintptr_t site) {
     if (site < g_frame_function.value || site >= g_frame_function.value + g_frame_function.size) {
@@ -632,6 +654,7 @@ void game_frame(uintptr_t site) {
     }
     guarded([] { g_mailbox.serve(); });
     if (!g_game.configured()) return;
+    guarded([] { g_game.note_play(zap::ticks_ms()); });  // the traps' quarter second in play
     try {
         g_game.watch_newgame();
     } catch (...) {
@@ -642,6 +665,12 @@ void game_frame(uintptr_t site) {
     // Other players' items: the stand-ins' records named and restyled, the logo painted, the
     // popup's width, other Zexion players' items dressed as themselves (apitem.h, looks.h).
     guarded([] { g_game.watch_ap_items(); });
+    // Traps: this world's own at their pickup (from the seed a client put), the AILMENTS tests'
+    // patches while a trap's timer runs, then one trap set off (a received one as its popup
+    // shows), as the Windows helper's frame (trap.h; native/README.md, "Traps").
+    guarded([] { g_game.watch_own_traps(); });
+    guarded([] { g_game.watch_trap_patches(); });
+    guarded([] { g_game.pump_traps(zap::ticks_ms()); });
     guarded([] { g_game.pump_popups(); });
 }
 

@@ -98,6 +98,12 @@ void* zap_events;
 short zap_event_count;
 void* zap_event_procs[48];
 void zap_pickup();
+// Traps: AILMENTS (0: NORMAL), the halt byte, and zap_weapon_cool, the game's two AILMENTS tests
+// as the Linux build has them (trap.cpp's kHitGame then kWaveGame, each load reading
+// zap_ailments), patched in place while a trap's timer runs.
+short zap_ailments;
+unsigned char zap_halt;
+void zap_weapon_cool();
 
 // A stand-in OpenGL, found as the game's libGL is (dlsym, the executable's own symbols exported):
 // one 2048 x 2048 texture, 7, blank but for the two pixels of known art the helper's check reads
@@ -132,6 +138,23 @@ unsigned glGetError() { return 0; }
 
 asm(".text\n.globl zap_pickup\n.type zap_pickup, @function\nzap_pickup:\n"
     "  movl $24, %esi\n  ret\n.size zap_pickup, .-zap_pickup\n");
+
+// weaponCool's two tests, byte for byte (but where the loads point), never run.
+#define ZAP_LOAD ".byte 0x0F, 0xB7, 0x05\n.long zap_ailments - (. + 4)\n"
+asm(".text\n.globl zap_weapon_cool\n.type zap_weapon_cool, @function\nzap_weapon_cool:\n"
+    ZAP_LOAD
+    ".byte 0x66, 0x83, 0xF8, 0x01, 0x75, 0x1B, 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7, 0x80, 0xC2\n"
+    ".byte 0x0D, 0x00, 0x00, 0x83, 0xE8, 0x02, 0x89, 0xC2, 0x48, 0x8B, 0x45, 0xE8, 0x66, 0x89\n"
+    ".byte 0x90, 0xC2, 0x0D, 0x00, 0x00\n"
+    ZAP_LOAD
+    ".byte 0x66, 0x83, 0xF8, 0x02, 0x75, 0x0D\n"
+    ZAP_LOAD
+    ".byte 0x66, 0x83, 0xF8, 0x01, 0x75, 0x1E, 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7, 0x80, 0xC4\n"
+    ".byte 0x0D, 0x00, 0x00, 0x66, 0x83, 0xF8, 0x3C, 0x7E, 0x0D, 0x48, 0x8B, 0x45, 0xE8, 0x66\n"
+    ".byte 0xC7, 0x80, 0xC4, 0x0D, 0x00, 0x00, 0x3C, 0x00\n"
+    ZAP_LOAD
+    ".byte 0x66, 0x83, 0xF8, 0x02, 0x75, 0x0D\n"
+    "  ret\n.size zap_weapon_cool, .-zap_weapon_cool\n");
 
 extern "C" __attribute__((noinline)) void draw_frame() {
     SDL_GL_SwapWindow(nullptr);

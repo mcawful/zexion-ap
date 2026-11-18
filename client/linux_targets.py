@@ -55,7 +55,7 @@ TARGETS = (
 
 # The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it
 # runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
-# and their popups, other players' items. The rest of CONFIG_KEYS is in TARGETS. Functions by
+# and their popups, other players' items, traps. The rest of CONFIG_KEYS is in TARGETS. Functions by
 # their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
@@ -98,6 +98,11 @@ HELPER_TARGETS = (
     LinuxTarget("event_table", "gAreaEvents", 0, 0x16DA010),
     LinuxTarget("event_count", "gAreaEventCount", 0, 0x16DA008),
     LinuxTarget("event_handlers", "gAreaEventProcs", 0, 0x12F87A0),
+    # Traps (native/src/trap.h): AILMENTS, its two tests the trap's patches skip, the halt byte.
+    LinuxTarget("ailments", "gGameState", 0x13724, 0x9FAF64),
+    LinuxTarget("ailments_hit_code", "_Z10weaponCoolP12PlayerStruct", 0xAD5, 0x507FCB),
+    LinuxTarget("ailments_wave_code", "_Z10weaponCoolP12PlayerStruct", 0xB65, 0x50805B),
+    LinuxTarget("halt_flag", "gEditorMode", 0, 0x12B456E),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -108,7 +113,8 @@ CONFIG_KEYS = (
     "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "hd_messages",
     "message_slots", "sprite_texture", "popup_width_code", "item_pool", "palette_table",
     "frame_clock", "sprite_templates", "object_pool", "flags", "map_grid", "event_table",
-    "event_count", "event_handlers",
+    "event_count", "event_handlers", "ailments", "ailments_hit_code", "ailments_wave_code",
+    "halt_flag",
 )  # fmt: skip
 
 

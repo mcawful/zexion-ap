@@ -288,11 +288,11 @@ Steam Deck"). What exists so far:
   menu, or RANDOMIZER) and gives the client's items with their popups, with the Windows
   helper's own `Game` (`native/src/game_calls.h`, built for both through
   `native/src/platform.h` and the Linux parts of the memory layer; it runs only those parts),
-  and shows other players' items as Archipelago items. Tested against a
+  shows other players' items as Archipelago items, and sets off traps. Tested against a
   stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux`
   job). Working in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the
-  frame calls and serving reads (`native/README.md`, "The Linux helper"); new games, grants and
-  labels are not run in the game yet. `tools/helper.py status` finds the game,
+  frame calls and serving reads (`native/README.md`, "The Linux helper"); new games, grants,
+  labels and traps are not run in the game yet. `tools/helper.py status` finds the game,
   checks its build, makes sure the socket is the game's, and reads its memory through it
   (`client/linux_helper.py`); `helper.py load` and `unload` are Windows-only;
 - the client: on Linux `game.Game.attach()` attaches to the Linux build (`attach_linux()`), its
@@ -305,9 +305,9 @@ Steam Deck"). What exists so far:
   connection to it was made again (`ticks.linux_newgame_tick`,
   `client/linux_targets.py`'s `helper_config`, `client/linux_helper.py`'s `LinuxMod`). New games
   go through it, ARCHIPELAGO offered as on Windows (not while a translation is on: RANDOMIZER's
-  route then), and so do the step's items, with their popups (`apply`), but traps, which do
-  nothing there (`session.Session.without_traps`), and other players' items' labels
-  (`ticks.linux_labels_tick`). One lost after it was configured holds the
+  route then), and so do the step's items, with their popups and traps (`apply`), other
+  players' items' labels (`ticks.linux_labels_tick`) and this seed's own traps
+  (`ticks.linux_seed_tick`). One lost after it was configured holds the
   step back for 30 s (`ticks.linux_mod_lost`), then the items are written directly with no popup
   until it is back; one that failed two steps running has the next step's written directly. The rest of the client runs as without the mod:
   `native.attach` refuses the Linux build (`native.LinuxPartial`, said once in the client's

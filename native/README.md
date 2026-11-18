@@ -2183,12 +2183,13 @@ lands, not only the place passed.
 `libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
 it reads and writes the running game's memory for the client, counts its frames, starts new
 games, ARCHIPELAGO on the menu or RANDOMIZER ("New games"), gives the client's items with
-their popups (`apply`: "Grants", "Popups"), and shows other players' items as Archipelago items
-(`ap_labels`: "Other players' items", "Other Zexion players' items, as themselves"). It holds
+their popups (`apply`: "Grants", "Popups"), shows other players' items as Archipelago items
+(`ap_labels`: "Other players' items", "Other Zexion players' items, as themselves"), and sets
+off traps ("Traps"). It holds
 the Windows helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below. None of
 the other parts above runs on Linux yet: the client reads and writes the game through it
-(`game.Game.attach_linux`), gives its items and labels through it (`client/linux_helper.py`'s
-`LinuxMod`), and otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested against a
+(`game.Game.attach_linux`), gives its items, labels and seed through it
+(`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested against a
 stand-in game (`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
@@ -2240,10 +2241,12 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 45 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 49 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
-  | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), and `refused traps are not ported to the Linux build` for a batch with a trap's popup |
+  | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
+  | `offline_put seed NAME` and the seed's file (frame) | `taken`, or `error <why>`: the seed parsed as the Windows helper's ("AP saves without the client"), kept in the helper, no file written, for this world's own traps ("Traps"); `offline_put config` is `error not on the Linux build` |
+  | `trap_status` (frame) | as the Windows helper's ("Traps") |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
 
   Anything else gets `error unknown request`.
@@ -2266,9 +2269,11 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 45), which the client resolves from the game's symbols
+  addresses (with the rest of the 49), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of them, so a client and a
-  helper that disagree change nothing (the client also refuses a helper of another version).
+  helper that disagree change nothing (the client also refuses a helper of another version, and
+  one of this version built before the traps, which answers no `trap_status`: it would refuse
+  every batch with a trap's popup).
   "Frame" requests and the watch run on the game's thread through `src/mailbox.h`
   (`src/mailbox_linux.cpp`), only at `SWHardwareEnd`'s swap, by its return address (not the
   palette window's: `docs/re/linux.md`, "The per-frame call"), with nothing they throw reaching
@@ -2299,9 +2304,6 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   by disassembly: HUD, items, sound, popups, deaths"), Magnus Armor's suit color, then the
   popups one a frame call apart as there, each with its item's sound, waiting for their own save.
   What differs, as the parts behind it are not ported:
-  - a batch with a trap's popup is refused (no trap goes off here, and its popup would hold the
-    rest): the client sends none (`client/session.py`, `without_traps`), and says the traps do
-    nothing;
   - popups show in the pixel font in a translation too (`hold_translated_popups`), the message
     slot's translated mark cleared as the Windows helper's fallback does;
   - RETURN HOME WITH THE DISKS? is not watched (`src/mission.h` is not run): an `apply` is not
@@ -2315,7 +2317,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
 
   A client that goes takes its plan with it, but its popups stay queued for their save, as on
   Windows. Tested on the stand-in game through the socket (`tests/test_native_linux.py`: an
-  `apply` refused unconfigured, by a `cas` that differs, out of play, and with a trap; one
+  `apply` refused unconfigured, by a `cas` that differs, and out of play; one
   taken writes the byte, and its popup, at a later frame call, carries the record's name and
   the suffix and plays the record's sound); not run in the game.
 - **Other players' items.** `Game::watch_ap_items` runs at each frame call as on Windows ("Other
@@ -2352,6 +2354,32 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   client goes, the logos painted first through the stand-in's OpenGL; with its texture gone,
   the stand-ins left as the game's; and in `linux/tests/newgame_tests.cpp`, a range unmapped
   since the last map read is not writable). Not run in the game.
+- **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
+  `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
+  received trap goes off as its popup shows, in its turn among the popups, and this world's own
+  at its pickup, with the same writes, sounds, timers and holds (one of each kind at a time, a
+  transition counting down, the halt byte, the game's ending). What differs on Linux:
+  - the AILMENTS tests the patches skip are `weaponCool`'s, in another shape (`src/trap.h`:
+    `0x35` and `0x38` bytes, the second jumps at `+0x33` and `+0x36`; `docs/re/linux.md`,
+    "Mapped by disassembly: traps"), checked byte for byte but the loads, which must lead to
+    `ailments`, as on Windows;
+  - this world's own traps come from the seed's text the client hands the helper
+    (`offline_put seed`, `ticks.linux_seed_tick`) at its connection's first poll (its identity
+    and traps only, from the slot data: `ticks.linux_seed`), kept until the game closes: no file
+    is written, so one picked up before a client first connected since the game started does
+    nothing, and nothing makes it up later;
+  - RETURN HOME WITH THE DISKS? is not on Linux ("The OS Install Disks goal" is not ported: nor
+    the disks' count on the pause screen, nor the prompt; the count's notices after a received
+    disk come from the client, in `apply`), so nothing waits for it;
+    the game's own ending holds traps as on Windows;
+  - there is no unload, so nothing waits for a running trap's patch: it is put back once its
+    timer has run out.
+
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`: a received
+  Disruption Trap goes off as its popup shows, DISRUPTION TRAP over FROM TESTER with sound 26,
+  its timer at 660 and the stand-in's `weaponCool` tests patched, put back once the timer is 0;
+  this world's own Disorient Trap goes off at its pickup, its timer at 660 with sound 82, from a
+  seed the helper took). Not run in the game.
 - **Its own runtime.** The C++ runtime is linked in, so it needs only glibc (with `ld-linux`,
   its dynamic loader) from the game's container, which may be older than the one it was built
   with. A build on a newer glibc asks for its newer symbol versions and would fail to load under an

@@ -70,6 +70,7 @@ from .ticks import (  # noqa: E402
     linux_labels_tick,
     linux_mod_lost,
     linux_newgame_tick,
+    linux_seed_tick,
     log,
     mission_tick,
     newgame_tick,
@@ -134,8 +135,8 @@ class ZexionContext(CommonContext):
         self.load = state.LoadState()
         self.game_conn: game.Game | None = None
         self.helper: native.Helper | None = None
-        # With the game's Linux build: its helper, for new games, grants and labels
-        # (ticks.linux_newgame_tick).
+        # With the game's Linux build: its helper, for new games, grants (traps among them),
+        # labels and the seed's own traps (ticks.linux_newgame_tick and the other linux_ ticks).
         self.linux_mod: linux_helper.LinuxMod | None = None
         self.helper_retry_at = 0.0
         # Let go while no connection stepped, for the helper's own look (leave_helper_tick).
@@ -499,6 +500,7 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.helper is None:  # the game's Linux build: its own helper's parts
         await side_tick(ctx, "new game", lambda: linux_newgame_tick(ctx))
         await side_tick(ctx, "item labels", lambda: linux_labels_tick(ctx))
+        await side_tick(ctx, "own traps", lambda: linux_seed_tick(ctx, p))
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("item labels", lambda: labels_tick(ctx)),
@@ -661,7 +663,7 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.helper is None and time.monotonic() >= ctx.helper_retry_at:
         ctx.helper_retry_at = time.monotonic() + HELPER_RETRY_SECONDS
         await attach_helper(ctx)
-    if ctx.helper is not None:
+    if ctx.helper is not None or ctx.linux_mod is not None:  # either helper sets them off
         ctx.said.clear("own traps")
     elif conn.traps and step.seed_matches and ctx.said("own traps", "no mod"):
         # The helper sets them off at their pickup; nothing makes one up later.

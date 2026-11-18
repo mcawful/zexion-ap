@@ -369,6 +369,10 @@ CONFIG_SYMBOLS = {
     "event_table": "zap_events",
     "event_count": "zap_event_count",
     "event_handlers": "zap_event_procs",
+    "ailments": "zap_ailments",
+    "ailments_hit_code": "zap_weapon_cool",
+    "ailments_wave_code": ("zap_weapon_cool", 0x35),
+    "halt_flag": "zap_halt",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -497,13 +501,11 @@ def test_an_apply_gives_the_items_and_shows_their_popup(game: Game) -> None:
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
-def test_an_apply_is_refused_out_of_play_and_with_a_trap(game: Game) -> None:
+def test_an_apply_is_refused_out_of_play(game: Game) -> None:
     at = config_addresses()
     with game.connect() as sock:
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
-        trap = "apply\ncas 3 0 1\npopup 102 from Tester"  # a Disruption Trap's popup
-        assert ask(sock, trap) == "refused traps are not ported to the Linux build"
         assert ask(sock, f"write {at['menu_state']:#x} 01") == "written 1"  # a menu up
         assert ask(sock, "apply\ncas 3 0 1") == "refused not in play"
         assert read_at(sock, at["inventory"] + 3, 1) == b"\x00"
@@ -574,3 +576,60 @@ def test_with_no_logos_painted_the_stand_ins_stay_the_games(game: Game) -> None:
         assert read_at(sock, energy, 13) == b"SCRAP ENERGY\x00"
         width = stand_in("zap_pickup") + 1
         assert read_at(sock, width, 4) == (24).to_bytes(4, "little")
+
+
+DISRUPTION_TIMER = 0xDC2  # the player's (native/src/trap.h)
+HIT_JUMPS = (0x0B, 0x33)  # the Linux build's two jne's in the hit patch (trap.h)
+
+
+def player_word(sock: socket.socket, at: dict[str, int], offset: int) -> int:
+    return int.from_bytes(read_at(sock, at["inventory"] - 0x108E + offset, 2), "little")
+
+
+def hit_patch_bytes(sock: socket.socket, at: dict[str, int]) -> list[int]:
+    code = read_at(sock, at["ailments_hit_code"], 0x35)
+    return [code[i] for i in HIT_JUMPS]
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_received_trap_goes_off_as_its_popup_shows(game: Game) -> None:
+    at = config_addresses()
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, "apply\npopup 102 from Tester") == "applied"  # a Disruption Trap
+        assert wait_for(sock, "trap_status", lambda r: "set 102" in r).endswith("set 102")
+        assert player_word(sock, at, DISRUPTION_TIMER) == 660
+        shown = read_at(sock, stand_in("zap_shown"), 64).split(b"\x00")[0]
+        assert b"DISRUPTION TRAP" in shown and b"FROM TESTER" in shown
+        assert read_at(sock, stand_in("zap_sound_id"), 4) == (26).to_bytes(4, "little")
+        # AILMENTS left out while it runs: the stand-in's weaponCool tests patched (75 to EB),
+        assert hit_patch_bytes(sock, at) == [0xEB, 0xEB]
+        # and put back once its timer has run out.
+        timer = at["inventory"] - 0x108E + DISRUPTION_TIMER
+        assert ask(sock, f"write {timer:#x} 0000") == "written 2"
+        wait_for(sock, f"read {at['ailments_hit_code'] + 0x0B:#x} 1", lambda r: r == "data u")
+        assert hit_patch_bytes(sock, at) == [0x75, 0x75]
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_this_worlds_own_trap_goes_off_at_its_pickup(game: Game) -> None:
+    from client import offline
+
+    at = config_addresses()
+    cell = 100
+    seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
+    put = offline.put_request("seed", seed, offline.seed_file_name("S", 0, 1))
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, put) == "taken"  # no offline files on Linux: the helper's alone
+        assert ask(sock, offline.put_request("config", "x")) == "error not on the Linux build"
+        # The seed's save in play (its section's table and start are the stand-in's zeros).
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+        assert ask(sock, f"write {at['map_grid'] + cell:#x} 1b") == "written 1"  # picked up
+        assert wait_for(sock, "trap_status", lambda r: "set 103" in r).endswith("set 103")
+        assert player_word(sock, at, 0xDC4) == 660  # the Disorient Trap's timer
+        assert read_at(sock, stand_in("zap_sound_id"), 4) == (82).to_bytes(4, "little")

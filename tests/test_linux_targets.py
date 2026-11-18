@@ -59,6 +59,8 @@ B1_HELPER_SYMBOLS = [
     ("gAreaEvents", 0x16DA010, 8, 1),
     ("gAreaEventCount", 0x16DA008, 2, 1),
     ("gAreaEventProcs", 0x12F87A0, 0x180, 1),
+    ("gEditorMode", 0x12B456E, 1, 1),
+    ("_Z10weaponCoolP12PlayerStruct", 0x5074F6, 0x1293, 2),
 ]
 
 

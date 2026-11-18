@@ -95,7 +95,7 @@ bool next_line(std::istream& lines, std::string& line) {
 
 // A seed file's name as the client makes it (client/offline.py): letters, digits, dashes and
 // underscores, ending in -TEAM-SLOT (which also keeps out the device names CON, COM1 and such).
-[[maybe_unused]] bool good_seed_name(const std::string& name) {
+bool good_seed_name(const std::string& name) {
     if (name.empty() || name.size() > 80 ||
         name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
                                "0123456789-_") != std::string::npos) {
@@ -383,9 +383,25 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build) {
 }
 
 #else
-// The Linux build keeps no offline files yet (not ported): no folder, none read or written.
-std::string put_offline_file(const std::wstring&, const char*, const std::string&, OfflineSeed*) {
-    return "not on the Linux build";
+// The Linux build keeps no offline files yet (not ported): no folder, none read or written. A
+// seed's text is still the running helper's (its own traps: Game::watch_own_traps), "taken";
+// a config is refused.
+std::string put_offline_file(const std::wstring&, const char*, const std::string& request,
+                             OfflineSeed* seed_out) {
+    size_t eol = request.find('\n');
+    if (eol == std::string::npos) return "error no file";
+    std::istringstream words(request.substr(0, eol));
+    std::string op, kind, name, extra;
+    words >> op >> kind;
+    if (op != "offline_put") return "error not an offline_put request";
+    if (kind != "seed") return "error not on the Linux build";
+    if (!(words >> name) || (words >> extra) || !good_seed_name(name)) return "error bad name";
+    OfflineSeed seed;
+    std::string why = parse_offline_seed(request.substr(eol + 1), seed);
+    if (!why.empty()) return "error " + why;
+    seed.name = name;
+    if (seed_out != nullptr) *seed_out = std::move(seed);
+    return "taken";
 }
 
 std::string check_offline_cache(HMODULE, const OfflineFiles&) { return "not on the Linux build"; }

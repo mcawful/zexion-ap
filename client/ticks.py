@@ -684,6 +684,56 @@ async def linux_newgame_tick(ctx: ZexionContext) -> None:
         linux_mod_lost(ctx, exc)
 
 
+def linux_seed(ctx: ZexionContext) -> str | None:
+    """This seed's file for the Linux helper, or None with no connection: what it reads of one,
+    the seed's identity (its table and start) and this world's own traps, with no labels or
+    disk count (neither is ported there), so it is known from the connection's slot data alone,
+    without waiting for the items or the server's scouts as offline_seed does."""
+    conn = ctx.conn
+    if conn is None:
+        return None
+    cells = conn.plan.cells
+    traps = [(cells[i][1] * ids.MAP_SIZE + cells[i][0], code) for i, code in conn.traps.items()]
+    return offline.seed_text(
+        conn.plan.table, conn.plan.start, conn.intel_chip, conn.lock_assists, None, None, traps
+    )
+
+
+async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
+    """With the game's Linux build: this seed's file (linux_seed) handed to the Linux helper for
+    this world's own traps, which it sets off at their pickup (native/README.md, "Traps"), from
+    the connection's first poll and again when it changes, looked at every
+    OFFLINE_WRITE_SECONDS. No file is kept on Linux: the helper takes the text ("taken") and
+    keeps it until the game closes. A helper that fails is linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None or time.monotonic() < mod.told.offline_at:
+        return
+    mod.told.offline_at = time.monotonic() + OFFLINE_WRITE_SECONDS
+    seed_name = ctx.server_seed_name or ctx.seed_name
+    seed = linux_seed(ctx)
+    if not seed_name or not ctx.slot or seed is None or mod.told.offline_sent.get("seed") == seed:
+        return
+    name = offline.seed_file_name(seed_name, ctx.team, ctx.slot)
+    request = offline.put_request("seed", seed, name)
+    if len(request.encode()) > offline.MAX_REQUEST:  # it would end the connection
+        if ctx.said("linux seed", "too large"):
+            logger.warning("This seed's own traps are too many to hand to Zexion's mod on Linux.")
+        return
+    try:
+        reply = await asyncio.to_thread(mod.request, request)
+    except linux_helper.LinuxHelperError as exc:
+        linux_mod_lost(ctx, exc)
+        return
+    if reply == "taken":
+        mod.told.offline_sent["seed"] = seed
+        ctx.said.clear("linux seed")
+    elif ctx.said("linux seed", reply):
+        logger.warning(
+            "Zexion's mod on Linux didn't take this seed's own traps; they may do nothing."
+        )
+        log.warning(f"The Linux helper did not take the seed: {reply}")
+
+
 async def linux_labels_tick(ctx: ZexionContext) -> None:
     """With the game's Linux build: other players' items labeled through the Linux helper
     (labels_tick, with what it told this helper: LinuxMod.told). A helper that fails is
@@ -711,7 +761,15 @@ def linux_mod_lost(ctx: ZexionContext, exc: Exception) -> None:
     conn = ctx.conn
     if conn is not None and conn.newgame is state.NewGame.ARMED:
         conn.newgame = None  # armed again once the helper answers
-    if ctx.said("linux mod", str(exc)):
+    if isinstance(exc, linux_helper.HelperTooOld):
+        if ctx.said("linux mod", "too old"):
+            logger.warning(
+                "Zexion's mod in the game is older than this client: copy this client's "
+                "libzexion_ap.so into the game's folder and restart Zexion. Until then items "
+                "arrive without popups."
+            )
+            log.warning(f"The Linux helper is too old: {exc}")
+    elif ctx.said("linux mod", str(exc)):
         logger.warning("Zexion's mod on Linux isn't answering right now; trying again.")
         log.warning(f"The Linux helper failed: {exc}")
 
