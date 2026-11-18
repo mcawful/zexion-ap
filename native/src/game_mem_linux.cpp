@@ -4,6 +4,7 @@
 #include <link.h>
 #include <sys/mman.h>
 #include <sys/uio.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <cstdio>
@@ -14,6 +15,17 @@
 #include "game_mem.h"
 
 namespace zap {
+
+uint64_t ticks_ms() {
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return static_cast<uint64_t>(now.tv_sec) * 1000 + static_cast<uint64_t>(now.tv_nsec) / 1000000;
+}
+
+void* alloc_pages(size_t size) {
+    void* p = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    return p == MAP_FAILED ? nullptr : p;
+}
 
 namespace {
 

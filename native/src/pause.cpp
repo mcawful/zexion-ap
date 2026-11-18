@@ -161,7 +161,7 @@ bool PauseDiskRow::show_disc(BYTE* s) {
         BYTE copy[sprite::kFrameSize];
         if (!safe_read(list + kDiskIcon * sprite::kFrameSize, copy, sizeof(copy))) return false;
         auto* page = static_cast<BYTE*>(
-            VirtualAlloc(nullptr, sprite::kFrameSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+            alloc_pages(sprite::kFrameSize));
         if (page == nullptr) return false;
         std::memcpy(page, copy, sizeof(copy));
         std::memcpy(game_rect_, copy, sizeof(game_rect_));

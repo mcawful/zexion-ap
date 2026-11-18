@@ -277,16 +277,17 @@ Deck's Properties showed "Steam Linux Runtime 3.0", 2026-11-16). Its binary, a f
 ELF executable that keeps its symbol table, and its data files, B1's, are recorded in
 `re/builds.md` ("B1 on Linux"), and every target of `client/patterns.py` mapped onto it in
 `re/linux.md`.
-Support for it is being built, in stages. The client does not attach to it yet (the client's
-process calls are the Windows API), so it is not supported, and the setup guide says so ("Linux
-and Steam Deck"). What exists so far:
+Support for it is being built, in stages. The client attaches to it (below), but no release
+carries the Linux helper yet, so it is not supported, and the setup guide says so ("Linux and
+Steam Deck"). What exists so far:
 
 - the Linux helper, `libzexion_ap.so` (`native/linux/`, `native/README.md`, "The Linux
   helper"), preloaded by the game's launch options: it counts the game's frame calls, and on
   a socket reads and writes the game's memory for the client (the client can't reach it
-  itself: `re/linux.md`, "Reading the running game") and starts new games from RANDOMIZER,
-  with the Windows helper's own new-game code (`native/src/newgame.cpp`, built for both
-  through `native/src/platform.h` and the Linux parts of the memory layer). Tested against a
+  itself: `re/linux.md`, "Reading the running game"), starts new games (ARCHIPELAGO on the
+  menu, or RANDOMIZER) and gives the client's items with their popups, with the Windows
+  helper's own `Game` (`native/src/game_calls.h`, built for both through
+  `native/src/platform.h` and the Linux parts of the memory layer; it runs only those parts). Tested against a
   stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux`
   job), and working in game on B1 (Linux) under Flatpak Steam, 2026-11-18 (`native/README.md`,
   "The Linux helper"). `tools/helper.py status` finds the game,
@@ -298,12 +299,16 @@ and Steam Deck"). What exists so far:
   again once a connection drops (a request with no reply closes it, so a late reply is never
   read as the next one's). It writes nothing through a target `re/linux.md` only assumes
   (`slot_array`), and reports play only while the player state is where the
-  layout puts it. New games go through the Linux helper, ARCHIPELAGO offered as on Windows (not
-  while a translation is on: RANDOMIZER's route then) (`ticks.linux_newgame_tick`: configured
-  once an attach, `client/linux_targets.py`'s `newgame_config`). The rest of the client runs as without the mod: `native.attach` refuses the
-  Linux build (`native.LinuxPartial`, said once in the client's window), so items are written
-  directly with no popup; checks, the goal, DeathLink's deaths out and marking other players'
-  items collected go on. Tested against stand-ins only; not run in the game;
+  layout puts it. The Linux helper is configured once an attach (`ticks.linux_newgame_tick`,
+  `client/linux_targets.py`'s `helper_config`, `client/linux_helper.py`'s `LinuxMod`). New games
+  go through it, ARCHIPELAGO offered as on Windows (not while a translation is on: RANDOMIZER's
+  route then), and so do the step's items, with their popups (`apply`), but traps, which do
+  nothing there (`session.Session.without_traps`). One lost after it was configured holds the
+  step back for 30 s (`ticks.linux_mod_lost`), then the items are written directly with no popup
+  until it is back; one that failed two steps running has the next step's written directly. The rest of the client runs as without the mod:
+  `native.attach` refuses the Linux build (`native.LinuxPartial`, said once in the client's
+  window); checks, the goal, DeathLink's deaths out and marking other players' items collected
+  go on. Tested against stand-ins only; not run in the game;
 
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak

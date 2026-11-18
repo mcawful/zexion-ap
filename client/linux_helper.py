@@ -1,6 +1,7 @@
 """The Linux helper (native/linux/, native/README.md "The Linux helper") from outside the game:
 find the running game, check its build, talk to the helper's socket, read the game's memory
-through it.
+through it, and drive the helper's own parts (``LinuxMod``: its ``config``, new games and
+``apply``).
 
 The game is found in the host's ``/proc`` by its kernel name or its binary's (``procfs``; not
 by command line, which Steam's launch wrappers share) and its build checked by the binary it
@@ -24,7 +25,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import elf, patterns, procfs
+from . import elf, native, patterns, procfs
 
 PROC = Path("/proc")
 NAMES = ("Zexion",)  # the Linux build's binary (client/procfs.py)
@@ -53,7 +54,13 @@ class HelperBusy(LinuxHelperError):
 
 
 class NoReply(LinuxHelperError):
-    """A request had no reply within the timeout."""
+    """A request went out but no reply came back (within the timeout, or the socket failed or
+    closed after the send: ConnectionLost): the helper may have acted on it. Every other
+    LinuxHelperError from a request means it did not."""
+
+
+class ConnectionLost(NoReply):
+    """The socket failed or closed after a request went out (not a reply that was late)."""
 
 
 @dataclass(frozen=True)
@@ -180,7 +187,9 @@ class LinuxHelper:
             )
         try:
             hello = self.hello()
-        except NoReply as exc:
+        except ConnectionLost:
+            raise  # dropped (another user's, say), not waiting behind another client
+        except NoReply as exc:  # its first request unanswered: queued behind another client
             raise HelperBusy(
                 f"the helper in Zexion (pid {self.game.pid}) is serving another client"
             ) from exc
@@ -210,16 +219,20 @@ class LinuxHelper:
         # then be read as the next request's.
         try:
             self._sock.send(data)
+        except OSError as exc:  # a timeout too: one message, sent whole or not at all
+            self.__exit__()
+            raise LinuxHelperError(f"the helper's socket failed: {exc}") from exc
+        try:
             reply = self._sock.recv(MAX_REPLY)
         except TimeoutError as exc:
             self.__exit__()
             raise NoReply(f"the helper did not answer within {self.timeout:g} s") from exc
         except OSError as exc:
             self.__exit__()
-            raise LinuxHelperError(f"the helper's socket failed: {exc}") from exc
+            raise ConnectionLost(f"the helper's socket failed: {exc}") from exc
         if not reply:
             self.__exit__()
-            raise LinuxHelperError("the helper closed its socket")
+            raise ConnectionLost("the helper closed its socket")
         return reply
 
     def request(self, text: str) -> str:
@@ -334,19 +347,37 @@ class LinuxProcess:
             self._helper.__exit__()
 
 
-class LinuxNewGames:
-    """The Linux helper's new games (native/README.md, "The Linux helper"), what the client's
-    newgame_tick needs of a helper (``request``), over ``pm``, the game's connection: configured
-    with the new games' addresses from the game's binary (linux_targets.newgame_config) when
-    made. LinuxHelperError when the helper refuses them."""
+class LinuxMod:
+    """The parts of the Linux helper the client drives (native/README.md, "The Linux helper"),
+    over ``pm``, the game's connection, configured when made with their addresses from the
+    game's binary (linux_targets.helper_config): new games (``request``, for the client's
+    newgame_tick) and grants with their popups (``apply``, for session.give_through_helper).
+    LinuxHelperError when the helper refuses the addresses. ``traps`` False: the Linux helper
+    sets none off (session.give_through_helper sends none)."""
+
+    traps = False
 
     def __init__(self, pm: LinuxProcess) -> None:
         from . import linux_targets  # here: linux_targets imports nothing of this module's
 
         self.pm = pm
-        reply = pm.request(linux_targets.newgame_config(pm.game.image))
+        reply = pm.request(linux_targets.helper_config(pm.game.image))
         if reply != "ok":
-            raise LinuxHelperError(f"the helper did not take the new games' addresses: {reply}")
+            raise LinuxHelperError(f"the helper did not take the game's addresses: {reply}")
 
     def request(self, text: str) -> str:
         return self.pm.request(text)
+
+    def apply(self, text: str) -> str:
+        """As native.Helper.apply: "applied", or "refused <why>" (nothing was written);
+        native.ReplyLost if the request went out with no reply (it may have been applied), and
+        native.HelperError otherwise."""
+        try:
+            reply = self.pm.request(text)
+        except NoReply as exc:
+            raise native.ReplyLost(f"the Linux helper: {exc}") from exc
+        except LinuxHelperError as exc:
+            raise native.HelperError(f"the Linux helper: {exc}") from exc
+        if reply != "applied" and not reply.startswith("refused "):
+            raise native.HelperError(f"unexpected reply to apply: {reply!r}")
+        return reply

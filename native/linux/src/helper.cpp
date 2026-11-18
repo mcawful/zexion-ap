@@ -28,12 +28,12 @@
 #include <vector>
 
 #include "core.h"
-#include "addresses.h"  // GameAddresses (native/src)
-#include "choice.h"     // the ARCHIPELAGO choice
-#include "game_mem.h"   // in_image_code
+#include "addresses.h"   // GameAddresses (native/src)
+#include "game_calls.h"  // Game: the parts the Linux helper runs (new games, the choice, grants)
+#include "game_mem.h"    // in_image_code
 #include "mailbox.h"
-#include "newgame.h"
-#include "requests.h"  // parse_newgame
+#include "requests.h"  // parse_newgame, parse_batch
+#include "trap.h"      // is_trap
 
 namespace {
 
@@ -82,15 +82,13 @@ constexpr int kMaxSegments = 4;
 uintptr_t g_writable[kMaxSegments][2] = {};
 int g_writable_count = 0;
 
-// The game's thread's work (native/src/mailbox.h), and the new games it watches each frame once
-// a client's `config` gave their addresses (native/src/newgame.h).
+// The game's thread's work (native/src/mailbox.h), and the Windows helper's Game, configured by
+// a client's `config` (native/src/game_calls.h). Of Game, only the parts ported run here: new
+// games and the ARCHIPELAGO choice, `apply` and its popups (native/README.md, "The Linux
+// helper"); the rest's addresses stay null and nothing calls them.
 constexpr DWORD kFrameWaitMs = 1000;  // as the Windows helper's
 zap::Mailbox g_mailbox;
-zap::NewGames g_newgames;
-zap::NewGameAddresses g_newgame_at;
-zap::GameAddresses g_at;  // config's, with the panel hook: the ARCHIPELAGO choice's
-zap::ArchipelagoChoice g_choice;
-bool g_configured = false;  // game thread only
+zap::Game g_game;  // game thread only
 std::atomic<bool> g_client_left{false};  // a client went: its plan is dropped at the next frame
 
 // The game's own function that swaps its window once a frame (docs/re/linux.md, "The per-frame
@@ -205,17 +203,25 @@ State state() {
     return s;
 }
 
-// `config name=ADDRESS ...`: the new games' addresses, the game's own by its symbols (the client
-// resolves them: client/linux_targets.py). Each data one must lie in the game's .bss at its full
-// size and each function in its code; all of them, or nothing changes.
+// `config name=ADDRESS ...`: the addresses of the parts Game runs here, the game's own by its
+// symbols (the client resolves them: client/linux_targets.py). Each data one must lie in the
+// game's .bss at its full size (and `before` bytes before it) and each function in its code; all
+// of them, or nothing changes.
 struct ConfigKey {
     const char* name;
     BYTE* zap::GameAddresses::*field;
     size_t size;         // 0: a function
     const char* symbol;  // where it is: this symbol of the game's own, plus `offset`
     uint64_t offset;
+    uint64_t before = 0;  // bytes before it that must lie in the game's .bss too
 };
-// Keep in step with client/linux_targets.py (TARGETS and HELPER_TARGETS, by NEWGAME_KEYS);
+// The player state around the inventory, as Game reads it (game_calls.cpp, kInventoryInPlayer
+// and kPlayerStateSize); a message's last pointer and its sequence (kLastSequence).
+constexpr uint64_t kInventoryInPlayer = 0x108E, kPlayerStateSize = 0x1110;
+constexpr size_t kLastMessage = 12;
+constexpr size_t kHdMessages = zap::hd::kSlots * zap::hd::kSize;
+constexpr size_t kMessageSlots = zap::hd::kSlots * zap::message::kSize;
+// Keep in step with client/linux_targets.py (TARGETS and HELPER_TARGETS, by CONFIG_KEYS);
 // tests/test_linux_targets.py checks them. The test build's are the stand-in game's.
 using G = zap::GameAddresses;
 #ifndef ZAP_HOOKTEST
@@ -237,6 +243,27 @@ constexpr ConfigKey kConfigKeys[] = {
     {"panel_handler_fn", &G::panel_handler_fn, 0, "_Z16FrameWrapOrArrowP12GameMenuItemi", 0},
     {"rando_newgame_fn", &G::rando_newgame_fn, 0, "_Z9forceSeedv", 0},
     {"tr_flag", &G::tr_flag, 1, "gCurrentTranslation", 0x91},
+    // Grants and their popups (Game::apply, pump_popups). The inventory: the player state's
+    // (gGameState+0x1CD50) at kInventoryInPlayer.
+    {"inventory", &G::inventory, kPlayerStateSize - kInventoryInPlayer, "gGameState", 0x1DDDE,
+     kInventoryInPlayer},
+    {"save_loaded", &G::save_loaded, 1, "gGameState", 0xACA},
+    {"menu_state", &G::menu_state, 1, "gCursorMode", 0},
+    {"item_records", &G::item_records, sizeof(void*), "gPowerUpDefs", 0},
+    {"last_message", &G::last_message, kLastMessage, "gGameState", 0x13350},
+    {"weapon_strip_gate", &G::weapon_strip_gate, 1, "gPreferences", 0x1DD},
+    {"sound_system", &G::sound_system, 1, "gGameSoundManager", 0},
+    {"message_fn", &G::message_fn, 0, "_Z17createGameMessagePKciiiiii", 0},
+    {"sound_fn", &G::sound_fn, 0, "_Z13PlayGameSoundP16GameSoundManagersffffss", 0},
+    {"hud_number_fn", &G::hud_number_fn, 0, "_Z19updateNumberDisplayP13NumberDisplaydb", 0},
+    {"hud_layout_fn", &G::hud_layout_fn, 0, "_Z29updateNumberDisplayVisibilityP12PlayerStruct",
+     0},
+    {"energy_hud_fn", &G::energy_hud_fn, 0, "_Z15updateEnergyBarP12PlayerStructb", 0},
+    {"weapon_strip_fn", &G::weapon_strip_fn, 0, "_Z19updateWeaponDisplayP12PlayerStruct", 0},
+    {"suit_color_fn", &G::suit_color_fn, 0, "_Z16setSpritePalettehs", 0},
+    // The translated marks a popup's message slot may hold (translation.cpp, clear_mark).
+    {"hd_messages", &G::hd_messages, kHdMessages, "gTranslationGameMessages", 0},
+    {"message_slots", &G::message_slots, kMessageSlots, "gGameState", 0x8C6B48},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -257,6 +284,23 @@ constexpr ConfigKey kConfigKeys[] = {
     {"panel_handler_fn", &G::panel_handler_fn, 0, "zap_panel_handler", 0},
     {"rando_newgame_fn", &G::rando_newgame_fn, 0, "zap_force_seed", 0},
     {"tr_flag", &G::tr_flag, 1, "zap_tr_flag", 0},
+    {"inventory", &G::inventory, kPlayerStateSize - kInventoryInPlayer, "zap_player",
+     kInventoryInPlayer, kInventoryInPlayer},
+    {"save_loaded", &G::save_loaded, 1, "zap_save_loaded", 0},
+    {"menu_state", &G::menu_state, 1, "zap_cursor", 0},
+    {"item_records", &G::item_records, sizeof(void*), "zap_records", 0},
+    {"last_message", &G::last_message, kLastMessage, "zap_last_message", 0},
+    {"weapon_strip_gate", &G::weapon_strip_gate, 1, "zap_strip_gate", 0},
+    {"sound_system", &G::sound_system, 1, "zap_sounds", 0},
+    {"message_fn", &G::message_fn, 0, "zap_message", 0},
+    {"sound_fn", &G::sound_fn, 0, "zap_sound", 0},
+    {"hud_number_fn", &G::hud_number_fn, 0, "zap_hud_number", 0},
+    {"hud_layout_fn", &G::hud_layout_fn, 0, "zap_hud_layout", 0},
+    {"energy_hud_fn", &G::energy_hud_fn, 0, "zap_energy_hud", 0},
+    {"weapon_strip_fn", &G::weapon_strip_fn, 0, "zap_weapon_strip", 0},
+    {"suit_color_fn", &G::suit_color_fn, 0, "zap_suit_color", 0},
+    {"hd_messages", &G::hd_messages, kHdMessages, "zap_hd_messages", 0},
+    {"message_slots", &G::message_slots, kMessageSlots, "zap_message_slots", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -306,7 +350,10 @@ std::string parse_config(std::string_view request, zap::GameAddresses& out) {
             return std::string(key.name) + " is not where the game's symbols put it";
         }
         auto* at = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(found->second));
-        bool ok = key.size == 0 ? zap::in_image_code(at) : in_game_data(found->second, key.size);
+        bool ok = key.size == 0 ? zap::in_image_code(at)
+                                : found->second >= key.before &&
+                                      in_game_data(found->second - key.before,
+                                                   key.before + key.size);
         if (!ok) {
             return std::string(key.name) +
                    (key.size == 0 ? " is not in the game's code" : " is not in the game's data");
@@ -320,9 +367,7 @@ std::string parse_config(std::string_view request, zap::GameAddresses& out) {
 // disassembly: menus and UI"), on its thread; the parameters are WidgetCallback's and unused.
 void archipelago_chosen(void*, int) {
     try {
-        if (g_configured) {
-            zap::start_archipelago(g_newgames, g_choice, g_at, g_newgame_at, &archipelago_chosen);
-        }
+        g_game.start_archipelago(&archipelago_chosen);  // nothing unless configured
     } catch (...) {
     }
 }
@@ -330,9 +375,9 @@ void archipelago_chosen(void*, int) {
 // The game-mode panel's handler while the choice is up: the game's own, then the hover border
 // fitted around ARCHIPELAGO in the frame the game laid it out (choice.h, fit_border).
 void panel_hook(void* widget, int event) {
-    reinterpret_cast<void (*)(void*, int)>(g_at.panel_handler_fn)(widget, event);
+    reinterpret_cast<void (*)(void*, int)>(g_game.panel_handler())(widget, event);
     try {
-        g_choice.fit_border(g_at);
+        g_game.fit_archipelago_border();
     } catch (...) {
     }
 }
@@ -346,7 +391,7 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config,
     std::string result;
     bool ran = g_mailbox.call(
         [&] {
-            if (needs_config && !g_configured) return std::string("refused not configured");
+            if (needs_config && !g_game.configured()) return std::string("refused not configured");
             return work();
         },
         kFrameWaitMs, result);
@@ -361,21 +406,14 @@ std::optional<std::string> game_request(std::string_view request) {
         std::string error = parse_config(request, found);
         return on_game(
             [&] {
-                if (g_configured) g_choice.restore(g_at, &archipelago_chosen);  // old addresses'
-                g_at = found;
-                g_at.hooks.panel = reinterpret_cast<void*>(&panel_hook);
-                g_newgame_at = {.rando_blob = g_at.rando_blob,
-                                .randomizer_menu = g_at.randomizer_menu,
-                                .transition_fn = g_at.transition_fn,
-                                .transition_timer = g_at.transition_timer,
-                                .newgame_fn = g_at.newgame_fn,
-                                .placement_fn = g_at.placement_fn,
-                                .rando_marker = g_at.rando_marker,
-                                .current_slot = g_at.current_slot,
-                                .start_count = g_at.start_count,
-                                .start_cells = g_at.start_cells,
-                                .start_flags = g_at.start_flags};
-                g_configured = true;
+                // A config's addresses are always the game's own (parse_config), so one after
+                // the first changes nothing the choice or the popups hold.
+                g_game.set_hooks({.panel = reinterpret_cast<void*>(&panel_hook)});
+                g_game.configure(found);
+                // The translation's font for popups is not ported (4-byte characters): pixel
+                // text, the slot's translated mark cleared (translation.cpp, clear_mark's Linux
+                // test of the flag alone), as the Windows helper's fallback.
+                g_game.hold_translated_popups();
                 return std::string("ok");
             },
             false, error);
@@ -385,16 +423,32 @@ std::optional<std::string> game_request(std::string_view request) {
         std::string error = zap::parse_newgame(std::string(request), plan);
         return on_game(
             [&] {
-                g_newgames.arm(std::move(plan));
-                return std::string("armed");
+                return std::string(g_game.arm_newgame(std::move(plan)) ? "armed"
+                                                                       : "refused not configured");
             },
             true, error);
     }
     if (request == "disarm") {
-        return on_game([] { g_newgames.disarm(); return std::string("disarmed"); }, false);
+        return on_game([] { g_game.disarm_newgame(); return std::string("disarmed"); }, false);
     }
     if (request == "newgame_status") {
-        return on_game([] { return g_newgames.status(); }, false);
+        return on_game([] { return g_game.newgame_status(); }, false);
+    }
+    if (request.starts_with("apply\n") || request == "apply") {
+        zap::Batch batch;
+        std::string error = zap::parse_batch(std::string(request), batch);
+        return on_game(
+            [&] {
+                // A received trap's popup holds the popups behind it until the trap goes off,
+                // which is not ported here: none is taken (the client sends none: session.py).
+                for (const zap::Popup& popup : batch.popups) {
+                    if (!popup.bare && zap::trap::is_trap(popup.item)) {
+                        return std::string("refused traps are not ported to the Linux build");
+                    }
+                }
+                return g_game.apply(batch);
+            },
+            true, error);
     }
     return std::nullopt;
 }
@@ -511,32 +565,32 @@ __attribute__((constructor)) void start() {
 namespace {
 
 // The game's thread, at its frame swap (SWHardwareEnd's call: `site`, the return address): the
-// mailbox's work, a plan dropped for a client gone, then an armed new game watched. Nothing it
-// throws reaches the game. A fault in the game's own placement is not an exception: it stays
-// the game's crash.
+// mailbox's work, a plan dropped for a client gone, an armed new game watched, the ARCHIPELAGO
+// choice, then the next popup. Each part guarded on its own, so one that throws keeps none of
+// the others from running, and nothing reaches the game. A fault in the game's own placement is
+// not an exception: it stays the game's crash.
 void game_frame(uintptr_t site) {
     if (site < g_frame_function.value || site >= g_frame_function.value + g_frame_function.size) {
         return;  // another swap (UpdatePalette's window), or the frame function unknown
     }
-    try {
-        g_mailbox.serve();
-        if (g_client_left.exchange(false)) g_newgames.disarm();
-        if (!g_configured) return;
+    auto guarded = [](auto&& work) {
         try {
-            g_newgames.watch(g_newgame_at);
+            work();
         } catch (...) {
-            g_newgames.refuse("the placement failed");
         }
-        // The ARCHIPELAGO choice while a plan offers it, RANDOMIZER back otherwise (as the
-        // Windows helper's watch_menu).
-        if (g_newgames.armed() && g_newgames.plan().choice && !g_newgames.starting()) {
-            g_choice.install(g_at, &archipelago_chosen);
-            if (g_choice.installed()) g_choice.fit_border(g_at);
-        } else if (g_choice.installed() || g_choice.holds_hook()) {
-            g_choice.restore(g_at, &archipelago_chosen);
-        }
+    };
+    guarded([] { g_mailbox.serve(); });
+    // A client's popups stay queued for its save, as on Windows; only its plan goes.
+    if (g_client_left.exchange(false)) guarded([] { g_game.disarm_newgame(); });
+    if (!g_game.configured()) return;
+    try {
+        g_game.watch_newgame();
     } catch (...) {
+        guarded([] { g_game.refuse_newgame("the placement failed"); });
     }
+    // The ARCHIPELAGO choice while a plan offers it, RANDOMIZER back otherwise.
+    guarded([] { g_game.watch_menu(&archipelago_chosen); });
+    guarded([] { g_game.pump_popups(); });
 }
 
 }  // namespace

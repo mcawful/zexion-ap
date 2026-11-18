@@ -26,6 +26,7 @@ bool hex_bytes(const std::string& hex, uint8_t* out, size_t size) {
     return true;
 }
 
+#ifdef _WIN32
 bool read_file(const std::wstring& path, std::string& out) {
     HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE |
                                                            FILE_SHARE_DELETE,
@@ -44,8 +45,9 @@ bool read_file(const std::wstring& path, std::string& out) {
     CloseHandle(f);
     return ok;
 }
+#endif
 
-std::string narrow(const std::wstring& w) {
+[[maybe_unused]] std::string narrow(const std::wstring& w) {
     std::string out;
     for (wchar_t c : w) out += c < 128 ? static_cast<char>(c) : '?';
     return out;
@@ -62,13 +64,13 @@ bool next_line(std::istream& lines, std::string& line) {
 }
 
 // The cached config's file for `build` in `folder`.
-std::wstring config_path(const std::wstring& folder, const char* build) {
+[[maybe_unused]] std::wstring config_path(const std::wstring& folder, const char* build) {
     return folder + L"\\config-" + widen(build) + L".txt";
 }
 
 // The cached config: the `config` request, then "check KEY HEX" lines, at least
 // kOfflineMinChecks, each on a key of the config. "" or what is wrong.
-std::string parse_offline_config(const std::string& text, std::map<std::string, uint64_t>& rvas,
+[[maybe_unused]] std::string parse_offline_config(const std::string& text, std::map<std::string, uint64_t>& rvas,
                                  std::map<std::string, std::string>& checks) {
     rvas.clear();
     checks.clear();
@@ -93,7 +95,7 @@ std::string parse_offline_config(const std::string& text, std::map<std::string, 
 
 // A seed file's name as the client makes it (client/offline.py): letters, digits, dashes and
 // underscores, ending in -TEAM-SLOT (which also keeps out the device names CON, COM1 and such).
-bool good_seed_name(const std::string& name) {
+[[maybe_unused]] bool good_seed_name(const std::string& name) {
     if (name.empty() || name.size() > 80 ||
         name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
                                "0123456789-_") != std::string::npos) {
@@ -223,6 +225,7 @@ int offline_disk_count(const OfflineSeed& seed, const uint8_t* grid) {
 
 namespace {
 
+#ifdef _WIN32
 // The file's text written in place of `path`'s, through a temporary file: "" or what failed.
 std::string write_whole(const std::wstring& path, const std::string& text, bool& changed) {
     std::string old;
@@ -244,8 +247,10 @@ std::string write_whole(const std::wstring& path, const std::string& text, bool&
     return "";
 }
 
+#endif
 }  // namespace
 
+#ifdef _WIN32
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request, OfflineSeed* seed_out) {
     size_t eol = request.find('\n');
@@ -376,5 +381,22 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build) {
     }
     return files;
 }
+
+#else
+// The Linux build keeps no offline files yet (not ported): no folder, none read or written.
+std::string put_offline_file(const std::wstring&, const char*, const std::string&, OfflineSeed*) {
+    return "not on the Linux build";
+}
+
+std::string check_offline_cache(HMODULE, const OfflineFiles&) { return "not on the Linux build"; }
+
+std::wstring offline_folder() { return L""; }
+
+OfflineFiles read_offline_files(const std::wstring&, const char*) {
+    OfflineFiles files;
+    files.error = "not on the Linux build";
+    return files;
+}
+#endif
 
 }  // namespace zap

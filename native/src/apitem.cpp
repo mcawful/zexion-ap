@@ -113,6 +113,10 @@ bool is_ours(const BYTE* r, const StandIn& s) {
 
 GlFunctions load_gl() {
     GlFunctions gl;
+#ifndef _WIN32
+    // The Linux build's labels are not ported (native/README.md, "The Linux helper"): no GL.
+    return gl;
+#else
     HMODULE m = GetModuleHandleW(L"opengl32.dll");
     if (m == nullptr) return gl;
     auto get = [m]<typename Fn>(Fn& fn, const char* name) {
@@ -127,6 +131,7 @@ GlFunctions load_gl() {
     get(gl.IsTexture, "glIsTexture");
     get(gl.GetError, "glGetError");
     return gl;
+#endif
 }
 
 int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
@@ -286,7 +291,7 @@ bool TextureCheck::ready(unsigned texture, const GlFunctions& gl) {
         texture_ = texture;
         tries_ = 0;
         read(gl);
-    } else if (!good_ && tries_ < kReadTries && GetTickCount64() - tried_ms_ >= kRetryMs) {
+    } else if (!good_ && tries_ < kReadTries && ticks_ms() - tried_ms_ >= kRetryMs) {
         read(gl);
     }
     return good_;
@@ -294,7 +299,7 @@ bool TextureCheck::ready(unsigned texture, const GlFunctions& gl) {
 
 void TextureCheck::read(const GlFunctions& gl) {
     ++tries_;
-    tried_ms_ = GetTickCount64();
+    tried_ms_ = ticks_ms();
     good_ = false;
     alpha_.clear();
     std::vector<uint8_t> image(static_cast<size_t>(kTextureSize) * kTextureSize * 4);

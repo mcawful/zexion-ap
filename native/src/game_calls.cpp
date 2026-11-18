@@ -5,7 +5,9 @@
 #include <cstring>
 #include <utility>
 
+#ifdef _WIN32
 #include "iat.h"
+#endif
 
 namespace zap {
 
@@ -44,7 +46,13 @@ constexpr int32_t kNameRoom = 64;
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
                          short, short category);
+#ifdef _WIN32
 using HudNumberFn = void (*)(void* hud_object, double value);
+#else
+// updateNumberDisplay(NumberDisplay*, double, bool): the game passes 1 (docs/re/linux.md, "Mapped
+// by disassembly: HUD, items, sound, popups, deaths").
+using HudNumberFn = void (*)(void* hud_object, double value, bool);
+#endif
 using PlayerFn = void (*)(void* player);
 using EnergyHudFn = void (*)(void* player, char force);
 using SuitColorFn = void (*)(int slot, short palette);
@@ -90,7 +98,7 @@ const ItemEvent* item_event(uint8_t item) {
 }
 // A received item whose drop the helper spawns after its popup: the scraps (the shield is the
 // client's to ask for, `shield`).
-bool has_drop(const Popup& popup) {
+[[maybe_unused]] bool has_drop(const Popup& popup) {
     return popup.counted && !popup.bare &&
            (popup.item == kScrapMetal || popup.item == kScrapEnergy || popup.item == kScrapChunk);
 }
@@ -105,6 +113,7 @@ constexpr uint64_t kTrapSettledMs = 250;
 // "DeathLink").
 using DeathFn = void (*)(void* player, char kind);
 
+#ifdef _WIN32  // the Linux helper resolves and checks its own (native/linux/src/helper.cpp)
 // The config keys (client/patterns.py target names), in checking order, each with the member it
 // fills. Each lies in the image with kKeyBytes there (the offline cache checks a function's first
 // 16): functions in code, data in writable data, the CRT's import slots (only read) outside code.
@@ -218,9 +227,11 @@ std::string check_key(HMODULE image, uint64_t image_size, const ConfigKey& key, 
     }
     return "";
 }
+#endif
 
 }  // namespace
 
+#ifdef _WIN32
 std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                             bool active) {
     const IMAGE_NT_HEADERS64* nt = nt_headers(image);
@@ -247,6 +258,17 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     feats_.set_image(image,
                      find_import_slot(image, "steam_api64.dll", "SteamInternal_ContextInit"));
     mission_.set_image(image);
+    gl_ = load_gl();
+    return use(found, active);
+}
+#else
+std::string Game::configure(GameAddresses found) {
+    found.hooks = at_.hooks;
+    return use(found, true);
+}
+#endif
+
+std::string Game::use(const GameAddresses& found, bool active) {
     // A client's config: the offline look put back with its own addresses, and the last client's
     // notices withdrawn; the not-connected warning comes again if this client goes this load
     // (as CLIENT CONNECTED. does each time one comes back).
@@ -267,7 +289,6 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
                    .start_count = at_.start_count,
                    .start_cells = at_.start_cells,
                    .start_flags = at_.start_flags};
-    gl_ = load_gl();
     configured_ = true;
     active_ = active;
     return "";
@@ -305,8 +326,15 @@ BYTE* Game::record(uint8_t item) const {
 
 void Game::refresh_hud() {
     BYTE* p = player();
-    reinterpret_cast<HudNumberFn>(at_.hud_number_fn)(p + kHudMissiles, at<int16_t>(p, kMissiles));
-    reinterpret_cast<HudNumberFn>(at_.hud_number_fn)(p + kHudBombs, at<int16_t>(p, kBombs));
+    auto number = [this](BYTE* hud, int16_t value) {
+#ifdef _WIN32
+        reinterpret_cast<HudNumberFn>(at_.hud_number_fn)(hud, value);
+#else
+        reinterpret_cast<HudNumberFn>(at_.hud_number_fn)(hud, value, true);
+#endif
+    };
+    number(p + kHudMissiles, at<int16_t>(p, kMissiles));
+    number(p + kHudBombs, at<int16_t>(p, kBombs));
     reinterpret_cast<PlayerFn>(at_.hud_layout_fn)(p);
     reinterpret_cast<EnergyHudFn>(at_.energy_hud_fn)(p, 1);
     if (*at_.weapon_strip_gate != 0 && at<int16_t>(p, kWeaponStripTimer) > 0) {
@@ -479,8 +507,11 @@ bool Game::show_popup(std::deque<Popup>::iterator next) {
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);
     }
     own_disk_ = disk_popup(popup);
-    // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops).
+    // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops,
+    // which the Linux helper does not run: not queued there, where it would only pile up).
+#ifdef _WIN32
     if (has_drop(popup)) drops_.push_back({popup.item, popup.origin});
+#endif
     // Its follow-ups (a disk's count, a chip's hint: the client's notices queued right after it
     // in its own `apply`) go ahead of the parked traps' popups it passed, so a trap whose kind
     // runs out meanwhile never comes between them. Any popup for this save ahead of it is a
@@ -865,6 +896,8 @@ bool Game::arm_newgame(NewGamePlan plan) {
 }
 
 void Game::disarm_newgame() { newgames_.disarm(); }
+
+void Game::refuse_newgame(const std::string& why) { newgames_.refuse(why); }
 
 std::string Game::newgame_status() const { return newgames_.status(); }
 
@@ -1476,7 +1509,7 @@ void Game::watch_ap_items() {
         ap_items_.release(at_.item_records);
         for (std::wstring& name : stand_in_hd_) name.clear();
     }
-    ap_items_.paint(at_.sprite_texture, gl_, texture_check_, GetTickCount64(), world);
+    ap_items_.paint(at_.sprite_texture, gl_, texture_check_, ticks_ms(), world);
     // The pickup popup as wide as width_cell's label while the stand-ins are ours, else 24; from
     // the frame call, so the game is not running the instruction while it changes.
     auto it = ap_items_.labels().find(width_cell);

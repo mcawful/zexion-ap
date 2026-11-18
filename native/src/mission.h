@@ -6,7 +6,7 @@
 // (docs/re/memory.md, "The mission prompt"; native/README.md, "The OS Install Disks goal").
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <string>

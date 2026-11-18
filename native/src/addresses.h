@@ -9,7 +9,7 @@ namespace zap {
 
 // The helper's wrappers the game is pointed at while a part is on (dllmain.cpp).
 struct Hooks {
-    void* panel = nullptr;            // the game-mode panel's handler (menu.h)
+    void* panel = nullptr;            // the game-mode panel's handler (choice.h)
     void* equipment = nullptr;        // EQUIPMENT's callback (equip.h)
     void* equipment_panel = nullptr;  // the Energy Tank panel's handler (equip.h)
     void* mission_open = nullptr;     // the mission prompt's opener, no arguments (mission.h)

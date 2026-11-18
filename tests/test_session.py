@@ -650,6 +650,45 @@ def test_traps_held_at_the_first_connection_pop_up_once_before_the_rest(with_hel
     assert len(helper.requests) == 1, "once"
 
 
+def test_a_helper_with_no_traps_gets_no_trap_popups_and_they_count(with_helper, caplog) -> None:
+    # The Linux helper's (linux_helper.LinuxMod): it sets no trap off, so a trap's popup would
+    # hold the rest; they do nothing, said once, as without the mod.
+    session, g, helper, writes = with_helper
+    helper.traps = False
+    received = [ids.DISRUPTION_TRAP, 17, ids.DISORIENT_TRAP]
+    session.held_traps = []
+    with caplog.at_level("INFO", logger="Zexion"):
+        assert give(session, g, received, senders=["Bob", "Alice", "Dan"]) == {17: 1}
+    assert helper.requests[-1].splitlines() == ["apply", "cas 17 0 1", "popup 17 from Alice"]
+    assert session.announced == 3 and writes == []
+    said = [r.getMessage() for r in caplog.records if "sets no traps off" in r.getMessage()]
+    assert len(said) == 1 and "Disruption Trap" in said[0] and "Disorient Trap" in said[0]
+    session.step(g, received, gap=0, senders=["Bob", "Alice", "Dan"])
+    assert len(helper.requests) == 1, "never again"
+
+
+def test_traps_left_out_are_said_once_whatever_the_refusals(with_helper, caplog) -> None:
+    session, g, helper, _ = with_helper
+    helper.traps, helper.reply = False, "refused not in play"
+    received = [ids.DISRUPTION_TRAP, 17]
+    with caplog.at_level("INFO", logger="Zexion"):
+        for _ in range(4):
+            session.step(g, received, gap=0, senders=["Bob", "Alice"])
+    said = [r for r in caplog.records if "sets no traps off" in r.getMessage()]
+    assert len(said) == 1 and session.announced == 0
+
+
+def test_held_traps_are_dropped_for_a_helper_with_no_traps(with_helper) -> None:
+    session, g, helper, _ = with_helper
+    helper.traps = False
+    received, senders = [17, ids.DISORIENT_TRAP], ["Bob", "Alice"]
+    session.announced, session.held_traps = 2, [1]
+    session.step(g, received, gap=0, senders=senders)
+    session.step(g, received, gap=0, senders=senders)
+    assert session.held_traps == [] and session.announced == 2
+    assert all("popup 103" not in r for r in helper.requests)
+
+
 def test_a_second_copy_of_a_single_item_has_its_popup_but_no_write(with_helper) -> None:
     # Zenith Thrusters (26) sent again from the console: its byte stays 1.
     session, g, helper, _ = with_helper

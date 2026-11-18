@@ -4,7 +4,7 @@
 // traced in docs/re/memory.md, "Game functions the helper calls".
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -51,11 +51,20 @@ inline constexpr char kTrapWaitingRefusal[] = "a trap is waiting to go off";
 
 class Game {
 public:
+#ifdef _WIN32
     // Game thread. Checks each required kConfigKeys entry is present (an optional one may be
     // missing, its member left null) and each given one in the right kind of section, with the
-    // room it needs (game_calls.cpp, check_key), then keeps the addresses. "" or an error. `active`: false for the offline cache (no client there yet).
+    // room it needs (game_calls.cpp, check_key), then keeps the addresses. "" or an error.
+    // `active`: false for the offline cache (no client there yet).
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                           bool active = true);
+#else
+    // Game thread: the Linux helper's addresses, which it resolved from the game's symbols and
+    // checked against a client's (native/linux/src/helper.cpp); those it does not use are null,
+    // and so are the parts that would read them (it runs only the ported parts). The hooks are
+    // set_hooks'. Always "".
+    std::string configure(GameAddresses found);
+#endif
     bool configured() const { return configured_; }
     // Game thread: a save loaded with a menu open (pause, map, equipment screen, quit menu).
     bool menu_open() const;
@@ -94,6 +103,8 @@ public:
     // Game thread. Arms the AP new game: the next randomizer new game queued gets `plan`, once.
     // False, nothing armed, unless configured.
     bool arm_newgame(NewGamePlan plan);
+    // Game thread: the plan dropped as "refused <why>" (the Linux helper's, when its watch threw).
+    void refuse_newgame(const std::string& why);
     void disarm_newgame();
     // "armed", "idle", or the last outcome: "applied slot N" or "refused ...".
     std::string newgame_status() const;
@@ -442,6 +453,9 @@ private:
 
     bool configured_ = false;
     bool active_ = false;
+    // configure's tail, both builds': the addresses kept, a client's config (`active`) taking over
+    // from the offline look.
+    std::string use(const GameAddresses& found, bool active);
     GameAddresses at_;  // configure's; the hooks from set_hooks
     BYTE* base_ = nullptr;  // the game's image
     // Offline (offline.h).

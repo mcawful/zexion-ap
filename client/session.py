@@ -49,7 +49,7 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import astuple, dataclass, field
 
-from . import discs, game, ids, native, offline, reconcile, save_patch
+from . import discs, game, ids, linux_helper, native, offline, reconcile, save_patch
 
 logger = logging.getLogger("Zexion")
 
@@ -402,7 +402,7 @@ class Session:
         gap: float = game.SETTLE_SECONDS,
         senders: list[str] | None = None,
         followups: dict[int, str] | None = None,
-        helper: native.Helper | None = None,
+        helper: native.Helper | linux_helper.LinuxMod | None = None,
         give: bool = True,
         gone: Iterable[int] = (),
     ) -> Step:
@@ -581,7 +581,7 @@ class Session:
         gap: float,
         senders: list[str] | None = None,
         followups: dict[int, str] | None = None,
-        helper: native.Helper | None = None,
+        helper: native.Helper | linux_helper.LinuxMod | None = None,
     ) -> dict[int, int]:
         plan = self.plan
         guns_first = plan.guns_first
@@ -655,9 +655,40 @@ class Session:
                 logger.info("A load undid a grant; it will be given again.")
         return granted
 
+    def without_traps(self, units: list[Unit]) -> list[Unit]:
+        """``units`` for a helper that sets no trap off (the Linux helper's: linux_helper.LinuxMod):
+        each trap's popup left out, said once, as the direct writes do. The held traps are handed
+        over with them, doing nothing; each received one still counts as handed over."""
+        # Said once for each trap (held, or received at its index), whatever refusals follow.
+        new = [
+            p[0]
+            for held, end, popups in units
+            for p in popups
+            if self.is_trap_popup(p) and self._first(f"no trap {held} {end}")
+        ]
+        if new:
+            names = ", ".join(ids.TRAP_NAMES[item] for item in new)
+            logger.info(f"Zexion's mod on Linux sets no traps off yet; these do nothing: {names}.")
+        self.held_traps = []
+        return [
+            (None, end, [p for p in popups if not self.is_trap_popup(p)])
+            for _, end, popups in units
+            if end is not None
+        ]
+
+    def _first(self, key: str) -> bool:
+        """Whether ``key`` is new to this session (then kept)."""
+        new = key not in self._said
+        self._said.add(key)
+        return new
+
+    @staticmethod
+    def is_trap_popup(popup: tuple[int, str] | tuple[int, str, bool]) -> bool:
+        return popup[0] in ids.TRAPS and not (len(popup) > 2 and popup[2])
+
     def give_through_helper(
         self,
-        helper: native.Helper,
+        helper: native.Helper | linux_helper.LinuxMod,
         snap: Snapshot,
         owed: dict[int, int],
         received: list[int],
@@ -706,6 +737,8 @@ class Session:
             if followup:
                 popups.append((item, followup, True))  # a notice after it: a hint, a count
             units.append((None, index + 1, popups))
+        if not getattr(helper, "traps", True):
+            units = self.without_traps(units)
         if not owed and not units:
             before = reconcile.Supplies(*snap.supplies)
             if reconcile.supplies_after(snap.inventory, before) != before:

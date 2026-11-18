@@ -25,7 +25,7 @@
 //   ap_labels          then "label X Y HEX" lines to the end, as the client's request
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <map>

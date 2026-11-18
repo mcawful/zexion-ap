@@ -321,7 +321,9 @@ def test_the_game_reads_and_writes_through_the_helper(game: Game) -> None:
         pm.close_process()
 
 
-NEWGAME_SYMBOLS = {
+# The config's keys (native/linux/src/helper.cpp, kConfigKeys' test build): the stand-in game's
+# symbol for each, and the offset past it.
+CONFIG_SYMBOLS = {
     "rando_blob": "zap_section",
     "randomizer_menu": "zap_menu",
     "transition_fn": "zap_transition",
@@ -339,15 +341,47 @@ NEWGAME_SYMBOLS = {
     "panel_handler_fn": "zap_panel_handler",
     "rando_newgame_fn": "zap_force_seed",
     "tr_flag": "zap_tr_flag",
+    "inventory": ("zap_player", 0x108E),
+    "save_loaded": "zap_save_loaded",
+    "menu_state": "zap_cursor",
+    "item_records": "zap_records",
+    "last_message": "zap_last_message",
+    "weapon_strip_gate": "zap_strip_gate",
+    "sound_system": "zap_sounds",
+    "message_fn": "zap_message",
+    "sound_fn": "zap_sound",
+    "hud_number_fn": "zap_hud_number",
+    "hud_layout_fn": "zap_hud_layout",
+    "energy_hud_fn": "zap_energy_hud",
+    "weapon_strip_fn": "zap_weapon_strip",
+    "suit_color_fn": "zap_suit_color",
+    "hd_messages": "zap_hd_messages",
+    "message_slots": "zap_message_slots",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
 )
 
 
-def newgame_addresses() -> dict[str, int]:
+def config_addresses() -> dict[str, int]:
     image = elf.parse(GAME.read_bytes())
-    return {key: image.symbol(name).value for key, name in NEWGAME_SYMBOLS.items()}
+    found = {}
+    for key, where in CONFIG_SYMBOLS.items():
+        name, offset = where if isinstance(where, tuple) else (where, 0)
+        found[key] = image.symbol(name).value + offset
+    return found
+
+
+def stand_in(name: str) -> int:
+    """The stand-in game's symbol ``name``."""
+    return elf.parse(GAME.read_bytes()).symbol(name).value
+
+
+def read_at(sock: socket.socket, address: int, size: int) -> bytes:
+    sock.send(f"read {address:#x} {size}".encode())
+    reply = sock.recv(64 + size)
+    assert reply.startswith(b"data "), reply
+    return reply[len(b"data ") :]
 
 
 def wait_for(sock: socket.socket, request: str, wanted, seconds: float = 3.0) -> str:
@@ -361,7 +395,7 @@ def wait_for(sock: socket.socket, request: str, wanted, seconds: float = 3.0) ->
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_a_new_game_queued_with_the_seeds_text_gets_the_seed(game: Game) -> None:
-    at = newgame_addresses()
+    at = config_addresses()
     with game.connect() as sock:
         assert ask(sock, PLAN) == "refused not configured"
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
@@ -386,7 +420,7 @@ def test_a_new_game_queued_with_the_seeds_text_gets_the_seed(game: Game) -> None
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_a_config_outside_the_games_data_or_code_is_refused(game: Game) -> None:
-    at = newgame_addresses()
+    at = config_addresses()
     with game.connect() as sock:
         bad = dict(at, rando_blob=game.marker)  # not the game's own symbol for it
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in bad.items())
@@ -405,7 +439,7 @@ def test_a_config_outside_the_games_data_or_code_is_refused(game: Game) -> None:
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_a_client_that_goes_takes_its_plan_with_it(game: Game) -> None:
-    at = newgame_addresses()
+    at = config_addresses()
     with game.connect() as sock:
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
@@ -426,3 +460,56 @@ def test_a_helper_of_another_version_is_not_used(game: Game, monkeypatch) -> Non
         linux_helper.LinuxHelper(found),
     ):
         pass
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_an_apply_gives_the_items_and_shows_their_popup(game: Game) -> None:
+    at = config_addresses()
+    batch = "apply\ncas 3 0 1\npopup 3 from Tester"
+    with game.connect() as sock:
+        assert ask(sock, batch) == "refused not configured"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, "apply\ncas 3 1 2") == "refused item 3 holds 0"  # nothing written
+        assert read_at(sock, at["inventory"] + 3, 1) == b"\x00"
+        assert ask(sock, batch) == "applied"
+        assert read_at(sock, at["inventory"] + 3, 1) == b"\x01"
+        # The popup at a later frame: the record's name, the suffix, the record's sound.
+        count = stand_in("zap_shown_count")
+        wait_for(sock, f"read {count:#x} 4", lambda r: r != "data " + "\x00" * 4)
+        assert read_at(sock, count, 4) == (1).to_bytes(4, "little")
+        shown = read_at(sock, stand_in("zap_shown"), 64).split(b"\x00")[0]
+        assert b"MACHINE GUN" in shown and b"FROM TESTER" in shown
+        assert read_at(sock, stand_in("zap_sound_id"), 4) == (7).to_bytes(4, "little")
+        assert read_at(sock, stand_in("zap_hud_calls"), 4) == (2).to_bytes(4, "little")
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_an_apply_is_refused_out_of_play_and_with_a_trap(game: Game) -> None:
+    at = config_addresses()
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        trap = "apply\ncas 3 0 1\npopup 102 from Tester"  # a Disruption Trap's popup
+        assert ask(sock, trap) == "refused traps are not ported to the Linux build"
+        assert ask(sock, f"write {at['menu_state']:#x} 01") == "written 1"  # a menu up
+        assert ask(sock, "apply\ncas 3 0 1") == "refused not in play"
+        assert read_at(sock, at["inventory"] + 3, 1) == b"\x00"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_in_a_translation_the_popups_slot_is_not_left_hidden(game: Game) -> None:
+    # A translated message (the game's own pickup, say) left its HD object marked: the game would
+    # hide the next message in that slot by it (docs/re/memory.md, "Translated messages").
+    at = config_addresses()
+    has_text = at["hd_messages"] + 0x22C
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, f"write {at['tr_flag']:#x} 01") == "written 1"
+        assert ask(sock, f"write {has_text:#x} 01") == "written 1"
+        assert ask(sock, "apply\npopup 3 from Tester") == "applied"
+        count = stand_in("zap_shown_count")
+        wait_for(sock, f"read {count:#x} 4", lambda r: r != "data " + "\x00" * 4)
+        assert read_at(sock, count, 4) == (1).to_bytes(4, "little")
+        assert read_at(sock, has_text, 1) == b"\x00"  # the mark cleared: the popup shows

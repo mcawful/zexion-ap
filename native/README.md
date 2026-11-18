@@ -2181,12 +2181,14 @@ lands, not only the place passed.
 ## The Linux helper
 
 `libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
-it reads and writes the running game's memory for the client, counts its frames, and starts new
-games, ARCHIPELAGO on the menu or RANDOMIZER ("New games", which it shares with the Windows
-helper: below). None of the
-other parts above runs on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`)
-and otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested
-against a stand-in game (`tests/test_native_linux.py`).
+it reads and writes the running game's memory for the client, counts its frames, starts new
+games, ARCHIPELAGO on the menu or RANDOMIZER ("New games"), and gives the client's items with
+their popups (`apply`: "Grants", "Popups"). It holds the Windows helper's `Game`
+(`src/game_calls.h`) and runs only those parts of it: below. None of the other parts above runs
+on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`),
+gives its items through it with their popups (`client/linux_helper.py`'s `LinuxMod`), and
+otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested against a
+stand-in game (`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
 branch copied into the game's folder: loaded by the launch options, it served `hello`
@@ -2237,8 +2239,9 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the new games' and the ARCHIPELAGO choice's seventeen addresses (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 33 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
+  | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), and `refused traps are not ported to the Linux build` for a batch with a trap's popup |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
 
   Anything else gets `error unknown request`.
@@ -2261,8 +2264,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses, which the client resolves from the game's symbols (`client/linux_targets.py`,
-  `newgame_config`) and the helper checks against its own reading of them, so a client and a
+  addresses (with the rest of the 33), which the client resolves from the game's symbols
+  (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of them, so a client and a
   helper that disagree change nothing (the client also refuses a helper of another version).
   "Frame" requests and the watch run on the game's thread through `src/mailbox.h`
   (`src/mailbox_linux.cpp`), only at `SWHardwareEnd`'s swap, by its return address (not the
@@ -2278,11 +2281,41 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   memory layer, `src/game_mem_linux.cpp`: fault-safe reads through the kernel, writability from
   the process's memory map (read at each query, as Windows' `VirtualQuery` is), the game's code
   from its program headers, code patches with `mprotect`, the page's own protection put back.
+  `Game` and every part it holds build there too, the Windows-only pieces of those left out:
+  `Game::configure` takes the helper's checked addresses instead of resolving a client's, the
+  offline cache reads and writes no files (`src/offline.cpp`), the Feats screen's Steam hook
+  and ending patch do nothing (`src/feats.cpp`), and no OpenGL functions are loaded
+  (`src/apitem.cpp`); none of those parts runs.
   Tested on stand-ins (`linux/tests/newgame_tests.cpp`, and through the socket in
   `tests/test_native_linux.py`); not run in the game. Not known: whether an exception the game's
   placement threw would be caught here (the helper's own C++ runtime is linked in, the game's is
   its own: "refused the placement failed" is unverified); a fault there is the game's crash, as
   on Windows.
+- **Grants and popups.** `Game::apply` and `Game::pump_popups` run here as on Windows
+  ("Grants", "Popups"): the `cas` writes all or none, the counts and the HUD refreshed (the
+  number display's third argument, `true`, as the game passes it: `docs/re/linux.md`, "Mapped
+  by disassembly: HUD, items, sound, popups, deaths"), Magnus Armor's suit color, then the
+  popups one a frame call apart as there, each with its item's sound, waiting for their own save.
+  What differs, as the parts behind it are not ported:
+  - a batch with a trap's popup is refused (no trap goes off here, and its popup would hold the
+    rest): the client sends none (`client/session.py`, `without_traps`), and says the traps do
+    nothing;
+  - popups show in the pixel font in a translation too (`hold_translated_popups`), the message
+    slot's translated mark cleared as the Windows helper's fallback does;
+  - RETURN HOME WITH THE DISKS? is not watched (`src/mission.h` is not run): an `apply` is not
+    refused in its ending, and popups are not held through it;
+  - a received Scrap Energy's or Scrap Chunk's drop is not spawned (`pump_drops` is not run);
+  - the tall text's cut is not repaired (`text_cut_code` is not configured): a notice of four
+    lines may flash a line;
+  - `menu_state` is the cursor mode on Linux, which the mouse can set to 1 (`docs/re/linux.md`,
+    open): if it reads 1 in play, an `apply` is refused (`refused not in play`) and popups
+    wait. Not measured.
+
+  A client that goes takes its plan with it, but its popups stay queued for their save, as on
+  Windows. Tested on the stand-in game through the socket (`tests/test_native_linux.py`: an
+  `apply` refused unconfigured, by a `cas` that differs, out of play, and with a trap; one
+  taken writes the byte, and its popup, at a later frame call, carries the record's name and
+  the suffix and plays the record's sound); not run in the game.
 - **Its own runtime.** The C++ runtime is linked in, so it needs only glibc (with `ld-linux`,
   its dynamic loader) from the game's container, which may be older than the one it was built
   with. A build on a newer glibc asks for its newer symbol versions and would fail to load under an
@@ -2477,8 +2510,8 @@ the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe cli
 `proxy/` is the proxy `version.dll`.
 
 `linux/` is the Linux helper: `src/core.cpp` (the known builds, the build id note, the replies),
-`src/helper.cpp` (the constructor, the socket's thread, the frame call, `config` and the new
-games' requests), and in `tests/` the ctest tests, the stand-in game and its stand-in SDL. It
-also builds these of `src/`: `newgame.cpp`, `choice.cpp`, `requests.cpp`, `text.cpp`, `scan.cpp`, `trap.cpp`,
-`game_mem.cpp` with `game_mem_linux.cpp`, and `mailbox_linux.cpp` (`src/platform.h` gives them
-the few Windows type names they use).
+`src/helper.cpp` (the constructor, the socket's thread, the frame call, `config` and the
+requests that act on the game), and in `tests/` the ctest tests, the stand-in game and its
+stand-in SDL. It also builds every source of `src/` but `dllmain.cpp`, `iat.cpp`, `pipe.cpp`,
+`build.cpp` and `mailbox.cpp`, with `game_mem_linux.cpp` and `mailbox_linux.cpp` for the
+Windows parts (`src/platform.h` gives them the few Windows type names they use).

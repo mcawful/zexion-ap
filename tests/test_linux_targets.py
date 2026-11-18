@@ -41,6 +41,17 @@ B1_HELPER_SYMBOLS = [
     ("_Z16FrameWrapOrArrowP12GameMenuItemi", 0x56ED11, 0x100, 2),
     ("_Z9forceSeedv", 0x5AF50F, 0x100, 2),
     ("gCurrentTranslation", 0x12B4840, 0x40150, 1),
+    ("gPowerUpDefs", 0x16DA0B8, 8, 1),
+    ("gPreferences", 0x12F5A00, 0xE70, 1),
+    ("gGameSoundManager", 0x9E6F60, 0x8C8, 1),
+    ("gTranslationGameMessages", 0x12F49A0, 0x8E0, 1),
+    ("_Z17createGameMessagePKciiiiii", 0x631C5B, 0x100, 2),
+    ("_Z13PlayGameSoundP16GameSoundManagersffffss", 0x4D0398, 0x100, 2),
+    ("_Z19updateNumberDisplayP13NumberDisplaydb", 0x4A2E9F, 0x100, 2),
+    ("_Z29updateNumberDisplayVisibilityP12PlayerStruct", 0x51773F, 0x100, 2),
+    ("_Z15updateEnergyBarP12PlayerStructb", 0x518CB2, 0x100, 2),
+    ("_Z19updateWeaponDisplayP12PlayerStruct", 0x4F0231, 0x100, 2),
+    ("_Z16setSpritePalettehs", 0x4953EE, 0x100, 2),
 ]
 
 
@@ -116,11 +127,11 @@ def test_the_helpers_targets_resolve_to_their_b1_addresses() -> None:
     assert resolved == {t.name: t.b1 for t in linux_targets.HELPER_TARGETS}
 
 
-def test_the_new_games_config_names_every_key_once() -> None:
-    config = linux_targets.newgame_config(b1_like(extra=True))
+def test_the_helpers_config_names_every_key_once() -> None:
+    config = linux_targets.helper_config(b1_like(extra=True))
     words = config.split()
     assert words[0] == "config"
-    assert [w.split("=")[0] for w in words[1:]] == list(linux_targets.NEWGAME_KEYS)
+    assert [w.split("=")[0] for w in words[1:]] == list(linux_targets.CONFIG_KEYS)
     assert "placement_fn=0x5abd55" in words and "newgame_fn=0x563363" in words
 
 
@@ -130,8 +141,10 @@ def test_the_helpers_config_keys_are_the_clients() -> None:
     helper = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text("utf-8")
     table = helper.split("#ifndef ZAP_HOOKTEST\nconstexpr ConfigKey kConfigKeys[] = {", 1)[1]
     table = table.split("};", 1)[0]
-    rows = re.findall(r'\{"(\w+)", &G::\w+, [^,]+, "(\w+)", (0x[0-9A-Fa-f]+|\d+)\}', table)
-    assert [name for name, _, _ in rows] == list(linux_targets.NEWGAME_KEYS)
+    rows = re.findall(
+        r'\{"(\w+)", &G::\w+, [^,]+, "(\w+)",\s*(0x[0-9A-Fa-f]+|\d+)(?:,\s*\w+)?\}', table
+    )
+    assert [name for name, _, _ in rows] == list(linux_targets.CONFIG_KEYS)
     ours = {
         t.name: (t.symbol, t.offset) for t in linux_targets.TARGETS + linux_targets.HELPER_TARGETS
     }

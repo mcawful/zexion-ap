@@ -138,6 +138,37 @@ def test_the_game_counts_as_running_only_as_itself(tmp_path, state, started, ali
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="SOCK_SEQPACKET unix sockets are Linux's"
 )
+class Socket:
+    """A connection whose send fails (``sent`` False), or whose peer closes after the send."""
+
+    def __init__(self, sent: bool) -> None:
+        self.sent = sent
+
+    def send(self, data: bytes) -> int:
+        if not self.sent:
+            raise BrokenPipeError("broken pipe")
+        return len(data)
+
+    def recv(self, size: int) -> bytes:
+        return b""  # closed
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.mark.parametrize("sent", [False, True])
+def test_a_socket_that_fails_is_told_by_whether_the_request_went_out(sent: bool) -> None:
+    # After the send the helper may have acted on it (NoReply: ConnectionLost, not a late reply,
+    # so not a busy helper); before it, it did not.
+    helper = linux_helper.LinuxHelper(linux_helper.LinuxGame(1, 1, STAND_IN, None), 0.2)
+    helper._sock = Socket(sent)
+    with pytest.raises(linux_helper.LinuxHelperError) as failed:
+        helper.request("ping")
+    assert isinstance(failed.value, linux_helper.ConnectionLost) is sent
+    assert isinstance(failed.value, linux_helper.NoReply) is sent
+    assert not helper.connected
+
+
 def test_a_request_with_no_reply_closes_the_connection() -> None:
     """Its reply could still come, and would be read as the next request's."""
     client, silent = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)

@@ -4,7 +4,9 @@
 
 #include "game_layout.h"
 #include "game_mem.h"
+#ifdef _WIN32
 #include "iat.h"
+#endif
 #include "text.h"  // Capitals
 #include "translation.h"
 
@@ -46,14 +48,14 @@ static_assert(kApSlots + slot::kCount <= static_cast<ptrdiff_t>(kPage), "in the 
 // Code: the stub at 0, the stand-in's every method at kReturnZero.
 constexpr ptrdiff_t kReturnZero = 90;
 
-bool fits_rel32(const BYTE* from_next, const BYTE* to) {
+[[maybe_unused]] bool fits_rel32(const BYTE* from_next, const BYTE* to) {
     ptrdiff_t d = to - from_next;
     return d >= INT32_MIN && d <= INT32_MAX;
 }
 
 // Where `mov byte [rip+rel32], value` at `where` (7 bytes, read into `bytes`) stores, if it is one
 // storing `value`; null otherwise.
-const BYTE* store_target(const BYTE* where, const BYTE* bytes, BYTE value) {
+[[maybe_unused]] const BYTE* store_target(const BYTE* where, const BYTE* bytes, BYTE value) {
     if (std::memcmp(bytes, kStoreByte, sizeof(kStoreByte)) != 0 || bytes[6] != value) {
         return nullptr;
     }
@@ -326,6 +328,7 @@ bool FeatsGuard::load_test() const {
     return data_ != nullptr && at<BYTE*>(data_, kMarker) != nullptr;
 }
 
+#ifdef _WIN32  // the Linux build's Feats are not ported: nothing patched or hooked
 void FeatsGuard::patch_ending(const GameAddresses& a) {
     BYTE* site = a.ending_unlocks;
     BYTE* join = a.ending_join;
@@ -380,6 +383,10 @@ void FeatsGuard::patch_ending(const GameAddresses& a) {
     ending_error_.clear();
 }
 
+#else
+void FeatsGuard::patch_ending(const GameAddresses&) {}
+#endif
+
 static_assert(kEndingPatchSize <= kMaxCodePatch, "put_back_code reads it whole");
 
 void FeatsGuard::restore_ending() {
@@ -389,6 +396,7 @@ void FeatsGuard::restore_ending() {
     }
 }
 
+#ifdef _WIN32
 std::string FeatsGuard::check_steam(const GameAddresses& a) {
     auto** slot = reinterpret_cast<void**>(a.context_init_slot);
     if (slot == nullptr || slot != by_name_) {
@@ -543,4 +551,11 @@ void FeatsGuard::release_steam() {
     slot_ = nullptr;
 }
 
+#else
+std::string FeatsGuard::check_steam(const GameAddresses&) { return "not on the Linux build"; }
+bool FeatsGuard::make_pages() { return false; }
+void FeatsGuard::hook_steam(const GameAddresses&, bool, const std::set<int>&) {}
+void FeatsGuard::set_switch(const GameAddresses&, bool, const std::set<int>&) {}
+void FeatsGuard::release_steam() {}
+#endif
 }  // namespace zap

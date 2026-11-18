@@ -22,13 +22,17 @@ add_compile_options(-Wall -Wextra -Werror)
 add_library(zap_linux_core STATIC src/core.cpp)
 target_include_directories(zap_linux_core PUBLIC src)
 
-# The Windows helper's sources the Linux helper shares (native/src): new games, their requests'
+# The Windows helper's sources the Linux helper shares (native/src): its Game and every part
+# Game holds (only the ported ones run: native/README.md, "The Linux helper"), the requests'
 # parser, and the platform layer under them (game_mem_linux.cpp, mailbox_linux.cpp in place of
 # the Windows parts). GCC warns where MSVC does not on partly initialized structs.
 add_library(zap_shared STATIC
-            ../src/newgame.cpp ../src/choice.cpp ../src/requests.cpp ../src/text.cpp ../src/scan.cpp
-            ../src/trap.cpp ../src/game_mem.cpp ../src/game_mem_linux.cpp
-            ../src/mailbox_linux.cpp)
+            ../src/game_calls.cpp ../src/game_offline.cpp ../src/newgame.cpp ../src/choice.cpp
+            ../src/requests.cpp ../src/text.cpp ../src/menu.cpp ../src/scan.cpp ../src/equip.cpp
+            ../src/mission.cpp ../src/pause.cpp ../src/files.cpp ../src/intel.cpp
+            ../src/offline.cpp ../src/title.cpp ../src/mapmarks.cpp ../src/trap.cpp
+            ../src/apitem.cpp ../src/looks.cpp ../src/feats.cpp ../src/translation.cpp
+            ../src/game_mem.cpp ../src/game_mem_linux.cpp ../src/mailbox_linux.cpp)
 target_include_directories(zap_shared PUBLIC ../src)
 target_compile_options(zap_shared PRIVATE -Wno-missing-field-initializers)
 
@@ -39,6 +43,7 @@ target_compile_options(zap_shared PRIVATE -Wno-missing-field-initializers)
 # preload reaches. tests/test_native_linux.py checks the build's exports.
 function(zap_helper target)
   add_library(${target} SHARED src/helper.cpp)
+  target_compile_options(${target} PRIVATE -Wno-missing-field-initializers)  # Game's headers
   target_link_libraries(${target} PRIVATE zap_linux_core zap_shared dl pthread -static-libstdc++
                         -static-libgcc -Wl,--no-undefined -Wl,-z,defs -Wl,--exclude-libs,ALL
                         -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map)

@@ -10,6 +10,7 @@ import logging
 import math
 import os
 import sys
+import time
 import types
 from unittest import mock
 
@@ -1282,18 +1283,64 @@ def test_on_linux_a_helper_that_cant_be_reached_is_told_once_and_armed_again(cap
     with caplog.at_level("WARNING"):
         asyncio.run(ticks.linux_newgame_tick(ctx))
         asyncio.run(ticks.linux_newgame_tick(ctx))
-    said = [r for r in caplog.records if r.name == "Client" and "new game" in r.getMessage()]
+    said = [r for r in caplog.records if r.name == "Client" and "on Linux" in r.getMessage()]
     assert len(said) == 1
-    assert ctx.linux_newgames is None and ctx.conn.newgame is None
+    assert ctx.linux_mod is None and ctx.conn.newgame is None
     ctx.game_conn.pm.replies["ap_newgame"] = "armed"
     asyncio.run(ticks.linux_newgame_tick(ctx))
     assert ctx.conn.newgame is state.NewGame.ARMED
 
 
+def test_the_linux_helper_takes_an_apply_as_the_windows_helper_does() -> None:
+    pm = LinuxHelperStandIn({"config": "ok", "apply": "applied"})
+    mod = linux_helper.LinuxMod(pm)
+    assert mod.traps is False  # it sets none off: session.give_through_helper sends none
+    text = native.batch_text([(17, 0, 1)], [(17, "from Bob")])
+    assert mod.apply(text) == "applied" and pm.sent[-1] == text
+    pm.replies["apply"] = "refused not in play"
+    assert mod.apply(text) == "refused not in play"
+    pm.replies["apply"] = "error something"
+    with pytest.raises(native.HelperError, match="unexpected reply"):
+        mod.apply(text)
+    pm.replies["apply"] = linux_helper.NoReply("the helper closed its socket")
+    with pytest.raises(native.ReplyLost):  # it went out: it may have been applied
+        mod.apply(text)
+    pm.replies["apply"] = linux_helper.LinuxHelperError("the helper's socket failed")
+    with pytest.raises(native.HelperError) as failed:  # never sent: not applied
+        mod.apply(text)
+    assert not isinstance(failed.value, native.ReplyLost)
+
+
+def test_a_linux_helper_that_fails_the_step_is_configured_again(caplog) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.conn.newgame is state.NewGame.ARMED and ctx.linux_mod is not None
+    with caplog.at_level("WARNING"):
+        ticks.linux_mod_lost(ctx, native.ReplyLost("the Linux helper: no reply"))
+    assert ctx.linux_mod is None and ctx.conn.newgame is None  # armed again with it
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert sum(t.startswith("config ") for t in ctx.game_conn.pm.sent) == 2
+    assert ctx.conn.newgame is state.NewGame.ARMED
+
+
+def test_a_linux_helper_lost_once_configured_holds_the_step_a_while() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    ticks.linux_mod_lost(ctx, linux_helper.LinuxHelperError("never configured"))
+    assert ctx.linux_back_by == 0.0, "nothing to wait for: written directly"
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    before = time.monotonic()
+    ticks.linux_mod_lost(ctx, linux_helper.NoReply("no reply"))
+    assert before + ticks.LINUX_HOLD_SECONDS <= ctx.linux_back_by
+    ticks.linux_mod_lost(ctx, linux_helper.NoReply("no reply"))  # still lost: not held longer
+    assert ctx.linux_back_by <= time.monotonic() + ticks.LINUX_HOLD_SECONDS
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is not None and ctx.linux_back_by == 0.0
+
+
 def test_on_windows_the_linux_tick_does_nothing() -> None:
     ctx = context(connection(), Running(game.NO_SAVE))
     asyncio.run(ticks.linux_newgame_tick(ctx))
-    assert ctx.linux_newgames is None
+    assert ctx.linux_mod is None
 
 
 def test_on_linux_the_helper_retry_leaves_the_linux_helpers_plan_alone(caplog) -> None:

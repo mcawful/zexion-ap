@@ -160,6 +160,8 @@ bool in_image_code(HMODULE image, const void* p);
 // Whether `p` lies in the main program's code (an executable PT_LOAD segment of the game's
 // binary, game_mem_linux.cpp).
 bool in_image_code(const void* p);
+// The Windows form's, for the shared sources: the image is always the main binary.
+inline bool in_image_code(HMODULE, const void* p) { return in_image_code(p); }
 #endif
 // Writes `size` bytes over code at `at`, its page made writable for the write and then put back
 // as it was, and flushes them from the instruction cache: false, nothing written, if the page

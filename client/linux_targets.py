@@ -6,9 +6,10 @@ address is its symbol's value plus the offset, read from the binary the game run
 build is known (CLAUDE.md, "Rules"). ``b1`` is what each resolved to on B1's binary, for
 checking only (tests/test_linux_targets.py): code never uses it as an address.
 
-These are the targets ``game.Game`` reads and writes itself. The Windows helper's other
-targets have Linux counterparts too (docs/re/linux.md), for a Linux helper that does not use
-them yet.
+``TARGETS`` are the ones ``game.Game`` reads and writes itself; ``HELPER_TARGETS`` the rest of
+those the Linux helper's ``config`` takes (CONFIG_KEYS, helper_config). The Windows helper's
+other targets have Linux counterparts too (docs/re/linux.md), for parts the Linux helper does
+not run yet.
 """
 
 from __future__ import annotations
@@ -52,9 +53,9 @@ TARGETS = (
 )
 
 
-# The Linux helper's own targets beyond those, for new games and the ARCHIPELAGO choice (its
-# ``config``: native/linux/src/helper.cpp, native/src/newgame.h, choice.h): the rest of
-# NEWGAME_KEYS is in TARGETS. Functions by their mangled names.
+# The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it runs
+# (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants and
+# their popups. The rest of CONFIG_KEYS is in TARGETS. Functions by their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -70,12 +71,28 @@ HELPER_TARGETS = (
     LinuxTarget("panel_handler_fn", "_Z16FrameWrapOrArrowP12GameMenuItemi", 0, 0x56ED11),
     LinuxTarget("rando_newgame_fn", "_Z9forceSeedv", 0, 0x5AF50F),
     LinuxTarget("tr_flag", "gCurrentTranslation", 0x91, 0x12B48D1),
+    # Grants and their popups (native/src/game_calls.h, Game::apply).
+    LinuxTarget("item_records", "gPowerUpDefs", 0, 0x16DA0B8),
+    LinuxTarget("weapon_strip_gate", "gPreferences", 0x1DD, 0x12F5BDD),
+    LinuxTarget("sound_system", "gGameSoundManager", 0, 0x9E6F60),
+    LinuxTarget("message_fn", "_Z17createGameMessagePKciiiiii", 0, 0x631C5B),
+    LinuxTarget("sound_fn", "_Z13PlayGameSoundP16GameSoundManagersffffss", 0, 0x4D0398),
+    LinuxTarget("hud_number_fn", "_Z19updateNumberDisplayP13NumberDisplaydb", 0, 0x4A2E9F),
+    LinuxTarget("hud_layout_fn", "_Z29updateNumberDisplayVisibilityP12PlayerStruct", 0, 0x51773F),
+    LinuxTarget("energy_hud_fn", "_Z15updateEnergyBarP12PlayerStructb", 0, 0x518CB2),
+    LinuxTarget("weapon_strip_fn", "_Z19updateWeaponDisplayP12PlayerStruct", 0, 0x4F0231),
+    LinuxTarget("suit_color_fn", "_Z16setSpritePalettehs", 0, 0x4953EE),
+    LinuxTarget("hd_messages", "gTranslationGameMessages", 0, 0x12F49A0),
+    LinuxTarget("message_slots", "gGameState", 0x8C6B48, 0x12AE388),
 )
-NEWGAME_KEYS = (
+CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
     "placement_fn", "rando_marker", "current_slot", "start_count", "start_cells", "start_flags",
     "current_menu", "rando_menu_fn", "widget_handler_fn", "panel_handler_fn", "rando_newgame_fn",
-    "tr_flag",
+    "tr_flag", "inventory", "save_loaded", "menu_state", "item_records", "last_message",
+    "weapon_strip_gate", "sound_system", "message_fn", "sound_fn", "hud_number_fn",
+    "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "hd_messages",
+    "message_slots",
 )  # fmt: skip
 
 
@@ -107,7 +124,7 @@ def player_state(image: elf.Image) -> tuple[int, int]:
     return image.symbol(PLAYER_POINTER).value, image.symbol(holder).value + offset
 
 
-def newgame_config(image: elf.Image) -> str:
-    """The Linux helper's ``config`` request: NEWGAME_KEYS' addresses in ``image``."""
+def helper_config(image: elf.Image) -> str:
+    """The Linux helper's ``config`` request: CONFIG_KEYS' addresses in ``image``."""
     found = resolve(image, TARGETS + HELPER_TARGETS)
-    return "config " + " ".join(f"{key}={found[key]:#x}" for key in NEWGAME_KEYS)
+    return "config " + " ".join(f"{key}={found[key]:#x}" for key in CONFIG_KEYS)

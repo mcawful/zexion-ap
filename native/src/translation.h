@@ -9,7 +9,7 @@
 // "Translations" and the sections after it.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstddef>
 #include <cstdint>

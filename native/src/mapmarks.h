@@ -6,7 +6,7 @@
 // back.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <functional>

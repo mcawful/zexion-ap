@@ -521,11 +521,11 @@ def _hello(helper: Helper) -> dict[str, str]:
 
 
 # What of the helper the game's Linux build lacks yet: a clause for the player
-# (state.helper_failed). Its new games, ARCHIPELAGO on the menu included, go through the Linux
-# helper instead (ticks.linux_newgame_tick).
+# (state.helper_failed). Its new games, ARCHIPELAGO on the menu included, and its items with
+# their popups go through the Linux helper instead (ticks.linux_newgame_tick).
 LINUX_NOT_READY = (
-    "its other parts inside the game (popups, other players' items, traps, the translations) "
-    "aren't ready for the game's Linux version yet"
+    "its other parts inside the game (other players' items, traps, the translations) aren't "
+    "ready for the game's Linux version yet"
 )
 
 
@@ -535,8 +535,9 @@ class LinuxPartial(ModFixable):
 
 def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     """``_attach``, its HelperErrors marked ``old_gone`` once the old helper has unloaded. With
-    the game's Linux build (``g.platform``), ModFixable: the Linux helper serves memory only
-    (native/README.md, "The Linux helper"), so the client goes on without the helper's parts."""
+    the game's Linux build (``g.platform``), ModFixable: the Linux helper has only some of its
+    parts (native/README.md, "The Linux helper"; the client drives them through
+    linux_helper.LinuxMod), so the client goes on without the rest."""
     if getattr(g, "platform", "windows") == "linux":
         raise LinuxPartial(LINUX_NOT_READY)
     unloaded: list[bool] = []

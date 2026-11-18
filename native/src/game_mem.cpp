@@ -5,6 +5,12 @@
 namespace zap {
 
 #ifdef _WIN32  // the Linux build's own: game_mem_linux.cpp
+uint64_t ticks_ms() { return GetTickCount64(); }
+
+void* alloc_pages(size_t size) {
+    return VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+}
+
 namespace {
 
 // Whether `size` bytes at `at` are committed, with no guard page, and every page allows one of

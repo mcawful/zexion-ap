@@ -4,7 +4,7 @@
 // not released, and forgets it otherwise. Every read is fault-safe and checked before a write.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 

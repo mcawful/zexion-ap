@@ -652,27 +652,44 @@ async def newgame_tick(ctx: ZexionContext, helper=None, offer_choice: bool = Tru
         conn.newgame = None  # the helper lost the plan (reloaded): arm again
 
 
+LINUX_HOLD_SECONDS = 30.0  # as zexion_client's HELPER_RETRY_SECONDS for the Windows helper
+
+
 async def linux_newgame_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build: new games through the Linux helper, ARCHIPELAGO offered as
-    on Windows (the helper leaves RANDOMIZER while a translation is on), configured once an
-    attach (linux_helper.LinuxNewGames). A helper that can't be reached or refuses is told once
-    and tried again on a later poll, a plan it held armed again then."""
+    """With the game's Linux build: the Linux helper configured once an attach
+    (linux_helper.LinuxMod, which the step then gives the items through: zexion_client's poll),
+    and its new games, ARCHIPELAGO offered as on Windows (the helper leaves RANDOMIZER while a
+    translation is on). A helper that can't be reached or refuses is told once and tried again
+    on a later poll (linux_mod_lost)."""
     g = ctx.game_conn
     if g is None or getattr(g, "platform", "windows") != "linux":
         return
     try:
-        if ctx.linux_newgames is None or ctx.linux_newgames.pm is not g.pm:
-            ctx.linux_newgames = await asyncio.to_thread(linux_helper.LinuxNewGames, g.pm)
-        await newgame_tick(ctx, ctx.linux_newgames)
-        ctx.said.clear("linux new games")
+        if ctx.linux_mod is None or ctx.linux_mod.pm is not g.pm:
+            ctx.linux_mod = await asyncio.to_thread(linux_helper.LinuxMod, g.pm)
+            ctx.linux_back_by = 0.0
+        await newgame_tick(ctx, ctx.linux_mod)
+        ctx.said.clear("linux mod")
     except linux_helper.LinuxHelperError as exc:
-        ctx.linux_newgames = None
-        conn = ctx.conn
-        if conn is not None and conn.newgame is state.NewGame.ARMED:
-            conn.newgame = None  # armed again once the helper answers
-        if ctx.said("linux new games", str(exc)):
-            logger.warning("Zexion's mod can't take this seed's new game right now; trying again.")
-            log.warning(f"The Linux helper's new games failed: {exc}")
+        linux_mod_lost(ctx, exc)
+
+
+def linux_mod_lost(ctx: ZexionContext, exc: Exception) -> None:
+    """The Linux helper failed (in its tick, or giving the step's items): dropped, and
+    configured again on a later poll, its plan armed again then (a connection that closed lost
+    it: the helper drops a client's plan). One that was configured holds the step back for
+    LINUX_HOLD_SECONDS (zexion_client's poll), as most failures pass (no frame while the game is
+    in the background, a socket that closed); after that, items are written directly, without
+    popups, until it is back. Said once for each distinct failure."""
+    if ctx.linux_mod is not None:
+        ctx.linux_back_by = time.monotonic() + LINUX_HOLD_SECONDS
+    ctx.linux_mod = None
+    conn = ctx.conn
+    if conn is not None and conn.newgame is state.NewGame.ARMED:
+        conn.newgame = None  # armed again once the helper answers
+    if ctx.said("linux mod", str(exc)):
+        logger.warning("Zexion's mod on Linux isn't answering right now; trying again.")
+        log.warning(f"The Linux helper failed: {exc}")
 
 
 def how_to_play(ctx: ZexionContext, step: session.Step) -> None:
@@ -685,9 +702,7 @@ def how_to_play(ctx: ZexionContext, step: session.Step) -> None:
     conn = ctx.conn
     if conn is None or not conn.newgame_lines or not step.left_seed:
         return
-    if (
-        ctx.helper is None and ctx.linux_newgames is None
-    ) or conn.newgame is not state.NewGame.ARMED:
+    if (ctx.helper is None and ctx.linux_mod is None) or conn.newgame is not state.NewGame.ARMED:
         return
     for line in conn.newgame_lines:
         logger.info(line)

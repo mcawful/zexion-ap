@@ -4,7 +4,7 @@
 // game's malloc, and the game frees it with the menu (docs/re/memory.md, "The equipment screen").
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <string>

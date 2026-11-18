@@ -700,7 +700,15 @@ BYTE* hd_object(const GameAddresses& a, BYTE* message) {
 }  // namespace
 
 void clear_mark(const GameAddresses& a, BYTE* message) {
+#ifdef _WIN32
     if (!translation_on(a)) return;
+#else
+    // The Linux helper configures no translation (its tables are 4-byte characters, not ported),
+    // only the flag and the HD objects, which the game hides a message by (docs/re/linux.md,
+    // "Mapped by disassembly: translations", `tr_flag`, `hd_messages`).
+    uint8_t flag = 0;
+    if (a.tr_flag == nullptr || !read(a.tr_flag, 0, flag) || flag == 0) return;
+#endif
     BYTE* object = hd_object(a, message);
     // Only an object not bound to this message, told by its serial (docs/re/memory.md,
     // "Translated messages"): the mark is then the last translated message's in that slot.

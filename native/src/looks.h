@@ -7,7 +7,7 @@
 // value is checked before a write, and an object is put back only while it is the same spawn.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <map>

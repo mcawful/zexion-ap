@@ -7,7 +7,7 @@
 // screen"; native/README.md, "The title screen's lines").
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <string>
