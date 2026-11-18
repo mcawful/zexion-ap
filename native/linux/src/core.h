@@ -1,0 +1,45 @@
+// The Linux helper's logic that needs no game: which build the host is, the socket's name, and
+// the replies to requests (native/README.md, "The Linux helper"). helper.cpp wires it into the
+// game; tests/core_tests.cpp tests it alone.
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <string>
+#include <string_view>
+
+namespace zap::linux_helper {
+
+inline constexpr char kVersion[] = "1.2.0";  // the release's: native/src/dllmain.cpp's kVersion
+inline constexpr char kDisabledName[] = "zexion_ap.disabled";
+inline constexpr size_t kMaxRequest = 64 * 1024;  // as the Windows pipe's buffer
+inline constexpr size_t kMaxRead = 32 * 1024;     // one `read`'s bytes, its reply under kMaxRequest
+inline constexpr char kDataPrefix[] = "data ";    // a `read`'s reply: this, then the bytes
+
+// The build a GNU build id (hex) is, or nullptr for one not known.
+const char* identify_build(std::string_view build_id_hex);
+
+// The GNU build id in a PT_NOTE segment's bytes, as hex, or nothing.
+std::optional<std::string> note_build_id(const unsigned char* notes, size_t size);
+
+// The abstract socket's name, without its leading NUL: "zexion-ap-<pid>", the pid as the game
+// sees itself (in a Flatpak or the Steam Runtime's container, not the host's).
+std::string socket_name(long pid);
+
+struct State {
+    const char* build = nullptr;  // identify_build's, nullptr when unknown
+    bool hooked = false;          // a known build: it counts the frame calls and serves
+    bool folder = false;          // loaded from the game's own folder
+    uint64_t frames = 0;          // frame calls since it loaded
+};
+
+// Copies `size` bytes of this process's memory at `address` into `out`; false (with why in
+// `out`) when they can't all be read. helper.cpp's reads its own memory without faulting.
+using Reader = std::function<bool(uint64_t address, size_t size, std::string& out)>;
+
+// The reply to one request.
+std::string reply(std::string_view request, const State& state, const Reader& read);
+
+}  // namespace zap::linux_helper

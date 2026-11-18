@@ -1,0 +1,6 @@
+/* The Linux helper's one export: the C++ runtime linked into it stays its own, so it never
+   stands in for the game's libstdc++ (native/README.md, "The Linux helper"). */
+{
+  global: SDL_GL_SwapWindow;
+  local: *;
+};

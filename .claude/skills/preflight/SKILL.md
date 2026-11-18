@@ -15,8 +15,13 @@ in `.venv/bin/`, not `.venv/Scripts/`, here and below.
 ```
 
 `.github/workflows/ci.yml` runs these three on Windows, Ubuntu and macOS, a `world` job with
-Archipelago's world tests (below, on Ubuntu), and a Windows `native` job (the CMake build of `native/`, its ctest tests, and
-`tests/test_native.py` against the built DLL) that preflight does not run. Locally,
+Archipelago's world tests (below, on Ubuntu), a Windows `native` job (the CMake build of `native/`, its ctest tests, and
+`tests/test_native.py` against the built DLL) and an Ubuntu `native-linux` job (the Linux
+helper's build, its ctest tests, and `tests/test_native_linux.py` against it) that preflight
+does not run. Locally, `tests/test_native_linux.py` skips unless `native/build/` holds
+`libzexion_ap.so`, `libzexion_ap_hooktest.so` and `zap_fake_game` (or `ZEXION_NATIVE_BUILD`
+names another build folder); build them as `CLAUDE.md` ("Checks") shows when `native/linux/` or
+`client/linux_helper.py` changed. Locally,
 `tests/test_native.py` skips its load test unless `native/build/Release/zexion_ap.dll` exists (or
 `ZEXION_DLL` names a build); build it as `CLAUDE.md` ("Checks") shows when `native/` or
 `client/native.py` changed. Without `sh` the hook runner's tests skip, and without the world

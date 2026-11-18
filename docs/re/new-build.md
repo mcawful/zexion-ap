@@ -11,7 +11,11 @@ the same heading with the new build, beside the old one, never in its place.
 
 1. **Identify the build.** `.venv/Scripts/python tools/build_id.py` prints a block for
    [`builds.md`](builds.md). If the exe's SHA-256 differs from every build there, add a new
-   section (B2, and so on) with it, and note which data files changed.
+   section (B2, and so on) with it, and note which data files changed. The Linux build has a
+   hash of its own by design: fingerprint it too, with `build_id.py` on a Linux install, and
+   record it beside the new build ("B1 on Linux" is the example). `linux.md` is pinned to B1's
+   Linux binary: re-check its Lookup, and `gGameState`'s shift, against the new binary's
+   symbols and `LoadGame`. The steps below take the Windows exe.
 2. **Copy the new build's files** into `lab/`: `.venv/Scripts/python tools/game_data.py
    RandoCells MapData Text Objects AreaEvents Enemies Bosses Missiles Sprites Sprites.png Palettes --exe`
    (into `lab/data/<exe-hash-12>/`, the first 12 hex digits of the exe's SHA-256, so builds

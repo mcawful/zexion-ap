@@ -1,7 +1,8 @@
 # Working in zexion-ap
 
 Archipelago (AP) multiworld support for **Zexion** (Gallant Leaf, Steam app 3392510), a native
-x64 exe on SDL2 and FMOD with no modding API: its mod folders are for sprites and translations
+x64 exe on SDL2 and FMOD with no modding API (it also has a Linux build, not yet supported:
+[`docs/re/linux.md`](docs/re/linux.md)): its mod folders are for sprites and translations
 only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
 Everything here comes from reverse engineering, hence the evidence rules below.
 
@@ -32,7 +33,11 @@ Where things are:
 - **No hard-coded addresses.** ASLR is on and the game is still patched. Live addresses come
   only from byte patterns checked to match exactly once. Struct offsets, and per-build offsets
   into an exe copy read offline, are allowed when `docs/re/memory.md` records them for that
-  build. `Target.rvas` in `client/patterns.py` is for checks only.
+  build. `Target.rvas` in `client/patterns.py` is for checks only. The Linux build is a
+  fixed-address executable that keeps its symbol table (`docs/re/builds.md`, "B1 on Linux"):
+  there, live addresses come from that table, by name, once the binary's GNU build id matches a
+  known build, plus offsets `docs/re/linux.md` records for that build; an address read from the
+  table is never written into code (the owner's decision, 2026-11-18).
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
   its `install` (an empty slot, after a verified backup) and `restore` write the save folder.
@@ -66,7 +71,8 @@ Where things are:
 Windows, Linux or macOS, with git and uv. Commands here are for a POSIX shell: bash or zsh, Git
 Bash on Windows (PowerShell differs only in `VAR=value command`). `.venv/Scripts/` is the
 venv's folder on Windows; on Linux and macOS it is `.venv/bin/`, in every command in this file.
-The game, the client against it, the live tools and the helper are Windows-only
+The game the mod supports, the client against it, the live tools and the helper are
+Windows-only; the game's Linux build has a first-stage helper of its own and `helper.py status`
 ([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
 
 uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
@@ -105,6 +111,16 @@ later; CMake's default Visual Studio generator). CI's native job runs these, the
 cmake -S native -B native/build -A x64
 cmake --build native/build --config Release
 ctest --test-dir native/build -C Release --output-on-failure
+```
+
+The Linux helper, on Linux (GCC or Clang, and CMake 3.20 or later:
+`uv pip install --python .venv cmake`). CI's `native-linux` job runs these:
+
+```sh
+.venv/bin/cmake -S native -B native/build
+.venv/bin/cmake --build native/build -j
+.venv/bin/ctest --test-dir native/build --output-on-failure
+.venv/bin/python -m pytest tests/test_native_linux.py
 ```
 
 Nothing in `tests/` needs the game, and CI never runs it.
@@ -148,7 +164,7 @@ game or save folders.
 | `memscan.py write ADDR HEX --yes` | write live memory | **yes: ask** |
 | `grant.py show`, `watch` | the live inventory by name | no |
 | `grant.py set ITEM VALUE --expect N --yes` | grant by hand (inventory byte only; logs to `lab/grants.jsonl`) | **yes: ask** |
-| `helper.py status` | is the helper loaded; its frame rate | no |
+| `helper.py status` | is the helper loaded; its frame rate (on Linux, the Linux helper's, and whether the game's memory reads through it) | no |
 | `helper.py load --yes`, `unload --yes` | load or unload the helper (logs to `lab/helper.jsonl`) | **yes: ask** |
 | `check_patterns.py EXE` or `--live` | `client/patterns.py` against an exe copy or the running game | no |
 | `game_data.py NAMES --exe` | copy game data into `lab/data/<exe-hash-12>/` | no |
@@ -160,11 +176,14 @@ game or save folders.
 | `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF`, and its notes are written | no |
 | `release_notes.py [VERSION] [--previous TAG] [--notes FILE] [--out FILE]` | the release's message, to check before it is published | no |
 
-The tools find the game through Steam's library list (on Windows, from the registry) and the
-saves through `%APPDATA%`. `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR`
+The tools find the game through Steam's library list (on Windows, from the registry; on Linux,
+from a native, Flatpak or Snap Steam's folder) and the saves through `%APPDATA%` (on Linux,
+SDL's folder for the game or Flatpak Steam's: `docs/DEVELOPING.md`, "Platforms").
+`ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR`
 (or `save_lab.py --save-dir`) and `ZEXION_LAB_DIR` point them elsewhere; the tests use the
 last two. `memscan.py`, `grant.py`, `helper.py` and `check_patterns.py --live` work on the
-running game, so on Windows only; the rest run anywhere given those folders.
+running game, so on Windows only (but `helper.py status`, which also runs on Linux with the
+game's Linux build); the rest run anywhere given those folders.
 
 ## Releases and versions
 
@@ -184,10 +203,11 @@ players: the version's notes, `docs/releases/<version>.md`, then the install gui
 published messages; `tests/test_release_footer.py` that the files the guide names are the
 release's.
 
-- **The release version** is one number in three places: `VERSION` in `client/native.py`,
-  `kVersion` in `native/src/dllmain.cpp` and `world_version` in
-  `worlds/zexion/archipelago.json`. Raise all three together before a release:
-  `tests/test_cross_checks.py` and `build_apworld.py` check they match, and the release gate
+- **The release version** is one number in four places: `VERSION` in `client/native.py`,
+  `kVersion` in `native/src/dllmain.cpp` and in `native/linux/src/core.h`, and `world_version`
+  in `worlds/zexion/archipelago.json`. Raise all four together before a release:
+  `tests/test_cross_checks.py` checks they match (`build_apworld.py` checks all but the Linux
+  helper's, which a release does not yet carry), and the release gate
   (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last
   release and the version on `main`. The helper shows it on the title screen. The sample YAMLs name
   it too: run `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py`
@@ -230,6 +250,9 @@ release's.
   | `patterns.py` | byte patterns per target; known builds; `Target.rvas` |
   | `process.py` | another process's memory through the Windows API |
   | `pe.py` | the PE header fields the client and tools read |
+  | `elf.py` | the ELF fields and symbols of the game's Linux build |
+  | `procfs.py` | Linux processes by name, through `/proc` |
+  | `linux_helper.py` | the Linux game and its helper's socket; reads through it |
   | `ids.py` | item and location codes; the game's sizes |
   | `save_patch.py` | the seed's plan from slot data; the save's layout |
   | `native.py` | load the helper and talk to it over its pipe |
@@ -241,8 +264,8 @@ release's.
   | `shields.py` | received Energy Shields (`shield`) |
   | `offline.py` | `offline_put`: files for AP saves without the client |
 
-- `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`:
-  [`native/README.md`](native/README.md).
+- `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`; in
+  `linux/`, the Linux helper `libzexion_ap.so`: [`native/README.md`](native/README.md).
 - `samples/`: the release's sample YAMLs, one per mode: Archipelago's template of each of the
   world's presets (`web_world.py`, `options_presets`), Easy's, Standard's and OHKO's without
   Custom mode's own options, written by `tools/gen_sample_yamls.py`;
@@ -253,8 +276,8 @@ release's.
 - `docs/re/`: the reverse-engineering record.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
-  a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
-  must agree on (version, builds, `config` keys, the request names and the replies the client
+  a fresh save). `test_cross_checks.py` reads `native/src` and `native/linux/src` for what the
+  client and the helpers must agree on (version, builds, `config` keys, the request names and the replies the client
   branches on, the offline seed's header and keys, the label separator, the font's punctuation,
   the item record count, the flags and layouts both read), and the world's `world_version`.
   `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,

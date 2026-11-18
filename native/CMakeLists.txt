@@ -1,10 +1,16 @@
 # The native helper the AP client loads into the running game, or the proxy version.dll (also
-# built here) loads as the game starts (see native/README.md).
+# built here) loads as the game starts (see native/README.md). On Linux, the Linux helper
+# instead (linux/, "The Linux helper").
 cmake_minimum_required(VERSION 3.20)
 project(zexion_ap LANGUAGES CXX)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  enable_testing()
+  add_subdirectory(linux)
+  return()
+endif()
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-  message(FATAL_ERROR "zexion_ap builds for 64-bit Windows only, like the game")
+  message(FATAL_ERROR "zexion_ap builds for 64-bit Windows, or x86-64 Linux, like the game")
 endif()
 # The flags below are MSVC's, and the client, the release builder and the tests look for the
 # DLLs under native/build/Release, where only a multi-config generator puts them.

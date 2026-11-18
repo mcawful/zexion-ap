@@ -24,7 +24,10 @@ around the change.
    once, plus arithmetic documented in `docs/re/memory.md`. A struct field offset, or a
    per-build offset into an exe copy read offline (`tools/gen_world_data.py`, `PRESETS`), is
    acceptable only when `docs/re/memory.md` records it for that build; name the entry or say it
-   is missing. `Target.rvas` in `client/patterns.py` is for checks only: flag any live use.
+   is missing. `Target.rvas` in `client/patterns.py` is for checks only: flag any live use. On
+   the Linux build, an address may instead come from the binary's symbol table by name, once its
+   GNU build id matches a known build, plus offsets `docs/re/linux.md` records (`CLAUDE.md`,
+   "Rules"); flag a symbol's address written into code, or a symbol used without the build check.
 2. **Unchecked memory access.** A read or write that does not handle: the process having exited
    or restarted (a stale handle, a new base address); a pattern that matched zero or several
    times; a null or out-of-range pointer in a chain; the game being on a build not in

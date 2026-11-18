@@ -68,6 +68,71 @@ def pe_image(
     return bytes(data)
 
 
+# The symbols ``elf_image`` gives by default: (name, address, size, type, defined).
+ELF_SYMBOLS = [
+    ("gGameState", 0x9E7840, 0x8CCBF8, 1, True),
+    ("gCurrentSaveGame", 0x14945A0, 4, 1, True),
+    ("_Z10PlaySoundi", 0x412340, 0x80, 2, True),
+    ("SDL_GL_SwapWindow", 0, 0, 2, False),
+]
+ELF_BUILD_ID = bytes.fromhex("4c4416eed9e8a1fa1b373ae3b1badec33510fc90")
+
+
+def elf_image(
+    symbols: list[tuple[str, int, int, int, bool]] = ELF_SYMBOLS,
+    build_id: bytes | None = ELF_BUILD_ID,
+    kind: int = 2,
+    data_bytes: bytes = b"zexion data",
+) -> bytes:
+    """A 64-bit little-endian ELF file with ``.tbss`` (thread-local, 0x10 bytes at 0x6BA0E0, as
+    a linker overlaps it with what follows), ``.data`` (``data_bytes`` at 0x6BA0E0), ``.bss``
+    (0x9E0000, 0x1000000 bytes), a GNU build-id note, and ``symbols`` in ``.symtab``."""
+    shstr = b"\0.tbss\0.data\0.bss\0.note.gnu.build-id\0.symtab\0.strtab\0.shstrtab\0"
+
+    def name(n: str) -> int:
+        return shstr.index(b"\0" + n.encode() + b"\0") + 1
+
+    note = b""
+    if build_id is not None:
+        note = struct.pack("<III", 4, len(build_id), 3) + b"GNU\0" + build_id
+    strtab = bytearray(b"\0")
+    symtab = bytearray(24)  # the null symbol
+    for sym, value, size, stype, defined in symbols:
+        at = len(strtab)
+        strtab += sym.encode() + b"\0"
+        symtab += struct.pack("<IBBHQQ", at, 0x10 | stype, 0, 1 if defined else 0, value, size)
+    body = bytearray(64)
+    blobs = {}
+    for key, blob in (("data", data_bytes), ("note", note), ("sym", symtab)):
+        blobs[key] = len(body)
+        body += blob
+        body += b"\0" * (-len(body) % 8)
+    for key, blob in (("str", bytes(strtab)), ("shstr", shstr)):
+        blobs[key] = len(body)
+        body += blob
+    body += b"\0" * (-len(body) % 8)
+    shoff = len(body)
+    alloc, write, tls = 0x2, 0x1, 0x400
+    sections = [
+        (0, 0, 0, 0, 0, 0, 0, 0),
+        (name(".tbss"), 8, alloc | write | tls, 0x6BA0E0, blobs["data"], 0x10, 0, 0),
+        (name(".data"), 1, alloc | write, 0x6BA0E0, blobs["data"], len(data_bytes), 0, 0),
+        (name(".bss"), 8, alloc | write, 0x9E0000, blobs["data"], 0x1000000, 0, 0),
+        (name(".note.gnu.build-id"), 7, alloc, 0x400200, blobs["note"], len(note), 0, 0),
+        (name(".symtab"), 2, 0, 0, blobs["sym"], len(symtab), 6, 24),
+        (name(".strtab"), 3, 0, 0, blobs["str"], len(strtab), 0, 0),
+        (name(".shstrtab"), 3, 0, 0, blobs["shstr"], len(shstr), 0, 0),
+    ]
+    for sname, stype, flags, addr, offset, size, link, entsize in sections:
+        body += struct.pack(
+            "<IIQQQQIIQQ", sname, stype, flags, addr, offset, size, link, 0, 8, entsize
+        )
+    body[0:16] = b"\x7fELF\x02\x01\x01" + b"\0" * 9
+    struct.pack_into("<HHIQQQ", body, 16, kind, 62, 1, 0x40C670, 0, shoff)
+    struct.pack_into("<IHHHHHH", body, 48, 0, 64, 56, 0, 64, len(sections), 7)
+    return bytes(body)
+
+
 # --- a seed's plan, and a fresh save of its mode ---------------------------------------------
 
 AMOUNTS = (3, 17, 3, 122, 0, 12)  # Standard's, in save order

@@ -19,7 +19,19 @@ from pathlib import Path
 
 import pytest
 
-from client import aplabels, discs, game, ids, native, newgame, offline, patterns, session, ticks
+from client import (
+    aplabels,
+    discs,
+    game,
+    ids,
+    linux_helper,
+    native,
+    newgame,
+    offline,
+    patterns,
+    session,
+    ticks,
+)
 from client import save_patch as sp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +60,32 @@ def test_the_client_knows_the_helpers_size_limits() -> None:
 def test_the_helper_is_the_version_the_client_asks_for() -> None:
     versions = re.findall(r'constexpr char kVersion\[\] = "([^"]+)";', source("dllmain.cpp"))
     assert versions == [native.VERSION]
+
+
+LINUX_CORE = SRC.parent / "linux" / "src" / "core.h"
+
+
+def test_the_linux_helper_is_the_release_and_agrees_with_the_client() -> None:
+    header = LINUX_CORE.read_text(encoding="utf-8")
+    assert re.findall(r'constexpr char kVersion\[\] = "([^"]+)";', header) == [native.VERSION]
+    assert re.findall(r'constexpr char kDisabledName\[\] = "([^"]+)";', header) == [
+        native.DISABLED_NAME
+    ]
+    sizes = re.findall(r"constexpr size_t kMaxRequest = (\d+) \* 1024;", header)
+    assert [int(n) * 1024 for n in sizes] == [offline.MAX_REQUEST]
+    assert linux_helper.MAX_REPLY == offline.MAX_REQUEST
+    reads = re.findall(r"constexpr size_t kMaxRead = (\d+) \* 1024;", header)
+    assert [int(n) * 1024 for n in reads] == [linux_helper.MAX_READ]
+    prefix = re.findall(r'constexpr char kDataPrefix\[\] = "([^"]+)";', header)
+    assert [p.encode() for p in prefix] == [linux_helper.DATA_PREFIX]
+
+
+def test_the_linux_helper_knows_the_linux_builds_the_client_knows() -> None:
+    core = (LINUX_CORE.parent / "core.cpp").read_text(encoding="utf-8")
+    table = braced(core, "kKnownBuilds[] = {")
+    rows = re.findall(r'\{\s*"(\w+)",\s*"([0-9a-f]+)"\s*\}', table)
+    assert rows, "no builds parsed from core.cpp"
+    assert rows == [(b.name, b.build_id) for b in patterns.KNOWN_LINUX_BUILDS]
 
 
 def test_the_traps_are_the_same_codes_and_names_in_the_client_and_the_helper() -> None:

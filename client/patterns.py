@@ -35,6 +35,24 @@ KNOWN_BUILDS = (
 
 
 @dataclass(frozen=True)
+class LinuxBuild:
+    name: str  # the Windows build it is the Linux counterpart of
+    sha256: str  # of the Linux binary, Zexion, on disk
+    build_id: str  # its GNU build id, hex: what the Linux helper identifies it by
+
+
+# Linux binaries docs/re/linux.md maps (docs/re/builds.md, "B1 on Linux"). Their addresses come
+# from the binary's own symbol table, never from here (CLAUDE.md, "Rules").
+KNOWN_LINUX_BUILDS = (
+    LinuxBuild(
+        "B1",
+        "cd64cd9ec469b4f1c006ba381b5b1223fd9b47b51b8c8308adc5520d112670e7",
+        "4c4416eed9e8a1fa1b373ae3b1badec33510fc90",
+    ),
+)
+
+
+@dataclass(frozen=True)
 class Pattern:
     text: str  # hex bytes, "??" for wildcards
     disp_at: int  # offset in the match of the 32-bit field leading to the address

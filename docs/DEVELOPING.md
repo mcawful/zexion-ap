@@ -252,23 +252,74 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 
 ## Platforms
 
-The game runs on Windows, so whatever touches it does too. Everything else runs on Windows,
-Linux and macOS, and CI runs ruff and pytest on all three.
+The mod is for the game's Windows build, so whatever attaches to the game is Windows-only.
+Zexion also has a native Linux build (below), for which only a first stage exists. Everything else
+runs on Windows, Linux and macOS, and CI runs ruff and pytest on all three.
 
 Windows only:
 
 - the client attached to the game (`client/process.py` is the Windows API; the rest of
   `client/` is plain Python, tested anywhere);
-- the live tools: `memscan.py`, `grant.py`, `helper.py`, `check_patterns.py --live`;
-- the helper and the proxy (`native/`): MSVC and CMake's Visual Studio generator, and so a
+- the live tools: `memscan.py`, `grant.py`, `helper.py` (but its `status`, below),
+  `check_patterns.py --live`;
+- the helper and the proxy (`native/`, but `native/linux/`): MSVC and CMake's Visual Studio
+  generator, and so a
   release, whose builder packs their DLLs. `tools/build_apworld.py` itself, and its tests, run
   anywhere;
-- finding the game by itself: Steam's path comes from the registry. Elsewhere, set
-  `ZEXION_GAME_DIR`; the saves' folder comes from `%APPDATA%`, else `ZEXION_SAVE_DIR`.
+- finding the game's install from Steam's registry entry, and the saves from `%APPDATA%`.
+
+On Linux the tools look for the install and the saves in the usual places instead (below); on
+macOS, set `ZEXION_GAME_DIR` and `ZEXION_SAVE_DIR`.
+
+**Zexion's Linux build.** Zexion also has a native Linux build on Steam (the store's platform
+list shows Linux, read 2026-11-16), which Steam runs by default on Linux and a Steam Deck (a
+Deck's Properties showed "Steam Linux Runtime 3.0", 2026-11-16). Its binary, a fixed-address
+ELF executable that keeps its symbol table, and its data files, B1's, are recorded in
+`re/builds.md` ("B1 on Linux"), and its targets, as far as they are mapped, in `re/linux.md`.
+Support for it is being built, in stages. The client does not attach to it yet (the client's
+process calls are the Windows API), so it is not supported, and the setup guide says so ("Linux
+and Steam Deck"). What exists so far:
+
+- the Linux helper, `libzexion_ap.so` (`native/linux/`, `native/README.md`, "The Linux
+  helper"), preloaded by the game's launch options: it counts the game's frame calls, and on
+  a socket answers `hello`, `ping` and `read`, reading the game's memory for the client (the
+  client can't read it itself: `re/linux.md`, "Reading the running game"). Tested against a
+  stand-in game only (`tests/test_native_linux.py`, run on the test PC 2026-11-18, and by CI's
+  `native-linux` job); not yet run in the game. `tools/helper.py status` finds the game,
+  checks its build, makes sure the socket is the game's, and reads its memory through it
+  (`client/linux_helper.py`); `helper.py load` and `unload` are Windows-only;
+
+- finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
+  `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak
+  (`~/.var/app/com.valvesoftware.Steam/.local/share/Steam`) or Snap Steam, and for the saves in
+  SDL's preference folder (`$XDG_DATA_HOME/Gallant Leaf/Zexion`, else under `~/.local/share`),
+  Flatpak Steam's (`~/.var/app/com.valvesoftware.Steam/.local/share/Gallant Leaf/Zexion`),
+  Snap Steam's, or a library's Proton prefix (for the Windows build under Proton). For each,
+  the one that exists, and an error naming them when several do (two installs, or saves synced
+  into a folder the game doesn't use). Snap's and Proton's layouts are assumed, not seen;
+- `tools/build_id.py` fingerprints the Linux binary from its ELF header (`client/elf.py`, which
+  also reads its symbols), and `tools/game_data.py --exe` copies it, into a folder of its own
+  hash. That copy is an ELF file: `check_patterns.py`, `make_pattern.py` and
+  `gen_world_data.py` take the Windows exe's copy, which `--exe` makes only from a Windows
+  install;
+- `tools/save_lab.py` reads its saves, which have the Windows layout, and `install` and
+  `restore` refuse while a process going by `Zexion` or `Zexion.exe` runs (by its `comm`, its
+  executable's or a command-line entry's file name: `client/procfs.py`). They also refuse when
+  that can't be told: run from a sandbox whose `/proc` hides the host's processes (a nested
+  process-id namespace, a Flatpak terminal, WSL), or with a process of the user's that can't be
+  read. That the running game goes by those names (in the host's `/proc`, also under Flatpak's
+  Steam) is assumed, not yet seen: tested only on stand-ins.
+
+Running the Windows build under Proton (a forced compatibility tool), with the proxy needing
+`WINEDLLOVERRIDES="version=n,b"` and the Windows Archipelago run inside the game's prefix, is
+an untried route: the Steam Deck run stopped before it, at the owner's choice, with no Proton
+run of the game at all.
 
 Tests that need Windows skip elsewhere and say why (`tests/test_process.py`, parts of
 `tests/test_native.py` and `tests/test_pe.py`), as does `tests/test_native.py`'s load test
-without a built helper and `tests/test_hook_runner.py`'s runner tests without `sh`.
+without a built helper and `tests/test_hook_runner.py`'s runner tests without `sh`; tests that
+need Linux skip elsewhere (`tests/test_procfs.py`'s and `tests/test_elf.py`'s tests on the
+running system).
 
 The commands here and in `CLAUDE.md` are for a POSIX shell: bash or zsh, or Git Bash on Windows, which Git for
 Windows installs. Claude Code needs Git Bash on Windows here too: the hook commands in
@@ -287,9 +338,11 @@ python.org install on Windows; on Linux and macOS use uv's own installer, since 
 Ubuntu's and Homebrew's Pythons refuse `pip install --user` (they are "externally managed") and
 many systems have `python3` but no `python`.
 
-The native helper, on Windows only, needs Visual Studio 2022 or later with the C++ workload, and
-CMake 3.20 or later; `native/CMakeLists.txt` refuses another compiler or a single-config
-generator (such as plain Ninja), since the DLLs are looked for under `native/build/Release/`.
+The Windows helper needs Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or
+later; on Windows `native/CMakeLists.txt` refuses another compiler or a single-config generator
+(such as plain Ninja), since the DLLs are looked for under `native/build/Release/`. On Linux the
+same file builds the Linux helper instead, with GCC or Clang and CMake 3.20 or later
+([`CLAUDE.md`](../CLAUDE.md), "Checks").
 
 Line endings: `.gitattributes` checks every text file out with LF, on Windows too, whatever
 `core.autocrlf` says.
@@ -302,7 +355,8 @@ native tests cover: [`native/README.md`](../native/README.md), "Building".
 
 Some tests skip without what they need: the hook runner's without `sh`,
 `worlds/zexion/test/test_client_agrees.py` without the repo's `client` beside the world (the
-link `ap_checkout.py` makes), and `tests/test_native.py`'s load test without a built helper. CI
+link `ap_checkout.py` makes), `tests/test_native.py`'s load test without a built helper, and
+`tests/test_native_linux.py` without a Linux build of `native/`. CI
 sets `ZEXION_REQUIRE` (a comma-separated list: `sh`, `client`, `helper`) in the jobs that have
 them, and there a missing one fails a test as well.
 
@@ -354,12 +408,12 @@ approval: it has no tag yet, but `main` already holds its number. If GitHub can'
 releases or `main`'s version can't be read, the gate fails. The gate runs again on any edit to the pull request, so one retargeted from
 `develop` to `main` is checked too.
 
-A release has one version number, in three places, which the tests and the builder check
+A release has one version number, in four places, which the tests and the builder check
 ([`CLAUDE.md`](../CLAUDE.md), "Releases and versions").
 
 To release:
 
-1. On a topic branch, raise the version in all three places and run
+1. On a topic branch, raise the version in all four places and run
    `tools/gen_sample_yamls.py`. In the same pull request, write the release's notes for players:
    copy `docs/releases/TEMPLATE.md` to `docs/releases/<version>.md` and draft it from the pull
    requests merged into `develop` since the last release, as

@@ -1,6 +1,7 @@
 # The native helper
 
-`zexion_ap.dll`, **the helper**, runs inside Zexion and does what the client cannot from
+`zexion_ap.dll`, **the helper**, runs inside Zexion (its Windows build; the Linux build has a
+first-stage helper of its own: "The Linux helper", below) and does what the client cannot from
 outside: work on the game's own thread, between frames. It gets in two ways: **the proxy**
 `version.dll` in the game's folder loads it as the game starts, or the client loads it on
 attaching (`client/native.py`; `tools/helper.py` too, for tests). The client talks to it over a
@@ -2175,9 +2176,75 @@ lands, not only the place passed.
     unload's refusal while a popup shows; Assist Unlock in a translation; a trap's popup (its name
     in the translation's case, `layout_popup`: "Traps"); a save-state load.
 
+## The Linux helper
+
+`libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
+it reads the running game's memory for the client and counts its frames. None of the parts above
+runs on Linux yet, and no client uses it yet; `tools/helper.py status` talks to it. Not yet run
+in the game: tested against a stand-in game (`tests/test_native_linux.py`).
+
+- **Getting in.** The game's launch options in Steam preload it:
+  `LD_PRELOAD="/path/to/libzexion_ap.so:$LD_PRELOAD" %command%` (assumed: that Steam's runtime
+  container passes it on; not tried). Every program the launch starts loads it, so it does
+  nothing unless the program it is in is a known Linux build, told by the main program's GNU
+  build id (`src/core.cpp`, `kKnownBuilds`, kept in step with `KNOWN_LINUX_BUILDS` in
+  `client/patterns.py`; `tests/test_cross_checks.py` checks them). In a known build it writes
+  `zexion-ap <version>: serving build <name>` to stderr; in a program named `Zexion` of another
+  build, `zexion-ap <version>: not a known build of Zexion (build id <hex>)`, the line a player
+  sees after a game update; elsewhere nothing. A preloaded library can't be unloaded: there is
+  no `unload`, and no load into a running game. A `zexion_ap.disabled` beside the `.so` turns
+  it off, as beside the proxy on Windows. It exports `SDL_GL_SwapWindow` alone
+  (`linux/exports.map`): the C++ runtime linked into it stays its own, never standing in for
+  the game's `libstdc++` (a test reads the build's `.dynsym`).
+- **The frame call.** It defines `SDL_GL_SwapWindow`, which the game calls through its PLT
+  from two places (`docs/re/linux.md`, "The per-frame call"; that one runs once a frame is
+  assumed), so the preloaded one is the game's; it counts the call and passes it on to the next
+  one, SDL's or another preloaded library's (Steam's overlay, say), found by
+  `dlsym(RTLD_NEXT)` before the game starts, and looked for again if it was missing then (said
+  on stderr). It returns the next one's result as an `int`: nothing for SDL2's callers, SDL3's
+  `bool` for a program of SDL3 in the same launch. In another program, or another build, it only
+  passes the call on.
+- **The socket.** An abstract unix socket, `zexion-ap-<pid>`, `SOCK_SEQPACKET`: one request a
+  message, one reply a message, one client at a time, as the Windows pipe. The next client's
+  connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
+  when its first request has no reply), and a client that sends nothing for 30 s is dropped.
+  The pid is the game's own, which inside Flatpak's Steam or the Steam Runtime's container is
+  assumed not to be the host's (not seen): the client takes it from `NSpid`. An abstract socket
+  has no file permissions, and any process can bind a name first: the helper serves only a
+  client of its own user (`SO_PEERCRED`) and drops the others; the client talks only to a server
+  that is the game's own process, of its user (`SO_PEERCRED` again: the pid as the client sees
+  it), whose `hello` names the game's build. A request over 64 KB drops the client. The helper
+  refuses to start, saying so on stderr, if the name is taken. Requests:
+
+  | Request | Reply |
+  |---|---|
+  | `hello` | `zexion-ap <version> build=<B1\|unknown> hooked=<0\|1> platform=linux folder=<0\|1>` (`folder=1`: the `.so` is in the game binary's own folder) |
+  | `ping` | `pong frames=<calls since load>` |
+  | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
+
+  Anything else gets `error unknown request`.
+- **Reading the game.** The helper reads the game's memory itself, for `read`, with
+  `process_vm_readv` on its own pid: the kernel copies it, so an address not mapped is an
+  error (`error Bad_address`), not a fault. It never opens the game's memory to another process
+  (no `prctl(PR_SET_PTRACER)`), whatever the kernel's ptrace scope: the client reads only
+  through it (`docs/re/linux.md`, "Reading the running game"). Stand-in tests: a separate process
+  is refused the stand-in game's memory with a client connected or not (on the test PC, scope 1,
+  2026-11-18), and reads through the helper return the stand-in's bytes, one piece or two.
+- **Its own runtime.** The C++ runtime is linked in, so it needs only glibc (with `ld-linux`,
+  its dynamic loader) from the game's container, which may be older than the one it was built
+  with. A build on a newer glibc asks for its newer symbol versions and would fail to load under an
+  older one: a release must be built on an old enough glibc (not settled yet). Read on the test
+  PC, 2026-11-18: the Steam Runtime installed there (sniper 3.0.20261021) ships glibc 2.31
+  (its `usr-mtree.txt.gz` lists `libc-2.31.so`); Flatpak's Steam runs on the Flatpak runtime
+  `org.freedesktop.Platform` 26.08, whose glibc is 2.44 (`strings` of its `libc.so.6`); a build
+  there on glibc 2.44 asks for up to `GLIBC_2.38` (`objdump -T`) and nothing from libstdc++
+  (`readelf -d`: `libc`, `libm` and `ld-linux` only). Which glibc the container gives the game,
+  the runtime's or the newer of the two, is assumed (pressure-vessel's documented rule), not
+  checked.
+
 ## Building
 
-Windows only: Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or later, with a
+Windows: Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or later, with a
 multi-config generator (the default Visual Studio one; `CMakeLists.txt` refuses single-config
 ones, and another compiler than MSVC). From the repo root:
 
@@ -2190,6 +2257,24 @@ ctest --test-dir native/build -C Release --output-on-failure
 The helper lands in `native/build/Release/zexion_ap.dll` (gitignored), the proxy in
 `native/build/proxy/Release/version.dll`. The C runtime is linked statically, so the helper needs
 nothing the game doesn't already load.
+
+Linux: GCC or Clang, and CMake 3.20 or later (`uv pip install --python .venv cmake` puts one
+in the venv). From the repo root, the same folder, one config:
+
+```sh
+cmake -S native -B native/build
+cmake --build native/build -j
+ctest --test-dir native/build --output-on-failure
+.venv/bin/python -m pytest tests/test_native_linux.py
+```
+
+That builds `native/build/libzexion_ap.so` (the Linux helper), the test build
+`libzexion_ap_hooktest.so`, which serves any program, and the stand-in game `zap_fake_game`, a
+fixed-address executable as the game is, calling `SDL_GL_SwapWindow` from a stand-in
+`libzap_sdl_stub.so`. ctest runs `tests/core_tests.cpp` (build ids, replies);
+`tests/test_native_linux.py` preloads both builds into the stand-in game ("The Linux helper");
+`ZEXION_NATIVE_BUILD` points it at another build folder than `native/build`.
+CI runs all of it on Ubuntu, with `ZEXION_REQUIRE=helper`.
 
 CI builds both, runs the ctest tests, and runs `tests/test_native.py` on Windows, which loads
 the build into a sleeping Python process (no known build, so nothing is hooked) and checks the
@@ -2331,3 +2416,7 @@ the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe cli
 | `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
 `proxy/` is the proxy `version.dll`.
+
+`linux/` is the Linux helper: `src/core.cpp` (the known builds, the build id note, the replies),
+`src/helper.cpp` (the constructor, the socket's thread, the frame call), and in `tests/` the
+ctest tests, the stand-in game and its stand-in SDL.

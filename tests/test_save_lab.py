@@ -237,7 +237,22 @@ def _game(monkeypatch: pytest.MonkeyPatch, find_pid) -> list[str]:
         return find_pid(name)
 
     monkeypatch.setattr(save_lab, "WINDOWS", True)
+    monkeypatch.setattr(save_lab, "LINUX", False)
     monkeypatch.setattr(save_lab.process, "find_pid", find)
+    return asked
+
+
+def _linux_game(monkeypatch: pytest.MonkeyPatch, find_pid) -> list:
+    """The game looked for as on Linux, with ``procfs.find_pid`` faked; the names it was asked."""
+    asked: list = []
+
+    def find(names):
+        asked.append(names)
+        return find_pid(names)
+
+    monkeypatch.setattr(save_lab, "WINDOWS", False)
+    monkeypatch.setattr(save_lab, "LINUX", True)
+    monkeypatch.setattr(save_lab.procfs, "find_pid", find)
     return asked
 
 
@@ -291,14 +306,50 @@ def test_restore_refuses_while_the_game_runs(
     assert save_lab.main(["restore", str(first), "--yes"]) == 0
 
 
-def test_off_windows_the_game_is_not_looked_for(
+def _linux_unreadable(names):
+    raise save_lab.procfs.ProcessError("listing processes in /proc failed")
+
+
+@pytest.mark.parametrize(
+    ("find_pid", "said"),
+    [(_running, "Zexion is running"), (_linux_unreadable, "Could not tell")],
+    ids=["running", "unknown"],
+)
+def test_on_linux_install_refuses_while_the_game_runs(
+    saves: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, find_pid, said
+) -> None:
+    patched = _patched(tmp_path)
+    save_lab.backup()
+    asked = _linux_game(monkeypatch, find_pid)
+    capsys.readouterr()
+    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
+    assert asked == [("Zexion", "Zexion.exe")]  # the Linux build, or the exe under Proton
+    assert said in capsys.readouterr().out
+    assert (saves / "Save Game 3.sav").read_bytes() == template()
+    _linux_game(monkeypatch, lambda names: None)  # closed
+    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 0
+
+
+def test_on_linux_restore_refuses_while_the_game_runs(
+    saves: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = save_lab.backup()
+    (saves / "Save Game 3.sav").write_bytes(b"x" * SIZE)
+    _linux_game(monkeypatch, _running)
+    assert save_lab.main(["restore", str(first), "--yes"]) == 1
+    assert (saves / "Save Game 3.sav").read_bytes() == b"x" * SIZE
+
+
+def test_off_windows_and_linux_the_game_is_not_looked_for(
     saves: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     asked = _game(monkeypatch, _running)
+    linux_asked = _linux_game(monkeypatch, _running)
     monkeypatch.setattr(save_lab, "WINDOWS", False)
+    monkeypatch.setattr(save_lab, "LINUX", False)
     save_lab.backup()
     assert save_lab.main(["install", str(_patched(tmp_path)), "3", "--yes"]) == 0
-    assert asked == []
+    assert asked == [] and linux_asked == []
 
 
 def test_restore_refuses_a_backup_unlike_its_manifest(saves: Path, tmp_path: Path) -> None:

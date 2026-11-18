@@ -9,6 +9,11 @@
 ``lab/helper.jsonl`` before and after. ``load`` refuses a build ``client/game.py`` does not
 know, and the helper itself hooks nothing in an unknown build. ``ZEXION_DLL`` points at
 another build of the helper than native/build/Release/zexion_ap.dll.
+
+On Linux, with the game's Linux build, only ``status`` runs: the Linux helper is preloaded by
+the game's launch options (native/README.md, "The Linux helper"), not loaded into a running
+game. ``status`` there also reads the game's ``.rodata`` through the helper and compares it
+with the binary's, which says the binary is at its link addresses.
 """
 
 from __future__ import annotations
@@ -20,7 +25,9 @@ import time
 from protected import ROOT, append_log, lab_dir
 
 sys.path.insert(0, str(ROOT))  # the client package
-from client import game, native  # noqa: E402
+from client import elf, game, linux_helper, native, procfs  # noqa: E402
+
+LINUX = sys.platform.startswith("linux")
 
 
 def log(entry: dict) -> None:
@@ -88,6 +95,39 @@ def cmd_unload(_: argparse.Namespace, g: game.Game) -> int:
     return 0 if gone else 2
 
 
+def linux_status(g: linux_helper.LinuxGame) -> int:
+    print(f"game: pid {g.pid} (pid {g.inner_pid} in its own namespace), Linux build {g.build.name}")
+    with linux_helper.LinuxHelper(g) as helper:
+        print("helper:", helper.request("hello"))
+        first = helper.frames()
+        time.sleep(1.0)
+        print(f"frames: {first}, then {helper.frames() - first} in the next second")
+        rodata = g.image.section(".rodata")
+        size = min(rodata.size, 4096)
+        try:
+            same = helper.read(rodata.addr, size) == g.image.read(rodata.addr, size)
+        except linux_helper.LinuxHelperError as exc:
+            print(f"memory: not readable ({exc})")
+            return 1
+        where = "at its link addresses" if same else "NOT as in the binary"
+        print(f"memory: readable; .rodata ({size} bytes at {rodata.addr:#x}) {where}")
+        return 0 if same else 1
+
+
+def linux_main(command: str) -> int:
+    if command != "status":
+        print(
+            f"{command} is for Windows: on Linux the helper is preloaded by the game's launch "
+            'options (native/README.md, "The Linux helper")'
+        )
+        return 1
+    try:
+        return linux_status(linux_helper.find_game())
+    except (linux_helper.LinuxHelperError, procfs.ProcessError, elf.ELFError) as exc:
+        print(f"{exc}")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -99,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--yes", action="store_true")
         p.set_defaults(func=func)
     args = parser.parse_args(argv)
+    if LINUX:
+        return linux_main(args.command)
     if not getattr(args, "yes", True):  # load and unload
         print(f"{args.command} changes the running game; pass --yes once the player has agreed")
         return 1

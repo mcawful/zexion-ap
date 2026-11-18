@@ -2,11 +2,13 @@
 
     game_data.py RandoCells MapData Objects     copy these from the install's Files/ folder
     game_data.py --list                         list what Files/ holds (no copying)
-    game_data.py --exe                          copy Zexion.exe too (for disassembly)
+    game_data.py --exe                          copy Zexion.exe (on Linux, Zexion) too
 
 The install is only read. Copies go into lab/ (gitignored): game files must never be committed.
-The build folder name is the first 12 hex digits of Zexion.exe's SHA-256, so data from
-different game builds never mix.
+The build folder name is the first 12 hex digits of the game file's SHA-256 (Zexion.exe, or
+the Linux build's Zexion), so data from different game builds never mix. On a Linux install
+``--exe`` copies the ELF binary, not Zexion.exe: check_patterns.py, make_pattern.py and
+gen_world_data.py need the Windows exe's copy, from a Windows install.
 """
 
 from __future__ import annotations
@@ -16,20 +18,20 @@ import hashlib
 import shutil
 import sys
 
-from protected import assert_writable, game_dir, lab_dir
+from protected import assert_writable, game_dir, game_file, lab_dir
 
 MEDIA = {".wav", ".ogg", ".nsf", ".png", ".svg"}  # left out of --list
 
 
 def build_tag() -> str:
-    return hashlib.sha256((game_dir() / "Zexion.exe").read_bytes()).hexdigest()[:12]
+    return hashlib.sha256(game_file(game_dir()).read_bytes()).hexdigest()[:12]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("names", nargs="*", help="file names inside the install's Files/ folder")
     parser.add_argument("--list", action="store_true", help="list Files/ instead of copying")
-    parser.add_argument("--exe", action="store_true", help="also copy Zexion.exe")
+    parser.add_argument("--exe", action="store_true", help="also copy the game file")
     args = parser.parse_args(argv)
 
     files = game_dir() / "Files"
@@ -42,8 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     dest = assert_writable(lab_dir() / "data" / build_tag())
     dest.mkdir(parents=True, exist_ok=True)
     if args.exe:
-        shutil.copy2(game_dir() / "Zexion.exe", dest / "Zexion.exe")
-        print(f"Zexion.exe -> {dest / 'Zexion.exe'}")
+        exe = game_file(game_dir())
+        shutil.copy2(exe, dest / exe.name)
+        print(f"{exe.name} -> {dest / exe.name}")
     for name in args.names:
         src = files / name
         if src.parent != files or not src.is_file():

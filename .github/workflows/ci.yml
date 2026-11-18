@@ -7,7 +7,7 @@ name: CI
 # ZEXION_REQUIRE lists what a job's tests need and must find: a missing one fails a test, where
 # the tests that use it would only skip (sh: tests/test_hook_runner.py; client: the world linked
 # into AP, worlds/zexion/test/test_client_agrees.py; helper: the native build,
-# tests/test_native.py).
+# tests/test_native.py, and on Linux tests/test_native_linux.py).
 on:
   push:
     branches: [develop, main]
@@ -69,6 +69,29 @@ jobs:
         env:
           ZEXION_REQUIRE: helper
         run: python -m pytest tests/test_native.py -v
+
+  native-linux:
+    name: native helper (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: |
+          cmake -S native -B native/build
+          cmake --build native/build -j
+      - name: Native tests
+        run: ctest --test-dir native/build --output-on-failure
+      # tests/test_native_linux.py preloads the build into the stand-in game the build makes.
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.13"
+          activate-environment: true
+      - name: Install
+        run: uv pip install "$(grep -o '^pytest==[^ ]*' requirements-dev.txt)"
+      - name: Preload test
+        env:
+          ZEXION_REQUIRE: helper
+        run: python -m pytest tests/test_native_linux.py -v
 
   world:
     name: Archipelago world tests
