@@ -5,7 +5,7 @@
 // already the helper's. Unload restores the records and clears the pixels.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <map>

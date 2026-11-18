@@ -26,13 +26,28 @@ B1_SYMBOLS = [
 ]
 
 
-def b1_like(drop: str = "", sizes: dict[str, int] | None = None) -> elf.Image:
+# The helper's new games' symbols too (linux_targets.HELPER_TARGETS): (name, address, size, type).
+B1_HELPER_SYMBOLS = [
+    ("gRandoPreferences", 0x12F6CE0, 0x114, 1),
+    ("gExitActionP", 0x12F5710, 8, 1),
+    ("_Z16StartNewGameExitv", 0x563363, 0x200, 2),
+    ("_Z13generateRandov", 0x5ABD55, 0x200, 2),
+    ("rStartingLocationCount", 0x9E0C40, 2, 1),
+    ("rStartingLocations", 0x9E0B40, 0x100, 1),
+    ("rStartingLocationCage", 0x9E0C60, 0x40, 1),
+]
+
+
+def b1_like(drop: str = "", sizes: dict[str, int] | None = None, extra: bool = False) -> elf.Image:
+    """A binary with B1's symbols the targets name (and with ``extra`` the helper's too)."""
     sizes = sizes or {}
     symbols = [
         (name, value, sizes.get(name, size), 1, True)
         for name, value, size in B1_SYMBOLS
         if name != drop
     ]
+    if extra:
+        symbols += [(n, v, s, t, True) for n, v, s, t in B1_HELPER_SYMBOLS if n != drop]
     return elf.parse(elf_image(symbols=symbols))
 
 
@@ -87,3 +102,33 @@ def test_a_target_is_writable_only_where_the_lookup_says_measured() -> None:
         # Measured, and nothing of it assumed: only then is it written through.
         measured = status.startswith("measured") and "assumed" not in status
         assert target.measured == measured, (target.name, status)
+
+
+def test_the_helpers_targets_resolve_to_their_b1_addresses() -> None:
+    image = b1_like(extra=True)
+    resolved = linux_targets.resolve(image, linux_targets.HELPER_TARGETS)
+    assert resolved == {t.name: t.b1 for t in linux_targets.HELPER_TARGETS}
+
+
+def test_the_new_games_config_names_every_key_once() -> None:
+    config = linux_targets.newgame_config(b1_like(extra=True))
+    words = config.split()
+    assert words[0] == "config"
+    assert [w.split("=")[0] for w in words[1:]] == list(linux_targets.NEWGAME_KEYS)
+    assert "placement_fn=0x5abd55" in words and "newgame_fn=0x563363" in words
+
+
+def test_the_helpers_config_keys_are_the_helpers() -> None:
+    helper = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text("utf-8")
+    keys = re.findall(r'\{"(\w+)", &zap::NewGameAddresses::', helper)
+    assert keys == list(linux_targets.NEWGAME_KEYS)
+
+
+def test_every_helper_target_is_in_the_lookup() -> None:
+    doc = (ROOT / "docs" / "re" / "linux.md").read_text("utf-8")
+    start = doc.index("## Lookup: targets")
+    lookup = doc[start : doc.index("\n## ", start + 1)]
+    for target in linux_targets.HELPER_TARGETS:
+        row = next(r for r in lookup.splitlines() if r.startswith(f"| `{target.name}` |"))
+        assert f"0x{target.b1:X}" in row.replace("`", ""), target.name
+        assert row.rstrip(" |").rsplit(" | ", 1)[1].startswith("measured"), target.name

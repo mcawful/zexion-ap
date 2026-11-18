@@ -311,6 +311,12 @@ class LinuxProcess:
         with self._lock:
             self._connection().write(address, data)
 
+    def request(self, text: str) -> str:
+        """A request to the helper on this connection (one at a time with the reads and
+        writes)."""
+        with self._lock:
+            return self._connection().request(text)
+
     def alive(self) -> bool:
         """The game's pid still names the process attached to, and it has not exited."""
         return running(self.game.pid, self.game.started, self._proc)
@@ -319,3 +325,21 @@ class LinuxProcess:
         with self._lock:
             self._closed = True
             self._helper.__exit__()
+
+
+class LinuxNewGames:
+    """The Linux helper's new games (native/README.md, "The Linux helper"), what the client's
+    newgame_tick needs of a helper (``request``), over ``pm``, the game's connection: configured
+    with the new games' addresses from the game's binary (linux_targets.newgame_config) when
+    made. LinuxHelperError when the helper refuses them."""
+
+    def __init__(self, pm: LinuxProcess) -> None:
+        from . import linux_targets  # here: linux_targets imports nothing of this module's
+
+        self.pm = pm
+        reply = pm.request(linux_targets.newgame_config(pm.game.image))
+        if reply != "ok":
+            raise LinuxHelperError(f"the helper did not take the new games' addresses: {reply}")
+
+    def request(self, text: str) -> str:
+        return self.pm.request(text)

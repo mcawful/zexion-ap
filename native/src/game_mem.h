@@ -3,7 +3,7 @@
 // headers and code, patched and put back (CodePatch). Layouts are in game_layout.h.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <cstring>
@@ -134,6 +134,7 @@ bool glyphs_show(BYTE* const* glyphs, std::string_view text);
 // Drawn as `like` is: its palette, style and tint copied (both checked writable by the caller).
 void look_like(BYTE* sprite, const BYTE* like);
 
+#ifdef _WIN32
 // The NT headers of a loaded image, or null if `module` does not start with a PE's headers.
 const IMAGE_NT_HEADERS64* nt_headers(HMODULE module);
 // The RVA just past a section, as loaded; the section of `module` holding `rva`, or null.
@@ -141,6 +142,13 @@ uint64_t section_end(const IMAGE_SECTION_HEADER* section);
 const IMAGE_SECTION_HEADER* section_of(HMODULE module, uint64_t rva);
 // Whether `p` lies in an executable section of the loaded image `image`.
 bool in_image_code(HMODULE image, const void* p);
+#else
+// Whether `p` lies in the main program's code (an executable PT_LOAD segment of the game's
+// binary, game_mem_linux.cpp).
+bool in_image_code(const void* p);
+// Game thread, at each frame call: writable() reads the process's memory map again (once).
+void memory_map_new_frame();
+#endif
 // Writes `size` bytes over code at `at`, its page made writable for the write and then put back
 // as it was, and flushes them from the instruction cache: false, nothing written, if the page
 // could not be made writable. Game thread, so the game is not running the code meanwhile.

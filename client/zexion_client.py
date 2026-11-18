@@ -45,7 +45,7 @@ from CommonClient import (  # noqa: E402
 )
 from NetUtils import ClientStatus  # noqa: E402
 
-from . import aplabels, discs, game, ids, native, session, state, ticks  # noqa: E402
+from . import aplabels, discs, game, ids, linux_helper, native, session, state, ticks  # noqa: E402
 from .ids import ASSIST_UNLOCK, ITEM_ID_BASE, LOCATION_ID_BASE  # noqa: E402
 from .storage import (  # noqa: E402
     announced_tick,
@@ -67,6 +67,7 @@ from .ticks import (  # noqa: E402
     how_to_play,
     labels_tick,
     language_tick,
+    linux_newgame_tick,
     log,
     mission_tick,
     newgame_tick,
@@ -131,6 +132,8 @@ class ZexionContext(CommonContext):
         self.load = state.LoadState()
         self.game_conn: game.Game | None = None
         self.helper: native.Helper | None = None
+        # With the game's Linux build: its helper's new games (ticks.linux_newgame_tick).
+        self.linux_newgames: linux_helper.LinuxNewGames | None = None
         self.helper_retry_at = 0.0
         # Let go while no connection stepped, for the helper's own look (leave_helper_tick).
         self.helper_left = False
@@ -415,6 +418,7 @@ def game_closed(ctx: ZexionContext, seed: state.SeedState) -> None:
     with contextlib.suppress(Exception):
         ctx.game_conn.pm.close_process()  # the exited game's handle
     ctx.game_conn = None
+    ctx.linux_newgames = None
     ctx.drop_helper()
     # The next game's is attached with it.
     ctx.helper_left, ctx.helper_lost, ctx.helper_back_by = False, False, 0.0
@@ -484,6 +488,8 @@ async def poll(ctx: ZexionContext) -> None:
             # the step back as a lost helper does (tried again below), rather than write the
             # items owed with no popup and drop the traps waiting.
             ctx.helper_lost = ctx.helper is None
+    if ctx.helper is None:  # the game's Linux build: its own helper's new games
+        await side_tick(ctx, "new game", lambda: linux_newgame_tick(ctx))
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("item labels", lambda: labels_tick(ctx)),

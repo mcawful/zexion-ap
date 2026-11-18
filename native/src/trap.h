@@ -5,7 +5,7 @@
 // 2026-11-11). Offsets are into the player state (game_calls.cpp, player()), B1's.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstddef>
 #include <cstdint>

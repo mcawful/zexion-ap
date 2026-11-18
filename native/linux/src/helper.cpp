@@ -18,11 +18,18 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "core.h"
+#include "game_mem.h"  // in_image_code, memory_map_new_frame (native/src)
+#include "mailbox.h"
+#include "newgame.h"
+#include "requests.h"  // parse_newgame
 
 namespace {
 
@@ -70,6 +77,14 @@ bool g_folder = false;
 constexpr int kMaxSegments = 4;
 uintptr_t g_writable[kMaxSegments][2] = {};
 int g_writable_count = 0;
+
+// The game's thread's work (native/src/mailbox.h), and the new games it watches each frame once
+// a client's `config` gave their addresses (native/src/newgame.h).
+constexpr DWORD kFrameWaitMs = 1000;  // as the Windows helper's
+zap::Mailbox g_mailbox;
+zap::NewGames g_newgames;
+zap::NewGameAddresses g_newgame_at;
+bool g_configured = false;  // game thread only
 
 // The main program's GNU build id, and its writable segments: dl_iterate_phdr lists it first.
 int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
@@ -129,14 +144,21 @@ bool read_own(uint64_t address, size_t size, std::string& out) {
     return false;
 }
 
+// Whether [address, address + size) lies in the game binary's .bss (g_writable).
+bool in_game_data(uint64_t address, size_t size) {
+    for (int i = 0; i < g_writable_count; ++i) {
+        if (address >= g_writable[i][0] && address + size >= address &&
+            address + size <= g_writable[i][1]) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Into this process's memory, by the kernel (a page not writable is EFAULT, not a fault), and
 // only inside the main program's .bss (g_writable).
 bool write_own(uint64_t address, const std::string& data, std::string& out) {
-    bool inside = false;
-    for (int i = 0; i < g_writable_count; ++i) {
-        if (address >= g_writable[i][0] && address + data.size() <= g_writable[i][1]) inside = true;
-    }
-    if (!inside) {
+    if (!in_game_data(address, data.size())) {
         out = "not_in_the_game's_writable_data";
         return false;
     }
@@ -166,6 +188,103 @@ State state() {
     return s;
 }
 
+// `config name=ADDRESS ...`: the new games' addresses, the game's own by its symbols (the client
+// resolves them: client/linux_targets.py). Each data one must lie in the game's .bss at its full
+// size and each function in its code; all of them, or nothing changes.
+struct ConfigKey {
+    const char* name;
+    uint8_t* zap::NewGameAddresses::*field;
+    size_t size;  // 0: a function
+};
+constexpr ConfigKey kConfigKeys[] = {
+    {"rando_blob", &zap::NewGameAddresses::rando_blob, zap::kSectionSize},
+    {"randomizer_menu", &zap::NewGameAddresses::randomizer_menu, zap::kMenuSize},
+    {"transition_fn", &zap::NewGameAddresses::transition_fn, sizeof(void*)},
+    {"transition_timer", &zap::NewGameAddresses::transition_timer, sizeof(int32_t)},
+    {"newgame_fn", &zap::NewGameAddresses::newgame_fn, 0},
+    {"placement_fn", &zap::NewGameAddresses::placement_fn, 0},
+    {"rando_marker", &zap::NewGameAddresses::rando_marker, sizeof(uint16_t)},
+    {"current_slot", &zap::NewGameAddresses::current_slot, sizeof(int32_t)},
+    {"start_count", &zap::NewGameAddresses::start_count, sizeof(int16_t)},
+    {"start_cells", &zap::NewGameAddresses::start_cells, 4 * zap::kStartTableMax},
+    {"start_flags", &zap::NewGameAddresses::start_flags, zap::kStartTableMax},
+};
+
+std::string parse_config(std::string_view request, zap::NewGameAddresses& out) {
+    std::map<std::string, uint64_t> given;
+    std::istringstream words{std::string(request.substr(std::string_view("config").size()))};
+    std::string word;
+    while (words >> word) {
+        size_t eq = word.find('=');
+        if (eq == std::string::npos) return "config takes name=address pairs";
+        char* end = nullptr;
+        uint64_t address = std::strtoull(word.c_str() + eq + 1, &end, 0);
+        if (end == nullptr || *end != '\0' || address == 0) return "a bad address for " + word;
+        given[word.substr(0, eq)] = address;  // a name the helper doesn't use: ignored
+    }
+    for (const ConfigKey& key : kConfigKeys) {
+        auto found = given.find(key.name);
+        if (found == given.end()) return std::string("missing ") + key.name;
+        auto* at = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(found->second));
+        bool ok = key.size == 0 ? zap::in_image_code(at) : in_game_data(found->second, key.size);
+        if (!ok) {
+            return std::string(key.name) +
+                   (key.size == 0 ? " is not in the game's code" : " is not in the game's data");
+        }
+        out.*key.field = at;
+    }
+    return "";
+}
+
+// `work` run on the game's thread at its next frame call; "refused not configured" first when
+// `needs_config` and no config came; "refused no frame" if no frame took it in time (it then
+// never runs); "error <why>" at once for a request not parsed. As the Windows helper's on_game.
+std::string on_game(const std::function<std::string()>& work, bool needs_config,
+                    const std::string& parse_error = "") {
+    if (!parse_error.empty()) return "error " + parse_error;
+    std::string result;
+    bool ran = g_mailbox.call(
+        [&] {
+            if (needs_config && !g_configured) return std::string("refused not configured");
+            return work();
+        },
+        kFrameWaitMs, result);
+    return ran ? result : "refused no frame";
+}
+
+// The requests that act on the game (native/README.md, "The Linux helper"), or nothing for one
+// core.cpp answers.
+std::optional<std::string> game_request(std::string_view request) {
+    if (request == "config" || request.starts_with("config ")) {
+        zap::NewGameAddresses found;
+        std::string error = parse_config(request, found);
+        return on_game(
+            [&] {
+                g_newgame_at = found;
+                g_configured = true;
+                return std::string("ok");
+            },
+            false, error);
+    }
+    if (request.starts_with("ap_newgame\n") || request == "ap_newgame") {
+        zap::NewGamePlan plan;
+        std::string error = zap::parse_newgame(std::string(request), plan);
+        return on_game(
+            [&] {
+                g_newgames.arm(std::move(plan));
+                return std::string("armed");
+            },
+            true, error);
+    }
+    if (request == "disarm") {
+        return on_game([] { g_newgames.disarm(); return std::string("disarmed"); }, false);
+    }
+    if (request == "newgame_status") {
+        return on_game([] { return g_newgames.status(); }, false);
+    }
+    return std::nullopt;
+}
+
 // One client: a request a message, a reply a message, until it goes, sends too much, or says
 // nothing for kClientSilenceSeconds.
 void serve_client(int client) {
@@ -175,9 +294,9 @@ void serve_client(int client) {
     for (;;) {
         ssize_t n = recv(client, buffer.data(), buffer.size(), MSG_TRUNC);
         if (n <= 0 || static_cast<size_t>(n) > buffer.size()) return;
-        std::string answer =
-            reply(std::string_view(buffer.data(), static_cast<size_t>(n)), state(), read_own,
-                  write_own);
+        std::string_view request(buffer.data(), static_cast<size_t>(n));
+        std::optional<std::string> game = game_request(request);
+        std::string answer = game ? *game : reply(request, state(), read_own, write_own);
         if (send(client, answer.data(), answer.size(), MSG_NOSIGNAL) < 0) return;
     }
 }
@@ -270,12 +389,30 @@ __attribute__((constructor)) void start() {
 
 }  // namespace
 
+namespace {
+
+// The game's thread, at each frame call: the mailbox's work, then an armed new game watched.
+// What either throws is the helper's, never the game's: kept here.
+void game_frame() {
+    zap::memory_map_new_frame();
+    g_mailbox.serve();
+    if (!g_configured || !g_newgames.armed()) return;
+    try {
+        g_newgames.watch(g_newgame_at);
+    } catch (...) {
+        g_newgames.refuse("the placement failed");
+    }
+}
+
+}  // namespace
+
 // The game's per-frame call (native/README.md, "The Linux helper"). SDL2's returns nothing and
 // SDL3's a bool: returned as an int, which an SDL2 caller ignores.
 extern "C" __attribute__((visibility("default"))) int SDL_GL_SwapWindow(void* window) {
     if (g_active.load(std::memory_order_relaxed)) {
         g_frames.fetch_add(1, std::memory_order_relaxed);
         count_call_site(reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
+        game_frame();
     }
     Swap next = g_next_swap;
     if (next == nullptr) {  // SDL loaded after the constructor ran: look once more

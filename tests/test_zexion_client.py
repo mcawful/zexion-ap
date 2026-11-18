@@ -16,7 +16,7 @@ from unittest import mock
 import pytest
 from fakes import connection, seed_state, slot_data
 
-from client import game, ids, native, patterns, session, state, ticks
+from client import game, ids, linux_helper, native, patterns, session, state, ticks
 
 
 class CommonContext:
@@ -1219,4 +1219,72 @@ def test_with_the_linux_build_the_step_goes_on_without_the_helper(monkeypatch, c
         for r in caplog.records
         if r.name == "Client" and native.LINUX_NOT_READY in r.getMessage()
     ]
-    assert len(said) == 1 and said[0].startswith("The Zexion mod isn't working")
+    assert len(said) == 1 and said[0].startswith("On Linux the Zexion mod starts new games")
+
+
+class LinuxHelperStandIn:
+    """The game's Linux helper connection (linux_helper.LinuxProcess): replies by request."""
+
+    def __init__(self, replies: dict[str, str]) -> None:
+        from test_linux_targets import b1_like
+
+        self.game = types.SimpleNamespace(image=b1_like(extra=True))
+        self.replies = replies
+        self.sent: list[str] = []
+
+    def request(self, text: str) -> str:
+        self.sent.append(text)
+        first = text.split(None, 1)[0]
+        if first in self.replies:
+            reply = self.replies[first]
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+        return "error unknown request"
+
+    def alive(self) -> bool:
+        return True
+
+
+def linux_game(replies: dict[str, str]):
+    g = Running(game.NO_SAVE)
+    g.platform = "linux"
+    g.build = patterns.KNOWN_LINUX_BUILDS[0]
+    g.pm = LinuxHelperStandIn(replies)
+    return g
+
+
+def test_on_linux_the_seed_is_armed_from_randomizer_through_the_linux_helper(caplog) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    with caplog.at_level("INFO"):
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+    sent = ctx.game_conn.pm.sent
+    assert sent[0].startswith("config rando_blob=0x12f6e00 randomizer_menu=0x12f6ce0 ")
+    assert sent[1].startswith("ap_newgame\n") and "\nchoice" not in sent[1]  # RANDOMIZER only
+    assert ctx.conn.newgame is state.NewGame.ARMED
+    assert any(
+        "To play, load this seed's save, or start a new game" in line
+        for line in ctx.conn.newgame_lines
+    )
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert sum(t.startswith("config ") for t in sent) == 1  # configured once an attach
+
+
+def test_on_linux_a_helper_that_cant_be_reached_is_told_once_and_armed_again(caplog) -> None:
+    lost = linux_helper.LinuxHelperError("the helper closed its socket")
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": lost}))
+    with caplog.at_level("WARNING"):
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+    said = [r for r in caplog.records if r.name == "Client" and "new game" in r.getMessage()]
+    assert len(said) == 1
+    assert ctx.linux_newgames is None and ctx.conn.newgame is None
+    ctx.game_conn.pm.replies["ap_newgame"] = "armed"
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.conn.newgame is state.NewGame.ARMED
+
+
+def test_on_windows_the_linux_tick_does_nothing() -> None:
+    ctx = context(connection(), Running(game.NO_SAVE))
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_newgames is None

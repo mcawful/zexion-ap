@@ -90,10 +90,10 @@ def test_play_is_not_reported_once_the_player_state_moves(linux) -> None:
 def test_nothing_is_written_through_a_target_only_assumed(linux) -> None:
     g = game.Game.attach_linux()
     assert g.unwritable == {t.name for t in linux_targets.TARGETS if not t.measured}
-    assert "rando_blob" in g.unwritable
+    assert "slot_array" in g.unwritable
     with pytest.raises(game.GameError, match="not yet measured"):
-        g._write("rando_blob", 0, b"\x00")
-    assert 0x12F6E00 not in g.pm.memory  # nothing written
+        g._write("slot_array", 0, b"\x00")
+    assert 0x14945C0 not in g.pm.memory  # nothing written
 
 
 def test_a_player_state_elsewhere_refuses_to_attach(linux) -> None:
@@ -156,11 +156,11 @@ def test_the_windows_helper_is_not_tried_with_the_linux_build(linux, tmp_path) -
     from client import native
 
     g = game.Game.attach_linux()
-    with pytest.raises(native.ModFixable, match="Linux version") as caught:
+    with pytest.raises(native.LinuxPartial, match="Linux version") as caught:
         native.attach(g, tmp_path / "zexion_ap.dll")
-    assert not caught.value.old_gone
+    assert isinstance(caught.value, native.ModFixable) and not caught.value.old_gone
     from client import state
 
     line = state.helper_failed(caught.value)
-    assert line.startswith("The Zexion mod isn't working: its parts inside the game")
+    assert line.startswith("On Linux the Zexion mod starts new games of this seed from RANDOMIZER")
     assert "items arrive without popups" in line

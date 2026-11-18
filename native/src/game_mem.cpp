@@ -4,6 +4,7 @@
 
 namespace zap {
 
+#ifdef _WIN32  // the Linux build's own: game_mem_linux.cpp
 namespace {
 
 // Whether `size` bytes at `at` are committed, with no guard page, and every page allows one of
@@ -45,6 +46,7 @@ bool safe_read(const void* from, void* to, size_t size) {
 bool writable(const void* at, size_t size) {
     return committed(at, size, PAGE_READWRITE | PAGE_EXECUTE_READWRITE);
 }
+#endif
 
 int32_t panel_count(const BYTE* menu) {
     int32_t n = -1;
@@ -163,6 +165,7 @@ void look_like(BYTE* s, const BYTE* like) {
     std::memcpy(s + sprite::kTint, like + sprite::kTint, sprite::kTintSize);
 }
 
+#ifdef _WIN32  // the Linux build's own: game_mem_linux.cpp
 const IMAGE_NT_HEADERS64* nt_headers(HMODULE module) {
     auto* base = reinterpret_cast<const BYTE*>(module);
     auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
@@ -201,6 +204,7 @@ bool patch_code(BYTE* at, const void* bytes, size_t size) {
     FlushInstructionCache(GetCurrentProcess(), at, size);
     return true;
 }
+#endif
 
 bool code_reads(const BYTE* at, const void* bytes, size_t size) {
     BYTE now[kMaxCodePatch];

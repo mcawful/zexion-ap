@@ -257,12 +257,14 @@ def test_the_replies_the_client_branches_on_are_ones_the_helper_gives() -> None:
         "error too large", "error no LOCALAPPDATA", "refused not settled", "error unknown request",
         "unknown line ", "missing ", "; not unloading", "bye", "ok", "applied", "refused ",
         "stored", "unchanged", "labeled", "spawned", "died", "armed", "shown", "unknown", "idle",
-        "queued", "on:", "refused the new game is not this seed", discs.ENDING_STARTED,
+        "queued", "on:", "the new game is not this seed", discs.ENDING_STARTED,
         "a menu is open", "free", "locked", "intel on", "intel off",
         "discs on", "discs off",
     )  # fmt: skip
     for reply in replies:
         assert f'"{reply}' in text, reply
+    # A new game's refusals are "refused " and the reason (native/src/newgame.cpp, refuse).
+    assert 'status_ = "refused " + why;' in source("newgame.cpp")
     # And the replies the client's literals name are all of the above.
     ours = {
         "error too large", "error no LOCALAPPDATA", "refused not settled", "unknown request",

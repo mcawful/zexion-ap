@@ -219,27 +219,6 @@ std::string check_key(HMODULE image, uint64_t image_size, const ConfigKey& key, 
     return "";
 }
 
-// A section offset as a reply names it: "0x6CC".
-std::string hex_offset(unsigned offset) {
-    char text[16];
-    std::snprintf(text, sizeof(text), "0x%X", offset);
-    return text;
-}
-
-// The offset of the first of `edits` that `block` does not hold, or -1.
-int first_difference(const BYTE* block, const std::vector<SectionBytes>& edits) {
-    for (const SectionBytes& e : edits) {
-        if (std::memcmp(block + e.offset, e.bytes.data(), e.bytes.size()) != 0) return e.offset;
-    }
-    return -1;
-}
-
-void write_edits(BYTE* block, const std::vector<SectionBytes>& edits) {
-    for (const SectionBytes& e : edits) {
-        std::memcpy(block + e.offset, e.bytes.data(), e.bytes.size());
-    }
-}
-
 }  // namespace
 
 std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
@@ -277,6 +256,17 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         offline_warned_ = false;
     }
     at_ = found;
+    newgame_at_ = {.rando_blob = at_.rando_blob,
+                   .randomizer_menu = at_.randomizer_menu,
+                   .transition_fn = at_.transition_fn,
+                   .transition_timer = at_.transition_timer,
+                   .newgame_fn = at_.newgame_fn,
+                   .placement_fn = at_.placement_fn,
+                   .rando_marker = at_.rando_marker,
+                   .current_slot = at_.current_slot,
+                   .start_count = at_.start_count,
+                   .start_cells = at_.start_cells,
+                   .start_flags = at_.start_flags};
     gl_ = load_gl();
     configured_ = true;
     active_ = active;
@@ -870,61 +860,22 @@ std::string Game::item_event_ready(uint8_t item, BYTE*& ev, BYTE*& handler) {
 
 bool Game::arm_newgame(NewGamePlan plan) {
     if (!configured_) return false;
-    newgame_ = std::move(plan);
-    newgame_armed_ = true;
-    newgame_status_ = "armed";
+    newgames_.arm(std::move(plan));
     return true;
 }
 
-void Game::disarm_newgame() {
-    newgame_armed_ = false;
-    newgame_ = {};
-    starting_ = false;
-    if (newgame_status_ == "armed") newgame_status_ = "idle";
-}
+void Game::disarm_newgame() { newgames_.disarm(); }
 
-std::string Game::newgame_status() const { return newgame_status_; }
+std::string Game::newgame_status() const { return newgames_.status(); }
 
 void Game::watch_newgame() {
-    if (!configured_ || !newgame_armed_) return;
-    if (!newgame_queued()) return;
-    if (at<int32_t>(at_.transition_timer, 0) <= 1) return;  // too close to being built
-    if (at<uint16_t>(at_.rando_marker, 0) != 1) return;     // a normal new game: not ours
-    // From ARCHIPELAGO (starting_): placed and checked already. From RANDOMIZER: it must hold
-    // the seed text, then is placed again as the seed.
-    if (!starting_) {
-        int differs = first_difference(at_.rando_blob, newgame_.identify);
-        if (differs >= 0) {
-            newgame_status_ = "refused the new game is not this seed (section +" +
-                              hex_offset(differs) + " differs)";
-            disarm_newgame();
-            return;
-        }
-        // The player's own placement, put back if the seed's is refused (or throws).
-        std::vector<BYTE> players(at_.rando_blob, at_.rando_blob + kSectionSize);
-        std::string why;
-        try {
-            why = place_seed();
-        } catch (...) {
-            std::memcpy(at_.rando_blob, players.data(), kSectionSize);
-            disarm_newgame();
-            throw;
-        }
-        if (!why.empty()) {
-            std::memcpy(at_.rando_blob, players.data(), kSectionSize);
-            newgame_status_ = "refused " + why;
-            disarm_newgame();
-            return;
-        }
-    }
-    write_edits(at_.rando_blob, newgame_.write);
-    newgame_status_ = "applied slot " + std::to_string(at<int32_t>(at_.current_slot, 0) + 1);
-    disarm_newgame();
+    if (!configured_) return;
+    newgames_.watch(newgame_at_);
 }
 
 void Game::watch_menu(WidgetCallback callback) {
     if (!configured_) return;
-    if (newgame_armed_ && newgame_.choice && !starting_) {
+    if (newgames_.armed() && newgames_.plan().choice && !newgames_.starting()) {
         choice_.install(at_, callback);
         if (choice_.installed()) choice_.fit_border(at_);
     } else if (choice_.installed() || choice_.holds_hook()) {
@@ -1054,66 +1005,20 @@ void Game::restore_assists() {
     lock_glyph_.clear(at_.sprite_texture, gl_, texture_check_);
 }
 
-std::string Game::ensure_start_table() {
-    // Over a RANDOMIZER game, the game's own table, as START GAME used it (the client's fallback).
-    static const std::vector<StartRoom> kNone;
-    const std::vector<StartRoom>& rooms = starting_ ? newgame_.start_table : kNone;
-    int16_t count = at<int16_t>(at_.start_count, 0);
-    // The second target (+0x6CC) is a room's index, whose flag the placement reads: it must be in
-    // the table used.
-    const size_t rooms_in_table = !rooms.empty() ? rooms.size() : static_cast<size_t>(count);
-    constexpr uint16_t kSecondTarget = 0x6CC;
-    for (const SectionBytes& e : newgame_.write) {
-        if ((!rooms.empty() || count > 0) && e.offset == kSecondTarget && e.bytes.size() >= 2) {
-            int16_t index;
-            std::memcpy(&index, e.bytes.data(), sizeof(index));
-            if (index < 0 || static_cast<size_t>(index) >= rooms_in_table) {
-                return rooms.empty() ? "the second start is not a room of the game's own table"
-                                     : "the second start is outside the start table";
-            }
-        }
-    }
-    if (rooms.empty()) return "";
-    if (count == 0) {
-        // The menu never opened this run: built as it would, count last. rooms.size() <=
-        // kStartTableMax (parse_newgame), the room configure checked.
-        for (size_t i = 0; i < rooms.size(); ++i) {
-            at<int16_t>(at_.start_cells, static_cast<ptrdiff_t>(4 * i)) = rooms[i].x;
-            at<int16_t>(at_.start_cells, static_cast<ptrdiff_t>(4 * i + 2)) = rooms[i].y;
-            at<uint8_t>(at_.start_flags, static_cast<ptrdiff_t>(i)) = rooms[i].flag;
-        }
-        at<int16_t>(at_.start_count, 0) = static_cast<int16_t>(rooms.size());
-        return "";
-    }
-    if (static_cast<size_t>(count) != rooms.size()) {
-        return "the game's start table has " + std::to_string(count) + " rooms, the seed's " +
-               std::to_string(rooms.size());
-    }
-    for (size_t i = 0; i < rooms.size(); ++i) {
-        if (at<int16_t>(at_.start_cells, static_cast<ptrdiff_t>(4 * i)) != rooms[i].x ||
-            at<int16_t>(at_.start_cells, static_cast<ptrdiff_t>(4 * i + 2)) != rooms[i].y ||
-            at<uint8_t>(at_.start_flags, static_cast<ptrdiff_t>(i)) != rooms[i].flag) {
-            return "the game's start table differs from the seed's at room " + std::to_string(i);
-        }
-    }
-    return "";
-}
-
 void Game::start_archipelago(WidgetCallback callback) {
     // Once per press; nothing after the plan was dropped or while a new game is queued.
-    if (!configured_ || !newgame_armed_ || !newgame_.choice || starting_) {
+    if (!configured_ || !newgames_.armed() || !newgames_.plan().choice || newgames_.starting()) {
         return;
     }
     if (newgame_queued()) return;
-    starting_ = true;
+    newgames_.begin_start();
     // Refused: RANDOMIZER back, the plan dropped, nothing queued.
     auto refuse = [&](const std::string& why) {
-        newgame_status_ = "refused " + why;
         choice_.restore(at_, callback);
-        disarm_newgame();
+        newgames_.refuse(why);
     };
     try {
-        std::string why = place_seed();
+        std::string why = newgames_.place_seed(newgame_at_);
         if (!why.empty()) return refuse(why);
         // Queued as the play-anyway path does; watch_newgame reports it next frame.
         reinterpret_cast<void (*)()>(at_.rando_newgame_fn)();
@@ -1127,37 +1032,6 @@ void Game::start_archipelago(WidgetCallback callback) {
         disarm_newgame();
         throw;
     }
-}
-
-std::string Game::place_seed() {
-    std::string table = ensure_start_table();
-    if (!table.empty()) return table;
-    // The menu's state is the player's (kept in the preferences): put back however it ends.
-    struct MenuBack {
-        BYTE* menu;
-        BYTE saved[kMenuSize];
-        explicit MenuBack(BYTE* m) : menu(m) { std::memcpy(saved, menu, kMenuSize); }
-        ~MenuBack() { std::memcpy(menu, saved, kMenuSize); }
-        MenuBack(const MenuBack&) = delete;
-        MenuBack& operator=(const MenuBack&) = delete;
-    };
-    int differs;
-    {
-        MenuBack back(at_.randomizer_menu);
-        write_edits(at_.randomizer_menu, newgame_.menu);
-        // The plan in place of START GAME's first step (the start), then the placement
-        // (docs/re/memory.md, "Starting a new game"). No winnability check: the AP generator made
-        // the seed beatable.
-        write_edits(at_.rando_blob, newgame_.write);
-        reinterpret_cast<void (*)()>(at_.placement_fn)();
-        differs = first_difference(at_.rando_blob, newgame_.expect);
-    }
-    if (differs >= 0) {
-        return "the placement is not the seed's (section +" + hex_offset(differs) + " differs)";
-    }
-    // The seed over the placement now, even if the plan is dropped before the next frame.
-    write_edits(at_.rando_blob, newgame_.write);
-    return "";
 }
 
 void Game::set_discs(int count, int required, std::string scan_line, bool told) {

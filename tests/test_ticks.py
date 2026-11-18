@@ -68,6 +68,7 @@ class Ctx:
     def __init__(self, conn: state.Connection) -> None:
         self.conn = conn
         self.helper = Helper()
+        self.linux_newgames = None
         self.told = state.HelperState()
         self.seed_state = seed_state(conn)
         self.load = state.LoadState()

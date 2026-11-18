@@ -31,6 +31,7 @@
 #include "requests.h"
 #include "scan.h"
 #include "mapmarks.h"
+#include "newgame.h"
 #include "title.h"
 #include "text.h"
 #include "translation.h"
@@ -530,9 +531,8 @@ private:
     int32_t own_sequence_ = 0;
     bool own_popup_up() const;
 
-    bool newgame_armed_ = false;
-    NewGamePlan newgame_;
-    std::string newgame_status_ = "idle";
+    NewGames newgames_;          // the plan and the RANDOMIZER route (newgame.h)
+    NewGameAddresses newgame_at_;  // at_'s addresses it uses, set by configure
 
     ArchipelagoChoice choice_;
     AssistLock assists_;
@@ -544,16 +544,6 @@ private:
                                  {kDiskHeaderGlyphs[1], kDiskHeaderRows[1]}};  // files.h
     FontGlyph ap_logo_{kApLogoX, kApLogoY, kApLogoRows};  // the file select's AP logo (files.h)
     int file_slot_frames_ = 0;  // frames until the next look for the AP saves' slots
-    bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied
-
-    // The start table: for ARCHIPELAGO (starting_), filled from the plan if the game has not
-    // built it, or checked against it; over a RANDOMIZER game, the game's own. The plan's second
-    // target must be in the table used. "" or why not.
-    std::string ensure_start_table();
-    // The seed's placement: the start table, the menu set to the seed's settings and the plan
-    // written, the game's placement run, the menu put back (however it ends); then, if the
-    // section holds `expect`, the plan written over it. "" or why not.
-    std::string place_seed();
     ScanText scan_;
     EquipmentHook equip_;
     EquipmentScreen equip_screen_;

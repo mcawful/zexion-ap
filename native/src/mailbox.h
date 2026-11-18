@@ -3,9 +3,13 @@
 // frame either took it before the withdrawal (the pipe thread then waits for that run) or never.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <atomic>
+#ifndef _WIN32
+#include <condition_variable>
+#include <mutex>
+#endif
 #include <functional>
 #include <string>
 
@@ -31,7 +35,13 @@ private:
     std::atomic<int> state_{kEmpty};
     std::function<std::string()> work_;
     std::string result_;
+#ifdef _WIN32
     HANDLE done_ = nullptr;
+#else  // mailbox_linux.cpp
+    std::mutex lock_;
+    std::condition_variable done_;
+    bool signaled_ = false;
+#endif
 };
 
 }  // namespace zap

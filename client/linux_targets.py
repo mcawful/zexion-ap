@@ -39,7 +39,7 @@ TARGETS = (
     LinuxTarget("cell_state", "gGameState", 0x15B61, 0x9FD3A1),
     LinuxTarget("inventory", "gGameState", 0x1CD50 + 0x108E, 0xA0561E),
     LinuxTarget("pickup_counter", "gGameState", 0xAC8, 0x9E8308),
-    LinuxTarget("rando_blob", "gCurrentRando", 0, 0x12F6E00, measured=False),
+    LinuxTarget("rando_blob", "gCurrentRando", 0, 0x12F6E00),
     LinuxTarget("slot_array", "gSaveGames", 0, 0x14945C0, measured=False),
     LinuxTarget("menu_state", "gCursorMode", 0, 0x12F9901),
     LinuxTarget("save_loaded", "gGameState", 0xACA, 0x9E830A),
@@ -52,15 +52,33 @@ TARGETS = (
 )
 
 
+# The Linux helper's own targets beyond those, for new games (its ``config``: native/linux/src/
+# helper.cpp, native/src/newgame.h): the rest of NEWGAME_KEYS is in TARGETS. Functions by their
+# mangled names.
+HELPER_TARGETS = (
+    LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
+    LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
+    LinuxTarget("newgame_fn", "_Z16StartNewGameExitv", 0, 0x563363),
+    LinuxTarget("placement_fn", "_Z13generateRandov", 0, 0x5ABD55),
+    LinuxTarget("start_count", "rStartingLocationCount", 0, 0x9E0C40),
+    LinuxTarget("start_cells", "rStartingLocations", 0, 0x9E0B40),
+    LinuxTarget("start_flags", "rStartingLocationCage", 0, 0x9E0C60),
+)
+NEWGAME_KEYS = (
+    "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
+    "placement_fn", "rando_marker", "current_slot", "start_count", "start_cells", "start_flags",
+)  # fmt: skip
+
+
 class TargetError(ValueError):
     """A target's symbol is missing from the binary, or its offset runs past the symbol."""
 
 
-def resolve(image: elf.Image) -> dict[str, int]:
+def resolve(image: elf.Image, targets: tuple[LinuxTarget, ...] = TARGETS) -> dict[str, int]:
     """Each target's address in ``image``, a known Linux build's binary. A symbol the binary
     lacks, or a target outside its symbol's size, is a TargetError."""
     out = {}
-    for target in TARGETS:
+    for target in targets:
         try:
             symbol = image.symbol(target.symbol)
         except elf.ELFError as exc:
@@ -78,3 +96,9 @@ def player_state(image: elf.Image) -> tuple[int, int]:
     """Where the player state's pointer is, and the address it should hold."""
     holder, offset = PLAYER_STATE
     return image.symbol(PLAYER_POINTER).value, image.symbol(holder).value + offset
+
+
+def newgame_config(image: elf.Image) -> str:
+    """The Linux helper's ``config`` request: NEWGAME_KEYS' addresses in ``image``."""
+    found = resolve(image, TARGETS + HELPER_TARGETS)
+    return "config " + " ".join(f"{key}={found[key]:#x}" for key in NEWGAME_KEYS)

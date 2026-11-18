@@ -319,3 +319,76 @@ def test_the_game_reads_and_writes_through_the_helper(game: Game) -> None:
             g._read("block", 0, 4)
     finally:
         pm.close_process()
+
+
+NEWGAME_SYMBOLS = {
+    "rando_blob": "zap_section",
+    "randomizer_menu": "zap_menu",
+    "transition_fn": "zap_transition",
+    "transition_timer": "zap_timer",
+    "newgame_fn": "zap_new_game",
+    "placement_fn": "zap_placement",
+    "rando_marker": "zap_marker",
+    "current_slot": "zap_slot",
+    "start_count": "zap_start_count",
+    "start_cells": "zap_start_cells",
+    "start_flags": "zap_start_flags",
+}
+PLAN = (
+    "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
+)
+
+
+def newgame_addresses() -> dict[str, int]:
+    image = elf.parse(GAME.read_bytes())
+    return {key: image.symbol(name).value for key, name in NEWGAME_SYMBOLS.items()}
+
+
+def wait_for(sock: socket.socket, request: str, wanted, seconds: float = 3.0) -> str:
+    deadline = time.monotonic() + seconds
+    while True:
+        reply = ask(sock, request)
+        if wanted(reply) or time.monotonic() > deadline:
+            return reply
+        time.sleep(0.02)
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_new_game_queued_with_the_seeds_text_gets_the_seed(game: Game) -> None:
+    at = newgame_addresses()
+    with game.connect() as sock:
+        assert ask(sock, PLAN) == "refused not configured"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, PLAN) == "armed"
+        assert ask(sock, "newgame_status") == "armed"
+        # The player's START GAME, with the seed's text typed in: the section, then the queue.
+        assert ask(sock, f"write {at['rando_blob'] + 0x658:#x} {b'ABCDEFGH'.hex()}").startswith(
+            "written"
+        )
+        assert ask(sock, f"write {at['rando_blob'] + 0x26C:#x} 11") == "written 1"
+        assert ask(sock, f"write {at['current_slot']:#x} 04000000") == "written 4"
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"
+        assert ask(sock, f"write {at['transition_timer']:#x} 28000000") == "written 4"
+        newgame = at["newgame_fn"].to_bytes(8, "little").hex()
+        assert ask(sock, f"write {at['transition_fn']:#x} {newgame}") == "written 8"
+        status = wait_for(sock, "newgame_status", lambda r: r != "armed")
+        assert status == "applied slot 5"
+        sock.send(f"read {at['rando_blob'] + 0x26C:#x} 1".encode())
+        assert sock.recv(64) == b"data \x2a"  # the AP table written over the placement
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_config_outside_the_games_data_or_code_is_refused(game: Game) -> None:
+    at = newgame_addresses()
+    with game.connect() as sock:
+        bad = dict(at, rando_blob=game.marker)  # .data, not .bss
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in bad.items())
+        assert ask(sock, config) == "error rando_blob is not in the game's data"
+        bad = dict(at, placement_fn=at["rando_blob"])  # data, not code
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in bad.items())
+        assert ask(sock, config) == "error placement_fn is not in the game's code"
+        missing = {k: v for k, v in at.items() if k != "start_flags"}
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in missing.items())
+        assert ask(sock, config) == "error missing start_flags"
+        assert ask(sock, PLAN) == "refused not configured"

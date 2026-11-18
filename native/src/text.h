@@ -4,7 +4,7 @@
 // and the window's cut (TextCut).
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstddef>
 #include <cstdint>

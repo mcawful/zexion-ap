@@ -283,8 +283,10 @@ and Steam Deck"). What exists so far:
 
 - the Linux helper, `libzexion_ap.so` (`native/linux/`, `native/README.md`, "The Linux
   helper"), preloaded by the game's launch options: it counts the game's frame calls, and on
-  a socket answers `hello`, `ping` and `read`, reading the game's memory for the client (the
-  client can't read it itself: `re/linux.md`, "Reading the running game"). Tested against a
+  a socket reads and writes the game's memory for the client (the client can't reach it
+  itself: `re/linux.md`, "Reading the running game") and starts new games from RANDOMIZER,
+  with the Windows helper's own new-game code (`native/src/newgame.cpp`, built for both
+  through `native/src/platform.h` and the Linux parts of the memory layer). Tested against a
   stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux`
   job), and working in game on B1 (Linux) under Flatpak Steam, 2026-11-18 (`native/README.md`,
   "The Linux helper"). `tools/helper.py status` finds the game,
@@ -295,12 +297,13 @@ and Steam Deck"). What exists so far:
   and writes), every read and write through the helper, one request at a time, connecting
   again once a connection drops (a request with no reply closes it, so a late reply is never
   read as the next one's). It writes nothing through a target `re/linux.md` only assumes
-  (`rando_blob`, `slot_array`), and reports play only while the player state is where the
-  layout puts it. The rest of the client runs as without the mod: `native.attach` refuses the
-  Linux build (`native.LINUX_NOT_READY`, said once in the client's window), so items are
-  written directly with no popup and no seed can be started, ARCHIPELAGO or RANDOMIZER, both
-  armed through the Windows helper; checks, the goal, DeathLink's deaths out and marking other
-  players' items collected go on. Tested against stand-ins only; not run in the game;
+  (`slot_array`), and reports play only while the player state is where the
+  layout puts it. New games go through the Linux helper, from RANDOMIZER only
+  (`ticks.linux_newgame_tick`: configured once an attach, `client/linux_targets.py`'s
+  `newgame_config`). The rest of the client runs as without the mod: `native.attach` refuses the
+  Linux build (`native.LinuxPartial`, said once in the client's window), so items are written
+  directly with no popup; checks, the goal, DeathLink's deaths out and marking other players'
+  items collected go on. Tested against stand-ins only; not run in the game;
 
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak

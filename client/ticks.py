@@ -17,7 +17,19 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from . import aplabels, discs, game, ids, native, newgame, offline, reconcile, shields, state
+from . import (
+    aplabels,
+    discs,
+    game,
+    ids,
+    linux_helper,
+    native,
+    newgame,
+    offline,
+    reconcile,
+    shields,
+    state,
+)
 from .ids import ITEM_ID_BASE, LOCATION_ID_BASE
 from .storage import hint_note, hints_used, popped, store, store_popped
 
@@ -528,11 +540,12 @@ NO_ARCHIPELAGO = (
 )
 
 
-async def newgame_tick(ctx: ZexionContext) -> None:
-    """Arm the helper with the AP seed for the next randomizer new game, and report what
-    became of it. Runs in the game loop, the helper's only user. The lines on how to start the
-    seed are made at the first arm of a connection and said by how_to_play."""
-    helper = ctx.helper
+async def newgame_tick(ctx: ZexionContext, helper=None, offer_choice: bool = True) -> None:
+    """Arm the helper (``helper``, else ctx.helper) with the AP seed for the next randomizer new
+    game, and report what became of it. Runs in the game loop, the helper's only user. The lines
+    on how to start the seed are made at the first arm of a connection and said by how_to_play.
+    Without ``offer_choice`` the seed is started from RANDOMIZER only."""
+    helper = helper if helper is not None else ctx.helper
     if ctx.disarm_pending:
         ctx.disarm_pending = False
         await asyncio.to_thread(helper.request, "disarm")
@@ -544,7 +557,7 @@ async def newgame_tick(ctx: ZexionContext) -> None:
             return  # refused a moment ago
         plan = conn.plan
         build = ctx.game_conn.build.sha256 if ctx.game_conn is not None else ""
-        choice = not ctx.keep_randomizer and not conn.choice_refused
+        choice = offer_choice and not ctx.keep_randomizer and not conn.choice_refused
         text = None
         for offer in (True, False) if choice else (False,):  # ARCHIPELAGO, else RANDOMIZER
             try:
@@ -618,6 +631,29 @@ async def newgame_tick(ctx: ZexionContext) -> None:
         conn.newgame = None  # the helper lost the plan (reloaded): arm again
 
 
+async def linux_newgame_tick(ctx: ZexionContext) -> None:
+    """With the game's Linux build: new games through the Linux helper, from RANDOMIZER only
+    (its ARCHIPELAGO choice isn't there yet), configured once an attach (linux_helper.
+    LinuxNewGames). A helper that can't be reached or refuses is told once and tried again on
+    a later poll, a plan it held armed again then."""
+    g = ctx.game_conn
+    if g is None or getattr(g, "platform", "windows") != "linux":
+        return
+    try:
+        if ctx.linux_newgames is None or ctx.linux_newgames.pm is not g.pm:
+            ctx.linux_newgames = await asyncio.to_thread(linux_helper.LinuxNewGames, g.pm)
+        await newgame_tick(ctx, ctx.linux_newgames, offer_choice=False)
+        ctx.said.clear("linux new games")
+    except linux_helper.LinuxHelperError as exc:
+        ctx.linux_newgames = None
+        conn = ctx.conn
+        if conn is not None and conn.newgame is state.NewGame.ARMED:
+            conn.newgame = None  # armed again once the helper answers
+        if ctx.said("linux new games", str(exc)):
+            logger.warning("Zexion's mod can't take this seed's new game right now; trying again.")
+            log.warning(f"The Linux helper's new games failed: {exc}")
+
+
 def how_to_play(ctx: ZexionContext, step: session.Step) -> None:
     """The arm's lines on how to start the seed (newgame_tick), said once a connection by the
     first poll after them that finds no save of this seed loaded (the title, the file select,
@@ -628,7 +664,9 @@ def how_to_play(ctx: ZexionContext, step: session.Step) -> None:
     conn = ctx.conn
     if conn is None or not conn.newgame_lines or not step.left_seed:
         return
-    if ctx.helper is None or conn.newgame is not state.NewGame.ARMED:
+    if (
+        ctx.helper is None and ctx.linux_newgames is None
+    ) or conn.newgame is not state.NewGame.ARMED:
         return
     for line in conn.newgame_lines:
         logger.info(line)
