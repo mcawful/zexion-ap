@@ -35,6 +35,7 @@ def saves(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path / "lab"))
     # The game is closed, whatever this machine is running.
     monkeypatch.setattr(save_lab.process, "find_pid", lambda name: None)
+    monkeypatch.setattr(save_lab.procfs, "find_pid", lambda names: None)
     return folder
 
 

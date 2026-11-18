@@ -2180,12 +2180,19 @@ lands, not only the place passed.
 
 `libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
 it reads the running game's memory for the client and counts its frames. None of the parts above
-runs on Linux yet, and no client uses it yet; `tools/helper.py status` talks to it. Not yet run
-in the game: tested against a stand-in game (`tests/test_native_linux.py`).
+runs on Linux yet, and no client uses it yet; `tools/helper.py status` talks to it. Tested
+against a stand-in game (`tests/test_native_linux.py`).
+
+Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
+branch copied into the game's folder: loaded by the launch options, it served `hello`
+(`build=B1 hooked=1 folder=1`), counted the frame calls (165 in a second at the title screen)
+and served reads that matched the binary (`docs/re/linux.md`, "Read from the running game"). Not
+run: the Steam Runtime without Flatpak, a Steam Deck.
 
 - **Getting in.** The game's launch options in Steam preload it:
-  `LD_PRELOAD="/path/to/libzexion_ap.so:$LD_PRELOAD" %command%` (assumed: that Steam's runtime
-  container passes it on; not tried). Every program the launch starts loads it, so it does
+  `LD_PRELOAD="/path/to/libzexion_ap.so:$LD_PRELOAD" %command%`. The game's folder is at the
+  same path inside Steam's runtime container as outside, and the container passed the preload on
+  (seen with Flatpak's Steam, 2026-11-18). Every program the launch starts loads it, so it does
   nothing unless the program it is in is a known Linux build, told by the main program's GNU
   build id (`src/core.cpp`, `kKnownBuilds`, kept in step with `KNOWN_LINUX_BUILDS` in
   `client/patterns.py`; `tests/test_cross_checks.py` checks them). In a known build it writes
@@ -2208,8 +2215,8 @@ in the game: tested against a stand-in game (`tests/test_native_linux.py`).
   message, one reply a message, one client at a time, as the Windows pipe. The next client's
   connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
   when its first request has no reply), and a client that sends nothing for 30 s is dropped.
-  The pid is the game's own, which inside Flatpak's Steam or the Steam Runtime's container is
-  assumed not to be the host's (not seen): the client takes it from `NSpid`. An abstract socket
+  The pid is the game's own, which inside Flatpak's Steam is not the host's (seen: 873 for
+  the host's 33866): the client takes it from `NSpid`. An abstract socket
   has no file permissions, and any process can bind a name first: the helper serves only a
   client of its own user (`SO_PEERCRED`) and drops the others; the client talks only to a server
   that is the game's own process, of its user (`SO_PEERCRED` again: the pid as the client sees
@@ -2238,9 +2245,11 @@ in the game: tested against a stand-in game (`tests/test_native_linux.py`).
   (its `usr-mtree.txt.gz` lists `libc-2.31.so`); Flatpak's Steam runs on the Flatpak runtime
   `org.freedesktop.Platform` 26.08, whose glibc is 2.44 (`strings` of its `libc.so.6`); a build
   there on glibc 2.44 asks for up to `GLIBC_2.38` (`objdump -T`) and nothing from libstdc++
-  (`readelf -d`: `libc`, `libm` and `ld-linux` only). Which glibc the container gives the game,
-  the runtime's or the newer of the two, is assumed (pressure-vessel's documented rule), not
-  checked.
+  (`readelf -d`: `libc`, `libm` and `ld-linux` only). Under Flatpak's Steam the game ran on
+  the glibc the container takes from outside it (`/run/parent/usr/lib/x86_64-linux-gnu/libc.so.6`
+  in its `/proc/<pid>/maps`), and the build needing 2.38 loaded (2026-11-18). That the container
+  takes the newer of the runtime's and the host's is assumed (pressure-vessel's documented rule);
+  without Flatpak it is not checked.
 
 ## Building
 

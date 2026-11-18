@@ -4,12 +4,13 @@ Zexion's Linux binary (`builds.md`, "B1 on Linux") against what `memory.md` reco
 Windows exe. The Linux binary keeps its symbol table and loads at fixed addresses, so a global
 is found by its name and a field by its offset from that name; the Windows exe has neither, so
 its targets were found by byte pattern. Every address on this page is a link address of the
-Linux binary, which is where it is expected at run time (it is `ET_EXEC`; not yet read from a
-run).
+Linux binary, which is where it is at run time (it is `ET_EXEC`; seen in the game: "Read from
+the running game").
 
-The Linux targets are being mapped in stages. Nothing here has been read from the running Linux
-game yet: every fact is from the binary on disk, except "Reading the running game", which is
-from the test PC and a stand-in game. The disassembly is GNU `objdump -d -C
+The Linux targets are being mapped in stages. Most facts here are from the binary on disk;
+"Read from the running game" records what has been read from the game itself (through the Linux
+helper, `native/README.md`), and "Reading the running game" is from the test PC and a stand-in
+game. The disassembly is GNU `objdump -d -C
 -M intel` of a copy in `lab/linux-b1/` (`all.asm`), which names each rip-relative operand as
 `symbol+offset`.
 
@@ -26,7 +27,7 @@ that `gGameState+offset`.
 | `pickup_list` | `+0x3D0180` | `0x9E8320` (`gGameState+0xAE0`) | `LoadGame` copies the save's `0x9333` list there | measured |
 | `rando_marker` | `+0x3E2DD8` | `0x9FAF78` (`gGameState+0x13738`) | `LoadGame` stores the save's `0x9402` there | measured |
 | `map_grid` | `+0x3E469D` | `0x9FC83D` (`gGameState+0x14FFD`) | `LoadGame` copies the save's `0x877F` grid there | measured |
-| `save_loaded` | `+0x3D016A` | `0x9E830A` (`gGameState+0xACA`) | shift; 28 refs | assumed |
+| `save_loaded` | `+0x3D016A` | `0x9E830A` (`gGameState+0xACA`) | `LoadGame` stores the save's `0x9360` there; five stores of `0xFF`; `0xFF` at the title screen, live | measured |
 | `flags` | `+0x3CF78D` | `0x9E792D` (`gGameState+0xED`) | shift; 76 refs, `LoadGame` among them | assumed |
 | `frame_clock` | `+0x3CF750` | `0x9E78F0` (`gGameState+0xB0`) | shift; 55 refs | assumed |
 | `cell_state` | `+0x3E5201` | `0x9FD3A1` (`gGameState+0x15B61`) | shift; 79 refs | assumed |
@@ -34,7 +35,7 @@ that `gGameState+offset`.
 | `fade` | `+0x3E2AE8` | `0x9FAC88` (`gGameState+0x13448`) | shift; 60 refs | assumed |
 | `fade_level` | `+0x3E2F43` | `0x9FB0E3` (`gGameState+0x138A3`) | shift; 56 refs | assumed |
 | `ailments` | `+0x3E2DC4` | `0x9FAF64` (`gGameState+0x13724`) | shift; 10 refs | assumed |
-| `inventory` | `+0x3ED47E` | `*gMainCharacterSpriteP + 0x108E` | `LoadGame` copies the save's `0x92F3` bytes there | measured (the offset); assumed (where the pointer points) |
+| `inventory` | `+0x3ED47E` | `*gMainCharacterSpriteP + 0x108E` | `LoadGame` copies the save's `0x92F3` bytes there; the pointer read `0xA04590`, `gGameState+0x1CD50`, live | measured (the offset, and the pointer at the title screen) |
 | `current_slot` | `+0xCDD080` | `gCurrentSaveGame` (`0x14945A0`, 4 bytes) | by name; `LoadGame` indexes `gSavedRandos` by it | assumed |
 | `slot_array` | `+0x230600` | `gSaveGames` (`0x14945C0`, 30 × `0x9408`) | by name and size | assumed |
 | `rando_slots` | `+0x347830` | `gSavedRandos` (`0x16BF7C0`, 30 × `0x908`) | by name and size; `LoadGame` copies one into `gCurrentRando` | assumed |
@@ -67,12 +68,24 @@ must be shown, not guessed from the name.
 | Build | B1 (Linux), against B1 (Windows) as `memory.md` records it |
 | Evidence | `lab/linux-b1/all.asm`, 2026-11-18: `mov WORD PTR [rip+...],ax # 9e8308 <gGameState+0xac8>` after `movzx eax,WORD PTR [rax+0x9358]`; the list loop to `<gGameState+0xae0>` from `[rdx+rax*1+0x9331]`; `# 9faf78 <gGameState+0x13738>` after `[rax+0x9400]`; the grid loop to `<gGameState+0x14ffd>` from `+0x877d`. |
 
+## Read from the running game
+
+| Field | |
+|---|---|
+| Value | **At the title screen**, no save loaded since the game started, read through the Linux helper's `read` at the addresses the Lookup gives (each from the binary's symbol table): `save_loaded` (`gGameState+0xACA`) `0xFF`, the value `memory.md` gives for no save loaded ("Telling play from menus, the title screen and death", where the start-up value was not measured on Windows); the pickup counter (`gGameState+0xAC8`) 0, the randomizer marker (`gGameState+0x13738`) 0 and `gCurrentSaveGame` 0; `gMainCharacterSpriteP` `0xA04590`, which is `gGameState+0x1CD50`, the Windows player state's place by the shift ("`gGameState` has the Windows layout", "The player state"). The first 4,096 bytes of `.rodata` (`0x68C000`) equal the binary's: the binary runs at its link addresses (`builds.md`, "B1 on Linux"). |
+| | **The process.** Found by its name, `Zexion`, and identified as B1 by the binary it runs (`/proc/<pid>/exe`: build id and hash); under Flatpak's Steam it had a pid of its own namespace (host pid 33866, its own 873; in an earlier launch 33353 and 763), shared the client's network namespace, and saw the game folder at the host's path. The launch options' `LD_PRELOAD` reached it with the helper first and Steam's overlay after it, and the helper loaded and served (`native/README.md`, "The Linux helper"). |
+| Status | measured (in the game, 2026-11-18) |
+| Method | `tools/helper.py status`; a script reading the values above through `client/linux_helper.py`; `/proc/<pid>/status` (`NSpid`), `/proc/<pid>/ns/net`, `/proc/<pid>/environ`, `/proc/<pid>/maps` and `/proc/<pid>/root` |
+| Build | B1 (Linux) |
+| Evidence | Output read on screen, 2026-11-18, the game at its title screen started from Flatpak Steam on the test PC, the helper built from this branch (`native/build/libzexion_ap.so`) copied into the game's folder. A first launch, with the file not yet copied, had the preload in its environment and no helper mapped. |
+
 ## The per-frame call: SDL_GL_SwapWindow through the PLT
 
 | Field | |
 |---|---|
 | Value | The binary imports SDL2's `SDL_GL_SwapWindow` by name (undefined in `.dynsym`) and calls it only through its PLT entry (`0x40C120`, a jump through the GOT slot `0x6BB700`), from two places: `SWHardwareEnd(SpriteWorldRec*)` (`0x4CAF9A`) and `UpdatePalette()` (`0x652552`). So a preloaded library that defines `SDL_GL_SwapWindow` is called in SDL's place from both (the dynamic linker binds the slot to the first definition, the preloaded one's): the Linux helper's frame call (`native/README.md`, "The Linux helper"). Which of the two runs once a frame, as the Windows build's one call does (`memory.md`, "The per-frame call"), is not checked. |
-| Status | measured (the import and the two call sites, by disassembly, 2026-11-18); assumed (once a frame; the binding to a preloaded definition, by the dynamic linker's rules, not run in the game) |
+| | **In the game** (2026-11-18, the title screen, the test PC's 165 Hz display): the helper counted 165 calls in a second, one a display refresh, so the swap waits for the refresh (vsync). That does not tell one call a frame from two (each would wait for its own refresh), and the rate follows the player's display: the helper's frame work must not assume a rate. |
+| Status | measured (the import and the two call sites, by disassembly, 2026-11-18; the binding to the preloaded definition, and the call rate, in the game, the same day); assumed (once a frame) |
 | Method | `nm -D` on the copy; `grep 'SDL_GL_SwapWindow' all.asm`, each call's function by the nearest symbol above it |
 | Build | B1 (Linux) |
 | Evidence | `lab/linux-b1/all.asm`, 2026-11-18: `call 40c120 <SDL_GL_SwapWindow@plt>` at lines for `0x4caf9a` and `0x652552`, and no other reference. |
@@ -83,8 +96,8 @@ must be shown, not guessed from the name.
 |---|---|
 | Value | **The client can't read the game itself.** Reading another process's memory on Linux (`/proc/<pid>/mem`, `process_vm_readv`) takes the kernel's ptrace permission. With Yama's `kernel.yama.ptrace_scope` at 1, the default of many distributions, a process may read only its own descendants, and the game, started by Steam, is not the client's. The test PC has the scope at 1: there a process that was not a stand-in game's ancestor was refused its `/proc/<pid>/mem` (`EACCES` on opening it). So the Linux helper reads the game's memory for the client, from inside it (`read`: `native/README.md`, "The Linux helper"), and opens it to no other process, whatever the scope. |
 | | **Superseded: opening ptrace while a client is connected.** The helper's first design called `prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY)` while a client was connected and `PR_SET_PTRACER` 0 when it left. With the stand-in game, a process not its ancestor was refused its memory before a client connected, read it while one was, and was refused again after. It was replaced the same day, after review: the window let every process of the user in, not just the client, and by the kernel's rules (assumed: `/proc/<pid>/mem`'s permission is checked when it is opened, and an attach outlives the window) what one opened in the window stayed open after it. |
-| | **Pids.** Flatpak's Steam is assumed to run the game in its own process-id namespace, so that its pid inside differs from the one in the host's `/proc` (both are in `/proc/<pid>/status`, `NSpid`; not seen with the game). |
-| Status | measured (the test PC's ptrace scope, and the refusal, with the stand-in game, 2026-11-18); superseded (the first design's window, measured with the stand-in game the same day); assumed (the kernel's rules behind the window's flaw; the pid namespace) |
+| | **Pids.** Flatpak's Steam runs the game in its own process-id namespace, so that its pid inside differs from the one in the host's `/proc` (both are in `/proc/<pid>/status`, `NSpid`): seen with the game ("Read from the running game"). |
+| Status | measured (the test PC's ptrace scope, and the refusal, with the stand-in game, 2026-11-18; the pid namespace, with the game, the same day); superseded (the first design's window, measured with the stand-in game the same day); assumed (the kernel's rules behind the window's flaw) |
 | Method | `cat /proc/sys/kernel/yama/ptrace_scope`; `tests/test_native_linux.py`, `test_the_games_memory_is_never_opened_to_other_processes` (and, for the first design, the test it replaced, `test_memory_is_readable_only_while_a_client_is_connected`); a by-hand read of `/proc/<pid>/mem` from a new session (`setsid`), which printed `errno 13 Permission denied` |
 | Build | any (the stand-in game, not Zexion) |
 | Evidence | The scope read `1`, 2026-11-18; the tests passed on the test PC the same day. |

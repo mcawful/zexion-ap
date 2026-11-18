@@ -368,8 +368,8 @@ def _write_into_save_dir(target: Path, data: bytes) -> None:
 
 def game_running() -> bool:
     """Whether Zexion is running: on Windows by its exe, on Linux by ``/proc`` (the Linux build,
-    or the Windows one under Proton; that the running game has those names is assumed, not yet
-    seen). Not looked for elsewhere. ProcessError (an OSError) when the process list can't be
+    seen running as ``Zexion``, or the Windows one under Proton, assumed to be ``Zexion.exe``).
+    Not looked for elsewhere. ProcessError (an OSError) when the process list can't be
     read."""
     if WINDOWS:
         return process.find_pid(GAME_EXE) is not None

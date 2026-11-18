@@ -4,8 +4,8 @@ A process matches a name by any of: ``/proc/<pid>/comm`` (the kernel's name for 
 executable's file name cut to 15 bytes, which a thread may rename), the file name of
 ``/proc/<pid>/exe``, or the file name of an entry of ``/proc/<pid>/cmdline`` (split at ``/``
 and ``\\``: under Wine or Proton the command line holds the Windows path). Zexion's Linux build
-is assumed to run as ``Zexion`` and the Windows exe under Proton as ``Zexion.exe``; neither name
-has been seen with the running game yet.
+runs as ``Zexion`` (seen under Flatpak's Steam, 2026-11-18); the Windows exe under Proton is
+assumed to be ``Zexion.exe``, not seen.
 
 What is not seen is not known to be absent: ``find_pid`` raises ``ProcessError`` rather than
 answer None when this process is in a sandbox whose ``/proc`` shows only its own processes (a

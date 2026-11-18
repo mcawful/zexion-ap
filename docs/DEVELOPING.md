@@ -284,8 +284,9 @@ and Steam Deck"). What exists so far:
   helper"), preloaded by the game's launch options: it counts the game's frame calls, and on
   a socket answers `hello`, `ping` and `read`, reading the game's memory for the client (the
   client can't read it itself: `re/linux.md`, "Reading the running game"). Tested against a
-  stand-in game only (`tests/test_native_linux.py`, run on the test PC 2026-11-18, and by CI's
-  `native-linux` job); not yet run in the game. `tools/helper.py status` finds the game,
+  stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux`
+  job), and working in game on B1 (Linux) under Flatpak Steam, 2026-11-18 (`native/README.md`,
+  "The Linux helper"). `tools/helper.py status` finds the game,
   checks its build, makes sure the socket is the game's, and reads its memory through it
   (`client/linux_helper.py`); `helper.py load` and `unload` are Windows-only;
 
@@ -307,8 +308,8 @@ and Steam Deck"). What exists so far:
   executable's or a command-line entry's file name: `client/procfs.py`). They also refuse when
   that can't be told: run from a sandbox whose `/proc` hides the host's processes (a nested
   process-id namespace, a Flatpak terminal, WSL), or with a process of the user's that can't be
-  read. That the running game goes by those names (in the host's `/proc`, also under Flatpak's
-  Steam) is assumed, not yet seen: tested only on stand-ins.
+  read. With the Linux build running under Flatpak's Steam it found the game by its name,
+  `Zexion` (2026-11-18); the Windows exe under Proton, `Zexion.exe`, is assumed, not seen.
 
 Running the Windows build under Proton (a forced compatibility tool), with the proxy needing
 `WINEDLLOVERRIDES="version=n,b"` and the Windows Archipelago run inside the game's prefix, is

@@ -87,8 +87,8 @@ overwritten, and that the backup keeps it.
 It fills either kind of empty slot. It refuses while Zexion is running, or when that can't be
 told, as `restore` does (the game writes its copies of the slots back over an install, and
 presumably over a restore: `save_lab.py --help`), so ask the user to close the game first. On
-Linux that check has not yet been seen to find the real game (`docs/DEVELOPING.md`,
-"Platforms"): have the user confirm it is closed rather than rely on it. It
+Linux the check has found the Linux build running (`docs/DEVELOPING.md`, "Platforms"); under
+Proton it is not yet seen, so there have the user confirm the game is closed. It
 also refuses a slot that is in use, a slot number that doesn't exist, and a missing or stale
 backup. Over a deleted save it names the backup file that now
 holds the old data. It logs to `lab/installs.log`, with `was=template` or `was=deleted` for the
