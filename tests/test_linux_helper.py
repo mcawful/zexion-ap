@@ -135,9 +135,6 @@ def test_the_game_counts_as_running_only_as_itself(tmp_path, state, started, ali
     assert linux_helper.running(10, 500, proc) is False  # no such process
 
 
-@pytest.mark.skipif(
-    not sys.platform.startswith("linux"), reason="SOCK_SEQPACKET unix sockets are Linux's"
-)
 class Socket:
     """A connection whose send fails (``sent`` False), or whose peer closes after the send."""
 
@@ -169,6 +166,9 @@ def test_a_socket_that_fails_is_told_by_whether_the_request_went_out(sent: bool)
     assert not helper.connected
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="SOCK_SEQPACKET unix sockets are Linux's"
+)
 def test_a_request_with_no_reply_closes_the_connection() -> None:
     """Its reply could still come, and would be read as the next request's."""
     client, silent = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
