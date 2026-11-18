@@ -812,6 +812,27 @@ void test_a_cache_needs_every_key() {
 
 // 1.0.0's cache, written before text_cut_code: it configures everything else, the text window's
 // cut left the game's, until a client's config, which holds the key, patches it.
+// The text cut's patch step by step on the stand-in's code, as TextCut makes it in watch_all:
+// read, built, written and put back.
+void test_the_text_cut_patches_the_stand_in() {
+    reset_game();
+    BYTE now[zap::kTextCutSize];
+    check(zap::safe_read(g_text_cut_code, now, sizeof now), "the stand-in's cut reads");
+    check(std::memcmp(now, kTextCutGame, sizeof now) == 0, "and holds the game's bytes");
+    BYTE patch[zap::kTextCutSize] = {};
+    check(zap::text_cut_patch(now, patch), "the cut's patch builds from them");
+    check(zap::patch_code(g_text_cut_code, patch, sizeof patch), "patch_code writes it");
+    check(std::memcmp(g_text_cut_code, patch, sizeof patch) == 0, "the stand-in holds the patch");
+    check(zap::patch_code(g_text_cut_code, kTextCutGame, sizeof kTextCutGame), "and puts it back");
+    zap::Game game;
+    check(configure(game).empty(), "a client's config");
+    game.watch_all(&no_callback);
+    const char* blocker = game.unload_blocker();
+    check(blocker != nullptr && std::string(blocker).find("cut") != std::string::npos,
+          "and the Game patches it", blocker == nullptr ? "(no blocker)" : blocker);
+    game.put_back_game(&no_callback);
+}
+
 void test_a_cache_without_the_text_cut() {
     HMODULE self = GetModuleHandleW(nullptr);
     auto older = stand_in_config();
@@ -855,6 +876,7 @@ int main() {
     test_the_logo_through_the_frame_call();
     test_the_disk_glyph_kept_for_its_popup();
     test_a_cache_needs_every_key();
+    test_the_text_cut_patches_the_stand_in();
     test_a_cache_without_the_text_cut();
     return report("offline tests");
 }
