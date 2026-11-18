@@ -52,10 +52,6 @@ def test_every_target_has_an_rva_for_each_known_build_and_no_other() -> None:
         assert set(t.rvas) == names, t.name
 
 
-if __name__ == "__main__":
-    print(digest())
-
-
 def test_every_target_has_a_row_in_the_linux_builds_lookup() -> None:
     """docs/re/linux.md maps each target onto the game's Linux build: a target added here needs
     its Linux counterpart found and recorded there too."""
@@ -64,3 +60,7 @@ def test_every_target_has_a_row_in_the_linux_builds_lookup() -> None:
     lookup = doc[start : doc.index("\n## ", start + 1)]
     rows = set(re.findall(r"^\| `(\w+)` \|", lookup, re.MULTILINE))
     assert [t.name for t in TARGETS if t.name not in rows] == []
+
+
+if __name__ == "__main__":
+    print(digest())

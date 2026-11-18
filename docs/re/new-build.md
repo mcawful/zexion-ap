@@ -33,7 +33,9 @@ the same heading with the new build, beside the old one, never in its place.
    (the `/find-address` skill, step 4): find the target's new RVA from the old code (its
    references, its function), take candidates, and keep two or more from different code. A
    change to `client/patterns.py` updates the digest in `tests/test_patterns.py` in the same
-   change (`.venv/Scripts/python tests/test_patterns.py` prints it).
+   change (`.venv/Scripts/python tests/test_patterns.py` prints it). A target added here also
+   needs its row in `linux.md`'s Lookup (its Linux counterpart, or that it is not found yet);
+   `tests/test_patterns.py` fails without it.
 5. **Record the new build:**
    - each target's RVA on it in `Target.rvas` (`client/patterns.py`), which
      `check_patterns.py` then compares;

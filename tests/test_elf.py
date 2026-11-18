@@ -37,7 +37,7 @@ def test_the_build_id_is_read_from_its_note() -> None:
 def test_a_symbol_is_found_by_its_exact_name() -> None:
     image = elf.parse(elf_image())
     state = image.symbol("gGameState")
-    assert (state.value, state.size, state.type) == (0x9E7840, 0x8CCBF8, elf.STT_OBJECT)
+    assert (state.value, state.size, state.type) == (0x9E7840, 0x8CCCF8, elf.STT_OBJECT)
     assert image.symbol("_Z10PlaySoundi").type == elf.STT_FUNC  # C++ by its mangled name
     with pytest.raises(elf.ELFError, match="no symbol PlaySound"):
         image.symbol("PlaySound")

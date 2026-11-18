@@ -70,7 +70,7 @@ def pe_image(
 
 # The symbols ``elf_image`` gives by default: (name, address, size, type, defined).
 ELF_SYMBOLS = [
-    ("gGameState", 0x9E7840, 0x8CCBF8, 1, True),
+    ("gGameState", 0x9E7840, 0x8CCCF8, 1, True),
     ("gCurrentSaveGame", 0x14945A0, 4, 1, True),
     ("_Z10PlaySoundi", 0x412340, 0x80, 2, True),
     ("SDL_GL_SwapWindow", 0, 0, 2, False),

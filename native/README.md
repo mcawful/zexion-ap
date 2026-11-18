@@ -2205,8 +2205,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   (`linux/exports.map`): the C++ runtime linked into it stays its own, never standing in for
   the game's `libstdc++` (a test reads the build's `.dynsym`).
 - **The frame call.** It defines `SDL_GL_SwapWindow`, which the game calls through its PLT
-  from two places (`docs/re/linux.md`, "The per-frame call"; that one runs once a frame is
-  assumed), so the preloaded one is the game's; it counts the call and passes it on to the next
+  from two places (`docs/re/linux.md`, "The per-frame call": in the game the frame's swap was
+  `SWHardwareEnd`'s, once a frame, and `UpdatePalette`'s swaps another window), so the preloaded one is the game's; it counts the call and passes it on to the next
   one, SDL's or another preloaded library's (Steam's overlay, say), found by
   `dlsym(RTLD_NEXT)` before the game starts, and looked for again if it was missing then (said
   on stderr). It returns the next one's result as an `int`: nothing for SDL2's callers, SDL3's
