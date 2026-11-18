@@ -187,6 +187,26 @@ class LinuxHelper:
             raise LinuxHelperError(f"unexpected reply to ping: {reply!r}")
         return int(count)
 
+    def callers(self) -> tuple[dict[int, int], int]:
+        """The frame calls by call site: each return address with its count, and the calls
+        from sites the helper had no room left for."""
+        reply = self.request("callers")
+        words = reply.split()
+        if not words or words[0] != "callers":
+            raise LinuxHelperError(f"unexpected reply to callers: {reply!r}")
+        sites: dict[int, int] = {}
+        other = 0
+        try:
+            for word in words[1:]:
+                key, count = word.split("=", 1)
+                if key == "other":
+                    other = int(count)
+                else:
+                    sites[int(key, 16)] = int(count)
+        except ValueError as exc:
+            raise LinuxHelperError(f"unexpected reply to callers: {reply!r}") from exc
+        return sites, other
+
     def read(self, address: int, size: int) -> bytes:
         """``size`` bytes of the game's memory at ``address``, read by the helper in pieces of
         at most MAX_READ; LinuxHelperError when they can't all be read."""

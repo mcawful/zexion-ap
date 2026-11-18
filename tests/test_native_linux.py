@@ -174,6 +174,24 @@ def test_the_clients_side_reads_the_game_through_the_helper(game: Game) -> None:
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_the_frame_calls_are_counted_by_call_site(game: Game) -> None:
+    found = game.as_found()
+    game.connect().close()
+    time.sleep(0.3)
+    with linux_helper.LinuxHelper(found) as helper:
+        sites, other = helper.callers()
+        total = helper.frames()
+    named = {}
+    for site, count in sites.items():
+        function = found.image.function_at(site)
+        assert function, f"{site:#x} is in none of the stand-in's functions"
+        named[function[0].name] = count
+    assert set(named) == {"draw_frame", "draw_editor"} and other == 0
+    assert named["draw_frame"] >= 3 * named["draw_editor"] - 3  # one in four frames
+    assert abs(sum(named.values()) - total) <= 2  # counted between the two requests
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_a_socket_served_by_another_process_is_not_trusted(game: Game) -> None:
     found = game.as_found()
     squatter = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)

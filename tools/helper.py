@@ -12,8 +12,9 @@ another build of the helper than native/build/Release/zexion_ap.dll.
 
 On Linux, with the game's Linux build, only ``status`` runs: the Linux helper is preloaded by
 the game's launch options (native/README.md, "The Linux helper"), not loaded into a running
-game. ``status`` there also reads the game's ``.rodata`` through the helper and compares it
-with the binary's, which says the binary is at its link addresses.
+game. ``status`` there also gives the frame calls by call site (each return address, named by
+the function of the binary that holds it), and reads the game's ``.rodata`` through the helper
+and compares it with the binary's, which says the binary is at its link addresses.
 """
 
 from __future__ import annotations
@@ -100,8 +101,18 @@ def linux_status(g: linux_helper.LinuxGame) -> int:
     with linux_helper.LinuxHelper(g) as helper:
         print("helper:", helper.request("hello"))
         first = helper.frames()
+        sites, _ = helper.callers()
         time.sleep(1.0)
         print(f"frames: {first}, then {helper.frames() - first} in the next second")
+        later, other = helper.callers()
+        for site, count in sorted(later.items()):
+            found = g.image.function_at(site)
+            where = f"{found[0].name}+{found[1]:#x}" if found else "outside the game's functions"
+            print(
+                f"  from {site:#x} ({where}): {count}, {count - sites.get(site, 0)} in that second"
+            )
+        if other:
+            print(f"  from other sites: {other}")
         rodata = g.image.section(".rodata")
         size = min(rodata.size, 4096)
         try:

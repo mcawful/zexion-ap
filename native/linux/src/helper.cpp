@@ -34,6 +34,32 @@ using Swap = int (*)(void*);
 Swap g_next_swap = nullptr;  // the SDL_GL_SwapWindow after ours, set by the constructor
 std::atomic<bool> g_active{false};
 std::atomic<uint64_t> g_frames{0};
+
+// The frame calls by call site (return address), claimed lock-free on a site's first call; calls
+// from sites past kCallSites are only counted together.
+constexpr int kCallSites = 8;
+std::atomic<uintptr_t> g_site[kCallSites]{};
+std::atomic<uint64_t> g_site_calls[kCallSites]{};
+std::atomic<uint64_t> g_other_calls{0};
+
+void count_call_site(uintptr_t site) {
+    for (int i = 0; i < kCallSites; ++i) {
+        uintptr_t held = g_site[i].load(std::memory_order_acquire);
+        if (held == 0) {
+            uintptr_t empty = 0;
+            if (g_site[i].compare_exchange_strong(empty, site, std::memory_order_acq_rel)) {
+                held = site;
+            } else {
+                held = empty;  // another thread claimed it first: this site or another
+            }
+        }
+        if (held == site) {
+            g_site_calls[i].fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+    }
+    g_other_calls.fetch_add(1, std::memory_order_relaxed);
+}
 const char* g_build = nullptr;
 bool g_folder = false;
 
@@ -94,6 +120,11 @@ State state() {
     s.hooked = g_active.load();
     s.folder = g_folder;
     s.frames = g_frames.load();
+    for (int i = 0; i < kCallSites; ++i) {
+        uintptr_t site = g_site[i].load(std::memory_order_acquire);
+        if (site != 0) s.callers.emplace_back(site, g_site_calls[i].load());
+    }
+    s.other_callers = g_other_calls.load();
     return s;
 }
 
@@ -203,7 +234,10 @@ __attribute__((constructor)) void start() {
 // The game's per-frame call (native/README.md, "The Linux helper"). SDL2's returns nothing and
 // SDL3's a bool: returned as an int, which an SDL2 caller ignores.
 extern "C" __attribute__((visibility("default"))) int SDL_GL_SwapWindow(void* window) {
-    if (g_active.load(std::memory_order_relaxed)) g_frames.fetch_add(1, std::memory_order_relaxed);
+    if (g_active.load(std::memory_order_relaxed)) {
+        g_frames.fetch_add(1, std::memory_order_relaxed);
+        count_call_site(reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
+    }
     Swap next = g_next_swap;
     if (next == nullptr) {  // SDL loaded after the constructor ran: look once more
         next = reinterpret_cast<Swap>(dlsym(RTLD_NEXT, "SDL_GL_SwapWindow"));

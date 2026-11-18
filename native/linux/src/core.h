@@ -9,6 +9,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace zap::linux_helper {
 
@@ -33,6 +35,10 @@ struct State {
     bool hooked = false;          // a known build: it counts the frame calls and serves
     bool folder = false;          // loaded from the game's own folder
     uint64_t frames = 0;          // frame calls since it loaded
+    // The frame calls by call site: each return address with its count, and the calls from
+    // sites past the table's room.
+    std::vector<std::pair<uint64_t, uint64_t>> callers;
+    uint64_t other_callers = 0;
 };
 
 // Copies `size` bytes of this process's memory at `address` into `out`; false (with why in

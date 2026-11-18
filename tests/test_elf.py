@@ -43,6 +43,14 @@ def test_a_symbol_is_found_by_its_exact_name() -> None:
         image.symbol("PlaySound")
 
 
+def test_an_address_is_named_by_the_function_holding_it() -> None:
+    image = elf.parse(elf_image())
+    symbol, offset = image.function_at(0x412340 + 0x20)
+    assert (symbol.name, offset) == ("_Z10PlaySoundi", 0x20)
+    assert image.function_at(0x412340 + 0x80) is None  # just past its end
+    assert image.function_at(0x9E7840) is None  # an object, not a function
+
+
 def test_an_import_is_not_a_definition() -> None:
     image = elf.parse(elf_image())
     assert [s.defined for s in image.symbols() if s.name == "SDL_GL_SwapWindow"] == [False]

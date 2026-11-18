@@ -2185,7 +2185,8 @@ against a stand-in game (`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
 branch copied into the game's folder: loaded by the launch options, it served `hello`
-(`build=B1 hooked=1 folder=1`), counted the frame calls (165 in a second at the title screen)
+(`build=B1 hooked=1 folder=1`), counted the frame calls (165 in a second on a 165 Hz display,
+all from `SWHardwareEnd`, the game window's swap, at the title screen and in play: `callers`)
 and served reads that matched the binary (`docs/re/linux.md`, "Read from the running game"). Not
 run: the Steam Runtime without Flatpak, a Steam Deck.
 
@@ -2209,8 +2210,9 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   one, SDL's or another preloaded library's (Steam's overlay, say), found by
   `dlsym(RTLD_NEXT)` before the game starts, and looked for again if it was missing then (said
   on stderr). It returns the next one's result as an `int`: nothing for SDL2's callers, SDL3's
-  `bool` for a program of SDL3 in the same launch. In another program, or another build, it only
-  passes the call on.
+  `bool` for a program of SDL3 in the same launch. It counts the calls by call site too (the
+  return address, in a lock-free table of eight; `callers`), which tells a frame's swap from
+  another window's. In another program, or another build, it only passes the call on.
 - **The socket.** An abstract unix socket, `zexion-ap-<pid>`, `SOCK_SEQPACKET`: one request a
   message, one reply a message, one client at a time, as the Windows pipe. The next client's
   connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
@@ -2227,6 +2229,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   |---|---|
   | `hello` | `zexion-ap <version> build=<B1\|unknown> hooked=<0\|1> platform=linux folder=<0\|1>` (`folder=1`: the `.so` is in the game binary's own folder) |
   | `ping` | `pong frames=<calls since load>` |
+  | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
 
   Anything else gets `error unknown request`.

@@ -93,6 +93,14 @@ void test_replies() {
               std::string("zexion-ap ") + kVersion + " build=B1 hooked=1 platform=linux folder=1",
           "hello for B1", reply("hello", s, fake_read));
     check(reply("ping", s, fake_read) == "pong frames=1234", "ping", reply("ping", s, fake_read));
+    check(reply("callers", s, fake_read) == "callers", "callers before any frame call",
+          reply("callers", s, fake_read));
+    s.callers = {{0x652557, 3}, {0x4caf9f, 1231}};
+    check(reply("callers", s, fake_read) == "callers 0x4caf9f=1231 0x652557=3",
+          "callers, lowest address first", reply("callers", s, fake_read));
+    s.other_callers = 2;
+    check(reply("callers", s, fake_read) == "callers 0x4caf9f=1231 0x652557=3 other=2",
+          "callers past the table's room", reply("callers", s, fake_read));
     check(reply("unload", s, fake_read) == "error unknown request", "a request it does not serve");
     check(reply(std::string_view("hello\0", 6), s, fake_read) == "error unknown request",
           "a request is the whole message");

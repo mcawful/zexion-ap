@@ -118,6 +118,14 @@ class Image:
             raise ELFError(f"{len(matches)} different symbols named {name}")
         return next(iter(matches.values()))
 
+    def function_at(self, addr: int) -> tuple[Symbol, int] | None:
+        """The defined function whose bytes hold ``addr``, and ``addr``'s offset into it; None
+        when no function symbol covers it."""
+        for sym in self.symbols():
+            if sym.type == STT_FUNC and sym.defined and sym.value <= addr < sym.value + sym.size:
+                return sym, addr - sym.value
+        return None
+
     def read(self, addr: int, size: int) -> bytes:
         """``size`` bytes at load address ``addr`` from the file. Bytes in ``.bss`` (no file
         data: zero until the game runs) are refused rather than read as zeros."""

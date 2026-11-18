@@ -1,5 +1,7 @@
 #include "core.h"
 
+#include <algorithm>
+#include <cstdio>
 #include <cstring>
 
 namespace zap::linux_helper {
@@ -52,6 +54,21 @@ std::optional<uint64_t> number(std::string_view text) {
         value = value * static_cast<uint64_t>(base) + static_cast<uint64_t>(digit);
     }
     return value;
+}
+
+// `callers`' reply: "callers", then each call site's return address and count, lowest address
+// first, then other=N if any came from sites past the table's room.
+std::string callers_reply(const State& state) {
+    auto sites = state.callers;
+    std::sort(sites.begin(), sites.end());
+    std::string out = "callers";
+    char hex[32];
+    for (const auto& [address, count] : sites) {
+        std::snprintf(hex, sizeof hex, " 0x%llx=", static_cast<unsigned long long>(address));
+        out += hex + std::to_string(count);
+    }
+    if (state.other_callers != 0) out += " other=" + std::to_string(state.other_callers);
+    return out;
 }
 
 // `read ADDRESS SIZE`'s reply.
@@ -112,6 +129,7 @@ std::string reply(std::string_view request, const State& state, const Reader& re
                " platform=linux folder=" + (state.folder ? "1" : "0");
     }
     if (request == "ping") return "pong frames=" + std::to_string(state.frames);
+    if (request == "callers") return callers_reply(state);
     if (request == "read" || request.starts_with("read ")) {
         return read_reply(request.substr(request.size() > 5 ? 5 : request.size()), read);
     }
