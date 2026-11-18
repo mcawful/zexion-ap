@@ -64,6 +64,16 @@ B1_HELPER_SYMBOLS = [
     ("gMoveProcs", 0x12F79A0, 0x4A0, 1),
     ("_Z15PowerUpMoveProcP9SpriteRec", 0x53D3E4, 0xDFA, 2),
     ("_Z17alterSpriteStringP9SpriteRecPKcii", 0x566E1F, 0xDC, 2),
+    ("gSmallTextCount", 0x16DA0D8, 2, 1),
+    ("gPowerUpDefCount", 0x16DA0AA, 2, 1),
+    ("_Z28createTranslationGameMessagePKwiiiiiissP9SpriteRec", 0x637EFD, 0x62E, 2),
+    (
+        "_Z12generateTextffNSt7__cxx1112basic_stringIwSt11char_traitsIwESaIwEEE"
+        "P8GameFontP12SpriteStringb",
+        0x54DA05,
+        0x33C5,
+        2,
+    ),
 ]
 
 

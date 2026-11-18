@@ -241,6 +241,17 @@ public:
     // 48 raised with the on-screen write patched (mapmarks.h; native/README.md, "The map").
     void watch_map_names();
     void watch_map_marks();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): in a translation, the
+    // helper's names in its tables, its icons in its sheets, the popups' borrowed entries emptied
+    // once their message has gone (translation.h; native/README.md, "Translations").
+    void watch_translation();
+    // Game thread: what the helper changed for a translation put back (its names in the tables,
+    // entry 70's offset once the popup areas are free, its icons): put_back_game's part, and the
+    // Linux helper's when a client goes.
+    void restore_translation();
+    // No icons painted into the icon sheets (the Linux helper's, when the game's sprite
+    // definitions are not counted as traced, so 101 and 104 may not be the sheets).
+    void hold_icon_sheets() { icon_sheets_held_ = true; }
     void* map_original(void* child) const;
     void hide_title();
     std::string title_state() const;
@@ -376,7 +387,8 @@ public:
         return nullptr;
     }
 
-    // The translation (translation.h): `hello`'s `lang`; what the helper holds (tests).
+    // The translation (translation.h): `hello`'s `lang` (the Linux helper's `lang`); what the
+    // helper holds (tests).
     std::string language() const { return configured_ ? language_name(at_) : "?"; }
     // Game thread, in an unload's frame once all is put back: popups still to show take no
     // borrowed entry, so none is left the helper's; the next watch_all (the unload refused)
@@ -404,7 +416,6 @@ private:
     // (docs/re/memory.md, "The pickup record holds the major-item list").
     void watch_pickups();
     // The helper's names and scanner line in the translation's tables; popup areas freed.
-    void watch_translation();
     // A popup in the translation's font: the icon and translated name (a stand-in's own, not its
     // label), then the client's suffix on the next line; a notice's text alone (hd_case).
     std::wstring hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const;
@@ -604,6 +615,7 @@ private:
     EntryWriter tr_entries_;
     PopupAreas popup_areas_;
     bool translated_popups_ = true;  // hold_translated_popups
+    bool icon_sheets_held_ = false;  // hold_icon_sheets
     std::wstring stand_in_hd_[kStandInCount];
     bool stand_in_near_[kStandInCount] = {};  // a stand-in of each record within reach now
     // Each stand-in's name held while its pickup message shows: the serial, the name ("" not yet).

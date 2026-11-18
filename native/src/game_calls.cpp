@@ -963,8 +963,9 @@ void Game::watch_pickups() {
 void Game::watch_translation() {
     const std::optional<Loaded> now = loaded_translation(at_);
     popup_areas_.watch(now);
-    // The helper's icons in the translation's icon sheets while its text shows (apitem.h).
-    if (now && now->on) {
+    // The helper's icons in the translation's icon sheets while its text shows (apitem.h); none
+    // while their definitions are not known to be the sheets (hold_icon_sheets).
+    if (now && now->on && !icon_sheets_held_) {
         icon_sheets_.paint(at_.sprite_templates, gl_);
     } else if (icon_sheets_.painted()) {
         icon_sheets_.clear(at_.sprite_templates, gl_);
@@ -1623,6 +1624,16 @@ void Game::drop_save_look() {
     restore_discs();
 }
 
+void Game::restore_translation() {
+    if (!configured_) return;
+    // The translation's entries back; the popup areas emptied once free (unload waits).
+    const std::optional<Loaded> now = loaded_translation(at_);
+    tr_entries_.restore(now);
+    for (NameHold& h : name_holds_) h = {};  // nothing held to write back after
+    popup_areas_.restore(now);
+    icon_sheets_.clear(at_.sprite_templates, gl_);
+}
+
 void Game::put_back_game(WidgetCallback callback) {
     // A prompt asked for or opening, asked for again once put back (not a NO's closed one).
     const bool prompt = mission_.on_its_way();
@@ -1639,12 +1650,7 @@ void Game::put_back_game(WidgetCallback callback) {
     // queued popups do; an unload is refused while one is held (unload_refusal), then puts them
     // back (put_back_traps).
     if (configured_) {
-        // The translation's entries back; the popup areas emptied once free (unload waits).
-        const std::optional<Loaded> now = loaded_translation(at_);
-        tr_entries_.restore(now);
-        for (NameHold& h : name_holds_) h = {};  // nothing held to write back after
-        popup_areas_.restore(now);
-        icon_sheets_.clear(at_.sprite_templates, gl_);
+        restore_translation();
         if (prompt) mission_.request();
     }
 }

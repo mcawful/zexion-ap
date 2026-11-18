@@ -68,6 +68,7 @@ from .ticks import (  # noqa: E402
     labels_tick,
     language_tick,
     linux_labels_tick,
+    linux_language_tick,
     linux_mod_lost,
     linux_newgame_tick,
     linux_seed_tick,
@@ -501,6 +502,7 @@ async def poll(ctx: ZexionContext) -> None:
         await side_tick(ctx, "new game", lambda: linux_newgame_tick(ctx))
         await side_tick(ctx, "item labels", lambda: linux_labels_tick(ctx))
         await side_tick(ctx, "own traps", lambda: linux_seed_tick(ctx, p))
+        await side_tick(ctx, "language", lambda: linux_language_tick(ctx))
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("item labels", lambda: labels_tick(ctx)),

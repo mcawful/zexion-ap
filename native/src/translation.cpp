@@ -22,10 +22,14 @@ constexpr int kMaxEntries = 4096;
 // The most glyphs a label is taken to have, either kind.
 constexpr int32_t kMaxGlyphs = 4096;
 // The game's builder 0x88480, which takes the string by value and frees it, and the std::wstring
-// assign 0x17BD0 (docs/re/memory.md, "Translated menus and the prompt").
+// assign 0x17BD0 (docs/re/memory.md, "Translated menus and the prompt"). On Linux the builder,
+// generateText, takes the caller's libstdc++ std::wstring by hidden reference, in rdi, and the
+// caller destroys it (docs/re/linux.md, `hd_build_fn`): the same order of arguments.
 using BuildFn = void (*)(float x, float y, void* text, void* font, BYTE* label, char flag);
+#ifdef _WIN32
 using WstringFn = void* (*)(void* text, const wchar_t* characters, size_t length);
 constexpr size_t kWstringSize = 32;
+#endif
 // 0x1870A0(text, _, _, _, _, _, _, entry, kind, message): the 8th to 10th on the stack, as the
 // pickup and GAME SAVED call it (docs/re/memory.md, "Translated messages").
 using HdTextFn = void (*)(const wchar_t* text, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t,
@@ -217,9 +221,17 @@ int32_t glyphs_in(std::wstring_view text) {
 
 void build(const GameAddresses& a, BYTE* label, std::wstring_view text, double x, double y,
            bool wrap) {
+#ifdef _WIN32
     // As the game's callers start it (0x8AC65 to 0x8ACA0): 32 zero bytes, then the assign.
     alignas(16) BYTE wide[kWstringSize] = {};
     reinterpret_cast<WstringFn>(a.wstring_new_fn)(wide, text.data(), text.size());
+#else
+    // The helper's own libstdc++ string, of the same layout as the game's (GCC's, the
+    // __cxx11 ABI), on the same heap (malloc): built here, destroyed here, as the game's callers
+    // do (0x6382E0, then ~basic_string at 0x63832F).
+    std::wstring string(text);
+    void* wide = &string;
+#endif
     reinterpret_cast<BuildFn>(a.hd_build_fn)(static_cast<float>(x), static_cast<float>(y), wide,
                                              a.translation + tr::kFont, label, wrap ? 1 : 0);
 }
@@ -344,8 +356,18 @@ namespace {
 // translations' icons".
 constexpr ptrdiff_t kFontGlyphTable = 0x30, kFontGlyphs = 0x08, kFontSpace = 0x40040;
 constexpr ptrdiff_t kFontScale = 0x40060;
+#ifdef _WIN32
 constexpr ptrdiff_t kGlyphFrom = 0x08, kGlyphTo = 0x10;
 constexpr size_t kGlyphEntry = 0x20;
+using GlyphField = int32_t;
+#else
+// The Linux build's records are 0x40 bytes (loadGameFont: calloc(count, 0x40)), the two fields
+// 64-bit at +0x10 and +0x20 (generateText, 0x54EEBC to 0x54EF73: docs/re/linux.md, "Mapped by
+// disassembly: the helper's translated text").
+constexpr ptrdiff_t kGlyphFrom = 0x10, kGlyphTo = 0x20;
+constexpr size_t kGlyphEntry = 0x40;
+using GlyphField = int64_t;
+#endif
 constexpr float kHdFontDivisor = 4.8214f;
 constexpr double kHdIconDivisor = 4.8214;
 constexpr ptrdiff_t kFrameEntry = 0x38, kPixelAdvance = 0x28, kHdAdvance = 0x26;
@@ -403,7 +425,7 @@ double FontMetrics::advance(wchar_t c) const {
         }
         return pixel_font_ ? static_cast<float>(w) : static_cast<float>(w / kHdIconDivisor);
     }
-    int32_t from = 0, to = 0;
+    GlyphField from = 0, to = 0;
     const BYTE* glyph = glyphs_ + static_cast<size_t>(index) * kGlyphEntry;
     if (index < 0 || !read(glyph, kGlyphFrom, from) || !read(glyph, kGlyphTo, to)) return -1;
     const double unit = static_cast<double>(static_cast<float>(scale_)) * 64.0;
@@ -700,15 +722,7 @@ BYTE* hd_object(const GameAddresses& a, BYTE* message) {
 }  // namespace
 
 void clear_mark(const GameAddresses& a, BYTE* message) {
-#ifdef _WIN32
     if (!translation_on(a)) return;
-#else
-    // The Linux helper configures no translation (its tables are 4-byte characters, not ported),
-    // only the flag and the HD objects, which the game hides a message by (docs/re/linux.md,
-    // "Mapped by disassembly: translations", `tr_flag`, `hd_messages`).
-    uint8_t flag = 0;
-    if (a.tr_flag == nullptr || !read(a.tr_flag, 0, flag) || flag == 0) return;
-#endif
     BYTE* object = hd_object(a, message);
     // Only an object not bound to this message, told by its serial (docs/re/memory.md,
     // "Translated messages"): the mark is then the last translated message's in that slot.
@@ -832,8 +846,15 @@ bool PopupAreas::show(const GameAddresses& a, const Loaded& now, int where, BYTE
         areas_[1].object = object;
     }
     next_ = (where == 0) ? 1 : 0;
+#ifdef _WIN32
     reinterpret_cast<HdTextFn>(a.hd_text_fn)(text.c_str(), 0, 0, 0, 0, 0, 0, area.entry,
                                              kSmallKind, message);
+#else
+    // The Linux build reads the ints the game passes with a popup (its width, place and frames:
+    // docs/re/linux.md, `hd_text_fn`): the pickup's own.
+    reinterpret_cast<HdTextFn>(a.hd_text_fn)(text.c_str(), kGamePopupWidth, kPopupX, kPopupY, 100,
+                                             1, kPopupFrames, area.entry, kSmallKind, message);
+#endif
     return true;
 }
 

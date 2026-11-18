@@ -28,8 +28,7 @@ public:
     // Game thread, each frame while armed. A choice relabeled before and no longer on the top
     // menu is restored. Then, if the top menu shows the game-mode panel with RANDOMIZER on it,
     // relabels it ARCHIPELAGO, points it at `callback` and gives the panel `hooks.panel` (for
-    // fit_border). Returns true when it relabeled this frame. On Linux, not while a translation
-    // is on (its label is not rebuilt there yet): the player has RANDOMIZER's route.
+    // fit_border). Returns true when it relabeled this frame.
     bool install(const GameAddresses& addresses, WidgetCallback callback);
     // Game thread. Puts RANDOMIZER and the panel's handler back if the menu is still open; a
     // closed menu's are just forgotten. Returns true when it wrote RANDOMIZER's callback back.

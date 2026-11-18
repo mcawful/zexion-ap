@@ -2184,13 +2184,14 @@ lands, not only the place passed.
 it reads and writes the running game's memory for the client, counts its frames, starts new
 games, ARCHIPELAGO on the menu or RANDOMIZER ("New games"), gives the client's items with
 their popups (`apply`: "Grants", "Popups"), shows other players' items as Archipelago items
-(`ap_labels`: "Other players' items", "Other Zexion players' items, as themselves"), and sets
-off traps ("Traps"). It holds
-the Windows helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below. None of
-the other parts above runs on Linux yet: the client reads and writes the game through it
-(`game.Game.attach_linux`), gives its items, labels and seed through it
-(`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested against a
-stand-in game (`tests/test_native_linux.py`).
+(`ap_labels`: "Other players' items", "Other Zexion players' items, as themselves"), sets off
+traps ("Traps"), and shows its text in a translation's font ("Translations"). It holds the
+Windows helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the
+other parts above runs on Linux yet: the client reads and writes the game through it
+(`game.Game.attach_linux`), gives its items, labels and seed through it and asks it the
+language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper;
+`tools/helper.py status` talks to it too. Tested against a stand-in game
+(`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
 branch copied into the game's folder: loaded by the launch options, it served `hello`
@@ -2241,12 +2242,13 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 52 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 61 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
   | `offline_put seed NAME` and the seed's file (frame) | `taken`, or `error <why>`: the seed parsed as the Windows helper's ("AP saves without the client"), kept in the helper, no file written, for this world's own traps ("Traps"); `offline_put config` is `error not on the Linux build` |
   | `trap_status` (frame) | as the Windows helper's ("Traps") |
+  | `lang` (frame) | `lang <name>`: the language the game shows, spaces as underscores (the Windows helper's `hello`'s `lang`); `lang ?` unconfigured or with no name readable |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
 
   Anything else gets `error unknown request`.
@@ -2269,7 +2271,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 52), which the client resolves from the game's symbols
+  addresses (with the rest of the 61), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of them, so a client and a
   helper that disagree change nothing (the client also refuses a helper of another version, and
   one of this version built before the traps, which answers no `trap_status`: it would refuse
@@ -2280,9 +2282,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   the game. As on Windows, a client that goes takes its plan with it: the helper disarms at the
   next frame. The ARCHIPELAGO choice on the game-mode panel is `src/choice.cpp`'s, shared too: the
   same relabel, panel hook and callback (the game calls a menu callback with no arguments on Linux,
-  and the helper's reads none), at the frame call. Not while a translation is on: its label is
-  rebuilt through the translation's code, not ported yet (4-byte characters), so RANDOMIZER stays
-  and the seed starts from it with its text. The choice is tested on Windows' stand-in menu
+  and the helper's reads none), at the frame call, in a translation too ("Translations", below).
+  The choice is tested on Windows' stand-in menu
   (`tests/menu_tests.cpp`, `game_tests.cpp`); on Linux only built, and configured through the
   socket. The shared sources build on Linux through `src/platform.h` and the Linux parts of the
   memory layer, `src/game_mem_linux.cpp`: fault-safe reads through the kernel, writability from
@@ -2304,8 +2305,6 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   by disassembly: HUD, items, sound, popups, deaths"), Magnus Armor's suit color, then the
   popups one a frame call apart as there, each with its item's sound, waiting for their own save.
   What differs, as the parts behind it are not ported:
-  - popups show in the pixel font in a translation too (`hold_translated_popups`), the message
-    slot's translated mark cleared as the Windows helper's fallback does;
   - RETURN HOME WITH THE DISKS? is not watched (`src/mission.h` is not run): an `apply` is not
     refused in its ending, and popups are not held through it;
   - a received Scrap Energy's or Scrap Chunk's drop is not spawned (`pump_drops` is not run);
@@ -2341,9 +2340,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   - a client that goes takes its labels with it, the records, the width and the pixels put
     back at the next frame call: no offline look dresses the save here ("AP saves without the
     client" is not ported). The client sends them again on a new connection (a request with no
-    reply ends one: `LinuxMod.current`);
-  - in a translation, the stand-ins' pickup popups read the translation's names (ItemNames 47
-    and 48), not the labels: written there by the translation's part, not ported.
+    reply ends one: `LinuxMod.current`).
 
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`: `ap_labels`
   refused unconfigured, then a label for the player's cell names Scrap Energy's record after it,
@@ -2362,15 +2359,51 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     to 35" (`cmp ax, 0x30; je`, `sub eax, 3; cmp ax, 0x20; ja`, a nop) where it reads as B1's,
     each held and put back on its own; the code between them is never written;
   - the wrapper is called with the map's child alone, as the game calls its move procedures
-    (`map_hook`, `linux/src/helper.cpp`);
-  - in a translation the cursor's name is the pixel text written over the game's (the
-    translation's own build of it is not ported).
+    (`map_hook`, `linux/src/helper.cpp`).
 
   Tested: `linux/tests/patch_tests.cpp` runs the game's two tests and the patched ones side by
   side for every ID from 0 to 255 (only 48 changes, from the minor's write to the major's); and
   on the stand-in game through the socket, the stand-in's copies of the two tests patched once
   the labels' seed's save has been loaded for two looks, put back once the client goes. The
   cursor's names: built only (the stand-in has no map). Not run in the game.
+- **Translations.** `Game::watch_translation` runs at each frame call, and the popups, names and
+  labels above take the translation's font as on Windows ("Translations"): popups in SmallText 66
+  to 72, the stand-ins' labels in ItemNames 47 and 48, ARCHIPELAGO and the map cursor's name
+  built again (the game's `MapMoveProc` builds its own translated name first, as Windows':
+  `docs/re/linux.md`, "Mapped by disassembly: the helper's translated text"), the helper's
+  icons in the icon sheets (painted through the same unproven OpenGL path as the logos, into
+  definitions 101 and 104, the game's count of definitions plus 5 and 8: the helper reads that
+  count, `gSpriteDefCount`, at each `config` and paints no icons unless it is 96,
+  `Game::hold_icon_sheets`); and the client asks the language
+  (`lang`) to warn in any but English(HD), as from the Windows helper's `hello`. What differs on
+  Linux (`docs/re/linux.md`, "Mapped by disassembly: translations"):
+  - the tables hold 4-byte characters, which is `wchar_t` in the helper's GCC build, so the same
+    code reads and writes them; the translation object is `0x40150` bytes (`tr::kSize`);
+  - the font's glyph records are `0x40` bytes, their two fields 64-bit at `+0x10` and `+0x20`
+    (FreeType's `long`s), so `FontMetrics` reads that layout for the popups' wrapping and
+    centering (`docs/re/linux.md`, "Mapped by disassembly: the helper's translated text");
+  - the label builder, `generateText`, takes the caller's `std::wstring` by reference and the
+    caller destroys it: the helper builds its own (libstdc++'s, as the game's, on the same heap)
+    and passes it, with no `wstring_new_fn` (`build`, `src/translation.cpp`);
+  - the message call, `createTranslationGameMessage`, reads the ints the game passes with a
+    popup, so the helper passes the pickup's (24, 160, 88, 100, 1, 180), not zeros
+    (`PopupAreas::show`);
+  - a client that goes takes the helper's translation changes with it, as on Windows
+    (`Game::restore_translation`: the names in the tables, entry 70's offset once the popup
+    areas are free, the icons);
+  - the parts not on Linux (the equipment screen, the question, the pause row, the Feats screen,
+    the ASSIST lock, the title lines) build no text here;
+  - where a rebuilt label goes, the font's other fields and the icons' characters are as on
+    Windows (measured by disassembly: the same section); that the game reads none of SmallText
+    66 to 72 is assumed for its data-driven entries, as on Windows.
+
+  Tested: `linux/tests/translation_tests.cpp` builds a label through a stand-in builder of
+  `generateText`'s signature (the helper's string, longer than libstdc++ holds in place, reaches
+  it whole) and reads a glyph's advance from a record of the Linux layout; on the stand-in game
+  through the socket, a received popup in a translation goes into
+  SmallText 66 or 70, its message given it with the pickup's ints and the translation's name for
+  the item, the entry holding the text; and one that cannot go there (the run not as traced)
+  shows the pixel text, its slot's mark cleared. Not run in the game.
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
@@ -2444,7 +2477,8 @@ fixed-address executable as the game is, calling `SDL_GL_SwapWindow` from a stan
 `tests/test_native_linux.py` preloads both builds into the stand-in game ("The Linux helper"),
 `zap_newgame_tests` runs the shared new-game logic (`linux/tests/newgame_tests.cpp`), and
 `zap_patch_tests` runs the Linux build's code patches side by side with the game's bytes
-(`linux/tests/patch_tests.cpp`, "The map");
+(`linux/tests/patch_tests.cpp`, "The map"), and `zap_translation_tests` the label builder's call
+(`linux/tests/translation_tests.cpp`, "Translations");
 `ZEXION_NATIVE_BUILD` points it at another build folder than `native/build`.
 CI runs all of it on Ubuntu, with `ZEXION_REQUIRE=helper`.
 

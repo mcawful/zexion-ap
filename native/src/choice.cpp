@@ -6,9 +6,7 @@
 
 #include "game_mem.h"
 #include "text.h"  // Capitals
-#ifdef _WIN32
 #include "translation.h"  // rebuild_label, hd_case, read_small_entry
-#endif
 
 namespace zap {
 
@@ -32,7 +30,7 @@ constexpr char kLabel[] = "Archipelago";
 constexpr Capitals kPixelLabel{kLabel};
 static_assert(kPixelLabel.size() == kLabelLength);
 constexpr char kRandomizer[kLabelLength + 1] = "RANDOMIZER ";  // the game's own label
-[[maybe_unused]] constexpr int kRandomizerEntry = 354;  // Windows: put_back
+constexpr int kRandomizerEntry = 354;
 constexpr ptrdiff_t kPanelSelected = 0x2DC;  // 32-bit: the selected child, -1 for none
 
 }  // namespace
@@ -66,13 +64,11 @@ bool ArchipelagoChoice::put_back(const GameAddresses& a, WidgetCallback callback
     // The callback goes back even if the label changed shape: the widget is alive and would
     // otherwise keep pointing into the helper.
     at<void*>(child_, widget::kCallback) = a.rando_menu_fn;
-#ifdef _WIN32
     // In a translation, its text back to the entry's (the label the game built from it).
     std::wstring own;
     if (read_small_entry(a, kRandomizerEntry, own)) {
         rebuild_label(a, pointer_at(child_, widget::kLabel), own, {.attached = true});
     }
-#endif
     return true;
 }
 
@@ -102,11 +98,6 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
     }
     restore(a, callback);
     if (top == nullptr || hook_panel_ != nullptr) return false;
-#ifndef _WIN32
-    // In a translation the label is rebuilt through the translation's code, not ported to the
-    // Linux build yet (its 4-byte characters): RANDOMIZER stays.
-    if (a.tr_flag == nullptr || *a.tr_flag != 0) return false;
-#endif
     BYTE* child = choice_in(top, a, a.rando_menu_fn);
     BYTE* glyphs[kLabelLength] = {};
     if (child == nullptr || !glyphs_of(child, glyphs)) return false;
@@ -118,11 +109,9 @@ bool ArchipelagoChoice::install(const GameAddresses& a, WidgetCallback callback)
                              : at<int32_t>(g, sprite::kFrameIndex);
         set_frame(g, static_cast<unsigned char>(kPixelLabel.text[i]));  // glyphs_of: count > 'Z'
     }
-#ifdef _WIN32
     // In a translation, built again where the attach would build it now; the game sizes its
     // hover border from that text (0xAE500), and fit_border leaves it alone.
     rebuild_label(a, pointer_at(child, widget::kLabel), hd_case(a, kLabel), {.attached = true});
-#endif
     at<void*>(child, widget::kCallback) = reinterpret_cast<void*>(callback);
     // The panel's handler the helper's, so the hover border is fitted in the frame it is laid
     // out (only over the game's own; checked by choice_in on the way).

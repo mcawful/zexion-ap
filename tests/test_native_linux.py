@@ -14,6 +14,7 @@ import re
 import shutil
 import signal
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -340,7 +341,16 @@ CONFIG_SYMBOLS = {
     "widget_handler_fn": "zap_widget_handler",
     "panel_handler_fn": "zap_panel_handler",
     "rando_newgame_fn": "zap_force_seed",
-    "tr_flag": "zap_tr_flag",
+    "tr_flag": ("zap_translation", 0x91),
+    "translation": "zap_translation",
+    "small_text": ("zap_translation", 0x30),
+    "small_offsets": ("zap_translation", 0x58),
+    "item_names": ("zap_translation", 0x48),
+    "item_name_offsets": ("zap_translation", 0x78),
+    "small_count": "zap_small_count",
+    "item_name_count": "zap_item_name_count",
+    "hd_text_fn": "zap_hd_text",
+    "hd_build_fn": "zap_build_text",
     "inventory": ("zap_player", 0x108E),
     "save_loaded": "zap_save_loaded",
     "menu_state": "zap_cursor",
@@ -515,21 +525,26 @@ def test_an_apply_is_refused_out_of_play(game: Game) -> None:
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
-def test_in_a_translation_the_popups_slot_is_not_left_hidden(game: Game) -> None:
-    # A translated message (the game's own pickup, say) left its HD object marked: the game would
-    # hide the next message in that slot by it (docs/re/memory.md, "Translated messages").
+def test_in_a_translation_a_popup_in_pixel_text_is_not_left_hidden(game: Game) -> None:
+    # A popup that cannot go into the translation's entries (here the run is not as traced:
+    # entry 66 not empty) shows the pixel text. A translated message (the game's own pickup, say)
+    # left its HD object marked: the game would hide the next message in that slot by it
+    # (docs/re/memory.md, "Translated messages"), so the mark is cleared.
     at = config_addresses()
     has_text = at["hd_messages"] + 0x22C
     with game.connect() as sock:
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
+        entry_66 = stand_in("zap_small") + 4 * 200
+        assert ask(sock, f"write {entry_66:#x} 58000000") == "written 4"  # an X there
         assert ask(sock, f"write {at['tr_flag']:#x} 01") == "written 1"
         assert ask(sock, f"write {has_text:#x} 01") == "written 1"
         assert ask(sock, "apply\npopup 3 from Tester") == "applied"
         count = stand_in("zap_shown_count")
         wait_for(sock, f"read {count:#x} 4", lambda r: r != "data " + "\x00" * 4)
         assert read_at(sock, count, 4) == (1).to_bytes(4, "little")
-        assert read_at(sock, has_text, 1) == b"\x00"  # the mark cleared: the popup shows
+        # The mark cleared, in the frame the popup is made (read after the game's call made it).
+        assert wait_for(sock, f"read {has_text:#x} 1", lambda r: r == "data \x00") == "data \x00"
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
@@ -658,3 +673,26 @@ def test_in_the_labels_seeds_save_the_map_marks_item_48_as_a_major(game: Game) -
     with game.connect() as sock:
         wait_for(sock, f"read {tests[0]:#x} 1", lambda r: r == "data \x02")
         assert [read_at(sock, t, 1) for t in tests] == [b"\x02", b"\x02"]
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_in_a_translation_a_popup_shows_in_its_font(game: Game) -> None:
+    # The text in a SmallText entry the game never reads (66), the message given it as the
+    # game's pickup gives its own, with the pickup's ints (the Linux build reads them).
+    at = config_addresses()
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, f"write {at['tr_flag']:#x} 01") == "written 1"  # a translation on
+        assert ask(sock, "apply\npopup 3 from Tester") == "applied"
+        ints = stand_in("zap_hd_ints")
+        wait_for(sock, f"read {ints:#x} 4", lambda r: r != "data " + "\x00" * 4)
+        values = struct.unpack("<8i", read_at(sock, ints, 32))
+        assert values[:6] == (24, 160, 88, 100, 1, 180)
+        assert values[6] in (66, 70) and values[7] == 0  # its entry, SmallText (kind 0)
+        shown = read_at(sock, stand_in("zap_hd_shown"), 4 * 64).decode("utf-32-le")
+        shown = shown.split("\x00")[0]
+        assert shown == "Machine Gun\nFROM TESTER"  # the translation's own name, in its case
+        entry = 200 + (0 if values[6] == 66 else 140)
+        written = read_at(sock, stand_in("zap_small") + 4 * entry, 4 * 64).decode("utf-32-le")
+        assert written.split("\x00")[0] == shown, "the entry the message reads holds the text"

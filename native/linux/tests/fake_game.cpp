@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <cwchar>
+#include <string>
 
 extern "C" void SDL_GL_SwapWindow(void*);
 extern "C" unsigned long zap_stub_swaps();
@@ -31,7 +33,47 @@ __attribute__((noinline, used)) void zap_new_game() { asm volatile(""); }
 __attribute__((noinline, used)) void zap_placement() { zap_section[0x26C] = 0x5A; }
 // The menus the ARCHIPELAGO choice reads (no menu is ever up in the stand-in: it is not offered).
 void* zap_menu_top;
-unsigned char zap_tr_flag;
+// The translation object (gCurrentTranslation's size; its flag at +0x91, off), its counts, and
+// its two builders: the message's records its ints, entry and kind and its text (4-byte wchar_t,
+// as the Linux build's), the label's the string it was handed (a std::wstring by reference).
+alignas(16) unsigned char zap_translation[0x40150];
+short zap_small_count;
+short zap_sprite_def_count = 96;  // as the game's (gSpriteDefCount): the icon sheets 101, 104
+short zap_item_name_count;
+int zap_hd_ints[8];
+wchar_t zap_hd_shown[128];
+wchar_t zap_built[128];
+unsigned char zap_hd_messages[4 * 0x238];
+// As createTranslationGameMessage binds the message's HD object (docs/re/linux.md,
+// `hd_messages`): its message, serial, entry, kind and has-text byte.
+__attribute__((noinline, used)) void zap_hd_text(const wchar_t* text, int a, int b, int c, int d,
+                                                 int e, int f, short entry, short kind,
+                                                 void* message) {
+    const int ints[8] = {a, b, c, d, e, f, entry, kind};
+    int slot = 0, serial = 0;
+    std::memcpy(&slot, static_cast<unsigned char*>(message) + 0x1E0, 4);
+    std::memcpy(&serial, static_cast<unsigned char*>(message) + 0x1D8, 4);
+    unsigned char* object = zap_hd_messages + 0x238 * slot;
+    const int entry32 = entry, kind32 = kind;
+    std::memcpy(object + 0x220, &message, sizeof message);
+    std::memcpy(object + 0x228, &serial, 4);
+    std::memcpy(object + 0x20C, &entry32, 4);
+    std::memcpy(object + 0x210, &kind32, 4);
+    object[0x22C] = text[0] != L'\0';
+    std::wcsncpy(zap_hd_shown, text, 127);
+    std::memcpy(zap_hd_ints, ints, sizeof ints);  // last: the test waits for these
+}
+__attribute__((noinline, used)) void zap_build_text(float, float, std::wstring* text, void*,
+                                                    void*, bool) {
+    std::wcsncpy(zap_built, text->c_str(), 127);
+}
+// The translation's tables as the Linux build loads them (4-byte characters): SmallText's 80
+// entries, 66 to 72 empty in a run with room after them (as in every translation), and
+// ItemNames' 51, item 3 Machine Gun.
+wchar_t zap_small[600];
+int zap_small_offsets[80];
+wchar_t zap_items[200];
+int zap_item_offsets[51];
 __attribute__((noinline, used)) void zap_rando_menu() { asm volatile(""); }
 __attribute__((noinline, used)) void zap_widget_handler(void*, int) { asm volatile(""); }
 __attribute__((noinline, used)) void zap_panel_handler(void*, int) { asm volatile(""); }
@@ -49,7 +91,6 @@ unsigned char zap_record_table[51 * 100];
 unsigned char zap_last_message[16];
 unsigned char zap_strip_gate;
 unsigned char zap_sounds[8];
-unsigned char zap_hd_messages[4 * 0x238];
 unsigned char zap_message_slots[4 * 0x1628];
 char zap_shown[256];  // the last message's text
 int zap_shown_count;
@@ -211,6 +252,16 @@ int main() {
     void* record = zap_texture_record;
     std::memcpy(zap_world + 0x40, &record, sizeof record);
     zap_sprite_world = zap_world;
+    for (int k = 0; k < 80; ++k) zap_small_offsets[k] = k < 66 ? 2 * k : 200 + 40 * (k - 66);
+    for (int k = 0; k < 51; ++k) zap_item_offsets[k] = 2 * k;
+    zap_item_offsets[3] = 120;
+    std::wcscpy(zap_items + 120, L"Machine Gun");
+    zap_small_count = 80;
+    zap_item_name_count = 51;
+    const void* tables[4][2] = {{zap_small, nullptr}, {zap_small_offsets, nullptr},
+                                {zap_items, nullptr}, {zap_item_offsets, nullptr}};
+    const int at[4] = {0x30, 0x58, 0x48, 0x78};
+    for (int i = 0; i < 4; ++i) std::memcpy(zap_translation + at[i], &tables[i][0], sizeof(void*));
     zap_player[0x107A] = 2;
     zap_player[0x107B] = 3;
     std::printf("marker %p block %p\n", static_cast<void*>(const_cast<char*>(g_marker)),

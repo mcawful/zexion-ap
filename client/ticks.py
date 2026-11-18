@@ -661,10 +661,9 @@ LINUX_HOLD_SECONDS = 30.0  # as zexion_client's HELPER_RETRY_SECONDS for the Win
 async def linux_newgame_tick(ctx: ZexionContext) -> None:
     """With the game's Linux build: the Linux helper configured once an attach, and again once
     its connection was made again (linux_helper.LinuxMod, which the step then gives the items
-    through: zexion_client's poll; and linux_labels_tick the labels),
-    and its new games, ARCHIPELAGO offered as on Windows (the helper leaves RANDOMIZER while a
-    translation is on). A helper that can't be reached or refuses is told once and tried again
-    on a later poll (linux_mod_lost)."""
+    through: zexion_client's poll; and linux_labels_tick the labels), and its new games,
+    ARCHIPELAGO offered as on Windows. A helper that can't be reached or refuses is told once
+    and tried again on a later poll (linux_mod_lost)."""
     g = ctx.game_conn
     if g is None or getattr(g, "platform", "windows") != "linux":
         return
@@ -732,6 +731,27 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
             "Zexion's mod on Linux didn't take this seed's own traps; they may do nothing."
         )
         log.warning(f"The Linux helper did not take the seed: {reply}")
+
+
+async def linux_language_tick(ctx: ZexionContext) -> None:
+    """With the game's Linux build: the language the game shows, asked of the Linux helper
+    (``lang``) as language_tick asks the Windows helper's hello, every LANGUAGE_ASK_SECONDS; the
+    same line once a game run in a translation other than English(HD). A helper that fails is
+    linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None or time.monotonic() < mod.told.language_at:
+        return
+    mod.told.language_at = time.monotonic() + state.LANGUAGE_ASK_SECONDS
+    try:
+        reply = await asyncio.to_thread(mod.request, "lang")
+    except linux_helper.LinuxHelperError as exc:
+        linux_mod_lost(ctx, exc)
+        return
+    lang = reply.removeprefix("lang ") if reply.startswith("lang ") else ""
+    line = state.language_line(lang)
+    if line is not None and ctx.said("language", "told"):  # once a game run (game_closed)
+        logger.warning(line)
+        log.info(f"The game's language: {lang}")
 
 
 async def linux_labels_tick(ctx: ZexionContext) -> None:

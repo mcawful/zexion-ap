@@ -55,8 +55,8 @@ TARGETS = (
 
 # The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it
 # runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
-# and their popups, other players' items (the map's too), traps. The rest of CONFIG_KEYS is in
-# TARGETS. Functions by their mangled names.
+# and their popups, other players' items (the map's too), traps, the translations. The rest of
+# CONFIG_KEYS is in TARGETS. Functions by their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -72,6 +72,25 @@ HELPER_TARGETS = (
     LinuxTarget("panel_handler_fn", "_Z16FrameWrapOrArrowP12GameMenuItemi", 0, 0x56ED11),
     LinuxTarget("rando_newgame_fn", "_Z9forceSeedv", 0, 0x5AF50F),
     LinuxTarget("tr_flag", "gCurrentTranslation", 0x91, 0x12B48D1),
+    # The translations (native/src/translation.h): the object, its tables, the counts, the
+    # message's and the label's builders.
+    LinuxTarget("translation", "gCurrentTranslation", 0, 0x12B4840),
+    LinuxTarget("small_text", "gCurrentTranslation", 0x30, 0x12B4870),
+    LinuxTarget("small_offsets", "gCurrentTranslation", 0x58, 0x12B4898),
+    LinuxTarget("item_names", "gCurrentTranslation", 0x48, 0x12B4888),
+    LinuxTarget("item_name_offsets", "gCurrentTranslation", 0x78, 0x12B48B8),
+    LinuxTarget("small_count", "gSmallTextCount", 0, 0x16DA0D8),
+    LinuxTarget("item_name_count", "gPowerUpDefCount", 0, 0x16DA0AA),
+    LinuxTarget(
+        "hd_text_fn", "_Z28createTranslationGameMessagePKwiiiiiissP9SpriteRec", 0, 0x637EFD
+    ),
+    LinuxTarget(
+        "hd_build_fn",
+        "_Z12generateTextffNSt7__cxx1112basic_stringIwSt11char_traitsIwESaIwEEE"
+        "P8GameFontP12SpriteStringb",
+        0,
+        0x54DA05,
+    ),
     # Grants and their popups (native/src/game_calls.h, Game::apply).
     LinuxTarget("item_records", "gPowerUpDefs", 0, 0x16DA0B8),
     LinuxTarget("weapon_strip_gate", "gPreferences", 0x1DD, 0x12F5BDD),
@@ -113,7 +132,9 @@ CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
     "placement_fn", "rando_marker", "current_slot", "start_count", "start_cells", "start_flags",
     "current_menu", "rando_menu_fn", "widget_handler_fn", "panel_handler_fn", "rando_newgame_fn",
-    "tr_flag", "inventory", "save_loaded", "menu_state", "item_records", "last_message",
+    "tr_flag", "translation", "small_text", "small_offsets", "item_names", "item_name_offsets",
+    "small_count", "item_name_count", "hd_text_fn", "hd_build_fn", "inventory", "save_loaded",
+    "menu_state", "item_records", "last_message",
     "weapon_strip_gate", "sound_system", "message_fn", "sound_fn", "hud_number_fn",
     "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "hd_messages",
     "message_slots", "sprite_texture", "popup_width_code", "item_pool", "palette_table",

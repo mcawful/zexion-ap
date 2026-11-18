@@ -12,6 +12,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <climits>
@@ -101,6 +102,18 @@ constexpr char kFrameFunction[] = "draw_frame";
 constexpr char kFrameFunction[] = "_Z13SWHardwareEndP14SpriteWorldRec";
 #endif
 zap::linux_helper::SymbolSpan g_frame_function;  // from the game's own symbols at start-up
+
+// The game's count of sprite definitions: the translations' icon sheets are definitions count + 5
+// and + 8 (loadSprites: docs/re/linux.md, "Mapped by disassembly: the helper's translated text"),
+// 101 and 104 as the helper paints them only with 96 (apitem.h, kHdIconSheet). In the test build,
+// the stand-in game's.
+#ifdef ZAP_HOOKTEST
+constexpr char kSpriteDefCount[] = "zap_sprite_def_count";
+#else
+constexpr char kSpriteDefCount[] = "gSpriteDefCount";
+#endif
+constexpr int16_t kTracedSpriteDefs = zap::kHdIconSheet - 5;
+uint64_t g_sprite_def_count = 0;
 
 // The main program's GNU build id, and its writable segments: dl_iterate_phdr lists it first.
 int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
@@ -249,6 +262,20 @@ constexpr ConfigKey kConfigKeys[] = {
     {"panel_handler_fn", &G::panel_handler_fn, 0, "_Z16FrameWrapOrArrowP12GameMenuItemi", 0},
     {"rando_newgame_fn", &G::rando_newgame_fn, 0, "_Z9forceSeedv", 0},
     {"tr_flag", &G::tr_flag, 1, "gCurrentTranslation", 0x91},
+    // The translations (translation.h): the object, its tables' pointers, the counts, the
+    // message's and the label's builders (docs/re/linux.md, "Mapped by disassembly:
+    // translations"). The label's string is the helper's own on Linux: no wstring_new_fn.
+    {"translation", &G::translation, zap::tr::kSize, "gCurrentTranslation", 0},
+    {"small_text", &G::small_text, sizeof(void*), "gCurrentTranslation", 0x30},
+    {"small_offsets", &G::small_offsets, sizeof(void*), "gCurrentTranslation", 0x58},
+    {"item_names", &G::item_names, sizeof(void*), "gCurrentTranslation", 0x48},
+    {"item_name_offsets", &G::item_name_offsets, sizeof(void*), "gCurrentTranslation", 0x78},
+    {"small_count", &G::small_count, sizeof(int16_t), "gSmallTextCount", 0},
+    {"item_name_count", &G::item_name_count, sizeof(int16_t), "gPowerUpDefCount", 0},
+    {"hd_text_fn", &G::hd_text_fn, 0, "_Z28createTranslationGameMessagePKwiiiiiissP9SpriteRec", 0},
+    {"hd_build_fn", &G::hd_build_fn, 0,
+     "_Z12generateTextffNSt7__cxx1112basic_stringIwSt11char_traitsIwESaIwEEEP8GameFontP12SpriteStringb",
+     0},
     // Grants and their popups (Game::apply, pump_popups). The inventory: the player state's
     // (gGameState+0x1CD50) at kInventoryInPlayer.
     {"inventory", &G::inventory, kPlayerStateSize - kInventoryInPlayer, "gGameState", 0x1DDDE,
@@ -317,7 +344,16 @@ constexpr ConfigKey kConfigKeys[] = {
     {"widget_handler_fn", &G::widget_handler_fn, 0, "zap_widget_handler", 0},
     {"panel_handler_fn", &G::panel_handler_fn, 0, "zap_panel_handler", 0},
     {"rando_newgame_fn", &G::rando_newgame_fn, 0, "zap_force_seed", 0},
-    {"tr_flag", &G::tr_flag, 1, "zap_tr_flag", 0},
+    {"tr_flag", &G::tr_flag, 1, "zap_translation", 0x91},
+    {"translation", &G::translation, zap::tr::kSize, "zap_translation", 0},
+    {"small_text", &G::small_text, sizeof(void*), "zap_translation", 0x30},
+    {"small_offsets", &G::small_offsets, sizeof(void*), "zap_translation", 0x58},
+    {"item_names", &G::item_names, sizeof(void*), "zap_translation", 0x48},
+    {"item_name_offsets", &G::item_name_offsets, sizeof(void*), "zap_translation", 0x78},
+    {"small_count", &G::small_count, sizeof(int16_t), "zap_small_count", 0},
+    {"item_name_count", &G::item_name_count, sizeof(int16_t), "zap_item_name_count", 0},
+    {"hd_text_fn", &G::hd_text_fn, 0, "zap_hd_text", 0},
+    {"hd_build_fn", &G::hd_build_fn, 0, "zap_build_text", 0},
     {"inventory", &G::inventory, kPlayerStateSize - kInventoryInPlayer, "zap_player",
      kInventoryInPlayer, kInventoryInPlayer},
     {"save_loaded", &G::save_loaded, 1, "zap_save_loaded", 0},
@@ -368,13 +404,14 @@ bool g_expected_known = false;
 bool read_own_symbols() {
     std::ifstream file("/proc/self/exe", std::ios::binary);
     std::string elf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    std::vector<std::string> names{kFrameFunction};
+    std::vector<std::string> names{kFrameFunction, kSpriteDefCount};
     for (const ConfigKey& key : kConfigKeys) names.emplace_back(key.symbol);
     auto found = zap::linux_helper::find_symbols(elf, names);
     for (const std::string& name : names) {
         if (found.find(name) == found.end()) return false;
     }
     g_frame_function = found[kFrameFunction];
+    g_sprite_def_count = found[kSpriteDefCount].value;
     for (size_t i = 0; i < kConfigKeyCount; ++i) {
         g_expected[i] = found[kConfigKeys[i].symbol].value + kConfigKeys[i].offset;
     }
@@ -476,10 +513,12 @@ std::optional<std::string> game_request(std::string_view request) {
                 g_game.set_hooks({.panel = reinterpret_cast<void*>(&panel_hook),
                                   .map = reinterpret_cast<void*>(&map_hook)});
                 g_game.configure(found);
-                // The translation's font for popups is not ported (4-byte characters): pixel
-                // text, the slot's translated mark cleared (translation.cpp, clear_mark's Linux
-                // test of the flag alone), as the Windows helper's fallback.
-                g_game.hold_translated_popups();
+                // The icon sheets as traced only with the game's definitions counted as traced.
+                int16_t defs = 0;
+                auto* count = reinterpret_cast<const BYTE*>(g_sprite_def_count);
+                if (count == nullptr || !zap::read(count, 0, defs) || defs != kTracedSpriteDefs) {
+                    g_game.hold_icon_sheets();
+                }
                 return std::string("ok");
             },
             false, error);
@@ -507,6 +546,17 @@ std::optional<std::string> game_request(std::string_view request) {
                 return "labeled " + std::to_string(n);
             },
             true, error);
+    }
+    if (request == "lang") {
+        // The language the game shows, one word (as the Windows helper's hello's `lang`): "?"
+        // unconfigured or with no translation's name readable.
+        return on_game(
+            [] {
+                std::string name = g_game.language();
+                std::replace(name.begin(), name.end(), ' ', '_');
+                return "lang " + name;
+            },
+            false);
     }
     if (request == "trap_status") {
         return on_game([] { return g_game.trap_status(); }, true);
@@ -673,6 +723,7 @@ void game_frame(uintptr_t site) {
     if (g_client_left.exchange(false)) {
         guarded([] { g_game.disarm_newgame(); });
         guarded([] { g_game.restore_ap_items(); });
+        guarded([] { g_game.restore_translation(); });  // the names, entry 70, the icons
     }
     guarded([] { g_mailbox.serve(); });
     if (!g_game.configured()) return;
@@ -689,6 +740,9 @@ void game_frame(uintptr_t site) {
     guarded([] { g_game.watch_map_names(); });  // the cursor's names while the map is open
     guarded([] { g_game.watch_ap_items(); });
     guarded([] { g_game.watch_map_marks(); });  // the squares raised, the on-screen write patched
+    // In a translation: the helper's names in its tables, its icons in its sheets, the popups'
+    // borrowed entries emptied once their message has gone (translation.h).
+    guarded([] { g_game.watch_translation(); });
     // Traps: this world's own at their pickup (from the seed a client put), the AILMENTS tests'
     // patches while a trap's timer runs, then one trap set off (a received one as its popup
     // shows), as the Windows helper's frame (trap.h; native/README.md, "Traps").

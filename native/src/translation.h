@@ -41,8 +41,13 @@ constexpr ptrdiff_t kIconStyle = 0xA4;
 constexpr int32_t kPixelIcons = 1;
 // The font the builder is given; the pointer held there is the template its glyphs are made from.
 constexpr ptrdiff_t kFont = 0xD0;
-// Through the font's metrics (FontMetrics).
+// Through the font's metrics (FontMetrics); on Linux the object is larger (`gCurrentTranslation`'s
+// size: docs/re/linux.md, `translation`), its fields to kFont as on Windows.
+#ifdef _WIN32
 constexpr uint64_t kSize = kFont + 0x40068;
+#else
+constexpr uint64_t kSize = 0x40150;
+#endif
 }  // namespace tr
 
 // `hd_messages` (one per message slot) and `message_slots`: docs/re/memory.md, "Translated
@@ -75,8 +80,9 @@ constexpr size_t kSize = 0x268;
 // The tables the helper writes: SmallText (labels and messages, kind 0) and ItemNames (by item).
 enum class Table { kSmall, kItems };
 
-// One table as loaded now: its text (16-bit characters, each entry ending in a 0) and its int32
-// offsets into it, in characters, one per entry (-1 for none).
+// One table as loaded now: its text (wchar_t characters: 16-bit on Windows, 32-bit on Linux, as
+// each build's own; each entry ending in a 0) and its int32 offsets into it, in characters, one
+// per entry (-1 for none).
 struct TextTable {
     wchar_t* text = nullptr;
     int32_t* offsets = nullptr;

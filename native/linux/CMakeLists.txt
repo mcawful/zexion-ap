@@ -81,3 +81,9 @@ add_test(NAME newgame COMMAND zap_newgame_tests)
 add_executable(zap_patch_tests tests/patch_tests.cpp)
 target_link_libraries(zap_patch_tests PRIVATE zap_shared)
 add_test(NAME patch COMMAND zap_patch_tests)
+
+# The Linux build's calls in a translation: the label builder given the helper's own std::wstring.
+add_executable(zap_translation_tests tests/translation_tests.cpp)
+target_link_libraries(zap_translation_tests PRIVATE zap_shared)
+target_compile_options(zap_translation_tests PRIVATE -Wno-missing-field-initializers)
+add_test(NAME translation COMMAND zap_translation_tests)

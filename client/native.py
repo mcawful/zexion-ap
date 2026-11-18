@@ -525,8 +525,8 @@ def _hello(helper: Helper) -> dict[str, str]:
 # popups and traps, other players' items' labels and this world's own traps go through the
 # Linux helper instead (ticks.linux_newgame_tick, linux_labels_tick, linux_seed_tick).
 LINUX_NOT_READY = (
-    "its other parts inside the game (the translations, the pause screen's OS Install Disks "
-    "count) aren't ready for the game's Linux version yet"
+    "its other parts inside the game (the pause screen's OS Install Disks count, its question to "
+    "return home with them) aren't ready for the game's Linux version yet"
 )
 
 
