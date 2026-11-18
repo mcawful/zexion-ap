@@ -2241,7 +2241,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 49 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 52 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
@@ -2269,7 +2269,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 49), which the client resolves from the game's symbols
+  addresses (with the rest of the 52), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of them, so a client and a
   helper that disagree change nothing (the client also refuses a helper of another version, and
   one of this version built before the traps, which answers no `trap_status`: it would refuse
@@ -2342,9 +2342,6 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     back at the next frame call: no offline look dresses the save here ("AP saves without the
     client" is not ported). The client sends them again on a new connection (a request with no
     reply ends one: `LinuxMod.current`);
-  - the map's parts are not ported ("The map": the cursor's names, the stand-ins' squares, the
-    seen marker): the map, a menu, shows a stand-in as the game names it (SCRAP ENERGY or SCRAP
-    CHUNK) and its square as the game marks it;
   - in a translation, the stand-ins' pickup popups read the translation's names (ItemNames 47
     and 48), not the labels: written there by the translation's part, not ported.
 
@@ -2354,6 +2351,26 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   client goes, the logos painted first through the stand-in's OpenGL; with its texture gone,
   the stand-ins left as the game's; and in `linux/tests/newgame_tests.cpp`, a range unmapped
   since the last map read is not writable). Not run in the game.
+- **The map.** `Game::watch_map_names` and `watch_map_marks` run at each frame call as on
+  Windows ("The map"): in the labels' seed's save the squares of item 48 raised to a major's,
+  the item update's on-screen write patched to keep them so, and, while the map is open, the
+  cursor's name written over SCRAP ENERGY or SCRAP CHUNK by a wrapper on the map's move
+  procedure. What differs on Linux:
+  - the on-screen write's patch: the Linux build tests the item's ID twice in
+    `PowerUpMoveProc`, once for each base of the square (`0x53DB6C` and `0x53DC7E`), so it is
+    two patches (`src/mapmarks.h`, `SeenMarker`), each rewriting one 23-byte test as "48, or 3
+    to 35" (`cmp ax, 0x30; je`, `sub eax, 3; cmp ax, 0x20; ja`, a nop) where it reads as B1's,
+    each held and put back on its own; the code between them is never written;
+  - the wrapper is called with the map's child alone, as the game calls its move procedures
+    (`map_hook`, `linux/src/helper.cpp`);
+  - in a translation the cursor's name is the pixel text written over the game's (the
+    translation's own build of it is not ported).
+
+  Tested: `linux/tests/patch_tests.cpp` runs the game's two tests and the patched ones side by
+  side for every ID from 0 to 255 (only 48 changes, from the minor's write to the major's); and
+  on the stand-in game through the socket, the stand-in's copies of the two tests patched once
+  the labels' seed's save has been loaded for two looks, put back once the client goes. The
+  cursor's names: built only (the stand-in has no map). Not run in the game.
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
@@ -2425,7 +2442,9 @@ That builds `native/build/libzexion_ap.so` (the Linux helper), the test build
 fixed-address executable as the game is, calling `SDL_GL_SwapWindow` from a stand-in
 `libzap_sdl_stub.so`. ctest runs `tests/core_tests.cpp` (build ids, replies);
 `tests/test_native_linux.py` preloads both builds into the stand-in game ("The Linux helper"),
-and `zap_newgame_tests` runs the shared new-game logic (`linux/tests/newgame_tests.cpp`);
+`zap_newgame_tests` runs the shared new-game logic (`linux/tests/newgame_tests.cpp`), and
+`zap_patch_tests` runs the Linux build's code patches side by side with the game's bytes
+(`linux/tests/patch_tests.cpp`, "The map");
 `ZEXION_NATIVE_BUILD` points it at another build folder than `native/build`.
 CI runs all of it on Ubuntu, with `ZEXION_REQUIRE=helper`.
 

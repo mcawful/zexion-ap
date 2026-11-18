@@ -93,6 +93,7 @@ int mark_important(const BYTE* section, BYTE* grid, bool ended,
 
 namespace {
 
+#ifdef _WIN32
 // The game's write (B1, 0x19E5A5), dl the square's value, r9w the item's ID, the store
 // `mov [rcx+r14+disp32], al` at kSeenStore (its disp32 the grid's, left as read):
 //   cmp dl, 0x18; jl low; sub r9w, 3; cmp r9w, 0x20; setbe al; add al, 0x19; jmp store
@@ -131,6 +132,41 @@ bool seen_marker_patch(const BYTE (&game)[kSeenMarkerSize], BYTE (&out)[kSeenMar
     std::memcpy(out + kSeenOurStore + kSeenStoreSize, kNop7, sizeof(kNop7));
     return true;
 }
+#else
+// The Linux build's two tests (B1, PowerUpMoveProc), ax the item's ID (just loaded from
+// [obj+0x1E8]): an ID from 3 to 35 falls through to the major's write, any other jumps to the
+// minor's (both reload rax first, so eax is free after):
+//   cmp ax, 2; jle minor; mov rax, [rbp-0x18]; movzx eax, word [rax+0x1E8]; cmp ax, 0x23; jg minor
+// The first's minor is 0x66 past it, the second's 0x63.
+constexpr BYTE kSeenTests[2][kSeenTestSize] = {
+    {0x66, 0x83, 0xF8, 0x02, 0x7E, 0x60, 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7,
+     0x80, 0xE8, 0x01, 0x00, 0x00, 0x66, 0x83, 0xF8, 0x23, 0x7F, 0x4F},
+    {0x66, 0x83, 0xF8, 0x02, 0x7E, 0x5D, 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7,
+     0x80, 0xE8, 0x01, 0x00, 0x00, 0x66, 0x83, 0xF8, 0x23, 0x7F, 0x4C}};
+// Each, ID 48 a major too, ending where the game's does:
+//   cmp ax, 0x30; je major; sub eax, 3; cmp ax, 0x20; ja minor; nop (8 bytes)
+constexpr BYTE kSeenOurTests[2][kSeenTestSize] = {
+    {0x66, 0x83, 0xF8, 0x30, 0x74, 0x11, 0x83, 0xE8, 0x03, 0x66, 0x83, 0xF8,
+     0x20, 0x77, 0x57, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00},
+    {0x66, 0x83, 0xF8, 0x30, 0x74, 0x11, 0x83, 0xE8, 0x03, 0x66, 0x83, 0xF8,
+     0x20, 0x77, 0x54, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00}};
+template <int Test>
+bool test_patch(const BYTE (&game)[kSeenTestSize], BYTE (&out)[kSeenTestSize]) {
+    if (std::memcmp(game, kSeenTests[Test], kSeenTestSize) != 0) return false;
+    std::memcpy(out, kSeenOurTests[Test], kSeenTestSize);
+    return true;
+}
+
+}  // namespace
+
+bool seen_first_test_patch(const BYTE (&game)[kSeenTestSize], BYTE (&out)[kSeenTestSize]) {
+    return test_patch<0>(game, out);
+}
+
+bool seen_second_test_patch(const BYTE (&game)[kSeenTestSize], BYTE (&out)[kSeenTestSize]) {
+    return test_patch<1>(game, out);
+}
+#endif
 
 namespace {
 
@@ -138,7 +174,7 @@ namespace {
 // (docs/re/memory.md, "Map markers").
 constexpr ptrdiff_t kChildHandlers[2] = {0x168, 0x178};
 constexpr ptrdiff_t kInfoPanel = 0x300, kInfoChild = 0x8;
-constexpr ptrdiff_t kScale = 0x158;  // on the info child's label (widget::kLabel)
+constexpr ptrdiff_t kScale = 0x158;  // on the info panel's first sprite: [+0x1F0], kLabel's offset
 // The cursor widget is the panel's fourth child (16-bit +0x1E6 the cell's row, +0x1E4 its
 // column); the cursor's name is the info panel's fourth child.
 constexpr int kCursorChild = 3, kNameChild = 3;

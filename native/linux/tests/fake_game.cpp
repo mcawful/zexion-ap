@@ -104,6 +104,14 @@ void zap_pickup();
 short zap_ailments;
 unsigned char zap_halt;
 void zap_weapon_cool();
+// The map: the item update's two tests of the ID (zap_power_up: PowerUpMoveProc's at 0 and
+// 0x112, the code between as filler), the move procedures (entry 120 the map's: none open here)
+// and the function setting a text's glyphs.
+void zap_power_up();
+void* zap_move_procs[128];
+__attribute__((noinline, used)) void zap_text_set(void*, const char*, int, int) {
+    asm volatile("");
+}
 
 // A stand-in OpenGL, found as the game's libGL is (dlsym, the executable's own symbols exported):
 // one 2048 x 2048 texture, 7, blank but for the two pixels of known art the helper's check reads
@@ -138,6 +146,14 @@ unsigned glGetError() { return 0; }
 
 asm(".text\n.globl zap_pickup\n.type zap_pickup, @function\nzap_pickup:\n"
     "  movl $24, %esi\n  ret\n.size zap_pickup, .-zap_pickup\n");
+
+// PowerUpMoveProc's two tests of the item's ID, byte for byte, 0x112 apart, never run.
+#define ZAP_ID_TEST(minor, past)                                                          \
+    ".byte 0x66, 0x83, 0xF8, 0x02, 0x7E, " minor ", 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7\n" \
+    ".byte 0x80, 0xE8, 0x01, 0x00, 0x00, 0x66, 0x83, 0xF8, 0x23, 0x7F, " past "\n"
+asm(".text\n.globl zap_power_up\n.type zap_power_up, @function\nzap_power_up:\n"
+    ZAP_ID_TEST("0x60", "0x4F") ".fill 0xFB, 1, 0x90\n" ZAP_ID_TEST("0x5D", "0x4C")
+    "  ret\n.size zap_power_up, .-zap_power_up\n");
 
 // weaponCool's two tests, byte for byte (but where the loads point), never run.
 #define ZAP_LOAD ".byte 0x0F, 0xB7, 0x05\n.long zap_ailments - (. + 4)\n"

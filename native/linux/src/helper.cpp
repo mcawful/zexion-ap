@@ -292,6 +292,12 @@ constexpr ConfigKey kConfigKeys[] = {
     {"ailments_hit_code", &G::ailments_hit_code, 0, "_Z10weaponCoolP12PlayerStruct", 0xAD5},
     {"ailments_wave_code", &G::ailments_wave_code, 0, "_Z10weaponCoolP12PlayerStruct", 0xB65},
     {"halt_flag", &G::halt_flag, 1, "gEditorMode", 0},
+    // The map (mapmarks.h): the item update's two tests of the ID the seen-marker patch spans
+    // (docs/re/linux.md, `seen_marker_code`), the map's move procedure's slot (gMoveProcs entry
+    // 120: `map_handler`), and the function that sets a text's glyphs (`text_set_fn`).
+    {"seen_marker_code", &G::seen_marker_code, 0, "_Z15PowerUpMoveProcP9SpriteRec", 0x788},
+    {"map_handler", &G::map_handler, sizeof(void*), "gMoveProcs", 0x3C0},
+    {"text_set_fn", &G::text_set_fn, 0, "_Z17alterSpriteStringP9SpriteRecPKcii", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -345,6 +351,9 @@ constexpr ConfigKey kConfigKeys[] = {
     {"ailments_hit_code", &G::ailments_hit_code, 0, "zap_weapon_cool", 0},
     {"ailments_wave_code", &G::ailments_wave_code, 0, "zap_weapon_cool", 0x35},
     {"halt_flag", &G::halt_flag, 1, "zap_halt", 0},
+    {"seen_marker_code", &G::seen_marker_code, 0, "zap_power_up", 0},
+    {"map_handler", &G::map_handler, sizeof(void*), "zap_move_procs", 0x3C0},
+    {"text_set_fn", &G::text_set_fn, 0, "zap_text_set", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -426,6 +435,18 @@ void panel_hook(void* widget, int event) {
     }
 }
 
+// The map's move procedure while the names are up (mapmarks.h, MapCursorNames): the game's own,
+// MapMoveProc, which the game calls with the map's child alone (docs/re/linux.md, `map_handler`),
+// then the cursor's name written over a stand-in's in the frame the game wrote it.
+void map_hook(void* child) {
+    auto original = reinterpret_cast<void (*)(void*)>(g_game.map_original(child));
+    if (original != nullptr) original(child);
+    try {
+        g_game.map_after();
+    } catch (...) {
+    }
+}
+
 // `work` run on the game's thread at its next frame call; "refused not configured" first when
 // `needs_config` and no config came; "refused no frame" if no frame took it in time (it then
 // never runs); "error <why>" at once for a request not parsed. As the Windows helper's on_game.
@@ -452,7 +473,8 @@ std::optional<std::string> game_request(std::string_view request) {
             [&] {
                 // A config's addresses are always the game's own (parse_config), so one after
                 // the first changes nothing the choice or the popups hold.
-                g_game.set_hooks({.panel = reinterpret_cast<void*>(&panel_hook)});
+                g_game.set_hooks({.panel = reinterpret_cast<void*>(&panel_hook),
+                                  .map = reinterpret_cast<void*>(&map_hook)});
                 g_game.configure(found);
                 // The translation's font for popups is not ported (4-byte characters): pixel
                 // text, the slot's translated mark cleared (translation.cpp, clear_mark's Linux
@@ -664,7 +686,9 @@ void game_frame(uintptr_t site) {
     guarded([] { g_game.watch_menu(&archipelago_chosen); });
     // Other players' items: the stand-ins' records named and restyled, the logo painted, the
     // popup's width, other Zexion players' items dressed as themselves (apitem.h, looks.h).
+    guarded([] { g_game.watch_map_names(); });  // the cursor's names while the map is open
     guarded([] { g_game.watch_ap_items(); });
+    guarded([] { g_game.watch_map_marks(); });  // the squares raised, the on-screen write patched
     // Traps: this world's own at their pickup (from the seed a client put), the AILMENTS tests'
     // patches while a trap's timer runs, then one trap set off (a received one as its popup
     // shows), as the Windows helper's frame (trap.h; native/README.md, "Traps").

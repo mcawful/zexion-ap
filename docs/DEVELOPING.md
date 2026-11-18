@@ -288,7 +288,7 @@ Steam Deck"). What exists so far:
   menu, or RANDOMIZER) and gives the client's items with their popups, with the Windows
   helper's own `Game` (`native/src/game_calls.h`, built for both through
   `native/src/platform.h` and the Linux parts of the memory layer; it runs only those parts),
-  shows other players' items as Archipelago items, and sets off traps. Tested against a
+  shows other players' items as Archipelago items (on the map too), and sets off traps. Tested against a
   stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux`
   job). Working in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the
   frame calls and serving reads (`native/README.md`, "The Linux helper"); new games, grants,

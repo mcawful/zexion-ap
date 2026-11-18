@@ -55,8 +55,8 @@ TARGETS = (
 
 # The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it
 # runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
-# and their popups, other players' items, traps. The rest of CONFIG_KEYS is in TARGETS. Functions by
-# their mangled names.
+# and their popups, other players' items (the map's too), traps. The rest of CONFIG_KEYS is in
+# TARGETS. Functions by their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -103,6 +103,11 @@ HELPER_TARGETS = (
     LinuxTarget("ailments_hit_code", "_Z10weaponCoolP12PlayerStruct", 0xAD5, 0x507FCB),
     LinuxTarget("ailments_wave_code", "_Z10weaponCoolP12PlayerStruct", 0xB65, 0x50805B),
     LinuxTarget("halt_flag", "gEditorMode", 0, 0x12B456E),
+    # The map (native/src/mapmarks.h): the item update's tests of the ID the seen-marker patch
+    # spans, the map's move procedure's slot, the function that sets a text's glyphs.
+    LinuxTarget("seen_marker_code", "_Z15PowerUpMoveProcP9SpriteRec", 0x788, 0x53DB6C),
+    LinuxTarget("map_handler", "gMoveProcs", 0x3C0, 0x12F7D60),
+    LinuxTarget("text_set_fn", "_Z17alterSpriteStringP9SpriteRecPKcii", 0, 0x566E1F),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -114,7 +119,7 @@ CONFIG_KEYS = (
     "message_slots", "sprite_texture", "popup_width_code", "item_pool", "palette_table",
     "frame_clock", "sprite_templates", "object_pool", "flags", "map_grid", "event_table",
     "event_count", "event_handlers", "ailments", "ailments_hit_code", "ailments_wave_code",
-    "halt_flag",
+    "halt_flag", "seen_marker_code", "map_handler", "text_set_fn",
 )  # fmt: skip
 
 

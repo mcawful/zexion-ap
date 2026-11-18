@@ -373,6 +373,9 @@ CONFIG_SYMBOLS = {
     "ailments_hit_code": "zap_weapon_cool",
     "ailments_wave_code": ("zap_weapon_cool", 0x35),
     "halt_flag": "zap_halt",
+    "seen_marker_code": "zap_power_up",
+    "map_handler": ("zap_move_procs", 0x3C0),
+    "text_set_fn": "zap_text_set",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -633,3 +636,25 @@ def test_this_worlds_own_trap_goes_off_at_its_pickup(game: Game) -> None:
         assert wait_for(sock, "trap_status", lambda r: "set 103" in r).endswith("set 103")
         assert player_word(sock, at, 0xDC4) == 660  # the Disorient Trap's timer
         assert read_at(sock, stand_in("zap_sound_id"), 4) == (82).to_bytes(4, "little")
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_in_the_labels_seeds_save_the_map_marks_item_48_as_a_major(game: Game) -> None:
+    # The item update's two tests of the ID patched (stand-in: the Linux build's bytes), "3 to 35"
+    # made "48, or 3 to 35", while the labels' seed's save is loaded; put back when the client goes.
+    from client import aplabels
+
+    at = config_addresses()
+    tests = (at["seen_marker_code"] + 3, at["seen_marker_code"] + 0x112 + 3)  # cmp ax, imm8
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert [read_at(sock, t, 1) for t in tests] == [b"\x02", b"\x02"]
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a seed's save
+        labels = aplabels.labels_request({(3, 2): "Hookshot\nfor Alice"})
+        assert ask(sock, labels) == "labeled 1"
+        wait_for(sock, f"read {tests[0]:#x} 1", lambda r: r == "data 0")  # 0x30: cmp ax, 48
+        assert [read_at(sock, t, 1) for t in tests] == [b"0", b"0"]
+    with game.connect() as sock:
+        wait_for(sock, f"read {tests[0]:#x} 1", lambda r: r == "data \x02")
+        assert [read_at(sock, t, 1) for t in tests] == [b"\x02", b"\x02"]

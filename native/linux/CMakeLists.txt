@@ -76,3 +76,8 @@ add_test(NAME linux_core COMMAND zap_linux_core_tests)
 add_executable(zap_newgame_tests tests/newgame_tests.cpp)
 target_link_libraries(zap_newgame_tests PRIVATE zap_shared)
 add_test(NAME newgame COMMAND zap_newgame_tests)
+
+# The Linux build's code patches, run side by side with the game's bytes they replace.
+add_executable(zap_patch_tests tests/patch_tests.cpp)
+target_link_libraries(zap_patch_tests PRIVATE zap_shared)
+add_test(NAME patch COMMAND zap_patch_tests)

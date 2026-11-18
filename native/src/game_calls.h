@@ -236,6 +236,11 @@ public:
     // Game thread: the map cursor's names for the stand-ins' squares (mapmarks.h); map_after runs
     // from the map handler's wrapper, after the game's handler.
     void map_after();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the map's cursor
+    // names wrapped in while the map is open in the labels' seed's save, and the squares of item
+    // 48 raised with the on-screen write patched (mapmarks.h; native/README.md, "The map").
+    void watch_map_names();
+    void watch_map_marks();
     void* map_original(void* child) const;
     void hide_title();
     std::string title_state() const;
@@ -394,8 +399,6 @@ private:
     void watch_files();
     void watch_intel();
     void watch_title();
-    void watch_map_names();
-    void watch_map_marks();
     // In play in an AP save: owned items the game lists (pickups::listed), but the new game's
     // starting ones, appended to the major-item list as a pickup would: grants set the byte alone
     // (docs/re/memory.md, "The pickup record holds the major-item list").

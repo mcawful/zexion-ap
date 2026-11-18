@@ -148,7 +148,7 @@ Nothing in `tests/` needs the game, and CI never runs it.
   build through the Linux helper (preloaded by the game's launch options) and runs that way, as
   without a helper but for new games, which the Linux helper starts (ARCHIPELAGO or RANDOMIZER),
   items, which it gives with their popups and traps, and other players' items, which it shows as
-  Archipelago items (none of the three run in the game yet):
+  Archipelago items, on the map too (none of the three run in the game yet):
   [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and loads it
   again a few seconds later (for a misbehaving mod; popups still queued are lost).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads

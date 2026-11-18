@@ -61,6 +61,9 @@ B1_HELPER_SYMBOLS = [
     ("gAreaEventProcs", 0x12F87A0, 0x180, 1),
     ("gEditorMode", 0x12B456E, 1, 1),
     ("_Z10weaponCoolP12PlayerStruct", 0x5074F6, 0x1293, 2),
+    ("gMoveProcs", 0x12F79A0, 0x4A0, 1),
+    ("_Z15PowerUpMoveProcP9SpriteRec", 0x53D3E4, 0xDFA, 2),
+    ("_Z17alterSpriteStringP9SpriteRecPKcii", 0x566E1F, 0xDC, 2),
 ]
 
 
