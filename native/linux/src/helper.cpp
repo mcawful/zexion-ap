@@ -63,15 +63,30 @@ void count_call_site(uintptr_t site) {
 const char* g_build = nullptr;
 bool g_folder = false;
 
-// The main program's GNU build id: dl_iterate_phdr lists it first.
+// The zero-filled part of the main program's writable segments (PT_LOAD with PF_W, from
+// p_filesz to p_memsz: its .bss), as [start, end): the only memory a `write` may change. Not
+// its code, nor its initialized data: .data's function pointers and .got.plt's import slots,
+// which the game calls through, stay the game's.
+constexpr int kMaxSegments = 4;
+uintptr_t g_writable[kMaxSegments][2] = {};
+int g_writable_count = 0;
+
+// The main program's GNU build id, and its writable segments: dl_iterate_phdr lists it first.
 int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
     auto* out = static_cast<std::optional<std::string>*>(data);
     for (int i = 0; i < info->dlpi_phnum; ++i) {
         const ElfW(Phdr)& ph = info->dlpi_phdr[i];
-        if (ph.p_type != PT_NOTE) continue;
+        if (ph.p_type == PT_LOAD && (ph.p_flags & PF_W) && g_writable_count < kMaxSegments) {
+            uintptr_t start = info->dlpi_addr + ph.p_vaddr;
+            if (ph.p_memsz > ph.p_filesz) {
+                g_writable[g_writable_count][0] = start + ph.p_filesz;
+                g_writable[g_writable_count][1] = start + ph.p_memsz;
+                ++g_writable_count;
+            }
+        }
+        if (ph.p_type != PT_NOTE || *out) continue;
         auto* notes = reinterpret_cast<const unsigned char*>(info->dlpi_addr + ph.p_vaddr);
         *out = note_build_id(notes, ph.p_memsz);
-        if (*out) break;
     }
     return 1;  // the first object only
 }
@@ -114,6 +129,29 @@ bool read_own(uint64_t address, size_t size, std::string& out) {
     return false;
 }
 
+// Into this process's memory, by the kernel (a page not writable is EFAULT, not a fault), and
+// only inside the main program's .bss (g_writable).
+bool write_own(uint64_t address, const std::string& data, std::string& out) {
+    bool inside = false;
+    for (int i = 0; i < g_writable_count; ++i) {
+        if (address >= g_writable[i][0] && address + data.size() <= g_writable[i][1]) inside = true;
+    }
+    if (!inside) {
+        out = "not_in_the_game's_writable_data";
+        return false;
+    }
+    iovec local{const_cast<char*>(data.data()), data.size()};
+    iovec remote{reinterpret_cast<void*>(static_cast<uintptr_t>(address)), data.size()};
+    ssize_t n = process_vm_writev(getpid(), &local, 1, &remote, 1, 0);
+    if (n == static_cast<ssize_t>(data.size())) return true;
+    out = n < 0 ? std::string(std::strerror(errno)) : "wrote " + std::to_string(n) + " of " +
+                                                           std::to_string(data.size()) + " bytes";
+    for (char& c : out) {
+        if (c == ' ') c = '_';
+    }
+    return false;
+}
+
 State state() {
     State s;
     s.build = g_build;
@@ -138,7 +176,8 @@ void serve_client(int client) {
         ssize_t n = recv(client, buffer.data(), buffer.size(), MSG_TRUNC);
         if (n <= 0 || static_cast<size_t>(n) > buffer.size()) return;
         std::string answer =
-            reply(std::string_view(buffer.data(), static_cast<size_t>(n)), state(), read_own);
+            reply(std::string_view(buffer.data(), static_cast<size_t>(n)), state(), read_own,
+                  write_own);
         if (send(client, answer.data(), answer.size(), MSG_NOSIGNAL) < 0) return;
     }
 }

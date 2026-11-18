@@ -71,6 +71,30 @@ std::string callers_reply(const State& state) {
     return out;
 }
 
+// `write ADDRESS HEX`'s reply.
+std::string write_reply(std::string_view args, const Writer& write) {
+    size_t space = args.find(' ');
+    if (space == std::string_view::npos) return "error write takes an address and hex bytes";
+    auto address = number(args.substr(0, space));
+    std::string_view hex = args.substr(space + 1);
+    if (!address || hex.empty() || hex.size() % 2 != 0) {
+        return "error write takes an address and hex bytes";
+    }
+    if (hex.size() / 2 > kMaxWrite) {
+        return "error write size must be 1 to " + std::to_string(kMaxWrite);
+    }
+    std::string data;
+    for (size_t i = 0; i < hex.size(); i += 2) {
+        auto byte = number(std::string("0x") + std::string(hex.substr(i, 2)));
+        if (!byte) return "error write takes an address and hex bytes";
+        data += static_cast<char>(*byte);
+    }
+    if (*address > UINT64_MAX - data.size()) return "error write past the end of memory";
+    std::string out;
+    if (!write(*address, data, out)) return "error " + out;
+    return "written " + std::to_string(data.size());
+}
+
 // `read ADDRESS SIZE`'s reply.
 std::string read_reply(std::string_view args, const Reader& read) {
     size_t space = args.find(' ');
@@ -122,7 +146,8 @@ std::optional<std::string> note_build_id(const unsigned char* notes, size_t size
 
 std::string socket_name(long pid) { return "zexion-ap-" + std::to_string(pid); }
 
-std::string reply(std::string_view request, const State& state, const Reader& read) {
+std::string reply(std::string_view request, const State& state, const Reader& read,
+                  const Writer& write) {
     if (request == "hello") {
         return std::string("zexion-ap ") + kVersion + " build=" +
                (state.build ? state.build : "unknown") + " hooked=" + (state.hooked ? "1" : "0") +
@@ -132,6 +157,9 @@ std::string reply(std::string_view request, const State& state, const Reader& re
     if (request == "callers") return callers_reply(state);
     if (request == "read" || request.starts_with("read ")) {
         return read_reply(request.substr(request.size() > 5 ? 5 : request.size()), read);
+    }
+    if (request == "write" || request.starts_with("write ")) {
+        return write_reply(request.substr(request.size() > 6 ? 6 : request.size()), write);
     }
     return "error unknown request";
 }

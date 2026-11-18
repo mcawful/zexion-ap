@@ -69,61 +69,96 @@ void test_notes() {
     check(!note_build_id(huge.data(), huge.size()), "a note claiming more than there is fails");
 }
 
-// A stand-in for this process's memory: 0x1000 to 0x1010 holds "zexion-ap memory".
+// A stand-in for this process's memory: 0x1000 to 0x1010 holds "zexion-ap memory", writable
+// from 0x1000 to 0x1008.
+std::string g_memory = "zexion-ap memory";
 bool fake_read(uint64_t address, size_t size, std::string& out) {
-    static const std::string memory = "zexion-ap memory";
-    if (address < 0x1000 || address + size > 0x1000 + memory.size()) {
+    if (address < 0x1000 || address + size > 0x1000 + g_memory.size()) {
         out = "Bad_address";
         return false;
     }
-    out = memory.substr(address - 0x1000, size);
+    out = g_memory.substr(address - 0x1000, size);
     return true;
+}
+
+bool fake_write(uint64_t address, const std::string& data, std::string& out) {
+    if (address < 0x1000 || address + data.size() > 0x1008) {
+        out = "not_in_the_game's_writable_data";
+        return false;
+    }
+    g_memory.replace(address - 0x1000, data.size(), data);
+    return true;
+}
+
+std::string reply_(std::string_view request, const State& state, const Reader& read) {
+    return reply(request, state, read, fake_write);
+}
+
+void test_writes() {
+    State s;
+    check(reply_("write 0x1000 5a45", s, fake_read) == "written 2", "a write in hex");
+    check(reply_("read 0x1000 4", s, fake_read) == "data ZExi", "it reads back",
+          reply_("read 0x1000 4", s, fake_read));
+    check(reply_("write 0x1008 00", s, fake_read) == "error not_in_the_game's_writable_data",
+          "a write outside the writable data is the writer's refusal");
+    for (const char* bad : {"write", "write 0x1000", "write 0x1000 5", "write 0x1000 5g",
+                            "write x 00", "write 0x1000 "}) {
+        check(reply_(bad, s, fake_read) == "error write takes an address and hex bytes",
+              "a write not parsed", bad);
+    }
+    std::string big(2 * (kMaxWrite + 1), '0');
+    check(reply_("write 0x1000 " + big, s, fake_read).starts_with("error write size must be"),
+          "a write too big");
+    check(reply_("write 0xffffffffffffffff 0000", s, fake_read) ==
+              "error write past the end of memory",
+          "a write wrapping around");
+    g_memory = "zexion-ap memory";
 }
 
 void test_replies() {
     State s;
-    check(reply("hello", s, fake_read) ==
+    check(reply_("hello", s, fake_read) ==
               std::string("zexion-ap ") + kVersion + " build=unknown hooked=0 platform=linux folder=0",
-          "hello for an unknown build", reply("hello", s, fake_read));
+          "hello for an unknown build", reply_("hello", s, fake_read));
     s.build = "B1";
     s.hooked = true;
     s.folder = true;
     s.frames = 1234;
-    check(reply("hello", s, fake_read) ==
+    check(reply_("hello", s, fake_read) ==
               std::string("zexion-ap ") + kVersion + " build=B1 hooked=1 platform=linux folder=1",
-          "hello for B1", reply("hello", s, fake_read));
-    check(reply("ping", s, fake_read) == "pong frames=1234", "ping", reply("ping", s, fake_read));
-    check(reply("callers", s, fake_read) == "callers", "callers before any frame call",
-          reply("callers", s, fake_read));
+          "hello for B1", reply_("hello", s, fake_read));
+    check(reply_("ping", s, fake_read) == "pong frames=1234", "ping", reply_("ping", s, fake_read));
+    check(reply_("callers", s, fake_read) == "callers", "callers before any frame call",
+          reply_("callers", s, fake_read));
     s.callers = {{0x652557, 3}, {0x4caf9f, 1231}};
-    check(reply("callers", s, fake_read) == "callers 0x4caf9f=1231 0x652557=3",
-          "callers, lowest address first", reply("callers", s, fake_read));
+    check(reply_("callers", s, fake_read) == "callers 0x4caf9f=1231 0x652557=3",
+          "callers, lowest address first", reply_("callers", s, fake_read));
     s.other_callers = 2;
-    check(reply("callers", s, fake_read) == "callers 0x4caf9f=1231 0x652557=3 other=2",
-          "callers past the table's room", reply("callers", s, fake_read));
-    check(reply("unload", s, fake_read) == "error unknown request", "a request it does not serve");
-    check(reply(std::string_view("hello\0", 6), s, fake_read) == "error unknown request",
+    check(reply_("callers", s, fake_read) == "callers 0x4caf9f=1231 0x652557=3 other=2",
+          "callers past the table's room", reply_("callers", s, fake_read));
+    check(reply_("unload", s, fake_read) == "error unknown request", "a request it does not serve");
+    check(reply_(std::string_view("hello\0", 6), s, fake_read) == "error unknown request",
           "a request is the whole message");
 }
 
 void test_reads() {
-    check(reply("read 0x1000 9", State{}, fake_read) == "data zexion-ap", "a read in hex",
-          reply("read 0x1000 9", State{}, fake_read));
-    check(reply("read 4106 6", State{}, fake_read) == "data memory", "a read in decimal",
-          reply("read 4106 6", State{}, fake_read));
-    check(reply("read 0x1000 20", State{}, fake_read) == "error Bad_address",
+    check(reply_("read 0x1000 9", State{}, fake_read) == "data zexion-ap", "a read in hex",
+          reply_("read 0x1000 9", State{}, fake_read));
+    check(reply_("read 4106 6", State{}, fake_read) == "data memory", "a read in decimal",
+          reply_("read 4106 6", State{}, fake_read));
+    check(reply_("read 0x1000 20", State{}, fake_read) == "error Bad_address",
           "a read past what is mapped is the reader's error");
     for (const char* bad : {"read", "read 0x1000", "read 0x1000 x", "read 0xg 4", "read -1 4",
                             "read 0x1000 4 5", "read 0x 4", "read 0x10000000000000000 4"}) {
-        check(reply(bad, State{}, fake_read) == "error read takes an address and a size",
+        check(reply_(bad, State{}, fake_read) == "error read takes an address and a size",
               "a read not parsed", bad);
     }
-    check(reply("read 0x1000 0", State{}, fake_read).starts_with("error read size must be 1 to"),
+    check(reply_("read 0x1000 0", State{}, fake_read).starts_with("error read size must be 1 to"),
           "a read of nothing");
-    check(reply("read 0x1000 " + std::to_string(kMaxRead + 1), State{}, fake_read)
+    check(reply_("read 0x1000 " + std::to_string(kMaxRead + 1), State{}, fake_read)
               .starts_with("error read size must be 1 to"),
           "a read too big for one reply");
-    check(reply("read 0xffffffffffffffff 2", State{}, fake_read) ==
+    check(reply_("read 0xffffffffffffffff 2", State{}, fake_read) ==
               "error read past the end of memory",
           "a read wrapping around");
     check(kMaxRead + sizeof kDataPrefix < kMaxRequest, "the largest read's reply fits");
@@ -136,6 +171,7 @@ int main() {
     test_notes();
     test_replies();
     test_reads();
+    test_writes();
     check(socket_name(4242) == "zexion-ap-4242", "the socket's name");
     if (g_failures == 0) std::printf("linux core: all passed\n");
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

@@ -19,6 +19,7 @@ inline constexpr char kDisabledName[] = "zexion_ap.disabled";
 inline constexpr size_t kMaxRequest = 64 * 1024;  // as the Windows pipe's buffer
 inline constexpr size_t kMaxRead = 32 * 1024;     // one `read`'s bytes, its reply under kMaxRequest
 inline constexpr char kDataPrefix[] = "data ";    // a `read`'s reply: this, then the bytes
+inline constexpr size_t kMaxWrite = 16 * 1024;    // one `write`'s bytes (hex: twice that sent)
 
 // The build a GNU build id (hex) is, or nullptr for one not known.
 const char* identify_build(std::string_view build_id_hex);
@@ -45,7 +46,12 @@ struct State {
 // `out`) when they can't all be read. helper.cpp's reads its own memory without faulting.
 using Reader = std::function<bool(uint64_t address, size_t size, std::string& out)>;
 
+// Writes `data` into this process's memory at `address`; false (with why in `out`) when it
+// isn't all written. helper.cpp's writes only the game binary's own writable data.
+using Writer = std::function<bool(uint64_t address, const std::string& data, std::string& out)>;
+
 // The reply to one request.
-std::string reply(std::string_view request, const State& state, const Reader& read);
+std::string reply(std::string_view request, const State& state, const Reader& read,
+                  const Writer& write);
 
 }  // namespace zap::linux_helper

@@ -2231,15 +2231,26 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `ping` | `pong frames=<calls since load>` |
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
+  | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
 
   Anything else gets `error unknown request`.
-- **Reading the game.** The helper reads the game's memory itself, for `read`, with
+- **Reading and writing the game.** The helper reads the game's memory itself, for `read`, with
   `process_vm_readv` on its own pid: the kernel copies it, so an address not mapped is an
-  error (`error Bad_address`), not a fault. It never opens the game's memory to another process
+  error (`error Bad_address`), not a fault. It writes it for `write` with `process_vm_writev`,
+  and only inside the zero-filled part of the game binary's writable segments (its `.bss`: from
+  `p_filesz` to `p_memsz` of each `PT_LOAD` with `PF_W`, read at start-up), where `gGameState`
+  and the other state the client writes live: never its code, its constants, its initialized
+  data (`.data`'s function pointers) or its import slots (`.got.plt`, writable in a binary
+  without `BIND_NOW`, as B1's is), nor a library's memory. The client's
+  `game.Game` reads and writes through these (`Game.attach_linux`, `client/linux_helper.py`'s
+  `LinuxProcess`), reading back every write as on Windows. It never opens the game's memory to another process
   (no `prctl(PR_SET_PTRACER)`), whatever the kernel's ptrace scope: the client reads only
   through it (`docs/re/linux.md`, "Reading the running game"). Stand-in tests: a separate process
   is refused the stand-in game's memory with a client connected or not (on the test PC, scope 1,
-  2026-11-18), and reads through the helper return the stand-in's bytes, one piece or two.
+  2026-11-18), and reads through the helper return the stand-in's bytes, one piece or two;
+  `game.Game` writes and reads back through it, a write to the stand-in's `.rodata` or `.data`
+  is refused and leaves it as it was, a dropped connection is made again, and the game's exit
+  is noticed (by its pid's start time).
 - **Its own runtime.** The C++ runtime is linked in, so it needs only glibc (with `ld-linux`,
   its dynamic loader) from the game's container, which may be older than the one it was built
   with. A build on a newer glibc asks for its newer symbol versions and would fail to load under an

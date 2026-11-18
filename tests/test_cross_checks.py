@@ -76,6 +76,8 @@ def test_the_linux_helper_is_the_release_and_agrees_with_the_client() -> None:
     assert linux_helper.MAX_REPLY == offline.MAX_REQUEST
     reads = re.findall(r"constexpr size_t kMaxRead = (\d+) \* 1024;", header)
     assert [int(n) * 1024 for n in reads] == [linux_helper.MAX_READ]
+    writes = re.findall(r"constexpr size_t kMaxWrite = (\d+) \* 1024;", header)
+    assert [int(n) * 1024 for n in writes] == [linux_helper.MAX_WRITE]
     prefix = re.findall(r'constexpr char kDataPrefix\[\] = "([^"]+)";', header)
     assert [p.encode() for p in prefix] == [linux_helper.DATA_PREFIX]
 

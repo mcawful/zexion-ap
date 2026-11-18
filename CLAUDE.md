@@ -252,7 +252,8 @@ release's.
   | `pe.py` | the PE header fields the client and tools read |
   | `elf.py` | the ELF fields and symbols of the game's Linux build |
   | `procfs.py` | Linux processes by name, through `/proc` |
-  | `linux_helper.py` | the Linux game and its helper's socket; reads through it |
+  | `linux_helper.py` | the Linux game and its helper's socket; reads and writes through it |
+  | `linux_targets.py` | the client's targets on the Linux build: symbol and offset |
   | `ids.py` | item and location codes; the game's sizes |
   | `save_patch.py` | the seed's plan from slot data; the save's layout |
   | `native.py` | load the helper and talk to it over its pipe |

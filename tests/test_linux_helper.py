@@ -4,6 +4,7 @@ and the reads run against the stand-in game in tests/test_native_linux.py)."""
 from __future__ import annotations
 
 import hashlib
+import socket
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,9 @@ def _process(proc: Path, pid: str, comm: bytes, exe: bytes | None, cmdline: byte
     (game / "comm").write_bytes(comm)
     (game / "cmdline").write_bytes(cmdline)
     (game / "status").write_text(f"Name:\t{comm.decode().strip()}\nNSpid:\t{nspid or pid}\n")
+    # /proc/<pid>/stat: the pid, the name in parentheses, then fields 3 on; 22 is the start time.
+    rest = " ".join(["S"] + ["0"] * 18 + [str(int(pid) * 10)] + ["0"] * 30)
+    (game / "stat").write_text(f"{pid} ({comm.decode().strip()}) {rest}\n")
     if exe is not None:
         (game / "exe").write_bytes(exe)  # a link to the binary in the real /proc
 
@@ -98,3 +102,52 @@ def test_using_the_helper_without_a_connection_is_refused() -> None:
     game = linux_helper.LinuxGame(1, 1, STAND_IN, None)
     with pytest.raises(linux_helper.LinuxHelperError, match="not connected"):
         linux_helper.LinuxHelper(game).read(0x1000, 4)
+
+
+def test_the_start_time_is_read_past_a_name_with_spaces_and_parentheses(tmp_path: Path) -> None:
+    proc = tmp_path / "proc"
+    (proc / "7").mkdir(parents=True)
+    rest = " ".join(["S"] + ["0"] * 18 + ["123456"] + ["0"] * 30)
+    (proc / "7" / "stat").write_text(f"7 (a (b) c) {rest}\n")
+    assert linux_helper.start_time(7, proc) == 123456
+
+
+def test_the_game_found_carries_its_start_time(tmp_path: Path) -> None:
+    assert linux_helper.find_game(_proc(tmp_path)).started == 42420
+
+
+def _stat(proc: Path, pid: int, state: str, started: int) -> None:
+    (proc / str(pid)).mkdir(parents=True, exist_ok=True)
+    rest = " ".join([state] + ["0"] * 18 + [str(started)] + ["0"] * 30)
+    (proc / str(pid) / "stat").write_text(f"{pid} (Zexion) {rest}\n")
+
+
+@pytest.mark.parametrize(
+    ("state", "started", "alive"),
+    [("S", 500, True), ("R", 500, True), ("Z", 500, False), ("X", 500, False), ("S", 501, False)],
+    ids=["sleeping", "running", "zombie", "dead", "pid-reused"],
+)
+def test_the_game_counts_as_running_only_as_itself(tmp_path, state, started, alive) -> None:
+    proc = tmp_path / "proc"
+    _stat(proc, 9, state, started)
+    assert linux_helper.running(9, 500, proc) is alive
+    assert linux_helper.running(10, 500, proc) is False  # no such process
+
+
+def test_a_request_with_no_reply_closes_the_connection() -> None:
+    """Its reply could still come, and would be read as the next request's."""
+    client, silent = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    try:
+        helper = linux_helper.LinuxHelper(linux_helper.LinuxGame(1, 1, STAND_IN, None), 0.2)
+        client.settimeout(0.2)
+        helper._sock = client
+        with pytest.raises(linux_helper.NoReply):
+            helper.request("ping")
+        assert not helper.connected
+        with pytest.raises(BrokenPipeError):  # the late reply finds the connection closed
+            silent.send(b"pong frames=1")
+        with pytest.raises(linux_helper.LinuxHelperError, match="not connected"):
+            helper.request("ping")
+    finally:
+        silent.close()
+        client.close()

@@ -280,3 +280,42 @@ def test_the_helper_exports_only_its_frame_call(build: Path) -> None:
         if s.defined and s.type in (elf.STT_FUNC, elf.STT_OBJECT)
     }
     assert exported == {"SDL_GL_SwapWindow"}  # its C++ runtime stays its own
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_the_game_reads_and_writes_through_the_helper(game: Game) -> None:
+    from client import game as client_game
+
+    found = game.as_found()
+    found = linux_helper.LinuxGame(
+        found.pid, found.inner_pid, found.build, found.image, linux_helper.start_time(game.pid)
+    )
+    game.connect().close()  # serving
+    rodata = found.image.section(".rodata").addr
+    pm = linux_helper.LinuxProcess(found)
+    try:
+        # Targets placed on the stand-in's block (its writable data) and its .rodata.
+        g = client_game.Game(pm, 0, {"block": game.block, "rodata": rodata}, game.pid, found.build)
+        assert g._read("block", 0, 4) == bytes([0, 1, 2, 3])
+        g._write("block", 10, b"zexion")  # written, and read back
+        assert g._read("block", 8, 10) == bytes([8, 9]) + b"zexion" + bytes([16, 17])
+        big = bytes(range(256)) * 80  # 20480 bytes: two pieces
+        g._write("block", 0, big)
+        assert g._read("block", 0, len(big)) == big
+        before = g._read("rodata", 0, 4)
+        with pytest.raises(client_game.WriteStateUnknown, match="not_in_the_game's_writable"):
+            g._write("rodata", 0, b"\x00\x00\x00\x00")  # code and constants stay the game's
+        assert g._read("rodata", 0, 4) == before
+        g.rva["marker"] = game.marker  # initialized data (.data): function pointers live there
+        with pytest.raises(client_game.WriteStateUnknown, match="not_in_the_game's_writable"):
+            g._write("marker", 0, b"Z")
+        assert g._read("marker", 0, len(MARKER)) == MARKER
+        pm._helper.__exit__()  # the connection dropped (the helper drops a silent client)
+        assert g._read("block", 0, 2) == b"\x00\x01"  # connected again, checks and all
+        assert pm.alive()
+        game.stop()
+        assert not pm.alive()
+        with pytest.raises(client_game.GameNotRunning):
+            g._read("block", 0, 4)
+    finally:
+        pm.close_process()

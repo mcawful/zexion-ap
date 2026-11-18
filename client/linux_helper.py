@@ -20,6 +20,7 @@ import os
 import re
 import socket
 import struct
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,12 +30,21 @@ PROC = Path("/proc")
 NAMES = ("Zexion",)  # the Linux build's binary (client/procfs.py)
 MAX_REPLY = 64 * 1024  # the helper's kMaxRequest
 MAX_READ = 32 * 1024  # the helper's kMaxRead: one read's bytes
+MAX_WRITE = 16 * 1024  # the helper's kMaxWrite: one write's bytes
 DATA_PREFIX = b"data "  # the helper's kDataPrefix
 UCRED = struct.Struct("3i")  # pid, uid, gid
 
 
 class LinuxHelperError(RuntimeError):
     """The game, the helper or its socket is not there or not as expected."""
+
+
+class GameNotFound(LinuxHelperError):
+    """Zexion's Linux build is not running."""
+
+
+class UnknownLinuxBuild(LinuxHelperError):
+    """Zexion runs, but as a binary of a build this client does not know."""
 
 
 class HelperBusy(LinuxHelperError):
@@ -52,6 +62,30 @@ class LinuxGame:
     inner_pid: int  # as the game sees itself: its socket's name
     build: patterns.LinuxBuild
     image: elf.Image
+    started: int = 0  # its start time (start_time), which a new process of the same pid lacks
+
+
+def _stat_fields(pid: int, proc: Path) -> list[str]:
+    """``/proc/<pid>/stat``'s fields from the third on (the state first)."""
+    stat = (proc / str(pid) / "stat").read_text(errors="replace")
+    # The name (field 2) is in parentheses and may hold spaces: split after its last ")".
+    return stat[stat.rindex(")") + 2 :].split()
+
+
+def start_time(pid: int, proc: Path = PROC) -> int:
+    """When process ``pid`` started, in clock ticks since boot (``/proc/<pid>/stat``, field 22):
+    with the pid, what tells the game from a later process that reuses its pid."""
+    return int(_stat_fields(pid, proc)[19])
+
+
+def running(pid: int, started: int, proc: Path = PROC) -> bool:
+    """Process ``pid`` is the one that started at ``started`` and has not exited: neither a
+    later process on its pid nor a zombie (``Z``) or dead one (``X``) waiting to be reaped."""
+    try:
+        fields = _stat_fields(pid, proc)
+        return fields[0] not in ("Z", "X", "x") and int(fields[19]) == started
+    except (OSError, ValueError, IndexError):
+        return False
 
 
 def inner_pid(pid: int, proc: Path = PROC) -> int:
@@ -85,6 +119,7 @@ def find_game(proc: Path = PROC) -> LinuxGame:
             data = (proc / str(pid) / "exe").read_bytes()
             build, image = identify(data)
             inner = inner_pid(pid, proc)
+            started = start_time(pid, proc)
         except FileNotFoundError:
             continue  # gone
         except (OSError, ValueError, elf.ELFError) as exc:
@@ -93,17 +128,17 @@ def find_game(proc: Path = PROC) -> LinuxGame:
         if build is None:
             other.append(f"pid {pid}: GNU build id {image.build_id() or 'none'}")
         else:
-            known.append(LinuxGame(pid, inner, build, image))
+            known.append(LinuxGame(pid, inner, build, image, started))
     if len(known) == 1:
         return known[0]
     if len(known) > 1:
         pids = ", ".join(str(g.pid) for g in known)
         raise LinuxHelperError(f"Zexion runs twice (pids {pids}); close one")
     if other:
-        raise LinuxHelperError(
+        raise UnknownLinuxBuild(
             f"Zexion is a build this client does not know ({'; '.join(other)}); check for an update"
         )
-    raise LinuxHelperError("Zexion (the Linux build) is not running")
+    raise GameNotFound("Zexion (the Linux build) is not running")
 
 
 class LinuxHelper:
@@ -157,17 +192,26 @@ class LinuxHelper:
             self._sock.close()
             self._sock = None
 
+    @property
+    def connected(self) -> bool:
+        return self._sock is not None
+
     def request_bytes(self, data: bytes) -> bytes:
         if self._sock is None:
             raise LinuxHelperError("not connected")
+        # A request with no reply closes the connection: its reply could still come, and would
+        # then be read as the next request's.
         try:
             self._sock.send(data)
             reply = self._sock.recv(MAX_REPLY)
         except TimeoutError as exc:
+            self.__exit__()
             raise NoReply(f"the helper did not answer within {self.timeout:g} s") from exc
         except OSError as exc:
+            self.__exit__()
             raise LinuxHelperError(f"the helper's socket failed: {exc}") from exc
         if not reply:
+            self.__exit__()
             raise LinuxHelperError("the helper closed its socket")
         return reply
 
@@ -207,6 +251,17 @@ class LinuxHelper:
             raise LinuxHelperError(f"unexpected reply to callers: {reply!r}") from exc
         return sites, other
 
+    def write(self, address: int, data: bytes) -> None:
+        """Write ``data`` into the game's memory at ``address``, by the helper, in pieces of at
+        most MAX_WRITE; LinuxHelperError when a piece is refused (the helper writes only the
+        game binary's writable data). A failure after the first piece leaves those before it
+        written: the caller reads back."""
+        for at in range(0, len(data), MAX_WRITE):
+            piece = data[at : at + MAX_WRITE]
+            reply = self.request(f"write {address + at:#x} {piece.hex()}")
+            if reply != f"written {len(piece)}":
+                raise LinuxHelperError(f"writing {len(piece)} bytes at {address + at:#x}: {reply}")
+
     def read(self, address: int, size: int) -> bytes:
         """``size`` bytes of the game's memory at ``address``, read by the helper in pieces of
         at most MAX_READ; LinuxHelperError when they can't all be read."""
@@ -222,3 +277,45 @@ class LinuxHelper:
                 raise LinuxHelperError(f"reading {piece} bytes at {at:#x}: {said}")
             out += reply[len(DATA_PREFIX) :]
         return bytes(out)
+
+
+class LinuxProcess:
+    """The game's memory through its helper, with what ``game.Game`` needs of a process:
+    ``read_bytes``, ``write_bytes``, ``alive`` and ``close_process``. It holds the helper's one
+    client connection, one request at a time (``game.Game`` is called from worker threads), and
+    connects again, with the server's checks, once a connection has closed (the helper drops a
+    client silent for 30 s; a request with no reply closes it): a read or write then fails only
+    if that fails too."""
+
+    def __init__(self, game: LinuxGame, proc: Path = PROC, timeout: float = 5.0) -> None:
+        self.game = game
+        self.process_id = game.pid
+        self._proc = proc
+        self._timeout = timeout
+        self._lock = threading.Lock()
+        self._closed = False
+        self._helper = LinuxHelper(game, timeout).__enter__()
+
+    def _connection(self) -> LinuxHelper:
+        if self._closed:
+            raise LinuxHelperError("closed")
+        if not self._helper.connected:
+            self._helper = LinuxHelper(self.game, self._timeout).__enter__()
+        return self._helper
+
+    def read_bytes(self, address: int, size: int) -> bytes:
+        with self._lock:
+            return self._connection().read(address, size)
+
+    def write_bytes(self, address: int, data: bytes) -> None:
+        with self._lock:
+            self._connection().write(address, data)
+
+    def alive(self) -> bool:
+        """The game's pid still names the process attached to, and it has not exited."""
+        return running(self.game.pid, self.game.started, self._proc)
+
+    def close_process(self) -> None:
+        with self._lock:
+            self._closed = True
+            self._helper.__exit__()
