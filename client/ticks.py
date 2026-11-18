@@ -26,6 +26,7 @@ from . import (
     native,
     newgame,
     offline,
+    patterns,
     reconcile,
     shields,
     state,
@@ -547,6 +548,19 @@ NO_ARCHIPELAGO = (
 )
 
 
+def start_table_build(g) -> str:
+    """The exe SHA-256 the menu's start table was measured on, for this game (newgame.start_table):
+    its own, or for a Linux build the Windows build of the same name's, whose map data, which the
+    table comes from, it shares (docs/re/builds.md, "B1 on Linux")."""
+    if g is None:
+        return ""
+    build = g.build
+    if isinstance(build, patterns.LinuxBuild):
+        same = [b for b in patterns.KNOWN_BUILDS if b.name == build.name]
+        return same[0].sha256 if same else ""
+    return build.sha256
+
+
 async def newgame_tick(ctx: ZexionContext, helper=None, offer_choice: bool = True) -> None:
     """Arm the helper (``helper``, else ctx.helper) with the AP seed for the next randomizer new
     game, and report what became of it. Runs in the game loop, the helper's only user. The lines
@@ -563,7 +577,7 @@ async def newgame_tick(ctx: ZexionContext, helper=None, offer_choice: bool = Tru
         if time.monotonic() < conn.newgame_retry_at:
             return  # refused a moment ago
         plan = conn.plan
-        build = ctx.game_conn.build.sha256 if ctx.game_conn is not None else ""
+        build = start_table_build(ctx.game_conn)
         choice = offer_choice and not ctx.keep_randomizer and not conn.choice_refused
         text = None
         for offer in (True, False) if choice else (False,):  # ARCHIPELAGO, else RANDOMIZER
@@ -639,17 +653,17 @@ async def newgame_tick(ctx: ZexionContext, helper=None, offer_choice: bool = Tru
 
 
 async def linux_newgame_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build: new games through the Linux helper, from RANDOMIZER only
-    (its ARCHIPELAGO choice isn't there yet), configured once an attach (linux_helper.
-    LinuxNewGames). A helper that can't be reached or refuses is told once and tried again on
-    a later poll, a plan it held armed again then."""
+    """With the game's Linux build: new games through the Linux helper, ARCHIPELAGO offered as
+    on Windows (the helper leaves RANDOMIZER while a translation is on), configured once an
+    attach (linux_helper.LinuxNewGames). A helper that can't be reached or refuses is told once
+    and tried again on a later poll, a plan it held armed again then."""
     g = ctx.game_conn
     if g is None or getattr(g, "platform", "windows") != "linux":
         return
     try:
         if ctx.linux_newgames is None or ctx.linux_newgames.pm is not g.pm:
             ctx.linux_newgames = await asyncio.to_thread(linux_helper.LinuxNewGames, g.pm)
-        await newgame_tick(ctx, ctx.linux_newgames, offer_choice=False)
+        await newgame_tick(ctx, ctx.linux_newgames)
         ctx.said.clear("linux new games")
     except linux_helper.LinuxHelperError as exc:
         ctx.linux_newgames = None

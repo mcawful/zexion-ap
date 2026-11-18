@@ -876,8 +876,8 @@ Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in
 
 ### New games
 
-The plan, the seed's placement and the RANDOMIZER route are `src/newgame.cpp`'s, which the Linux
-helper shares ("The Linux helper"); the ARCHIPELAGO choice is `Game`'s and `src/menu.cpp`'s.
+The plan, the seed's placement and the RANDOMIZER route are `src/newgame.cpp`'s, and the
+ARCHIPELAGO choice `src/choice.cpp`'s, both shared with the Linux helper ("The Linux helper").
 While a plan is armed (`ap_newgame`), each frame call:
 
 - **RANDOMIZER:** watches for a randomizer new game the game has queued (by the player's own
@@ -893,7 +893,7 @@ While a plan is armed (`ap_newgame`), each frame call:
   when the two differ), and the seed's second start must be one of its rooms. Working in
   game: 2026-10-27 (`docs/re/memory.md`, "Starting a new game").
 - **ARCHIPELAGO:** with `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the
-  game-mode panel shown after an empty slot is picked (`src/menu.cpp`), after checking every
+  game-mode panel shown after an empty slot is picked (`src/choice.cpp`), after checking every
   handler, size and pointer on the way with fault-safe reads. The panel's handler is then a
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
   letters. In a translation the label's translated text is built again as Archipelago (the game
@@ -2182,7 +2182,8 @@ lands, not only the place passed.
 
 `libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
 it reads and writes the running game's memory for the client, counts its frames, and starts new
-games from RANDOMIZER ("New games", which it shares with the Windows helper: below). None of the
+games, ARCHIPELAGO on the menu or RANDOMIZER ("New games", which it shares with the Windows
+helper: below). None of the
 other parts above runs on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`)
 and otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested
 against a stand-in game (`tests/test_native_linux.py`).
@@ -2236,8 +2237,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the new games' eleven addresses (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size and each function in its code, all or none |
-  | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games"), without `choice` |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the new games' and the ARCHIPELAGO choice's seventeen addresses (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size and each function in its code, all or none |
+  | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
 
   Anything else gets `error unknown request`.
@@ -2267,9 +2268,13 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   (`src/mailbox_linux.cpp`), only at `SWHardwareEnd`'s swap, by its return address (not the
   palette window's: `docs/re/linux.md`, "The per-frame call"), with nothing they throw reaching
   the game. As on Windows, a client that goes takes its plan with it: the helper disarms at the
-  next frame. The ARCHIPELAGO choice on the
-  game-mode panel is not ported, so a seed starts from RANDOMIZER only, with its seed text typed
-  in. The shared sources build on Linux through `src/platform.h` and the Linux parts of the
+  next frame. The ARCHIPELAGO choice on the game-mode panel is `src/choice.cpp`'s, shared too: the
+  same relabel, panel hook and callback (the game calls a menu callback with no arguments on Linux,
+  and the helper's reads none), at the frame call. Not while a translation is on: its label is
+  rebuilt through the translation's code, not ported yet (4-byte characters), so RANDOMIZER stays
+  and the seed starts from it with its text. The choice is tested on Windows' stand-in menu
+  (`tests/menu_tests.cpp`, `game_tests.cpp`); on Linux only built, and configured through the
+  socket. The shared sources build on Linux through `src/platform.h` and the Linux parts of the
   memory layer, `src/game_mem_linux.cpp`: fault-safe reads through the kernel, writability from
   the process's memory map (read at each query, as Windows' `VirtualQuery` is), the game's code
   from its program headers, code patches with `mprotect`, the page's own protection put back.
@@ -2460,19 +2465,20 @@ the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe cli
 | `cell_watch.h` | `CellWatch`: a list of map cells looked at every frame, which turned collected or back since the look before, and after how many looks in play (the two watches above share it) |
 | `requests.cpp` | the requests' parsers |
 | `newgame.h`, `newgame.cpp` | new games (`NewGames`: the plan, the seed's placement, the RANDOMIZER route), which `Game` and the Linux helper share |
+| `choice.h`, `choice.cpp` | the ARCHIPELAGO choice on the game-mode panel and its start (`start_archipelago`), shared the same way |
 | `platform.h` | `<windows.h>`, or on Linux the few Windows type names the shared sources use |
 | `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws; the text window's cut patch (`text_cut_patch`) |
 | `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread (`mailbox_linux.cpp`: the Linux helper's) |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
 | `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access (`game_mem_linux.cpp`: its Linux parts); code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
-| `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
+| `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
 `proxy/` is the proxy `version.dll`.
 
 `linux/` is the Linux helper: `src/core.cpp` (the known builds, the build id note, the replies),
 `src/helper.cpp` (the constructor, the socket's thread, the frame call, `config` and the new
 games' requests), and in `tests/` the ctest tests, the stand-in game and its stand-in SDL. It
-also builds these of `src/`: `newgame.cpp`, `requests.cpp`, `text.cpp`, `scan.cpp`, `trap.cpp`,
+also builds these of `src/`: `newgame.cpp`, `choice.cpp`, `requests.cpp`, `text.cpp`, `scan.cpp`, `trap.cpp`,
 `game_mem.cpp` with `game_mem_linux.cpp`, and `mailbox_linux.cpp` (`src/platform.h` gives them
 the few Windows type names they use).

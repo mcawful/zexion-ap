@@ -162,5 +162,5 @@ def test_the_windows_helper_is_not_tried_with_the_linux_build(linux, tmp_path) -
     from client import state
 
     line = state.helper_failed(caught.value)
-    assert line.startswith("On Linux the Zexion mod starts new games of this seed from RANDOMIZER")
+    assert line.startswith("On Linux the Zexion mod starts new games of this seed, but its other")
     assert "items arrive without popups" in line

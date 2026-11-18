@@ -28,7 +28,9 @@
 #include <vector>
 
 #include "core.h"
-#include "game_mem.h"  // in_image_code (native/src)
+#include "addresses.h"  // GameAddresses (native/src)
+#include "choice.h"     // the ARCHIPELAGO choice
+#include "game_mem.h"   // in_image_code
 #include "mailbox.h"
 #include "newgame.h"
 #include "requests.h"  // parse_newgame
@@ -86,6 +88,8 @@ constexpr DWORD kFrameWaitMs = 1000;  // as the Windows helper's
 zap::Mailbox g_mailbox;
 zap::NewGames g_newgames;
 zap::NewGameAddresses g_newgame_at;
+zap::GameAddresses g_at;  // config's, with the panel hook: the ARCHIPELAGO choice's
+zap::ArchipelagoChoice g_choice;
 bool g_configured = false;  // game thread only
 std::atomic<bool> g_client_left{false};  // a client went: its plan is dropped at the next frame
 
@@ -206,41 +210,53 @@ State state() {
 // size and each function in its code; all of them, or nothing changes.
 struct ConfigKey {
     const char* name;
-    uint8_t* zap::NewGameAddresses::*field;
+    BYTE* zap::GameAddresses::*field;
     size_t size;         // 0: a function
     const char* symbol;  // where it is: this symbol of the game's own, plus `offset`
     uint64_t offset;
 };
 // Keep in step with client/linux_targets.py (TARGETS and HELPER_TARGETS, by NEWGAME_KEYS);
 // tests/test_linux_targets.py checks them. The test build's are the stand-in game's.
-using A = zap::NewGameAddresses;
+using G = zap::GameAddresses;
 #ifndef ZAP_HOOKTEST
 constexpr ConfigKey kConfigKeys[] = {
-    {"rando_blob", &A::rando_blob, zap::kSectionSize, "gCurrentRando", 0},
-    {"randomizer_menu", &A::randomizer_menu, zap::kMenuSize, "gRandoPreferences", 0},
-    {"transition_fn", &A::transition_fn, sizeof(void*), "gExitActionP", 0},
-    {"transition_timer", &A::transition_timer, sizeof(int32_t), "gExitDelay", 0},
-    {"newgame_fn", &A::newgame_fn, 0, "_Z16StartNewGameExitv", 0},
-    {"placement_fn", &A::placement_fn, 0, "_Z13generateRandov", 0},
-    {"rando_marker", &A::rando_marker, sizeof(uint16_t), "gGameState", 0x13738},
-    {"current_slot", &A::current_slot, sizeof(int32_t), "gCurrentSaveGame", 0},
-    {"start_count", &A::start_count, sizeof(int16_t), "rStartingLocationCount", 0},
-    {"start_cells", &A::start_cells, 4 * zap::kStartTableMax, "rStartingLocations", 0},
-    {"start_flags", &A::start_flags, zap::kStartTableMax, "rStartingLocationCage", 0},
+    {"rando_blob", &G::rando_blob, zap::kSectionSize, "gCurrentRando", 0},
+    {"randomizer_menu", &G::randomizer_menu, zap::kMenuSize, "gRandoPreferences", 0},
+    {"transition_fn", &G::transition_fn, sizeof(void*), "gExitActionP", 0},
+    {"transition_timer", &G::transition_timer, sizeof(int32_t), "gExitDelay", 0},
+    {"newgame_fn", &G::newgame_fn, 0, "_Z16StartNewGameExitv", 0},
+    {"placement_fn", &G::placement_fn, 0, "_Z13generateRandov", 0},
+    {"rando_marker", &G::rando_marker, sizeof(uint16_t), "gGameState", 0x13738},
+    {"current_slot", &G::current_slot, sizeof(int32_t), "gCurrentSaveGame", 0},
+    {"start_count", &G::start_count, sizeof(int16_t), "rStartingLocationCount", 0},
+    {"start_cells", &G::start_cells, 4 * zap::kStartTableMax, "rStartingLocations", 0},
+    {"start_flags", &G::start_flags, zap::kStartTableMax, "rStartingLocationCage", 0},
+    {"current_menu", &G::current_menu, sizeof(void*), "gLastGameMenuP", 0},
+    {"rando_menu_fn", &G::rando_menu_fn, 0, "_Z14RandomizerMenuv", 0},
+    {"widget_handler_fn", &G::widget_handler_fn, 0, "_Z18StandardMenuActionP12GameMenuItemi", 0},
+    {"panel_handler_fn", &G::panel_handler_fn, 0, "_Z16FrameWrapOrArrowP12GameMenuItemi", 0},
+    {"rando_newgame_fn", &G::rando_newgame_fn, 0, "_Z9forceSeedv", 0},
+    {"tr_flag", &G::tr_flag, 1, "gCurrentTranslation", 0x91},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
-    {"rando_blob", &A::rando_blob, zap::kSectionSize, "zap_section", 0},
-    {"randomizer_menu", &A::randomizer_menu, zap::kMenuSize, "zap_menu", 0},
-    {"transition_fn", &A::transition_fn, sizeof(void*), "zap_transition", 0},
-    {"transition_timer", &A::transition_timer, sizeof(int32_t), "zap_timer", 0},
-    {"newgame_fn", &A::newgame_fn, 0, "zap_new_game", 0},
-    {"placement_fn", &A::placement_fn, 0, "zap_placement", 0},
-    {"rando_marker", &A::rando_marker, sizeof(uint16_t), "zap_marker", 0},
-    {"current_slot", &A::current_slot, sizeof(int32_t), "zap_slot", 0},
-    {"start_count", &A::start_count, sizeof(int16_t), "zap_start_count", 0},
-    {"start_cells", &A::start_cells, 4 * zap::kStartTableMax, "zap_start_cells", 0},
-    {"start_flags", &A::start_flags, zap::kStartTableMax, "zap_start_flags", 0},
+    {"rando_blob", &G::rando_blob, zap::kSectionSize, "zap_section", 0},
+    {"randomizer_menu", &G::randomizer_menu, zap::kMenuSize, "zap_menu", 0},
+    {"transition_fn", &G::transition_fn, sizeof(void*), "zap_transition", 0},
+    {"transition_timer", &G::transition_timer, sizeof(int32_t), "zap_timer", 0},
+    {"newgame_fn", &G::newgame_fn, 0, "zap_new_game", 0},
+    {"placement_fn", &G::placement_fn, 0, "zap_placement", 0},
+    {"rando_marker", &G::rando_marker, sizeof(uint16_t), "zap_marker", 0},
+    {"current_slot", &G::current_slot, sizeof(int32_t), "zap_slot", 0},
+    {"start_count", &G::start_count, sizeof(int16_t), "zap_start_count", 0},
+    {"start_cells", &G::start_cells, 4 * zap::kStartTableMax, "zap_start_cells", 0},
+    {"start_flags", &G::start_flags, zap::kStartTableMax, "zap_start_flags", 0},
+    {"current_menu", &G::current_menu, sizeof(void*), "zap_menu_top", 0},
+    {"rando_menu_fn", &G::rando_menu_fn, 0, "zap_rando_menu", 0},
+    {"widget_handler_fn", &G::widget_handler_fn, 0, "zap_widget_handler", 0},
+    {"panel_handler_fn", &G::panel_handler_fn, 0, "zap_panel_handler", 0},
+    {"rando_newgame_fn", &G::rando_newgame_fn, 0, "zap_force_seed", 0},
+    {"tr_flag", &G::tr_flag, 1, "zap_tr_flag", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -269,7 +285,7 @@ bool read_own_symbols() {
     return true;
 }
 
-std::string parse_config(std::string_view request, zap::NewGameAddresses& out) {
+std::string parse_config(std::string_view request, zap::GameAddresses& out) {
     std::map<std::string, uint64_t> given;
     std::istringstream words{std::string(request.substr(std::string_view("config").size()))};
     std::string word;
@@ -300,6 +316,27 @@ std::string parse_config(std::string_view request, zap::NewGameAddresses& out) {
     return "";
 }
 
+// ARCHIPELAGO's callback: the game calls it with no arguments (docs/re/linux.md, "Mapped by
+// disassembly: menus and UI"), on its thread; the parameters are WidgetCallback's and unused.
+void archipelago_chosen(void*, int) {
+    try {
+        if (g_configured) {
+            zap::start_archipelago(g_newgames, g_choice, g_at, g_newgame_at, &archipelago_chosen);
+        }
+    } catch (...) {
+    }
+}
+
+// The game-mode panel's handler while the choice is up: the game's own, then the hover border
+// fitted around ARCHIPELAGO in the frame the game laid it out (choice.h, fit_border).
+void panel_hook(void* widget, int event) {
+    reinterpret_cast<void (*)(void*, int)>(g_at.panel_handler_fn)(widget, event);
+    try {
+        g_choice.fit_border(g_at);
+    } catch (...) {
+    }
+}
+
 // `work` run on the game's thread at its next frame call; "refused not configured" first when
 // `needs_config` and no config came; "refused no frame" if no frame took it in time (it then
 // never runs); "error <why>" at once for a request not parsed. As the Windows helper's on_game.
@@ -320,11 +357,24 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config,
 // core.cpp answers.
 std::optional<std::string> game_request(std::string_view request) {
     if (request == "config" || request.starts_with("config ")) {
-        zap::NewGameAddresses found;
+        zap::GameAddresses found;
         std::string error = parse_config(request, found);
         return on_game(
             [&] {
-                g_newgame_at = found;
+                if (g_configured) g_choice.restore(g_at, &archipelago_chosen);  // old addresses'
+                g_at = found;
+                g_at.hooks.panel = reinterpret_cast<void*>(&panel_hook);
+                g_newgame_at = {.rando_blob = g_at.rando_blob,
+                                .randomizer_menu = g_at.randomizer_menu,
+                                .transition_fn = g_at.transition_fn,
+                                .transition_timer = g_at.transition_timer,
+                                .newgame_fn = g_at.newgame_fn,
+                                .placement_fn = g_at.placement_fn,
+                                .rando_marker = g_at.rando_marker,
+                                .current_slot = g_at.current_slot,
+                                .start_count = g_at.start_count,
+                                .start_cells = g_at.start_cells,
+                                .start_flags = g_at.start_flags};
                 g_configured = true;
                 return std::string("ok");
             },
@@ -471,11 +521,19 @@ void game_frame(uintptr_t site) {
     try {
         g_mailbox.serve();
         if (g_client_left.exchange(false)) g_newgames.disarm();
-        if (!g_configured || !g_newgames.armed()) return;
+        if (!g_configured) return;
         try {
             g_newgames.watch(g_newgame_at);
         } catch (...) {
             g_newgames.refuse("the placement failed");
+        }
+        // The ARCHIPELAGO choice while a plan offers it, RANDOMIZER back otherwise (as the
+        // Windows helper's watch_menu).
+        if (g_newgames.armed() && g_newgames.plan().choice && !g_newgames.starting()) {
+            g_choice.install(g_at, &archipelago_chosen);
+            if (g_choice.installed()) g_choice.fit_border(g_at);
+        } else if (g_choice.installed() || g_choice.holds_hook()) {
+            g_choice.restore(g_at, &archipelago_chosen);
         }
     } catch (...) {
     }

@@ -52,9 +52,9 @@ TARGETS = (
 )
 
 
-# The Linux helper's own targets beyond those, for new games (its ``config``: native/linux/src/
-# helper.cpp, native/src/newgame.h): the rest of NEWGAME_KEYS is in TARGETS. Functions by their
-# mangled names.
+# The Linux helper's own targets beyond those, for new games and the ARCHIPELAGO choice (its
+# ``config``: native/linux/src/helper.cpp, native/src/newgame.h, choice.h): the rest of
+# NEWGAME_KEYS is in TARGETS. Functions by their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -63,10 +63,19 @@ HELPER_TARGETS = (
     LinuxTarget("start_count", "rStartingLocationCount", 0, 0x9E0C40),
     LinuxTarget("start_cells", "rStartingLocations", 0, 0x9E0B40),
     LinuxTarget("start_flags", "rStartingLocationCage", 0, 0x9E0C60),
+    # The ARCHIPELAGO choice's (native/src/choice.h).
+    LinuxTarget("current_menu", "gLastGameMenuP", 0, 0x12F5700),
+    LinuxTarget("rando_menu_fn", "_Z14RandomizerMenuv", 0, 0x6021B1),
+    LinuxTarget("widget_handler_fn", "_Z18StandardMenuActionP12GameMenuItemi", 0, 0x58B8CB),
+    LinuxTarget("panel_handler_fn", "_Z16FrameWrapOrArrowP12GameMenuItemi", 0, 0x56ED11),
+    LinuxTarget("rando_newgame_fn", "_Z9forceSeedv", 0, 0x5AF50F),
+    LinuxTarget("tr_flag", "gCurrentTranslation", 0x91, 0x12B48D1),
 )
 NEWGAME_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
     "placement_fn", "rando_marker", "current_slot", "start_count", "start_cells", "start_flags",
+    "current_menu", "rando_menu_fn", "widget_handler_fn", "panel_handler_fn", "rando_newgame_fn",
+    "tr_flag",
 )  # fmt: skip
 
 

@@ -1006,32 +1006,8 @@ void Game::restore_assists() {
 }
 
 void Game::start_archipelago(WidgetCallback callback) {
-    // Once per press; nothing after the plan was dropped or while a new game is queued.
-    if (!configured_ || !newgames_.armed() || !newgames_.plan().choice || newgames_.starting()) {
-        return;
-    }
-    if (newgame_queued()) return;
-    newgames_.begin_start();
-    // Refused: RANDOMIZER back, the plan dropped, nothing queued.
-    auto refuse = [&](const std::string& why) {
-        choice_.restore(at_, callback);
-        newgames_.refuse(why);
-    };
-    try {
-        std::string why = newgames_.place_seed(newgame_at_);
-        if (!why.empty()) return refuse(why);
-        // Queued as the play-anyway path does; watch_newgame reports it next frame.
-        reinterpret_cast<void (*)()>(at_.rando_newgame_fn)();
-        if (!newgame_queued()) {
-            return refuse("the game did not queue a new game (is the slot empty?)");
-        }
-        // ARCHIPELAGO stays through the fade; only RANDOMIZER's callback goes back.
-        choice_.release(at_, callback);
-    } catch (...) {
-        choice_.restore(at_, callback);
-        disarm_newgame();
-        throw;
-    }
+    if (!configured_) return;
+    zap::start_archipelago(newgames_, choice_, at_, newgame_at_, callback);
 }
 
 void Game::set_discs(int count, int required, std::string scan_line, bool told) {

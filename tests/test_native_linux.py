@@ -333,6 +333,12 @@ NEWGAME_SYMBOLS = {
     "start_count": "zap_start_count",
     "start_cells": "zap_start_cells",
     "start_flags": "zap_start_flags",
+    "current_menu": "zap_menu_top",
+    "rando_menu_fn": "zap_rando_menu",
+    "widget_handler_fn": "zap_widget_handler",
+    "panel_handler_fn": "zap_panel_handler",
+    "rando_newgame_fn": "zap_force_seed",
+    "tr_flag": "zap_tr_flag",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"

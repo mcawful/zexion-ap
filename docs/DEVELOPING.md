@@ -298,9 +298,9 @@ and Steam Deck"). What exists so far:
   again once a connection drops (a request with no reply closes it, so a late reply is never
   read as the next one's). It writes nothing through a target `re/linux.md` only assumes
   (`slot_array`), and reports play only while the player state is where the
-  layout puts it. New games go through the Linux helper, from RANDOMIZER only
-  (`ticks.linux_newgame_tick`: configured once an attach, `client/linux_targets.py`'s
-  `newgame_config`). The rest of the client runs as without the mod: `native.attach` refuses the
+  layout puts it. New games go through the Linux helper, ARCHIPELAGO offered as on Windows (not
+  while a translation is on: RANDOMIZER's route then) (`ticks.linux_newgame_tick`: configured
+  once an attach, `client/linux_targets.py`'s `newgame_config`). The rest of the client runs as without the mod: `native.attach` refuses the
   Linux build (`native.LinuxPartial`, said once in the client's window), so items are written
   directly with no popup; checks, the goal, DeathLink's deaths out and marking other players'
   items collected go on. Tested against stand-ins only; not run in the game;

@@ -654,8 +654,7 @@ async def poll(ctx: ZexionContext) -> None:
     if step.seed_matches and conn.newgame is state.NewGame.DONE:
         # The new game holds the seed and is in play: arm again for another slot.
         conn.newgame = None
-        linux = getattr(ctx.game_conn, "platform", "windows") == "linux"  # RANDOMIZER only there
-        choice = "RANDOMIZER" if ctx.keep_randomizer or linux else "ARCHIPELAGO"
+        choice = "RANDOMIZER" if ctx.keep_randomizer else "ARCHIPELAGO"
         detail(f"{choice} is armed again: another empty slot can start this seed.")
     looked_before = load.seed_loaded  # this load was seen by the poll before too
     if step.seed_matches:

@@ -134,6 +134,20 @@ bool glyphs_show(BYTE* const* glyphs, std::string_view text);
 // Drawn as `like` is: its palette, style and tint copied (both checked writable by the caller).
 void look_like(BYTE* sprite, const BYTE* like);
 
+// Reads the glyph pointers of a live label of N glyphs, each writable, or returns false.
+template <int N>
+inline bool glyphs_of(BYTE* child, BYTE* (&glyphs)[N]) {
+    if (!label_glyphs(pointer_at(child, widget::kLabel), N, glyphs)) return false;
+    for (BYTE* g : glyphs) {
+        int32_t released = 1;
+        if (!read(g, sprite::kReleased, released) || released != 0 ||
+            frame_list(g, 'Z') == nullptr || !writable(g, sprite::kSize)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 #ifdef _WIN32
 // The NT headers of a loaded image, or null if `module` does not start with a PE's headers.
 const IMAGE_NT_HEADERS64* nt_headers(HMODULE module);

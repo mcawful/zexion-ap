@@ -3,7 +3,7 @@
 // traced in docs/re/memory.md, "Game functions the helper calls"; each part's header says more.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 namespace zap {
 

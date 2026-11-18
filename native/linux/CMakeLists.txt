@@ -26,7 +26,7 @@ target_include_directories(zap_linux_core PUBLIC src)
 # parser, and the platform layer under them (game_mem_linux.cpp, mailbox_linux.cpp in place of
 # the Windows parts). GCC warns where MSVC does not on partly initialized structs.
 add_library(zap_shared STATIC
-            ../src/newgame.cpp ../src/requests.cpp ../src/text.cpp ../src/scan.cpp
+            ../src/newgame.cpp ../src/choice.cpp ../src/requests.cpp ../src/text.cpp ../src/scan.cpp
             ../src/trap.cpp ../src/game_mem.cpp ../src/game_mem_linux.cpp
             ../src/mailbox_linux.cpp)
 target_include_directories(zap_shared PUBLIC ../src)

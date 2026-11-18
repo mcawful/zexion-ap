@@ -16,7 +16,7 @@ from unittest import mock
 import pytest
 from fakes import connection, seed_state, slot_data
 
-from client import game, ids, linux_helper, native, patterns, session, state, ticks
+from client import game, ids, linux_helper, native, newgame, patterns, session, state, ticks
 
 
 class CommonContext:
@@ -1254,20 +1254,26 @@ def linux_game(replies: dict[str, str]):
     return g
 
 
-def test_on_linux_the_seed_is_armed_from_randomizer_through_the_linux_helper(caplog) -> None:
+def test_on_linux_the_seed_is_armed_with_archipelago_through_the_linux_helper(caplog) -> None:
     ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
     with caplog.at_level("INFO"):
         asyncio.run(ticks.linux_newgame_tick(ctx))
     sent = ctx.game_conn.pm.sent
     assert sent[0].startswith("config rando_blob=0x12f6e00 randomizer_menu=0x12f6ce0 ")
-    assert sent[1].startswith("ap_newgame\n") and "\nchoice" not in sent[1]  # RANDOMIZER only
+    assert "current_menu=0x12f5700" in sent[0] and "tr_flag=0x12b48d1" in sent[0]
+    assert sent[1].startswith("ap_newgame\n") and sent[1].endswith("\nchoice")  # ARCHIPELAGO
     assert ctx.conn.newgame is state.NewGame.ARMED
-    assert any(
-        "To play, load this seed's save, or start a new game" in line
-        for line in ctx.conn.newgame_lines
-    )
+    assert ctx.conn.newgame_lines == newgame.choice_message(ctx.conn.plan)
     asyncio.run(ticks.linux_newgame_tick(ctx))
     assert sum(t.startswith("config ") for t in sent) == 1  # configured once an attach
+
+
+def test_a_linux_build_takes_the_start_table_of_its_windows_build() -> None:
+    linux = types.SimpleNamespace(build=patterns.KNOWN_LINUX_BUILDS[0])
+    windows = types.SimpleNamespace(build=patterns.KNOWN_BUILDS[0])
+    assert ticks.start_table_build(linux) == patterns.KNOWN_BUILDS[0].sha256
+    assert ticks.start_table_build(windows) == patterns.KNOWN_BUILDS[0].sha256
+    assert ticks.start_table_build(None) == ""
 
 
 def test_on_linux_a_helper_that_cant_be_reached_is_told_once_and_armed_again(caplog) -> None:

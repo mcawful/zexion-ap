@@ -28,6 +28,13 @@ unsigned char zap_start_flags[64];
 __attribute__((noinline, used)) void zap_new_game() { asm volatile(""); }
 // The stand-in's placement: the item table's first location, as the game's placement writes it.
 __attribute__((noinline, used)) void zap_placement() { zap_section[0x26C] = 0x5A; }
+// The menus the ARCHIPELAGO choice reads (no menu is ever up in the stand-in: it is not offered).
+void* zap_menu_top;
+unsigned char zap_tr_flag;
+__attribute__((noinline, used)) void zap_rando_menu() { asm volatile(""); }
+__attribute__((noinline, used)) void zap_widget_handler(void*, int) { asm volatile(""); }
+__attribute__((noinline, used)) void zap_panel_handler(void*, int) { asm volatile(""); }
+__attribute__((noinline, used)) void zap_force_seed() { asm volatile(""); }
 }
 
 extern "C" __attribute__((noinline)) void draw_frame() {

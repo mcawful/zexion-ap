@@ -35,6 +35,12 @@ B1_HELPER_SYMBOLS = [
     ("rStartingLocationCount", 0x9E0C40, 2, 1),
     ("rStartingLocations", 0x9E0B40, 0x100, 1),
     ("rStartingLocationCage", 0x9E0C60, 0x40, 1),
+    ("gLastGameMenuP", 0x12F5700, 8, 1),
+    ("_Z14RandomizerMenuv", 0x6021B1, 0x100, 2),
+    ("_Z18StandardMenuActionP12GameMenuItemi", 0x58B8CB, 0x100, 2),
+    ("_Z16FrameWrapOrArrowP12GameMenuItemi", 0x56ED11, 0x100, 2),
+    ("_Z9forceSeedv", 0x5AF50F, 0x100, 2),
+    ("gCurrentTranslation", 0x12B4840, 0x40150, 1),
 ]
 
 
@@ -124,7 +130,7 @@ def test_the_helpers_config_keys_are_the_clients() -> None:
     helper = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text("utf-8")
     table = helper.split("#ifndef ZAP_HOOKTEST\nconstexpr ConfigKey kConfigKeys[] = {", 1)[1]
     table = table.split("};", 1)[0]
-    rows = re.findall(r'\{"(\w+)", &A::\w+, [^,]+, "(\w+)", (0x[0-9A-Fa-f]+|\d+)\}', table)
+    rows = re.findall(r'\{"(\w+)", &G::\w+, [^,]+, "(\w+)", (0x[0-9A-Fa-f]+|\d+)\}', table)
     assert [name for name, _, _ in rows] == list(linux_targets.NEWGAME_KEYS)
     ours = {
         t.name: (t.symbol, t.offset) for t in linux_targets.TARGETS + linux_targets.HELPER_TARGETS
