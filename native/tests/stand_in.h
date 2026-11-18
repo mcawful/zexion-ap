@@ -22,12 +22,14 @@ inline BYTE g_save_loaded = 0;
 inline BYTE g_menu = 0;
 inline BYTE g_records[51 * 100];
 // The pickup popup's `mov edx, 24`, in a section of its own that executes, as in the game's code.
-// Writable as well as executable: the linker folds identical read-only data (/OPT:ICF), and an
-// array here holding the same bytes as one of the tests' constants (kTextCutGame, the seen
-// marker's) was laid over it in some builds, so patching the stand-in's code changed the
-// constant it is compared with (the text-cut and seen-marker tests failing now and then, with
-// the patch's bytes read back as "the game's").
-#pragma section(".zapcode", read, write, execute)
+// The tests that use it are linked with /OPT:NOICF (native/CMakeLists.txt): the linker folds
+// identical read-only data, and an array here holding the same bytes as one of the tests'
+// constants (kTextCutGame, the seen marker's) is taken to have been laid over it in some builds,
+// so patching the stand-in's code changed the constant it is compared with (the text-cut and
+// seen-marker tests failing now and then, the patch's bytes read back as "the game's"). MSVC
+// will not make a section it declares both writable and executable (C4330), so it stays
+// read and execute.
+#pragma section(".zapcode", read, execute)
 __declspec(allocate(".zapcode")) inline unsigned char g_popup_width_code[16] = {0xBA, 0x18, 0, 0,
                                                                               0,    0xC3};
 inline BYTE* g_records_ptr = g_records;
