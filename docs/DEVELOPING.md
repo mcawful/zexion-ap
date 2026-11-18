@@ -275,7 +275,8 @@ macOS, set `ZEXION_GAME_DIR` and `ZEXION_SAVE_DIR`.
 list shows Linux, read 2026-11-16), which Steam runs by default on Linux and a Steam Deck (a
 Deck's Properties showed "Steam Linux Runtime 3.0", 2026-11-16). Its binary, a fixed-address
 ELF executable that keeps its symbol table, and its data files, B1's, are recorded in
-`re/builds.md` ("B1 on Linux"), and its targets, as far as they are mapped, in `re/linux.md`.
+`re/builds.md` ("B1 on Linux"), and every target of `client/patterns.py` mapped onto it in
+`re/linux.md`.
 Support for it is being built, in stages. The client does not attach to it yet (the client's
 process calls are the Windows API), so it is not supported, and the setup guide says so ("Linux
 and Steam Deck"). What exists so far:
