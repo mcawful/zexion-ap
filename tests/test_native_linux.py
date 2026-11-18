@@ -357,6 +357,18 @@ CONFIG_SYMBOLS = {
     "suit_color_fn": "zap_suit_color",
     "hd_messages": "zap_hd_messages",
     "message_slots": "zap_message_slots",
+    "sprite_texture": "zap_sprite_world",
+    "popup_width_code": "zap_pickup",
+    "item_pool": "zap_item_pool",
+    "palette_table": "zap_palettes",
+    "frame_clock": "zap_frame_clock",
+    "sprite_templates": "zap_templates",
+    "object_pool": "zap_object_pool",
+    "flags": "zap_flags",
+    "map_grid": "zap_map_grid",
+    "event_table": "zap_events",
+    "event_count": "zap_event_count",
+    "event_handlers": "zap_event_procs",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -513,3 +525,52 @@ def test_in_a_translation_the_popups_slot_is_not_left_hidden(game: Game) -> None
         wait_for(sock, f"read {count:#x} 4", lambda r: r != "data " + "\x00" * 4)
         assert read_at(sock, count, 4) == (1).to_bytes(4, "little")
         assert read_at(sock, has_text, 1) == b"\x00"  # the mark cleared: the popup shows
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_labels_name_the_stand_ins_and_size_the_popup_until_the_client_goes(game: Game) -> None:
+    from client import aplabels
+
+    at = config_addresses()
+    energy = stand_in("zap_record_table") + 47 * 100 + 0x0A  # record 47's name
+    width = stand_in("zap_pickup") + 1  # the immediate of its mov esi, 24
+    labels = aplabels.labels_request({(3, 2): "Hookshot\nfor Alice"})  # the player's: row 2
+    with game.connect() as sock:
+        assert ask(sock, labels) == "refused not configured"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, labels) == "labeled 1"
+        wait_for(sock, f"read {energy:#x} 12", lambda r: "SCRAP ENERGY" not in r)
+        uploads = int.from_bytes(read_at(sock, stand_in("zap_gl_uploads"), 4), "little")
+        assert uploads > 0, "the logos painted into the texture first"
+        name = read_at(sock, energy, 50).split(b"\x00")[0]
+        assert b"HOOKSHOT" in name and b"FOR ALICE" in name
+        # The game's code, patched in place (mprotect): as wide as the label's longest line.
+        wait_for(sock, f"read {width:#x} 4", lambda r: r != "data \x18\x00\x00\x00")
+        patched = int.from_bytes(read_at(sock, width, 4), "little")
+        assert 1 <= patched < 24
+    with game.connect() as sock:  # the client went: the stand-ins are the game's again
+        wait_for(sock, f"read {width:#x} 4", lambda r: r == "data \x18\x00\x00\x00")
+        assert read_at(sock, width, 4) == (24).to_bytes(4, "little")
+        assert read_at(sock, energy, 13) == b"SCRAP ENERGY\x00"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_with_no_logos_painted_the_stand_ins_stay_the_games(game: Game) -> None:
+    # The painting is not proven on Linux: restyled into a texture without the logos, the
+    # stand-ins would draw their empty frames, so they stay as the game has them.
+    from client import aplabels
+
+    at = config_addresses()
+    energy = stand_in("zap_record_table") + 47 * 100 + 0x0A
+    with game.connect() as sock:
+        assert ask(sock, f"write {stand_in('zap_no_texture'):#x} 01") == "written 1"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        labels = aplabels.labels_request({(3, 2): "Hookshot\nfor Alice"})
+        assert ask(sock, labels) == "labeled 1"
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 20)
+        assert read_at(sock, energy, 13) == b"SCRAP ENERGY\x00"
+        width = stand_in("zap_pickup") + 1
+        assert read_at(sock, width, 4) == (24).to_bytes(4, "little")

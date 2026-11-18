@@ -1,7 +1,7 @@
 """The Linux helper (native/linux/, native/README.md "The Linux helper") from outside the game:
 find the running game, check its build, talk to the helper's socket, read the game's memory
-through it, and drive the helper's own parts (``LinuxMod``: its ``config``, new games and
-``apply``).
+through it, and drive the helper's own parts (``LinuxMod``: its ``config``, new games,
+``apply`` and ``ap_labels``).
 
 The game is found in the host's ``/proc`` by its kernel name or its binary's (``procfs``; not
 by command line, which Steam's launch wrappers share) and its build checked by the binary it
@@ -315,12 +315,16 @@ class LinuxProcess:
         self._lock = threading.Lock()
         self._closed = False
         self._helper = LinuxHelper(game, timeout).__enter__()
+        # Counts the connections made: the helper drops a client's plan and labels when its
+        # connection closes, so what was told on an earlier one is told again (LinuxMod).
+        self.connection = 1
 
     def _connection(self) -> LinuxHelper:
         if self._closed:
             raise LinuxHelperError("closed")
         if not self._helper.connected:
             self._helper = LinuxHelper(self.game, self._timeout).__enter__()
+            self.connection += 1
         return self._helper
 
     def read_bytes(self, address: int, size: int) -> bytes:
@@ -330,6 +334,12 @@ class LinuxProcess:
     def write_bytes(self, address: int, data: bytes) -> None:
         with self._lock:
             self._connection().write(address, data)
+
+    @property
+    def connected(self) -> bool:
+        """Whether its connection to the helper is open (one closed is made again by the next
+        read, write or request)."""
+        return self._helper.connected
 
     def request(self, text: str) -> str:
         """A request to the helper on this connection (one at a time with the reads and
@@ -351,19 +361,29 @@ class LinuxMod:
     """The parts of the Linux helper the client drives (native/README.md, "The Linux helper"),
     over ``pm``, the game's connection, configured when made with their addresses from the
     game's binary (linux_targets.helper_config): new games (``request``, for the client's
-    newgame_tick) and grants with their popups (``apply``, for session.give_through_helper).
+    newgame_tick), grants with their popups (``apply``, for session.give_through_helper) and
+    other players' items' labels (``request``, for ticks.linux_labels_tick).
     LinuxHelperError when the helper refuses the addresses. ``traps`` False: the Linux helper
-    sets none off (session.give_through_helper sends none)."""
+    sets none off (session.give_through_helper sends none). ``told``: what the labels tick told
+    it (ticks.labels_tick), as the Windows helper's ctx.told. It holds for one connection of
+    ``pm`` only (``current``): the helper drops the plan and the labels when it closes."""
 
     traps = False
 
     def __init__(self, pm: LinuxProcess) -> None:
-        from . import linux_targets  # here: linux_targets imports nothing of this module's
+        from . import linux_targets, state  # here: neither imports this module
 
         self.pm = pm
+        self.told = state.HelperState()
         reply = pm.request(linux_targets.helper_config(pm.game.image))
         if reply != "ok":
             raise LinuxHelperError(f"the helper did not take the game's addresses: {reply}")
+        self.connection = pm.connection
+
+    def current(self) -> bool:
+        """Still the connection it was configured on, and open: one closed (a request with no
+        reply) took the helper's plan and labels with it, though the next request opens another."""
+        return self.pm.connection == self.connection and self.pm.connected
 
     def request(self, text: str) -> str:
         return self.pm.request(text)

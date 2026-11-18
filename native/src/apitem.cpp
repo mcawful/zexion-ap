@@ -3,6 +3,9 @@
 #include <cmath>
 #include <cstring>
 #include <vector>
+#ifndef _WIN32
+#include <dlfcn.h>  // dlsym: load_gl
+#endif
 
 #include "equip.h"  // kDiskRows
 #include "game_mem.h"
@@ -113,15 +116,19 @@ bool is_ours(const BYTE* r, const StandIn& s) {
 
 GlFunctions load_gl() {
     GlFunctions gl;
-#ifndef _WIN32
-    // The Linux build's labels are not ported (native/README.md, "The Linux helper"): no GL.
-    return gl;
-#else
+#ifdef _WIN32
     HMODULE m = GetModuleHandleW(L"opengl32.dll");
     if (m == nullptr) return gl;
     auto get = [m]<typename Fn>(Fn& fn, const char* name) {
         fn = reinterpret_cast<Fn>(GetProcAddress(m, name));
     };
+#else
+    // The Linux build links libGL.so.1 itself, so its OpenGL 1.1 functions are in the process's
+    // global scope (docs/re/linux.md, "Mapped by disassembly: item looks", OpenGL).
+    auto get = []<typename Fn>(Fn& fn, const char* name) {
+        fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, name));
+    };
+#endif
     get(gl.BindTexture, "glBindTexture");
     get(gl.GetIntegerv, "glGetIntegerv");
     get(gl.GetTexLevelParameteriv, "glGetTexLevelParameteriv");
@@ -131,7 +138,6 @@ GlFunctions load_gl() {
     get(gl.IsTexture, "glIsTexture");
     get(gl.GetError, "glGetError");
     return gl;
-#endif
 }
 
 int name_cells(const std::vector<StandInSeen>& seen, double player_x, double player_y,
@@ -450,6 +456,10 @@ void ApItems::paint(BYTE* holder, const GlFunctions& gl, TextureCheck& check, ui
     if (phase == arrow_phase_ || painted_ == 0 || sprite_texture(holder) != painted_) return;
     arrow_phase_ = phase;
     upload(painted_, gl, check, false, true);
+}
+
+bool ApItems::logo_shown(BYTE* texture_holder) const {
+    return painted_ != 0 && sprite_texture(texture_holder) == painted_;
 }
 
 void ApItems::restore(BYTE* records_holder, BYTE* texture_holder, const GlFunctions& gl,

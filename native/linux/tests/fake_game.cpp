@@ -81,7 +81,57 @@ __attribute__((noinline, used)) void zap_hud_layout(void*) { asm volatile(""); }
 __attribute__((noinline, used)) void zap_energy_hud(void*, bool) { asm volatile(""); }
 __attribute__((noinline, used)) void zap_weapon_strip(void*) { asm volatile(""); }
 __attribute__((noinline, used)) void zap_suit_color(unsigned char, short) { asm volatile(""); }
+
+// Other players' items (Game::watch_ap_items): the sprite world (its texture, 7: the stand-in
+// OpenGL's below), the pools (empty), the palettes, the templates, the flags, the map, the area
+// events (none). The pickup's popup width is zap_pickup's `mov esi, 24`
+// (BE 18 00 00 00), as the game's (docs/re/linux.md, `popup_width_code`), patched in place.
+void* zap_sprite_world;
+unsigned char zap_item_pool[128 * 0x3B0];
+void* zap_palettes[65];
+long long zap_frame_clock;
+void* zap_templates;
+unsigned char zap_object_pool[1000 * 0x5C8];
+unsigned char zap_flags[0x9C4];
+unsigned char zap_map_grid[54 * 54];
+void* zap_events;
+short zap_event_count;
+void* zap_event_procs[48];
+void zap_pickup();
+
+// A stand-in OpenGL, found as the game's libGL is (dlsym, the executable's own symbols exported):
+// one 2048 x 2048 texture, 7, blank but for the two pixels of known art the helper's check reads
+// (native/src/apitem.cpp, TextureCheck::read); each upload counted.
+unsigned zap_texture_name = 7;
+unsigned* zap_texture_record = &zap_texture_name;
+unsigned char zap_world[0x48];
+int zap_gl_uploads;
+unsigned zap_bound;
+unsigned char zap_no_texture;  // set: texture 7 is gone (glIsTexture false), nothing painted
+#pragma GCC visibility push(default)  // exported: the helper's dlsym finds them
+void glBindTexture(unsigned, unsigned texture) { zap_bound = texture; }
+void glGetIntegerv(unsigned name, int* value) {
+    *value = name == 0x8069 ? static_cast<int>(zap_bound) : 0;
 }
+void glGetTexLevelParameteriv(unsigned, int, unsigned, int* value) { *value = 2048; }
+void glPixelStorei(unsigned, int) {}
+void glTexSubImage2D(unsigned, int, int, int, int, int, unsigned, unsigned, const void*) {
+    ++zap_gl_uploads;
+}
+void glGetTexImage(unsigned, int, unsigned, unsigned, void* pixels) {
+    auto* p = static_cast<unsigned char*>(pixels);
+    std::memset(p, 0, 2048u * 2048u * 4u);
+    auto opaque = [p](int x, int y) { p[(static_cast<size_t>(y) * 2048 + x) * 4 + 3] = 0xFF; };
+    opaque(128 + (134 % 8) * 16 + 6, 640 + (134 / 8) * 16);  // Scrap Energy's frame 134
+    opaque((0xC0 % 16) * 8 + 2, 976 + (0xC0 / 16) * 8 + 1);  // the font's glyph 0xC0
+}
+unsigned char glIsTexture(unsigned texture) { return texture == 7 && !zap_no_texture; }
+unsigned glGetError() { return 0; }
+#pragma GCC visibility pop
+}
+
+asm(".text\n.globl zap_pickup\n.type zap_pickup, @function\nzap_pickup:\n"
+    "  movl $24, %esi\n  ret\n.size zap_pickup, .-zap_pickup\n");
 
 extern "C" __attribute__((noinline)) void draw_frame() {
     SDL_GL_SwapWindow(nullptr);
@@ -106,6 +156,24 @@ int main() {
     float volume = 1.0f;
     std::memcpy(gun + 0x5A, &sound, 2);
     std::memcpy(gun + 0x5C, &volume, 4);
+    // Records 47 and 48, the stand-ins, as the game loads them (native/src/apitem.cpp, kOwnShape),
+    // and the player at map row 2, column 3 (a label's (x, y): (3, 2)).
+    const char* names[2] = {"SCRAP ENERGY", "SCRAP CHUNK"};
+    const short frames[2] = {134, 142}, events[2] = {3549, 3550};
+    for (int i = 0; i < 2; ++i) {
+        unsigned char* r = zap_record_table + (47 + i) * 100;
+        const short fields[][2] = {{0x00, 34},  {0x02, frames[i]}, {0x04, 6}, {0x06, 2},
+                                   {0x3C, 46},  {0x40, events[i]}, {0x54, 0}, {0x58, 1}};
+        for (const auto& f : fields) std::memcpy(r + f[0], &f[1], 2);
+        r[0x08] = 0;
+        r[0x09] = 8;
+        std::strcpy(reinterpret_cast<char*>(r + 0x0A), names[i]);
+    }
+    void* record = zap_texture_record;
+    std::memcpy(zap_world + 0x40, &record, sizeof record);
+    zap_sprite_world = zap_world;
+    zap_player[0x107A] = 2;
+    zap_player[0x107B] = 3;
     std::printf("marker %p block %p\n", static_cast<void*>(const_cast<char*>(g_marker)),
                 static_cast<void*>(const_cast<unsigned char*>(g_block)));
     std::fflush(stdout);

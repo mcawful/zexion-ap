@@ -6,6 +6,9 @@
 #include <cstring>
 #include <string>
 
+#include <sys/mman.h>
+
+#include "game_mem.h"  // writable: the memory map, kept a moment
 #include "newgame.h"
 #include "requests.h"
 
@@ -139,7 +142,24 @@ void test_nothing_happens_until_a_randomizer_game_is_queued() {
 
 }  // namespace
 
+// The memory map is kept a moment between reads (game_mem_linux.cpp), but never for a range
+// unmapped since: that one is read afresh, and found not writable.
+void test_a_range_unmapped_since_the_last_read_is_not_writable() {
+    const size_t page = 4096;
+    void* p = mmap(nullptr, 2 * page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    check(p != MAP_FAILED, "a page mapped");
+    auto* at = static_cast<BYTE*>(p);
+    check(zap::writable(at, 16), "writable once mapped");
+    check(zap::writable(at + page, 16), "and its second page, from the same read");
+    munmap(at + page, page);
+    check(!zap::writable(at + page, 16), "the unmapped page is not writable at once");
+    check(zap::writable(at, 16), "the first still is");
+    munmap(at, page);
+    check(!zap::writable(at, 16), "nor the first once unmapped");
+}
+
 int main() {
+    test_a_range_unmapped_since_the_last_read_is_not_writable();
     test_the_seeds_text_gets_the_seed();
     test_another_seeds_text_is_left_alone();
     test_a_placement_not_the_seeds_puts_the_players_back();

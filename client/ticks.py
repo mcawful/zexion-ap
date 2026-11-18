@@ -344,11 +344,14 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
             log.warning(f"The helper did not keep the offline {kind} file: {reply}")
 
 
-async def labels_tick(ctx: ZexionContext) -> None:
+async def labels_tick(ctx: ZexionContext, helper=None, told=None) -> None:
     """Once the server has said what each location holding another player's item holds, send
-    the helper a label per map cell (client/aplabels.py), while this seed's save is loaded. While
-    another save (or none) is loaded, and after a disconnect, take them back."""
-    helper, told, conn, seed = ctx.helper, ctx.told, ctx.conn, ctx.seed_state
+    the helper (``helper``, else ctx.helper; what it was told in ``told``, else ctx.told) a label
+    per map cell (client/aplabels.py), while this seed's save is loaded. While another save (or
+    none) is loaded, and after a disconnect, take them back."""
+    helper = helper if helper is not None else ctx.helper
+    told = told if told is not None else ctx.told
+    conn, seed = ctx.conn, ctx.seed_state
     if conn is None or not seed.dressed:
         if not told.labels_held or time.monotonic() < told.labels_retry_at:
             return
@@ -656,8 +659,9 @@ LINUX_HOLD_SECONDS = 30.0  # as zexion_client's HELPER_RETRY_SECONDS for the Win
 
 
 async def linux_newgame_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build: the Linux helper configured once an attach
-    (linux_helper.LinuxMod, which the step then gives the items through: zexion_client's poll),
+    """With the game's Linux build: the Linux helper configured once an attach, and again once
+    its connection was made again (linux_helper.LinuxMod, which the step then gives the items
+    through: zexion_client's poll; and linux_labels_tick the labels),
     and its new games, ARCHIPELAGO offered as on Windows (the helper leaves RANDOMIZER while a
     translation is on). A helper that can't be reached or refuses is told once and tried again
     on a later poll (linux_mod_lost)."""
@@ -665,7 +669,13 @@ async def linux_newgame_tick(ctx: ZexionContext) -> None:
     if g is None or getattr(g, "platform", "windows") != "linux":
         return
     try:
-        if ctx.linux_mod is None or ctx.linux_mod.pm is not g.pm:
+        mod = ctx.linux_mod
+        if mod is not None and mod.pm is g.pm and not mod.current():
+            # Connected again since (a request with no reply closes the connection): the helper
+            # dropped this client's plan and labels with the old one. Configured afresh.
+            linux_mod_lost(ctx, linux_helper.LinuxHelperError("connected to the helper again"))
+            mod = None
+        if mod is None or mod.pm is not g.pm:
             ctx.linux_mod = await asyncio.to_thread(linux_helper.LinuxMod, g.pm)
             ctx.linux_back_by = 0.0
         await newgame_tick(ctx, ctx.linux_mod)
@@ -674,8 +684,22 @@ async def linux_newgame_tick(ctx: ZexionContext) -> None:
         linux_mod_lost(ctx, exc)
 
 
+async def linux_labels_tick(ctx: ZexionContext) -> None:
+    """With the game's Linux build: other players' items labeled through the Linux helper
+    (labels_tick, with what it told this helper: LinuxMod.told). A helper that fails is
+    linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None:
+        return
+    try:
+        await labels_tick(ctx, mod, mod.told)
+    except linux_helper.LinuxHelperError as exc:
+        linux_mod_lost(ctx, exc)
+
+
 def linux_mod_lost(ctx: ZexionContext, exc: Exception) -> None:
-    """The Linux helper failed (in its tick, or giving the step's items): dropped, and
+    """The Linux helper failed (in a tick, or giving the step's items) or was connected to again:
+    dropped, and
     configured again on a later poll, its plan armed again then (a connection that closed lost
     it: the helper drops a client's plan). One that was configured holds the step back for
     LINUX_HOLD_SECONDS (zexion_client's poll), as most failures pass (no frame while the game is

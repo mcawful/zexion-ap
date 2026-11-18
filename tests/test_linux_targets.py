@@ -52,6 +52,13 @@ B1_HELPER_SYMBOLS = [
     ("_Z15updateEnergyBarP12PlayerStructb", 0x518CB2, 0x100, 2),
     ("_Z19updateWeaponDisplayP12PlayerStruct", 0x4F0231, 0x100, 2),
     ("_Z16setSpritePalettehs", 0x4953EE, 0x100, 2),
+    ("gSpriteWorldP", 0x9E6F50, 8, 1),
+    ("_Z17playerCollideProcP10CollideRecS0_P6dPointc", 0x64086D, 0x401B, 2),
+    ("gSpriteDrawProcs", 0x12F7E40, 0x208, 1),
+    ("gMasterSpritesP", 0x14937E8, 8, 1),
+    ("gAreaEvents", 0x16DA010, 8, 1),
+    ("gAreaEventCount", 0x16DA008, 2, 1),
+    ("gAreaEventProcs", 0x12F87A0, 0x180, 1),
 ]
 
 
@@ -142,7 +149,7 @@ def test_the_helpers_config_keys_are_the_clients() -> None:
     table = helper.split("#ifndef ZAP_HOOKTEST\nconstexpr ConfigKey kConfigKeys[] = {", 1)[1]
     table = table.split("};", 1)[0]
     rows = re.findall(
-        r'\{"(\w+)", &G::\w+, [^,]+, "(\w+)",\s*(0x[0-9A-Fa-f]+|\d+)(?:,\s*\w+)?\}', table
+        r'\{"(\w+)", &G::\w+, [^,]+,\s*"(\w+)",\s*(0x[0-9A-Fa-f]+|\d+)(?:,\s*\w+)?\}', table
     )
     assert [name for name, _, _ in rows] == list(linux_targets.CONFIG_KEYS)
     ours = {

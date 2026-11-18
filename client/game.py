@@ -22,7 +22,8 @@ reads and writes) from the binary's symbol table, and every read and write throu
 helper in the game (client/linux_helper.py), which must be loaded by the game's launch options.
 ``base`` is 0 there and ``rva`` holds the targets' addresses. The Windows helper's own targets and
 ``code_checks`` are Windows-only: with the Linux build native.attach refuses the Windows helper,
-and the Linux helper gives the items with their popups (linux_helper.LinuxMod).
+and the Linux helper gives the items with their popups and shows other players' items
+(linux_helper.LinuxMod).
 """
 
 from __future__ import annotations

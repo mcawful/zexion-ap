@@ -1232,6 +1232,8 @@ class LinuxHelperStandIn:
         self.game = types.SimpleNamespace(image=b1_like(extra=True))
         self.replies = replies
         self.sent: list[str] = []
+        self.connection = 1  # linux_helper.LinuxProcess's: the connections made
+        self.connected = True
 
     def request(self, text: str) -> str:
         self.sent.append(text)
@@ -1335,6 +1337,38 @@ def test_a_linux_helper_lost_once_configured_holds_the_step_a_while() -> None:
     assert ctx.linux_back_by <= time.monotonic() + ticks.LINUX_HOLD_SECONDS
     asyncio.run(ticks.linux_newgame_tick(ctx))
     assert ctx.linux_mod is not None and ctx.linux_back_by == 0.0
+
+
+def test_a_linux_helper_connected_again_is_configured_and_armed_again() -> None:
+    # The helper drops a client's plan and labels when its connection closes (a request with no
+    # reply closes it; the next read connects again): told both again.
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    first = ctx.linux_mod
+    ctx.linux_mod.told.labels_for = ctx.seed_state  # labels sent on the old connection
+    ctx.game_conn.pm.connected = False  # closed, not made again yet: as good as gone
+    assert not ctx.linux_mod.current()
+    ctx.game_conn.pm.connected = True
+    ctx.game_conn.pm.connection += 1
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    sent = ctx.game_conn.pm.sent
+    assert sum(t.startswith("config ") for t in sent) == 2
+    assert sum(t.startswith("ap_newgame") for t in sent) == 2
+    assert ctx.linux_mod is not first and ctx.linux_mod.told.labels_for is None
+    assert ctx.conn.newgame is state.NewGame.ARMED
+
+
+def test_on_linux_the_labels_go_through_the_linux_helper() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_labels": "labeled 0"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.seed_state.dressed = False  # not this seed's save: any labels it may hold taken back
+    asyncio.run(ticks.linux_labels_tick(ctx))
+    assert ctx.game_conn.pm.sent[-1] == "ap_labels"
+    assert not ctx.linux_mod.told.labels_held
+    ctx.linux_mod.told.labels_held = True
+    ctx.game_conn.pm.replies["ap_labels"] = linux_helper.NoReply("the helper closed its socket")
+    asyncio.run(ticks.linux_labels_tick(ctx))
+    assert ctx.linux_mod is None, "configured again on a later poll"
 
 
 def test_on_windows_the_linux_tick_does_nothing() -> None:

@@ -9,7 +9,7 @@
 
 #include <cstdio>
 #include <cstring>
-#include <mutex>  // call_once
+#include <mutex>  // call_once, the map's lock
 #include <vector>
 
 #include "game_mem.h"
@@ -53,13 +53,44 @@ std::vector<Region> read_map() {
     return map;
 }
 
+// The last map read, kept a moment: writable() runs at every frame call (the item records, while
+// labels are held), and a read parses every mapping of the process. Reused while younger than
+// kMapCacheMs and only for a range whose pages are all still mapped (mincore fails for an
+// unmapped one), so a range unmapped since is always read afresh; a protection changed since by
+// another thread may be seen up to kMapCacheMs late. The helper's own mprotect drops it.
+constexpr uint64_t kMapCacheMs = 250;
+std::mutex g_map_mutex;
+std::vector<Region> g_map;
+uint64_t g_map_at = 0;
+bool g_map_kept = false;
+
+bool still_mapped(uintptr_t p, size_t size) {
+    const auto page = static_cast<uintptr_t>(sysconf(_SC_PAGESIZE));
+    uintptr_t first = p & ~(page - 1);
+    size_t length = ((p + size - first) + page - 1) & ~(page - 1);
+    std::vector<unsigned char> resident(length / page);
+    return mincore(reinterpret_cast<void*>(first), length, resident.data()) == 0;
+}
+
+void forget_map() {
+    std::lock_guard<std::mutex> lock(g_map_mutex);
+    g_map_kept = false;
+}
+
 // Whether every byte of [at, at + size) is mapped with all of `prot`.
 bool mapped_with(const void* at, size_t size, int prot) {
     auto p = reinterpret_cast<uintptr_t>(at);
     if (size == 0) size = 1;  // the byte at `at`
     if (p == 0 || p + size < p) return false;
     uintptr_t q = p, end = p + size;
-    for (const Region& r : read_map()) {  // in address order
+    std::lock_guard<std::mutex> lock(g_map_mutex);
+    const uint64_t now = ticks_ms();
+    if (!g_map_kept || now - g_map_at >= kMapCacheMs || !still_mapped(p, size)) {
+        g_map = read_map();
+        g_map_at = now;
+        g_map_kept = true;
+    }
+    for (const Region& r : g_map) {  // in address order
         if (q >= r.start && q < r.end) {
             if ((r.prot & prot) != prot) return false;
             q = r.end;
@@ -128,12 +159,14 @@ bool patch_code(BYTE* at, const void* bytes, size_t size) {
     if (original < 0 || protection_of(last) != original) return false;
     size_t span = last - first + page;
     auto* start = reinterpret_cast<void*>(first);
+    forget_map();  // its pages' protection changes: read afresh next time
     if (mprotect(start, span, original | PROT_WRITE) != 0) return false;
     std::memcpy(at, bytes, size);
     __builtin___clear_cache(reinterpret_cast<char*>(at), reinterpret_cast<char*>(at) + size);
     // Written: the caller holds the patch, to put back, whatever the pages' protection now (a
     // failed put-back leaves them writable as well: nothing else to do with it here).
     mprotect(start, span, original);
+    forget_map();
     return true;
 }
 

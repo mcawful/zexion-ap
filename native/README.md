@@ -2182,12 +2182,13 @@ lands, not only the place passed.
 
 `libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
 it reads and writes the running game's memory for the client, counts its frames, starts new
-games, ARCHIPELAGO on the menu or RANDOMIZER ("New games"), and gives the client's items with
-their popups (`apply`: "Grants", "Popups"). It holds the Windows helper's `Game`
-(`src/game_calls.h`) and runs only those parts of it: below. None of the other parts above runs
-on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`),
-gives its items through it with their popups (`client/linux_helper.py`'s `LinuxMod`), and
-otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested against a
+games, ARCHIPELAGO on the menu or RANDOMIZER ("New games"), gives the client's items with
+their popups (`apply`: "Grants", "Popups"), and shows other players' items as Archipelago items
+(`ap_labels`: "Other players' items", "Other Zexion players' items, as themselves"). It holds
+the Windows helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below. None of
+the other parts above runs on Linux yet: the client reads and writes the game through it
+(`game.Game.attach_linux`), gives its items and labels through it (`client/linux_helper.py`'s
+`LinuxMod`), and otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested against a
 stand-in game (`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
@@ -2239,9 +2240,10 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 33 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 45 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), and `refused traps are not ported to the Linux build` for a batch with a trap's popup |
+  | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
 
   Anything else gets `error unknown request`.
@@ -2264,7 +2266,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 33), which the client resolves from the game's symbols
+  addresses (with the rest of the 45), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of them, so a client and a
   helper that disagree change nothing (the client also refuses a helper of another version).
   "Frame" requests and the watch run on the game's thread through `src/mailbox.h`
@@ -2279,13 +2281,13 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   (`tests/menu_tests.cpp`, `game_tests.cpp`); on Linux only built, and configured through the
   socket. The shared sources build on Linux through `src/platform.h` and the Linux parts of the
   memory layer, `src/game_mem_linux.cpp`: fault-safe reads through the kernel, writability from
-  the process's memory map (read at each query, as Windows' `VirtualQuery` is), the game's code
-  from its program headers, code patches with `mprotect`, the page's own protection put back.
+  the process's memory map (kept 250 ms between reads, never for a range unmapped since), the
+  game's code from its program headers, code patches with `mprotect`, the page's own protection
+  put back.
   `Game` and every part it holds build there too, the Windows-only pieces of those left out:
   `Game::configure` takes the helper's checked addresses instead of resolving a client's, the
-  offline cache reads and writes no files (`src/offline.cpp`), the Feats screen's Steam hook
-  and ending patch do nothing (`src/feats.cpp`), and no OpenGL functions are loaded
-  (`src/apitem.cpp`); none of those parts runs.
+  offline cache reads and writes no files (`src/offline.cpp`), and the Feats screen's Steam hook
+  and ending patch do nothing (`src/feats.cpp`); neither part runs.
   Tested on stand-ins (`linux/tests/newgame_tests.cpp`, and through the socket in
   `tests/test_native_linux.py`); not run in the game. Not known: whether an exception the game's
   placement threw would be caught here (the helper's own C++ runtime is linked in, the game's is
@@ -2316,6 +2318,40 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   `apply` refused unconfigured, by a `cas` that differs, out of play, and with a trap; one
   taken writes the byte, and its popup, at a later frame call, carries the record's name and
   the suffix and plays the record's sound); not run in the game.
+- **Other players' items.** `Game::watch_ap_items` runs at each frame call as on Windows ("Other
+  players' items", "Other Zexion players' items, as themselves"): the stand-ins' records named
+  after the labels and restyled, the logo painted into the sprite texture, the pickup popup as
+  wide as the label, the stand-ins' own colors, other Zexion players' items dressed as
+  themselves, R'Talva X34 Y51's marker and a reversed-gravity room's collected item hidden, and
+  this player's own Scrap Metal picked up as the game's, on the same object and sprite fields
+  (`docs/re/linux.md`, "Mapped by disassembly: item looks"). What differs on Linux:
+  - the popup's width is the immediate of `mov esi, 24` (`BE`), not `mov edx, 24` (`BA`):
+    `Game::set_popup_width` checks the opcode of the build it is built for;
+  - OpenGL's functions come from the game's own `libGL.so.1`, found with `dlsym` (`load_gl`;
+    `docs/re/linux.md`, "Mapped by disassembly: item looks": four of them assumed). As the
+    painting is not proven there, the records are restyled only while the logos are in the
+    texture the game draws from (`ApItems::logo_shown`): with none painted (an OpenGL function
+    missing, the texture not passing its check) the stand-ins stay the game's Scrap Energy and
+    Scrap Chunk, named and drawn as the game has them, rather than drawing their empty frames;
+  - the writability checks before the records' writes read `/proc/self/maps`, which the memory
+    layer keeps for 250 ms between reads, never for a range unmapped since (`mincore`), and
+    drops after its own `mprotect` (`src/game_mem_linux.cpp`);
+  - a client that goes takes its labels with it, the records, the width and the pixels put
+    back at the next frame call: no offline look dresses the save here ("AP saves without the
+    client" is not ported). The client sends them again on a new connection (a request with no
+    reply ends one: `LinuxMod.current`);
+  - the map's parts are not ported ("The map": the cursor's names, the stand-ins' squares, the
+    seen marker): the map, a menu, shows a stand-in as the game names it (SCRAP ENERGY or SCRAP
+    CHUNK) and its square as the game marks it;
+  - in a translation, the stand-ins' pickup popups read the translation's names (ItemNames 47
+    and 48), not the labels: written there by the translation's part, not ported.
+
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`: `ap_labels`
+  refused unconfigured, then a label for the player's cell names Scrap Energy's record after it,
+  the stand-in's `mov esi, 24` is patched to the label's width, and both are put back once the
+  client goes, the logos painted first through the stand-in's OpenGL; with its texture gone,
+  the stand-ins left as the game's; and in `linux/tests/newgame_tests.cpp`, a range unmapped
+  since the last map read is not writable). Not run in the game.
 - **Its own runtime.** The C++ runtime is linked in, so it needs only glibc (with `ld-linux`,
   its dynamic loader) from the game's container, which may be older than the one it was built
   with. A build on a newer glibc asks for its newer symbol versions and would fail to load under an

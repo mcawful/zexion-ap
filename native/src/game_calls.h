@@ -72,7 +72,7 @@ public:
     bool active() const { return active_; }
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
-    // After configure (which loads opengl32's): the OpenGL functions to paint with (tests).
+    // After configure (which loads the OpenGL functions): the OpenGL functions to paint with (tests).
     void set_gl(const GlFunctions& gl) { gl_ = gl; }
 
     // Game thread: puts back everything the helper changed in the game's memory (unload, a

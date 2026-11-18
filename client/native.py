@@ -521,10 +521,11 @@ def _hello(helper: Helper) -> dict[str, str]:
 
 
 # What of the helper the game's Linux build lacks yet: a clause for the player
-# (state.helper_failed). Its new games, ARCHIPELAGO on the menu included, and its items with
-# their popups go through the Linux helper instead (ticks.linux_newgame_tick).
+# (state.helper_failed). Its new games, ARCHIPELAGO on the menu included, its items with their
+# popups and other players' items' labels go through the Linux helper instead
+# (ticks.linux_newgame_tick, linux_labels_tick).
 LINUX_NOT_READY = (
-    "its other parts inside the game (other players' items, traps, the translations) aren't "
+    "its other parts inside the game (traps, the map's item names, the translations) aren't "
     "ready for the game's Linux version yet"
 )
 

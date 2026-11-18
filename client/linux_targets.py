@@ -53,9 +53,10 @@ TARGETS = (
 )
 
 
-# The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it runs
-# (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants and
-# their popups. The rest of CONFIG_KEYS is in TARGETS. Functions by their mangled names.
+# The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it
+# runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
+# and their popups, other players' items. The rest of CONFIG_KEYS is in TARGETS. Functions by
+# their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -84,6 +85,19 @@ HELPER_TARGETS = (
     LinuxTarget("suit_color_fn", "_Z16setSpritePalettehs", 0, 0x4953EE),
     LinuxTarget("hd_messages", "gTranslationGameMessages", 0, 0x12F49A0),
     LinuxTarget("message_slots", "gGameState", 0x8C6B48, 0x12AE388),
+    # Other players' items (native/src/game_calls.h, Game::watch_ap_items). The popup's width is
+    # an immediate inside the pickup's code.
+    LinuxTarget("sprite_texture", "gSpriteWorldP", 0, 0x9E6F50),
+    LinuxTarget(
+        "popup_width_code", "_Z17playerCollideProcP10CollideRecS0_P6dPointc", 0x251E, 0x642D8B
+    ),
+    LinuxTarget("palette_table", "gSpriteDrawProcs", 0, 0x12F7E40),
+    LinuxTarget("frame_clock", "gGameState", 0xB0, 0x9E78F0),
+    LinuxTarget("sprite_templates", "gMasterSpritesP", 0, 0x14937E8),
+    LinuxTarget("object_pool", "gGameState", 0x388DA0, 0xD705E0),
+    LinuxTarget("event_table", "gAreaEvents", 0, 0x16DA010),
+    LinuxTarget("event_count", "gAreaEventCount", 0, 0x16DA008),
+    LinuxTarget("event_handlers", "gAreaEventProcs", 0, 0x12F87A0),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -92,7 +106,9 @@ CONFIG_KEYS = (
     "tr_flag", "inventory", "save_loaded", "menu_state", "item_records", "last_message",
     "weapon_strip_gate", "sound_system", "message_fn", "sound_fn", "hud_number_fn",
     "hud_layout_fn", "energy_hud_fn", "weapon_strip_fn", "suit_color_fn", "hd_messages",
-    "message_slots",
+    "message_slots", "sprite_texture", "popup_width_code", "item_pool", "palette_table",
+    "frame_clock", "sprite_templates", "object_pool", "flags", "map_grid", "event_table",
+    "event_count", "event_handlers",
 )  # fmt: skip
 
 

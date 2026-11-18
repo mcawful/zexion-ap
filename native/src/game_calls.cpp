@@ -264,6 +264,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
 #else
 std::string Game::configure(GameAddresses found) {
     found.hooks = at_.hooks;
+    gl_ = load_gl();
     return use(found, true);
 }
 #endif
@@ -1436,12 +1437,18 @@ void Game::set_popup_width(int width) {
     if (at_.popup_width_code == nullptr) return;
     if (width < 1 || width > kGamePopupWidth) width = kGamePopupWidth;
     if (width == popup_width_) return;  // already so (popup_width_ starts unknown: -1)
-    // B1's `mov edx, imm32`, holding 24 or a width a helper wrote. Anything else is not the code
-    // traced: left alone, not ours to put back.
+    // B1's `mov edx, imm32` (`mov esi, imm32` on Linux: docs/re/linux.md, `popup_width_code`),
+    // holding 24 or a width a helper wrote. Anything else is not the code traced: left alone, not
+    // ours to put back.
+#ifdef _WIN32
+    constexpr uint8_t kWidthOpcode = 0xBA;
+#else
+    constexpr uint8_t kWidthOpcode = 0xBE;
+#endif
     uint8_t opcode = 0;
     int32_t imm = 0;
     if (!read(at_.popup_width_code, 0, opcode) || !read(at_.popup_width_code, 1, imm) ||
-        opcode != 0xBA || imm < 1 || imm > kGamePopupWidth) {
+        opcode != kWidthOpcode || imm < 1 || imm > kGamePopupWidth) {
         popup_width_ = kGamePopupWidth;
         at_.popup_width_code = nullptr;
         return;
@@ -1464,12 +1471,20 @@ void Game::watch_ap_items() {
     // Restyled only in the world: menus show the records too (the equipment screen Scrap Chunk's
     // frame, the map cursor a name), and nothing is picked up in a menu.
     bool world = *at_.save_loaded != kNoSaveLoaded && *at_.menu_state == 0;
+    bool restyle = world;
+#ifndef _WIN32
+    // On Linux the painting is not proven (docs/re/linux.md, "Mapped by disassembly: item looks",
+    // OpenGL): the records are restyled only while the logos are in the texture the game draws
+    // from (painted below, a frame call before), else the stand-ins would draw their frames,
+    // empty in the game's art. Unpainted, they look and read as the game's own.
+    restyle = world && ap_items_.logo_shown(at_.sprite_texture);
+#endif
     // One read of the item pool a frame, shared by naming and dressing (world only).
     BYTE* base = ItemLooks::item_frame_base(at_);
     const BYTE* pool = world ? read_item_pool() : nullptr;
     // The cell whose label sets the popup's width: the player's, or the touched stand-in's.
     int width_cell = cell;
-    if (world) {
+    if (restyle) {
         // Each stand-in named by its object's cell (a drop lands where its enemy died; apitem.h).
         int cells[kStandInCount];
         int touching = name_cells(stand_ins_seen(pool, base), at<double>(player(), kX),

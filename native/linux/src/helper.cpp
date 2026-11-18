@@ -221,6 +221,11 @@ constexpr uint64_t kInventoryInPlayer = 0x108E, kPlayerStateSize = 0x1110;
 constexpr size_t kLastMessage = 12;
 constexpr size_t kHdMessages = zap::hd::kSlots * zap::hd::kSize;
 constexpr size_t kMessageSlots = zap::hd::kSlots * zap::message::kSize;
+// The item and general object pools (looks.h), the palette table's 65 entries and the event
+// handlers' 48 (docs/re/linux.md).
+constexpr size_t kItemPool = zap::ItemLooks::kSlots * zap::obj::kItemSize;
+constexpr size_t kObjectPool = zap::ItemLooks::kObjectSlots * zap::obj::kGeneralSize;
+constexpr size_t kPaletteTable = 65 * sizeof(void*), kEventHandlers = 48 * sizeof(void*);
 // Keep in step with client/linux_targets.py (TARGETS and HELPER_TARGETS, by CONFIG_KEYS);
 // tests/test_linux_targets.py checks them. The test build's are the stand-in game's.
 using G = zap::GameAddresses;
@@ -264,6 +269,21 @@ constexpr ConfigKey kConfigKeys[] = {
     // The translated marks a popup's message slot may hold (translation.cpp, clear_mark).
     {"hd_messages", &G::hd_messages, kHdMessages, "gTranslationGameMessages", 0},
     {"message_slots", &G::message_slots, kMessageSlots, "gGameState", 0x8C6B48},
+    // Other players' items (Game::watch_ap_items: apitem.h, looks.h). The popup's width is the
+    // immediate of `mov esi, 24` in the pickup (docs/re/linux.md, `popup_width_code`).
+    {"sprite_texture", &G::sprite_texture, sizeof(void*), "gSpriteWorldP", 0},
+    {"popup_width_code", &G::popup_width_code, 0,
+     "_Z17playerCollideProcP10CollideRecS0_P6dPointc", 0x251E},
+    {"item_pool", &G::item_pool, kItemPool, "gGameState", 0x79E990},
+    {"palette_table", &G::palette_table, kPaletteTable, "gSpriteDrawProcs", 0},
+    {"frame_clock", &G::frame_clock, sizeof(int64_t), "gGameState", 0xB0},
+    {"sprite_templates", &G::sprite_templates, sizeof(void*), "gMasterSpritesP", 0},
+    {"object_pool", &G::object_pool, kObjectPool, "gGameState", 0x388DA0},
+    {"flags", &G::flags, zap::kFlagCount, "gGameState", 0xED},
+    {"map_grid", &G::map_grid, zap::kMapCells, "gGameState", 0x14FFD},
+    {"event_table", &G::event_table, sizeof(void*), "gAreaEvents", 0},
+    {"event_count", &G::event_count, sizeof(int16_t), "gAreaEventCount", 0},
+    {"event_handlers", &G::event_handlers, kEventHandlers, "gAreaEventProcs", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -301,6 +321,18 @@ constexpr ConfigKey kConfigKeys[] = {
     {"suit_color_fn", &G::suit_color_fn, 0, "zap_suit_color", 0},
     {"hd_messages", &G::hd_messages, kHdMessages, "zap_hd_messages", 0},
     {"message_slots", &G::message_slots, kMessageSlots, "zap_message_slots", 0},
+    {"sprite_texture", &G::sprite_texture, sizeof(void*), "zap_sprite_world", 0},
+    {"popup_width_code", &G::popup_width_code, 0, "zap_pickup", 0},
+    {"item_pool", &G::item_pool, kItemPool, "zap_item_pool", 0},
+    {"palette_table", &G::palette_table, kPaletteTable, "zap_palettes", 0},
+    {"frame_clock", &G::frame_clock, sizeof(int64_t), "zap_frame_clock", 0},
+    {"sprite_templates", &G::sprite_templates, sizeof(void*), "zap_templates", 0},
+    {"object_pool", &G::object_pool, kObjectPool, "zap_object_pool", 0},
+    {"flags", &G::flags, zap::kFlagCount, "zap_flags", 0},
+    {"map_grid", &G::map_grid, zap::kMapCells, "zap_map_grid", 0},
+    {"event_table", &G::event_table, sizeof(void*), "zap_events", 0},
+    {"event_count", &G::event_count, sizeof(int16_t), "zap_event_count", 0},
+    {"event_handlers", &G::event_handlers, kEventHandlers, "zap_event_procs", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -430,6 +462,17 @@ std::optional<std::string> game_request(std::string_view request) {
     }
     if (request == "disarm") {
         return on_game([] { g_game.disarm_newgame(); return std::string("disarmed"); }, false);
+    }
+    if (request.starts_with("ap_labels\n") || request == "ap_labels") {
+        std::map<int, zap::Label> labels;
+        std::string error = zap::parse_labels(std::string(request), labels);
+        return on_game(
+            [&] {
+                size_t n = labels.size();
+                g_game.set_labels(std::move(labels));
+                return "labeled " + std::to_string(n);
+            },
+            true, error);
     }
     if (request == "newgame_status") {
         return on_game([] { return g_game.newgame_status(); }, false);
@@ -564,9 +607,9 @@ __attribute__((constructor)) void start() {
 
 namespace {
 
-// The game's thread, at its frame swap (SWHardwareEnd's call: `site`, the return address): the
-// mailbox's work, a plan dropped for a client gone, an armed new game watched, the ARCHIPELAGO
-// choice, then the next popup. Each part guarded on its own, so one that throws keeps none of
+// The game's thread, at its frame swap (SWHardwareEnd's call: `site`, the return address): a
+// client gone's plan and labels dropped, the mailbox's work, an armed new game watched, the
+// ARCHIPELAGO choice, other players' items, then the next popup. Each part guarded on its own, so one that throws keeps none of
 // the others from running, and nothing reaches the game. A fault in the game's own placement is
 // not an exception: it stays the game's crash.
 void game_frame(uintptr_t site) {
@@ -579,9 +622,15 @@ void game_frame(uintptr_t site) {
         } catch (...) {
         }
     };
+    // A client's popups stay queued for its save, as on Windows; its plan and its labels go (the
+    // records, the popup's width and the pixels put back: no offline look keeps them here).
+    // Before the mailbox: the serving thread marks a client gone before it takes the next one,
+    // so nothing that next client asks is dropped with the last one's.
+    if (g_client_left.exchange(false)) {
+        guarded([] { g_game.disarm_newgame(); });
+        guarded([] { g_game.restore_ap_items(); });
+    }
     guarded([] { g_mailbox.serve(); });
-    // A client's popups stay queued for its save, as on Windows; only its plan goes.
-    if (g_client_left.exchange(false)) guarded([] { g_game.disarm_newgame(); });
     if (!g_game.configured()) return;
     try {
         g_game.watch_newgame();
@@ -590,6 +639,9 @@ void game_frame(uintptr_t site) {
     }
     // The ARCHIPELAGO choice while a plan offers it, RANDOMIZER back otherwise.
     guarded([] { g_game.watch_menu(&archipelago_chosen); });
+    // Other players' items: the stand-ins' records named and restyled, the logo painted, the
+    // popup's width, other Zexion players' items dressed as themselves (apitem.h, looks.h).
+    guarded([] { g_game.watch_ap_items(); });
     guarded([] { g_game.pump_popups(); });
 }
 

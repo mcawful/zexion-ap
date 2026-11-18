@@ -67,6 +67,7 @@ from .ticks import (  # noqa: E402
     how_to_play,
     labels_tick,
     language_tick,
+    linux_labels_tick,
     linux_mod_lost,
     linux_newgame_tick,
     log,
@@ -133,7 +134,7 @@ class ZexionContext(CommonContext):
         self.load = state.LoadState()
         self.game_conn: game.Game | None = None
         self.helper: native.Helper | None = None
-        # With the game's Linux build: its helper, for new games and grants
+        # With the game's Linux build: its helper, for new games, grants and labels
         # (ticks.linux_newgame_tick).
         self.linux_mod: linux_helper.LinuxMod | None = None
         self.helper_retry_at = 0.0
@@ -495,8 +496,9 @@ async def poll(ctx: ZexionContext) -> None:
             # the step back as a lost helper does (tried again below), rather than write the
             # items owed with no popup and drop the traps waiting.
             ctx.helper_lost = ctx.helper is None
-    if ctx.helper is None:  # the game's Linux build: its own helper's new games and grants
+    if ctx.helper is None:  # the game's Linux build: its own helper's parts
         await side_tick(ctx, "new game", lambda: linux_newgame_tick(ctx))
+        await side_tick(ctx, "item labels", lambda: linux_labels_tick(ctx))
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("item labels", lambda: labels_tick(ctx)),

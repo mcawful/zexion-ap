@@ -147,7 +147,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   directly with no popup and no seed can be started. On Linux it attaches to the game's Linux
   build through the Linux helper (preloaded by the game's launch options) and runs that way, as
   without a helper but for new games, which the Linux helper starts (ARCHIPELAGO or RANDOMIZER),
-  and items, which it gives with their popups (but traps, which do nothing there):
+  items, which it gives with their popups (but traps, which do nothing there), and other players'
+  items, which it shows as Archipelago items (none of the three run in the game yet):
   [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and loads it
   again a few seconds later (for a misbehaving mod; popups still queued are lost).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
@@ -271,7 +272,8 @@ release's.
 
 - `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`; in
   `linux/`, the Linux helper `libzexion_ap.so`, which also builds the sources of `src/` it shares
-  (`Game`, through `src/platform.h`; it runs new games and grants with their popups):
+  (`Game`, through `src/platform.h`; it runs new games, grants with their popups and other
+  players' items):
   [`native/README.md`](native/README.md).
 - `samples/`: the release's sample YAMLs, one per mode: Archipelago's template of each of the
   world's presets (`web_world.py`, `options_presets`), Easy's, Standard's and OHKO's without

@@ -66,7 +66,7 @@ target_link_libraries(zap_fake_game PRIVATE zap_sdl_stub)
 # addresses when it runs.
 set_target_properties(zap_fake_game PROPERTIES POSITION_INDEPENDENT_CODE OFF)
 target_compile_options(zap_fake_game PRIVATE -fno-pie)
-target_link_options(zap_fake_game PRIVATE -no-pie)
+target_link_options(zap_fake_game PRIVATE -no-pie -rdynamic)  # its stand-in OpenGL found by dlsym
 
 enable_testing()
 add_executable(zap_linux_core_tests tests/core_tests.cpp)
