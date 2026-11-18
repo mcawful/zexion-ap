@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import socket
+import sys
 from pathlib import Path
 
 import pytest
@@ -134,6 +135,9 @@ def test_the_game_counts_as_running_only_as_itself(tmp_path, state, started, ali
     assert linux_helper.running(10, 500, proc) is False  # no such process
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="SOCK_SEQPACKET unix sockets are Linux's"
+)
 def test_a_request_with_no_reply_closes_the_connection() -> None:
     """Its reply could still come, and would be read as the next request's."""
     client, silent = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
