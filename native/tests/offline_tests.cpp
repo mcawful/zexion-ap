@@ -831,6 +831,29 @@ void test_the_text_cut_patches_the_stand_in() {
     check(blocker != nullptr && std::string(blocker).find("cut") != std::string::npos,
           "and the Game patches it", blocker == nullptr ? "(no blocker)" : blocker);
     game.put_back_game(&no_callback);
+    // As the helper with no client: configured from its cache, not active.
+    auto bytes = [] {
+        std::string out;
+        char hex[4];
+        for (unsigned char c : g_text_cut_code) {
+            std::snprintf(hex, sizeof hex, "%02X ", c);
+            out += hex;
+        }
+        return out;
+    };
+    zap::Game idle;
+    check(idle.configure(GetModuleHandleW(nullptr), stand_in_config(), false).empty(),
+          "a cache configures");
+    idle.watch_all(&no_callback);
+    const char* idle_blocker = idle.unload_blocker();
+    check(idle_blocker != nullptr && std::string(idle_blocker).find("cut") != std::string::npos,
+          "and the inactive Game patches it",
+          std::string(idle_blocker == nullptr ? "(no blocker)" : idle_blocker) + "; bytes " +
+              bytes());
+    idle.watch_all(&no_callback);
+    check(std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) != 0,
+          "and after a second frame", bytes());
+    idle.put_back_game(&no_callback);
 }
 
 void test_a_cache_without_the_text_cut() {
