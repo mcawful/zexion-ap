@@ -1,7 +1,8 @@
 // The disk count on the equipment screen (the OS Install Disks goal): while on, EQUIPMENT's
 // callback is the helper's wrapper, which calls the game's, then EquipmentScreen::add, a widget
 // for the disk in a row the cursor reaches, named on hover. Its children array comes from the
-// game's malloc, and the game frees it with the menu (docs/re/memory.md, "The equipment screen").
+// game's malloc (on Linux glibc's, the game's own heap), and the game frees it with the menu
+// (docs/re/memory.md, "The equipment screen").
 #pragma once
 
 #include "platform.h"

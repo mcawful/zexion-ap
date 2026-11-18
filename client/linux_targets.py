@@ -55,8 +55,8 @@ TARGETS = (
 
 # The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it
 # runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
-# and their popups, other players' items (the map's too), traps, the translations. The rest of
-# CONFIG_KEYS is in TARGETS. Functions by their mangled names.
+# and their popups, other players' items (the map's too), traps, the translations, the OS Install
+# Disks' count. The rest of CONFIG_KEYS is in TARGETS. Functions by their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -127,6 +127,24 @@ HELPER_TARGETS = (
     LinuxTarget("seen_marker_code", "_Z15PowerUpMoveProcP9SpriteRec", 0x788, 0x53DB6C),
     LinuxTarget("map_handler", "gMoveProcs", 0x3C0, 0x12F7D60),
     LinuxTarget("text_set_fn", "_Z17alterSpriteStringP9SpriteRecPKcii", 0, 0x566E1F),
+    # The OS Install Disks' count (native/src/equip.h, pause.h, scan.h): the Text table, the
+    # equipment screen's builder and the functions its disk widget is made with, the pause
+    # screen's KEYS branch and its way back from OPTION MENU.
+    LinuxTarget("text_table", "gSmallTexts", 0, 0x16DA0E0),
+    LinuxTarget("equipment_fn", "_Z13EquipmentMenuv", 0, 0x5E32FB),
+    LinuxTarget("equip_panel_fn", "_Z14EquipmentFrameP12GameMenuItemi", 0, 0x572842),
+    LinuxTarget("widget_move_fn", "_Z16moveGameMenuItemP9SpriteReciib", 0, 0x56BF2E),
+    LinuxTarget("text_place_fn", "_Z16moveSpriteStringP9SpriteRecii", 0, 0x568526),
+    LinuxTarget(
+        "widget_new_fn",
+        "_Z18createGameMenuItemPKciP8GameMenuPFvP12GameMenuItemiEPFvvEPvS9_iP5sRect",
+        0,
+        0x56BD34,
+    ),
+    LinuxTarget("sprite_sheet_fn", "_Z20SWChangeMasterSpriteP9SpriteRecS0_", 0, 0x4CD979),
+    LinuxTarget("panel_link_fn", "_Z11addGameMenuP8GameMenu", 0, 0x56CC09),
+    LinuxTarget("keys_branch", "_Z9PauseGamev", 0x9C, 0x618A7E),
+    LinuxTarget("options_back_fn", "_Z22refreshPauseFromOptionP14GameMenuScreen", 0, 0x618777),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -140,7 +158,9 @@ CONFIG_KEYS = (
     "message_slots", "sprite_texture", "popup_width_code", "item_pool", "palette_table",
     "frame_clock", "sprite_templates", "object_pool", "flags", "map_grid", "event_table",
     "event_count", "event_handlers", "ailments", "ailments_hit_code", "ailments_wave_code",
-    "halt_flag", "seen_marker_code", "map_handler", "text_set_fn",
+    "halt_flag", "seen_marker_code", "map_handler", "text_set_fn", "text_table", "equipment_fn",
+    "equip_panel_fn", "widget_move_fn", "text_place_fn", "widget_new_fn", "sprite_sheet_fn",
+    "panel_link_fn", "keys_branch", "options_back_fn",
 )  # fmt: skip
 
 

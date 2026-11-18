@@ -1,5 +1,6 @@
 #include "equip.h"
 
+#include <cstdlib>
 #include <cstring>
 
 #include "apitem.h"  // kHdDiskIcon
@@ -116,8 +117,15 @@ std::string EquipmentScreen::add(const GameAddresses& a, int count) {
     BYTE* palette = pointer_at(energy, sprite::kPalette);
     int16_t palette_number = 0, disk_frame = -1, dy = 0;
     uint64_t rect = 0;
+#ifdef _WIN32
     auto game_malloc = reinterpret_cast<void* (*)(size_t)>(pointer_at(a.malloc_slot));
     auto game_free = reinterpret_cast<void (*)(void*)>(pointer_at(a.free_slot));
+#else
+    // The Linux build's malloc and free are glibc's, through its PLT: the helper's own are the
+    // same functions, on the same heap (docs/re/linux.md, `malloc_slot`, `free_slot`).
+    void* (*game_malloc)(size_t) = &std::malloc;
+    void (*game_free)(void*) = &std::free;
+#endif
     double ex = 0, ey = 0, lx = 0, ly = 0;
     if (item_template == nullptr || palette == nullptr ||
         !read(energy, sprite::kPaletteNumber, palette_number) ||
@@ -172,7 +180,8 @@ std::string EquipmentScreen::add(const GameAddresses& a, int count) {
     array[0] = energy;
     array[1] = disk;
     put(panel, panel::kChildren, array);
-    // `old` came from the game's malloc (docs/re/memory.md, "The equipment screen").
+    // `old` came from the game's malloc (calloc on Linux, the same heap: docs/re/memory.md, "The
+    // equipment screen"; docs/re/linux.md, "Mapped by disassembly: the disks' count").
     game_free(old);
     put<int32_t>(panel, panel::kCapacity, 2);
     put<int32_t>(panel, panel::kSelectable, 2);

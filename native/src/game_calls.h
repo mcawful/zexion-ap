@@ -245,6 +245,9 @@ public:
     // helper's names in its tables, its icons in its sheets, the popups' borrowed entries emptied
     // once their message has gone (translation.h; native/README.md, "Translations").
     void watch_translation();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the disks' count on
+    // the pause screen and the equipment screen, and the disk glyph (equip.h, pause.h).
+    void watch_equipment();
     // Game thread: what the helper changed for a translation put back (its names in the tables,
     // entry 70's offset once the popup areas are free, its icons): put_back_game's part, and the
     // Linux helper's when a client goes.
@@ -406,7 +409,6 @@ private:
     // The game's last message and its sequence, as the game keeps them: whether both read.
     bool last_message(BYTE*& last, int32_t& sequence) const;
     // The watches only watch_all calls (it checks the configuration).
-    void watch_equipment();
     void watch_mission();
     void watch_files();
     void watch_intel();

@@ -170,11 +170,14 @@ async def toggle_tick(ctx: ZexionContext, toggle: state.Toggle, want: bool, spec
         detail(notes[want])
 
 
-async def discs_helper_tick(ctx: ZexionContext, p: Poll) -> None:
-    """With the OS Install Disks goal, give the helper the count and the scanner's line while this
-    seed's save is loaded (docs/re/memory.md, "The scanner"), and take them back otherwise.
-    Sent when that changes, or to a new helper."""
-    helper, told, conn = ctx.helper, ctx.told, ctx.conn
+async def discs_helper_tick(ctx: ZexionContext, p: Poll, helper=None, told=None) -> None:
+    """With the OS Install Disks goal, give the helper (``helper``, else ctx.helper; what it was
+    told in ``told``, else ctx.told) the count and the scanner's line while this seed's save is
+    loaded (docs/re/memory.md, "The scanner"), and take them back otherwise. Sent when that
+    changes, or to a new helper."""
+    helper = helper if helper is not None else ctx.helper
+    told = told if told is not None else ctx.told
+    conn = ctx.conn
     hunt = conn.hunt if conn is not None else None
     seed = ctx.seed_state
     if hunt is not None and seed.dressed:
@@ -686,8 +689,9 @@ async def linux_newgame_tick(ctx: ZexionContext) -> None:
 def linux_seed(ctx: ZexionContext) -> str | None:
     """This seed's file for the Linux helper, or None with no connection: what it reads of one,
     the seed's identity (its table and start) and this world's own traps, with no labels or
-    disk count (neither is ported there), so it is known from the connection's slot data alone,
-    without waiting for the items or the server's scouts as offline_seed does."""
+    disk count (the Linux helper keeps no offline look: the client gives it both itself), so it
+    is known from the connection's slot data alone, without waiting for the items or the
+    server's scouts as offline_seed does."""
     conn = ctx.conn
     if conn is None:
         return None
@@ -752,6 +756,19 @@ async def linux_language_tick(ctx: ZexionContext) -> None:
     if line is not None and ctx.said("language", "told"):  # once a game run (game_closed)
         logger.warning(line)
         log.info(f"The game's language: {lang}")
+
+
+async def linux_discs_tick(ctx: ZexionContext, p: Poll) -> None:
+    """With the game's Linux build: the OS Install Disks' count and the scanner's line given to
+    the Linux helper (discs_helper_tick, with what it told this helper: LinuxMod.told). A helper
+    that fails is linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None:
+        return
+    try:
+        await discs_helper_tick(ctx, p, mod, mod.told)
+    except linux_helper.LinuxHelperError as exc:
+        linux_mod_lost(ctx, exc)
 
 
 async def linux_labels_tick(ctx: ZexionContext) -> None:

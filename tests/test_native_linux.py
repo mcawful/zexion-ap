@@ -386,6 +386,16 @@ CONFIG_SYMBOLS = {
     "seen_marker_code": "zap_power_up",
     "map_handler": ("zap_move_procs", 0x3C0),
     "text_set_fn": "zap_text_set",
+    "text_table": "zap_text_table",
+    "equipment_fn": "zap_equipment_menu",
+    "equip_panel_fn": "zap_equipment_frame",
+    "widget_move_fn": "zap_widget_move",
+    "text_place_fn": "zap_text_place",
+    "widget_new_fn": "zap_widget_new",
+    "sprite_sheet_fn": "zap_sprite_sheet",
+    "panel_link_fn": "zap_panel_link",
+    "keys_branch": "zap_pause_game",
+    "options_back_fn": "zap_options_back",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -696,3 +706,28 @@ def test_in_a_translation_a_popup_shows_in_its_font(game: Game) -> None:
         entry = 200 + (0 if values[6] == 66 else 140)
         written = read_at(sock, stand_in("zap_small") + 4 * entry, 4 * 64).decode("utf-32-le")
         assert written.split("\x00")[0] == shown, "the entry the message reads holds the text"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_the_disks_count_writes_the_scanners_line_and_takes_the_keys_row(game: Game) -> None:
+    # The scanner's Text entry 12 the client's line (in capitals), and the pause screen's KEYS
+    # branch made a jmp (the Linux build's `jne +0x3C`), both put back with the goal off and when
+    # the client goes.
+    at = config_addresses()
+    scanner = stand_in("zap_texts") + 12 * 32
+    branch = at["keys_branch"]
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        line = b"4 OS Install Disks detected!".hex()
+        assert ask(sock, f"discs 1 4 {line} 1") == "discs on"
+        wait_for(sock, f"read {scanner:#x} 4", lambda r: r != "data ENER")
+        assert read_at(sock, scanner, 32).split(b"\x00")[0] == b"4 OS INSTALL DISKS DETECTED!"
+        wait_for(sock, f"read {branch:#x} 1", lambda r: r == "data \xeb")
+        assert read_at(sock, branch, 2) == b"\xeb\x3c"
+        assert ask(sock, "discs_status") is not None
+    with game.connect() as sock:  # the client went: the game's again
+        wait_for(sock, f"read {branch:#x} 1", lambda r: r == "data u")
+        assert read_at(sock, branch, 2) == b"\x75\x3c"
+        wait_for(sock, f"read {scanner:#x} 4", lambda r: r == "data ENER")
+        assert read_at(sock, scanner, 32).split(b"\x00")[0] == b"ENERGY KEYS DETECTED!"

@@ -1407,6 +1407,20 @@ def test_a_linux_helper_from_before_the_traps_is_told_too_old(caplog) -> None:
     assert len(said) == 1
 
 
+def test_on_linux_the_disks_count_goes_through_the_linux_helper() -> None:
+    from client import discs
+
+    ctx = context(connection(), linux_game({"config": "ok", "discs": "discs off"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.seed_state.dressed = False  # not this seed's save: the count off
+    asyncio.run(ticks.linux_discs_tick(ctx, None))
+    assert ctx.game_conn.pm.sent[-1] == discs.OFF and ctx.linux_mod.told.discs.sent == discs.OFF
+    ctx.linux_mod.told.discs.sent = None
+    ctx.game_conn.pm.replies["discs"] = linux_helper.NoReply("the helper closed its socket")
+    asyncio.run(ticks.linux_discs_tick(ctx, None))
+    assert ctx.linux_mod is None, "configured again on a later poll"
+
+
 def test_on_windows_the_linux_tick_does_nothing() -> None:
     ctx = context(connection(), Running(game.NO_SAVE))
     asyncio.run(ticks.linux_newgame_tick(ctx))

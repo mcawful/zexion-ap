@@ -139,6 +139,23 @@ void* zap_events;
 short zap_event_count;
 void* zap_event_procs[48];
 void zap_pickup();
+// The OS Install Disks' count: the Text table (32-byte entries, the scanner's 12th as the game
+// has it), the menu functions (none called here: no menu opens in the stand-in), and the pause
+// screen's KEYS branch (zap_pause_game: `jne +0x3C` first, as PauseGame's at 0x618A7E).
+char zap_texts[16][32];
+void* zap_text_table;
+__attribute__((noinline, used)) void zap_equipment_menu() { asm volatile(""); }
+__attribute__((noinline, used)) void zap_equipment_frame(void*, int) { asm volatile(""); }
+__attribute__((noinline, used)) void zap_widget_move(void*, int, int, bool) { asm volatile(""); }
+__attribute__((noinline, used)) void zap_text_place(void*, int, int) { asm volatile(""); }
+__attribute__((noinline, used)) void* zap_widget_new(const char*, int, void*, void*, void*, void*,
+                                                     void*, int, void*) {
+    return nullptr;
+}
+__attribute__((noinline, used)) void zap_sprite_sheet(void*, void*) { asm volatile(""); }
+__attribute__((noinline, used)) void zap_panel_link(void*) { asm volatile(""); }
+__attribute__((noinline, used)) void zap_options_back(void*) { asm volatile(""); }
+void zap_pause_game();
 // Traps: AILMENTS (0: NORMAL), the halt byte, and zap_weapon_cool, the game's two AILMENTS tests
 // as the Linux build has them (trap.cpp's kHitGame then kWaveGame, each load reading
 // zap_ailments), patched in place while a trap's timer runs.
@@ -187,6 +204,9 @@ unsigned glGetError() { return 0; }
 
 asm(".text\n.globl zap_pickup\n.type zap_pickup, @function\nzap_pickup:\n"
     "  movl $24, %esi\n  ret\n.size zap_pickup, .-zap_pickup\n");
+
+asm(".text\n.globl zap_pause_game\n.type zap_pause_game, @function\nzap_pause_game:\n"
+    ".byte 0x75, 0x3C\n  ret\n.size zap_pause_game, .-zap_pause_game\n");
 
 // PowerUpMoveProc's two tests of the item's ID, byte for byte, 0x112 apart, never run.
 #define ZAP_ID_TEST(minor, past)                                                          \
@@ -262,6 +282,8 @@ int main() {
                                 {zap_items, nullptr}, {zap_item_offsets, nullptr}};
     const int at[4] = {0x30, 0x58, 0x48, 0x78};
     for (int i = 0; i < 4; ++i) std::memcpy(zap_translation + at[i], &tables[i][0], sizeof(void*));
+    std::strcpy(zap_texts[12], "ENERGY KEYS DETECTED!");
+    zap_text_table = zap_texts;
     zap_player[0x107A] = 2;
     zap_player[0x107B] = 3;
     std::printf("marker %p block %p\n", static_cast<void*>(const_cast<char*>(g_marker)),

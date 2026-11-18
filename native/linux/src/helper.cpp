@@ -325,6 +325,21 @@ constexpr ConfigKey kConfigKeys[] = {
     {"seen_marker_code", &G::seen_marker_code, 0, "_Z15PowerUpMoveProcP9SpriteRec", 0x788},
     {"map_handler", &G::map_handler, sizeof(void*), "gMoveProcs", 0x3C0},
     {"text_set_fn", &G::text_set_fn, 0, "_Z17alterSpriteStringP9SpriteRecPKcii", 0},
+    // The OS Install Disks' count (equip.h, pause.h, scan.h): the scanner's Text entries, the
+    // equipment screen's builder, the Energy Tank panel's handler and the menu functions the
+    // disk's widget is made with, the pause screen's KEYS branch and its way back from OPTION
+    // MENU. No allocator slots: the game's malloc and free are the helper's (equip.cpp).
+    {"text_table", &G::text_table, sizeof(void*), "gSmallTexts", 0},
+    {"equipment_fn", &G::equipment_fn, 0, "_Z13EquipmentMenuv", 0},
+    {"equip_panel_fn", &G::equip_panel_fn, 0, "_Z14EquipmentFrameP12GameMenuItemi", 0},
+    {"widget_move_fn", &G::widget_move_fn, 0, "_Z16moveGameMenuItemP9SpriteReciib", 0},
+    {"text_place_fn", &G::text_place_fn, 0, "_Z16moveSpriteStringP9SpriteRecii", 0},
+    {"widget_new_fn", &G::widget_new_fn, 0,
+     "_Z18createGameMenuItemPKciP8GameMenuPFvP12GameMenuItemiEPFvvEPvS9_iP5sRect", 0},
+    {"sprite_sheet_fn", &G::sprite_sheet_fn, 0, "_Z20SWChangeMasterSpriteP9SpriteRecS0_", 0},
+    {"panel_link_fn", &G::panel_link_fn, 0, "_Z11addGameMenuP8GameMenu", 0},
+    {"keys_branch", &G::keys_branch, 0, "_Z9PauseGamev", 0x9C},
+    {"options_back_fn", &G::options_back_fn, 0, "_Z22refreshPauseFromOptionP14GameMenuScreen", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -390,6 +405,16 @@ constexpr ConfigKey kConfigKeys[] = {
     {"seen_marker_code", &G::seen_marker_code, 0, "zap_power_up", 0},
     {"map_handler", &G::map_handler, sizeof(void*), "zap_move_procs", 0x3C0},
     {"text_set_fn", &G::text_set_fn, 0, "zap_text_set", 0},
+    {"text_table", &G::text_table, sizeof(void*), "zap_text_table", 0},
+    {"equipment_fn", &G::equipment_fn, 0, "zap_equipment_menu", 0},
+    {"equip_panel_fn", &G::equip_panel_fn, 0, "zap_equipment_frame", 0},
+    {"widget_move_fn", &G::widget_move_fn, 0, "zap_widget_move", 0},
+    {"text_place_fn", &G::text_place_fn, 0, "zap_text_place", 0},
+    {"widget_new_fn", &G::widget_new_fn, 0, "zap_widget_new", 0},
+    {"sprite_sheet_fn", &G::sprite_sheet_fn, 0, "zap_sprite_sheet", 0},
+    {"panel_link_fn", &G::panel_link_fn, 0, "zap_panel_link", 0},
+    {"keys_branch", &G::keys_branch, 0, "zap_pause_game", 0},
+    {"options_back_fn", &G::options_back_fn, 0, "zap_options_back", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -484,6 +509,39 @@ void map_hook(void* child) {
     }
 }
 
+// EQUIPMENT's callback while the disks are counted (equip.h): the game's screen, then the disk's
+// widget added. The game calls a menu callback with no arguments on Linux (`map_hook`'s note).
+void equipment_hook() {
+    auto original = reinterpret_cast<void (*)()>(g_game.equipment_fn());
+    if (original != nullptr) original();
+    try {
+        g_game.equipment_built();
+    } catch (...) {
+    }
+}
+
+// The Energy Tank panel's handler while it shows the disk (equip.h): the game's, then the disk's
+// name and description when it is hovered or selected. Handlers take (widget, event) on Linux too.
+void equipment_panel_hook(void* widget, int event) {
+    auto original = reinterpret_cast<void (*)(void*, int)>(g_game.equip_panel_fn());
+    if (original != nullptr) original(widget, event);
+    try {
+        g_game.equipment_event(widget, event);
+    } catch (...) {
+    }
+}
+
+// The pause menu's way back from OPTION MENU (pause.h): the game's, then the disk row turned in
+// the same call (refreshPauseFromOption takes the menu's screen).
+void options_back_hook(void* menu) {
+    auto original = reinterpret_cast<void (*)(void*)>(g_game.options_back_fn());
+    if (original != nullptr) original(menu);
+    try {
+        g_game.options_returned(menu);
+    } catch (...) {
+    }
+}
+
 // `work` run on the game's thread at its next frame call; "refused not configured" first when
 // `needs_config` and no config came; "refused no frame" if no frame took it in time (it then
 // never runs); "error <why>" at once for a request not parsed. As the Windows helper's on_game.
@@ -511,7 +569,10 @@ std::optional<std::string> game_request(std::string_view request) {
                 // A config's addresses are always the game's own (parse_config), so one after
                 // the first changes nothing the choice or the popups hold.
                 g_game.set_hooks({.panel = reinterpret_cast<void*>(&panel_hook),
-                                  .map = reinterpret_cast<void*>(&map_hook)});
+                                  .equipment = reinterpret_cast<void*>(&equipment_hook),
+                                  .equipment_panel = reinterpret_cast<void*>(&equipment_panel_hook),
+                                  .map = reinterpret_cast<void*>(&map_hook),
+                                  .options_back = reinterpret_cast<void*>(&options_back_hook)});
                 g_game.configure(found);
                 // The icon sheets as traced only with the game's definitions counted as traced.
                 int16_t defs = 0;
@@ -557,6 +618,24 @@ std::optional<std::string> game_request(std::string_view request) {
                 return "lang " + name;
             },
             false);
+    }
+    if (request.starts_with("discs ") || request == "discs") {
+        // The OS Install Disks goal's count and the scanner's line (scan.h; requests.h's format),
+        // as the Windows helper takes them.
+        int count = 0, required = 0;
+        bool told = false;
+        std::string line;
+        std::string error = zap::parse_discs(std::string(request), count, required, line, told);
+        return on_game(
+            [&] {
+                const bool on = !line.empty();
+                g_game.set_discs(count, required, std::move(line), told);
+                return std::string(on ? "discs on" : "discs off");
+            },
+            true, error);
+    }
+    if (request == "discs_status") {
+        return on_game([] { return g_game.equipment_status(); }, false);
     }
     if (request == "trap_status") {
         return on_game([] { return g_game.trap_status(); }, true);
@@ -724,6 +803,10 @@ void game_frame(uintptr_t site) {
         guarded([] { g_game.disarm_newgame(); });
         guarded([] { g_game.restore_ap_items(); });
         guarded([] { g_game.restore_translation(); });  // the names, entry 70, the icons
+        guarded([] {  // the disks' count off and put back, as drop_save_look on Windows
+            g_game.set_discs(0, 0, "");
+            g_game.restore_discs();
+        });
     }
     guarded([] { g_mailbox.serve(); });
     if (!g_game.configured()) return;
@@ -743,6 +826,10 @@ void game_frame(uintptr_t site) {
     // In a translation: the helper's names in its tables, its icons in its sheets, the popups'
     // borrowed entries emptied once their message has gone (translation.h).
     guarded([] { g_game.watch_translation(); });
+    // The OS Install Disks' count: the scanner's line, the equipment screen's disk and the pause
+    // screen's disk row, the disk glyph (equip.h, pause.h, scan.h).
+    guarded([] { g_game.watch_discs(); });
+    guarded([] { g_game.watch_equipment(); });
     // Traps: this world's own at their pickup (from the seed a client put), the AILMENTS tests'
     // patches while a trap's timer runs, then one trap set off (a received one as its popup
     // shows), as the Windows helper's frame (trap.h; native/README.md, "Traps").

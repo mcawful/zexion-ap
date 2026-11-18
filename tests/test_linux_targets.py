@@ -74,6 +74,21 @@ B1_HELPER_SYMBOLS = [
         0x33C5,
         2,
     ),
+    ("gSmallTexts", 0x16DA0E0, 8, 1),
+    ("_Z13EquipmentMenuv", 0x5E32FB, 0x40C3, 2),
+    ("_Z14EquipmentFrameP12GameMenuItemi", 0x572842, 0x2D66, 2),
+    ("_Z16moveGameMenuItemP9SpriteReciib", 0x56BF2E, 0x169, 2),
+    ("_Z16moveSpriteStringP9SpriteRecii", 0x568526, 0x15E, 2),
+    (
+        "_Z18createGameMenuItemPKciP8GameMenuPFvP12GameMenuItemiEPFvvEPvS9_iP5sRect",
+        0x56BD34,
+        0x1FA,
+        2,
+    ),
+    ("_Z20SWChangeMasterSpriteP9SpriteRecS0_", 0x4CD979, 0x27D, 2),
+    ("_Z11addGameMenuP8GameMenu", 0x56CC09, 0x7E, 2),
+    ("_Z9PauseGamev", 0x6189E2, 0xC2B, 2),
+    ("_Z22refreshPauseFromOptionP14GameMenuScreen", 0x618777, 0x26B, 2),
 ]
 
 
