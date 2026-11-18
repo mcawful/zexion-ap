@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <map>
+#include <vector>
 
 namespace zap::linux_helper {
 
@@ -142,6 +144,48 @@ std::optional<std::string> note_build_id(const unsigned char* notes, size_t size
         at = next;
     }
     return std::nullopt;
+}
+
+std::map<std::string, SymbolSpan> find_symbols(std::string_view elf,
+                                               const std::vector<std::string>& names) {
+    std::map<std::string, SymbolSpan> out;
+    auto u16 = [&](size_t at) { uint16_t v; std::memcpy(&v, elf.data() + at, 2); return v; };
+    auto u32 = [&](size_t at) { uint32_t v; std::memcpy(&v, elf.data() + at, 4); return v; };
+    auto u64 = [&](size_t at) { uint64_t v; std::memcpy(&v, elf.data() + at, 8); return v; };
+    if (elf.size() < 64 || elf.substr(0, 4) != "\x7f" "ELF" || elf[4] != 2 || elf[5] != 1) return out;
+    uint64_t shoff = u64(40);
+    uint16_t shentsize = u16(58), shnum = u16(60);
+    if (shentsize != 64 || shoff > elf.size() || shnum > (elf.size() - shoff) / 64) return out;
+    std::map<std::string, std::vector<SymbolSpan>> seen;
+    for (const std::string& name : names) seen[name];
+    for (uint16_t i = 0; i < shnum; ++i) {
+        size_t sh = shoff + 64u * i;
+        if (u32(sh + 4) != 2) continue;  // SHT_SYMTAB
+        uint64_t offset = u64(sh + 24), size = u64(sh + 32), entsize = u64(sh + 56);
+        uint32_t link = u32(sh + 40);
+        if (entsize != 24 || link >= shnum || offset > elf.size() || size > elf.size() - offset) {
+            continue;
+        }
+        size_t str = shoff + 64u * link;
+        uint64_t str_offset = u64(str + 24), str_size = u64(str + 32);
+        if (str_offset > elf.size() || str_size > elf.size() - str_offset) continue;
+        std::string_view strings = elf.substr(str_offset, str_size);
+        for (uint64_t at = offset; at + 24 <= offset + size; at += 24) {
+            uint32_t name_at = u32(at);
+            if (u16(at + 6) == 0 || name_at >= strings.size()) continue;  // undefined
+            std::string_view name = strings.substr(name_at);
+            name = name.substr(0, name.find('\0'));
+            auto wanted = seen.find(std::string(name));
+            if (wanted != seen.end()) wanted->second.push_back({u64(at + 8), u64(at + 16)});
+        }
+    }
+    for (const auto& [name, spans] : seen) {
+        if (spans.empty()) continue;
+        bool same = true;
+        for (const SymbolSpan& s : spans) same = same && s.value == spans[0].value;
+        if (same) out[name] = spans[0];
+    }
+    return out;
 }
 
 std::string socket_name(long pid) { return "zexion-ap-" + std::to_string(pid); }

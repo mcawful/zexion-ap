@@ -382,13 +382,41 @@ def test_a_new_game_queued_with_the_seeds_text_gets_the_seed(game: Game) -> None
 def test_a_config_outside_the_games_data_or_code_is_refused(game: Game) -> None:
     at = newgame_addresses()
     with game.connect() as sock:
-        bad = dict(at, rando_blob=game.marker)  # .data, not .bss
+        bad = dict(at, rando_blob=game.marker)  # not the game's own symbol for it
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in bad.items())
-        assert ask(sock, config) == "error rando_blob is not in the game's data"
-        bad = dict(at, placement_fn=at["rando_blob"])  # data, not code
+        assert ask(sock, config) == "error rando_blob is not where the game's symbols put it"
+        bad = dict(at, placement_fn=at["rando_blob"])
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in bad.items())
-        assert ask(sock, config) == "error placement_fn is not in the game's code"
+        assert ask(sock, config) == "error placement_fn is not where the game's symbols put it"
+        bad = dict(at, start_cells=at["start_cells"] + 4)  # inside .bss, off by a room
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in bad.items())
+        assert ask(sock, config) == "error start_cells is not where the game's symbols put it"
         missing = {k: v for k, v in at.items() if k != "start_flags"}
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in missing.items())
         assert ask(sock, config) == "error missing start_flags"
         assert ask(sock, PLAN) == "refused not configured"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_client_that_goes_takes_its_plan_with_it(game: Game) -> None:
+    at = newgame_addresses()
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, PLAN) == "armed"
+    with game.connect() as sock:  # as the Windows helper does: no plan kept for a client gone
+        assert wait_for(sock, "newgame_status", lambda r: r != "armed") == "idle"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_helper_of_another_version_is_not_used(game: Game, monkeypatch) -> None:
+    from client import native as client_native
+
+    monkeypatch.setattr(client_native, "VERSION", "9.9.9")
+    found = game.as_found()
+    game.connect().close()
+    with (
+        pytest.raises(linux_helper.LinuxHelperError, match="version 1.2.0, this client 9.9.9"),
+        linux_helper.LinuxHelper(found),
+    ):
+        pass

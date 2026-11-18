@@ -2236,7 +2236,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the new games' eleven addresses (`linux/src/helper.cpp`, `kConfigKeys`), each data one inside the game's `.bss` at its full size and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the new games' eleven addresses (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games"), without `choice` |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
 
@@ -2259,16 +2259,25 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is refused and leaves it as it was, a dropped connection is made again, and the game's exit
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
-  placement over the game's, the RANDOMIZER route) runs here unchanged, at each frame call once a
-  `config` gave its addresses, which the client resolves from the game's symbols
-  (`client/linux_targets.py`, `newgame_config`); "frame" requests run on the game's thread
-  through `src/mailbox.h` (`src/mailbox_linux.cpp`), as on Windows. The ARCHIPELAGO choice on the
+  placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
+  addresses, which the client resolves from the game's symbols (`client/linux_targets.py`,
+  `newgame_config`) and the helper checks against its own reading of them, so a client and a
+  helper that disagree change nothing (the client also refuses a helper of another version).
+  "Frame" requests and the watch run on the game's thread through `src/mailbox.h`
+  (`src/mailbox_linux.cpp`), only at `SWHardwareEnd`'s swap, by its return address (not the
+  palette window's: `docs/re/linux.md`, "The per-frame call"), with nothing they throw reaching
+  the game. As on Windows, a client that goes takes its plan with it: the helper disarms at the
+  next frame. The ARCHIPELAGO choice on the
   game-mode panel is not ported, so a seed starts from RANDOMIZER only, with its seed text typed
   in. The shared sources build on Linux through `src/platform.h` and the Linux parts of the
   memory layer, `src/game_mem_linux.cpp`: fault-safe reads through the kernel, writability from
-  the process's memory map (read again once a frame), the game's code from its program headers,
-  code patches with `mprotect`. Tested on stand-ins (`linux/tests/newgame_tests.cpp`, and
-  through the socket in `tests/test_native_linux.py`); not run in the game.
+  the process's memory map (read at each query, as Windows' `VirtualQuery` is), the game's code
+  from its program headers, code patches with `mprotect`, the page's own protection put back.
+  Tested on stand-ins (`linux/tests/newgame_tests.cpp`, and through the socket in
+  `tests/test_native_linux.py`); not run in the game. Not known: whether an exception the game's
+  placement threw would be caught here (the helper's own C++ runtime is linked in, the game's is
+  its own: "refused the placement failed" is unverified); a fault there is the game's crash, as
+  on Windows.
 - **Its own runtime.** The C++ runtime is linked in, so it needs only glibc (with `ld-linux`,
   its dynamic loader) from the game's container, which may be older than the one it was built
   with. A build on a newer glibc asks for its newer symbol versions and would fail to load under an

@@ -164,6 +164,19 @@ void test_reads() {
     check(kMaxRead + sizeof kDataPrefix < kMaxRequest, "the largest read's reply fits");
 }
 
+void test_own_symbols() {
+    std::FILE* f = std::fopen("/proc/self/exe", "rb");
+    std::string elf;
+    char chunk[65536];
+    for (size_t n; f != nullptr && (n = std::fread(chunk, 1, sizeof chunk, f)) > 0;) elf.append(chunk, n);
+    if (f != nullptr) std::fclose(f);
+    auto found = find_symbols(elf, {"main", "zap_no_such_symbol"});
+    check(found.count("main") == 1 && found["main"].value != 0 && found["main"].size != 0,
+          "main is found in this program's own symbols");
+    check(found.count("zap_no_such_symbol") == 0, "a missing name is left out");
+    check(find_symbols("not an ELF file", {"main"}).empty(), "a file not ELF finds nothing");
+}
+
 }  // namespace
 
 int main() {
@@ -172,6 +185,7 @@ int main() {
     test_replies();
     test_reads();
     test_writes();
+    test_own_symbols();
     check(socket_name(4242) == "zexion-ap-4242", "the socket's name");
     if (g_failures == 0) std::printf("linux core: all passed\n");
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

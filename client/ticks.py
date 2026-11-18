@@ -72,6 +72,13 @@ async def attach_helper(ctx: ZexionContext) -> bool:
     developer's own build (native/build, ZEXION_DLL), the game folder's copy of another version
     loaded by the proxy meanwhile, replaced with the client's build on a later attach once it
     unloads; nor for one turned off (native.ModDisabled)."""
+    if getattr(ctx.game_conn, "platform", "windows") == "linux":
+        # No Windows helper there, ever, while this game runs: said once, and nothing dropped
+        # (drop_helper would reset the new game the Linux helper holds: linux_newgame_tick).
+        line = state.helper_failed(native.LinuxPartial(native.LINUX_NOT_READY))
+        if line is not None and ctx.said("helper", line):
+            logger.warning(line)
+        return False
     dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
     notes: list[str] = []
     try:

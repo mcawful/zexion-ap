@@ -186,6 +186,13 @@ class LinuxHelper:
             ) from exc
         if hello.get("build") != self.game.build.name or hello.get("platform") != "linux":
             raise LinuxHelperError(f"the helper says it is in another build: {hello}")
+        from .native import VERSION  # here: native imports nothing of this module's
+
+        if hello.get("version") != VERSION:
+            raise LinuxHelperError(
+                f"the mod in Zexion is version {hello.get('version')}, this client {VERSION}: "
+                "copy this client's libzexion_ap.so into the game's folder"
+            )
 
     def __exit__(self, *_exc: object) -> None:
         if self._sock is not None:

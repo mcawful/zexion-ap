@@ -18,7 +18,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <sstream>
@@ -26,7 +28,7 @@
 #include <vector>
 
 #include "core.h"
-#include "game_mem.h"  // in_image_code, memory_map_new_frame (native/src)
+#include "game_mem.h"  // in_image_code (native/src)
 #include "mailbox.h"
 #include "newgame.h"
 #include "requests.h"  // parse_newgame
@@ -85,6 +87,17 @@ zap::Mailbox g_mailbox;
 zap::NewGames g_newgames;
 zap::NewGameAddresses g_newgame_at;
 bool g_configured = false;  // game thread only
+std::atomic<bool> g_client_left{false};  // a client went: its plan is dropped at the next frame
+
+// The game's own function that swaps its window once a frame (docs/re/linux.md, "The per-frame
+// call"): frame work runs only for its calls, by their return address. In the test build, the
+// stand-in game's (tests/fake_game.cpp).
+#ifdef ZAP_HOOKTEST
+constexpr char kFrameFunction[] = "draw_frame";
+#else
+constexpr char kFrameFunction[] = "_Z13SWHardwareEndP14SpriteWorldRec";
+#endif
+zap::linux_helper::SymbolSpan g_frame_function;  // from the game's own symbols at start-up
 
 // The main program's GNU build id, and its writable segments: dl_iterate_phdr lists it first.
 int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
@@ -194,21 +207,67 @@ State state() {
 struct ConfigKey {
     const char* name;
     uint8_t* zap::NewGameAddresses::*field;
-    size_t size;  // 0: a function
+    size_t size;         // 0: a function
+    const char* symbol;  // where it is: this symbol of the game's own, plus `offset`
+    uint64_t offset;
 };
+// Keep in step with client/linux_targets.py (TARGETS and HELPER_TARGETS, by NEWGAME_KEYS);
+// tests/test_linux_targets.py checks them. The test build's are the stand-in game's.
+using A = zap::NewGameAddresses;
+#ifndef ZAP_HOOKTEST
 constexpr ConfigKey kConfigKeys[] = {
-    {"rando_blob", &zap::NewGameAddresses::rando_blob, zap::kSectionSize},
-    {"randomizer_menu", &zap::NewGameAddresses::randomizer_menu, zap::kMenuSize},
-    {"transition_fn", &zap::NewGameAddresses::transition_fn, sizeof(void*)},
-    {"transition_timer", &zap::NewGameAddresses::transition_timer, sizeof(int32_t)},
-    {"newgame_fn", &zap::NewGameAddresses::newgame_fn, 0},
-    {"placement_fn", &zap::NewGameAddresses::placement_fn, 0},
-    {"rando_marker", &zap::NewGameAddresses::rando_marker, sizeof(uint16_t)},
-    {"current_slot", &zap::NewGameAddresses::current_slot, sizeof(int32_t)},
-    {"start_count", &zap::NewGameAddresses::start_count, sizeof(int16_t)},
-    {"start_cells", &zap::NewGameAddresses::start_cells, 4 * zap::kStartTableMax},
-    {"start_flags", &zap::NewGameAddresses::start_flags, zap::kStartTableMax},
+    {"rando_blob", &A::rando_blob, zap::kSectionSize, "gCurrentRando", 0},
+    {"randomizer_menu", &A::randomizer_menu, zap::kMenuSize, "gRandoPreferences", 0},
+    {"transition_fn", &A::transition_fn, sizeof(void*), "gExitActionP", 0},
+    {"transition_timer", &A::transition_timer, sizeof(int32_t), "gExitDelay", 0},
+    {"newgame_fn", &A::newgame_fn, 0, "_Z16StartNewGameExitv", 0},
+    {"placement_fn", &A::placement_fn, 0, "_Z13generateRandov", 0},
+    {"rando_marker", &A::rando_marker, sizeof(uint16_t), "gGameState", 0x13738},
+    {"current_slot", &A::current_slot, sizeof(int32_t), "gCurrentSaveGame", 0},
+    {"start_count", &A::start_count, sizeof(int16_t), "rStartingLocationCount", 0},
+    {"start_cells", &A::start_cells, 4 * zap::kStartTableMax, "rStartingLocations", 0},
+    {"start_flags", &A::start_flags, zap::kStartTableMax, "rStartingLocationCage", 0},
 };
+#else
+constexpr ConfigKey kConfigKeys[] = {
+    {"rando_blob", &A::rando_blob, zap::kSectionSize, "zap_section", 0},
+    {"randomizer_menu", &A::randomizer_menu, zap::kMenuSize, "zap_menu", 0},
+    {"transition_fn", &A::transition_fn, sizeof(void*), "zap_transition", 0},
+    {"transition_timer", &A::transition_timer, sizeof(int32_t), "zap_timer", 0},
+    {"newgame_fn", &A::newgame_fn, 0, "zap_new_game", 0},
+    {"placement_fn", &A::placement_fn, 0, "zap_placement", 0},
+    {"rando_marker", &A::rando_marker, sizeof(uint16_t), "zap_marker", 0},
+    {"current_slot", &A::current_slot, sizeof(int32_t), "zap_slot", 0},
+    {"start_count", &A::start_count, sizeof(int16_t), "zap_start_count", 0},
+    {"start_cells", &A::start_cells, 4 * zap::kStartTableMax, "zap_start_cells", 0},
+    {"start_flags", &A::start_flags, zap::kStartTableMax, "zap_start_flags", 0},
+};
+#endif
+constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
+
+// Each key's address by the game's own symbols (kConfigKeys), read from its binary at start-up:
+// a config must give these and no others, so a client whose mapping drifted changes nothing.
+uint64_t g_expected[kConfigKeyCount] = {};
+bool g_expected_known = false;
+
+// The game binary's symbols the helper uses, from /proc/self/exe: the config keys' and the frame
+// function's. False, nothing set, if any is missing.
+bool read_own_symbols() {
+    std::ifstream file("/proc/self/exe", std::ios::binary);
+    std::string elf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::vector<std::string> names{kFrameFunction};
+    for (const ConfigKey& key : kConfigKeys) names.emplace_back(key.symbol);
+    auto found = zap::linux_helper::find_symbols(elf, names);
+    for (const std::string& name : names) {
+        if (found.find(name) == found.end()) return false;
+    }
+    g_frame_function = found[kFrameFunction];
+    for (size_t i = 0; i < kConfigKeyCount; ++i) {
+        g_expected[i] = found[kConfigKeys[i].symbol].value + kConfigKeys[i].offset;
+    }
+    g_expected_known = true;
+    return true;
+}
 
 std::string parse_config(std::string_view request, zap::NewGameAddresses& out) {
     std::map<std::string, uint64_t> given;
@@ -222,9 +281,14 @@ std::string parse_config(std::string_view request, zap::NewGameAddresses& out) {
         if (end == nullptr || *end != '\0' || address == 0) return "a bad address for " + word;
         given[word.substr(0, eq)] = address;  // a name the helper doesn't use: ignored
     }
-    for (const ConfigKey& key : kConfigKeys) {
+    if (!g_expected_known) return "the game's symbols were not read";
+    for (size_t i = 0; i < kConfigKeyCount; ++i) {
+        const ConfigKey& key = kConfigKeys[i];
         auto found = given.find(key.name);
         if (found == given.end()) return std::string("missing ") + key.name;
+        if (found->second != g_expected[i]) {
+            return std::string(key.name) + " is not where the game's symbols put it";
+        }
         auto* at = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(found->second));
         bool ok = key.size == 0 ? zap::in_image_code(at) : in_game_data(found->second, key.size);
         if (!ok) {
@@ -314,6 +378,7 @@ void* serve(void* arg) {
         if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cred, &size) == 0 &&
             cred.uid == geteuid()) {
             serve_client(client);
+            g_client_left = true;  // as the Windows helper does, its plan is not kept for it
         }
         close(client);
     }
@@ -377,6 +442,10 @@ __attribute__((constructor)) void start() {
         std::fprintf(stderr, "zexion-ap %s: no SDL_GL_SwapWindow after the helper's\n", kVersion);
     }
     g_folder = !folder.empty() && folder == folder_of("/proc/self/exe");
+    if (!read_own_symbols()) {
+        std::fprintf(stderr, "zexion-ap %s: the game's symbols were not found: no new games\n",
+                     kVersion);
+    }
     int fd = listen_socket();
     if (fd < 0) return;
     if (!start_thread(fd)) {
@@ -391,16 +460,24 @@ __attribute__((constructor)) void start() {
 
 namespace {
 
-// The game's thread, at each frame call: the mailbox's work, then an armed new game watched.
-// What either throws is the helper's, never the game's: kept here.
-void game_frame() {
-    zap::memory_map_new_frame();
-    g_mailbox.serve();
-    if (!g_configured || !g_newgames.armed()) return;
+// The game's thread, at its frame swap (SWHardwareEnd's call: `site`, the return address): the
+// mailbox's work, a plan dropped for a client gone, then an armed new game watched. Nothing it
+// throws reaches the game. A fault in the game's own placement is not an exception: it stays
+// the game's crash.
+void game_frame(uintptr_t site) {
+    if (site < g_frame_function.value || site >= g_frame_function.value + g_frame_function.size) {
+        return;  // another swap (UpdatePalette's window), or the frame function unknown
+    }
     try {
-        g_newgames.watch(g_newgame_at);
+        g_mailbox.serve();
+        if (g_client_left.exchange(false)) g_newgames.disarm();
+        if (!g_configured || !g_newgames.armed()) return;
+        try {
+            g_newgames.watch(g_newgame_at);
+        } catch (...) {
+            g_newgames.refuse("the placement failed");
+        }
     } catch (...) {
-        g_newgames.refuse("the placement failed");
     }
 }
 
@@ -411,8 +488,9 @@ void game_frame() {
 extern "C" __attribute__((visibility("default"))) int SDL_GL_SwapWindow(void* window) {
     if (g_active.load(std::memory_order_relaxed)) {
         g_frames.fetch_add(1, std::memory_order_relaxed);
-        count_call_site(reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
-        game_frame();
+        auto site = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+        count_call_site(site);
+        game_frame(site);
     }
     Swap next = g_next_swap;
     if (next == nullptr) {  // SDL loaded after the constructor ran: look once more

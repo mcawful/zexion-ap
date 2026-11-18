@@ -118,10 +118,19 @@ def test_the_new_games_config_names_every_key_once() -> None:
     assert "placement_fn=0x5abd55" in words and "newgame_fn=0x563363" in words
 
 
-def test_the_helpers_config_keys_are_the_helpers() -> None:
+def test_the_helpers_config_keys_are_the_clients() -> None:
+    """native/linux/src/helper.cpp's kConfigKeys (the game's build, not the test build's): the
+    same keys in the same order, each at the same symbol and offset as here."""
     helper = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text("utf-8")
-    keys = re.findall(r'\{"(\w+)", &zap::NewGameAddresses::', helper)
-    assert keys == list(linux_targets.NEWGAME_KEYS)
+    table = helper.split("#ifndef ZAP_HOOKTEST\nconstexpr ConfigKey kConfigKeys[] = {", 1)[1]
+    table = table.split("};", 1)[0]
+    rows = re.findall(r'\{"(\w+)", &A::\w+, [^,]+, "(\w+)", (0x[0-9A-Fa-f]+|\d+)\}', table)
+    assert [name for name, _, _ in rows] == list(linux_targets.NEWGAME_KEYS)
+    ours = {
+        t.name: (t.symbol, t.offset) for t in linux_targets.TARGETS + linux_targets.HELPER_TARGETS
+    }
+    for name, symbol, offset in rows:
+        assert ours[name] == (symbol, int(offset, 0)), name
 
 
 def test_every_helper_target_is_in_the_lookup() -> None:

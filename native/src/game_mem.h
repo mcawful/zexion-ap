@@ -146,8 +146,6 @@ bool in_image_code(HMODULE image, const void* p);
 // Whether `p` lies in the main program's code (an executable PT_LOAD segment of the game's
 // binary, game_mem_linux.cpp).
 bool in_image_code(const void* p);
-// Game thread, at each frame call: writable() reads the process's memory map again (once).
-void memory_map_new_frame();
 #endif
 // Writes `size` bytes over code at `at`, its page made writable for the write and then put back
 // as it was, and flushes them from the instruction cache: false, nothing written, if the page

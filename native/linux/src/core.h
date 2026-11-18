@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,6 +27,18 @@ const char* identify_build(std::string_view build_id_hex);
 
 // The GNU build id in a PT_NOTE segment's bytes, as hex, or nothing.
 std::optional<std::string> note_build_id(const unsigned char* notes, size_t size);
+
+// A defined symbol of an ELF file's .symtab: its address (an ET_EXEC's load address) and size.
+struct SymbolSpan {
+    uint64_t value = 0;
+    uint64_t size = 0;
+};
+
+// `names`' symbols in the 64-bit little-endian ELF file `elf` (the game's own binary, read from
+// /proc/self/exe): each found once, defined, with one value; a name missing or found with two
+// different values is left out.
+std::map<std::string, SymbolSpan> find_symbols(std::string_view elf,
+                                               const std::vector<std::string>& names);
 
 // The abstract socket's name, without its leading NUL: "zexion-ap-<pid>", the pid as the game
 // sees itself (in a Flatpak or the Steam Runtime's container, not the host's).

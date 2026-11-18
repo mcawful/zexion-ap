@@ -8,7 +8,7 @@
 
 #include <cstdio>
 #include <cstring>
-#include <mutex>
+#include <mutex>  // call_once
 #include <vector>
 
 #include "game_mem.h"
@@ -22,17 +22,12 @@ struct Region {
     int prot;  // PROT_ flags
 };
 
-// The process's memory map, as /proc/self/maps says: read again at most once a frame (the game
-// frees nothing while the helper's frame work runs on its thread) and on a query it can't answer.
-std::mutex g_map_lock;
-std::vector<Region> g_map;
-uint64_t g_map_frame = ~uint64_t{0};
-uint64_t g_frame = 0;
-
-void read_map() {
-    g_map.clear();
+// The process's memory map, as /proc/self/maps says now (read on each query, as Windows'
+// VirtualQuery asks each time: no snapshot to go stale).
+std::vector<Region> read_map() {
+    std::vector<Region> map;
     FILE* maps = std::fopen("/proc/self/maps", "re");
-    if (maps == nullptr) return;
+    if (maps == nullptr) return map;
     char line[512];
     while (std::fgets(line, sizeof line, maps) != nullptr) {
         unsigned long start = 0, end = 0;
@@ -40,9 +35,10 @@ void read_map() {
         if (std::sscanf(line, "%lx-%lx %4s", &start, &end, perms) != 3) continue;
         int prot = (perms[0] == 'r' ? PROT_READ : 0) | (perms[1] == 'w' ? PROT_WRITE : 0) |
                    (perms[2] == 'x' ? PROT_EXEC : 0);
-        g_map.push_back({start, end, prot});
+        map.push_back({start, end, prot});
     }
     std::fclose(maps);
+    return map;
 }
 
 // Whether every byte of [at, at + size) is mapped with all of `prot`.
@@ -50,22 +46,23 @@ bool mapped_with(const void* at, size_t size, int prot) {
     auto p = reinterpret_cast<uintptr_t>(at);
     if (size == 0) size = 1;  // the byte at `at`
     if (p == 0 || p + size < p) return false;
-    std::lock_guard<std::mutex> lock(g_map_lock);
-    for (int pass = 0; pass < 2; ++pass) {
-        if (pass == 1 || g_map_frame != g_frame) {
-            read_map();
-            g_map_frame = g_frame;
-        }
-        uintptr_t q = p, end = p + size;
-        for (const Region& r : g_map) {
-            if (q >= r.start && q < r.end) {
-                if ((r.prot & prot) != prot) break;
-                q = r.end;
-                if (q >= end) return true;
-            }
+    uintptr_t q = p, end = p + size;
+    for (const Region& r : read_map()) {  // in address order
+        if (q >= r.start && q < r.end) {
+            if ((r.prot & prot) != prot) return false;
+            q = r.end;
+            if (q >= end) return true;
         }
     }
     return false;
+}
+
+// The protection of the page holding `at`, or -1 if it isn't mapped.
+int protection_of(uintptr_t at) {
+    for (const Region& r : read_map()) {
+        if (at >= r.start && at < r.end) return r.prot;
+    }
+    return -1;
 }
 
 // The main program's executable segments: dl_iterate_phdr lists it first.
@@ -87,11 +84,6 @@ int main_program_code(dl_phdr_info* info, size_t, void*) {
 }
 
 }  // namespace
-
-void memory_map_new_frame() {
-    std::lock_guard<std::mutex> lock(g_map_lock);
-    ++g_frame;
-}
 
 bool safe_read(const void* from, void* to, size_t size) {
     if (from == nullptr) return false;
@@ -119,13 +111,17 @@ bool patch_code(BYTE* at, const void* bytes, size_t size) {
     const auto page = static_cast<uintptr_t>(sysconf(_SC_PAGESIZE));
     uintptr_t first = reinterpret_cast<uintptr_t>(at) & ~(page - 1);
     uintptr_t last = (reinterpret_cast<uintptr_t>(at) + size - 1) & ~(page - 1);
+    // Its pages' own protection, put back after (both pages the same: one code segment's).
+    int original = protection_of(first);
+    if (original < 0 || protection_of(last) != original) return false;
     size_t span = last - first + page;
     auto* start = reinterpret_cast<void*>(first);
-    if (mprotect(start, span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) return false;
+    if (mprotect(start, span, original | PROT_WRITE) != 0) return false;
     std::memcpy(at, bytes, size);
-    mprotect(start, span, PROT_READ | PROT_EXEC);  // the code segment's own protection
     __builtin___clear_cache(reinterpret_cast<char*>(at), reinterpret_cast<char*>(at) + size);
-    memory_map_new_frame();  // its pages' protection changed and back: read the map again
+    // Written: the caller holds the patch, to put back, whatever the pages' protection now (a
+    // failed put-back leaves them writable as well: nothing else to do with it here).
+    mprotect(start, span, original);
     return true;
 }
 

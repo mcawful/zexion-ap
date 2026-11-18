@@ -1288,3 +1288,15 @@ def test_on_windows_the_linux_tick_does_nothing() -> None:
     ctx = context(connection(), Running(game.NO_SAVE))
     asyncio.run(ticks.linux_newgame_tick(ctx))
     assert ctx.linux_newgames is None
+
+
+def test_on_linux_the_helper_retry_leaves_the_linux_helpers_plan_alone(caplog) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.conn.newgame is state.NewGame.ARMED
+    with caplog.at_level("WARNING"):
+        assert not asyncio.run(ticks.attach_helper(ctx))
+        assert not asyncio.run(ticks.attach_helper(ctx))
+    assert ctx.conn.newgame is state.NewGame.ARMED  # not reset as drop_helper would
+    said = [r for r in caplog.records if r.name == "Client" and "On Linux" in r.getMessage()]
+    assert len(said) == 1
