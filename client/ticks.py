@@ -836,6 +836,20 @@ async def linux_intel_tick(ctx: ZexionContext) -> None:
         linux_mod_lost(ctx, exc)
 
 
+async def linux_assists_tick(ctx: ZexionContext) -> None:
+    """With the game's Linux build: the options menu's ASSIST entry locked while this seed's
+    save is loaded and the seed disallows assists, until the slot receives Assist Unlock
+    (toggle_tick, with what it told this helper: LinuxMod.told). A helper that fails is
+    linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None:
+        return
+    try:
+        await toggle_tick(ctx, mod.told.assists, ctx.load.assists_want, ASSISTS, mod)
+    except linux_helper.LinuxHelperError as exc:
+        linux_mod_lost(ctx, exc)
+
+
 async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     """With the game's Linux build, after the step: the follow-up popups of this world's finds
     (followups_tick) and the Landing Pod's RETURN HOME (mission_tick), through the Linux helper

@@ -1434,6 +1434,20 @@ def test_on_linux_intel_chips_go_through_the_linux_helper() -> None:
     assert ctx.linux_mod is None, "configured again on a later poll"
 
 
+def test_on_linux_the_assist_lock_goes_through_the_linux_helper() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "assists": "locked"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.load.assists_want = True  # this seed's save loaded, assists disallowed
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    sent = ctx.game_conn.pm.sent
+    assert sent.count("assists lock") == 1 and ctx.linux_mod.told.assists.sent is True
+    ctx.game_conn.pm.replies["assists"] = linux_helper.NoReply("the helper closed its socket")
+    ctx.load.assists_want = False
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    assert ctx.linux_mod is None, "configured again on a later poll"
+
+
 def test_on_linux_a_failed_follow_up_drops_the_linux_helper_not_the_windows_one(
     monkeypatch,
 ) -> None:

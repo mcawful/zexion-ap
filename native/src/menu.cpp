@@ -310,9 +310,11 @@ bool AssistLock::restore(const GameAddresses& a) {
                 // Frames and palettes derived afresh, not from the pointers saved at install.
                 set_frame(g, frames_[i]);
                 at<int32_t>(g, sprite::kStyle) = styles_[i];
-                BYTE* palette = palette_numbers_[i] < 0
+                // A number past the table (not the game's) keeps the pointer saved at install.
+                const int16_t number = palette_numbers_[i];
+                BYTE* palette = number < 0 || number >= sprite::kPaletteCount
                                     ? nullptr
-                                    : pointer_at(a.palette_table, palette_numbers_[i] * 8);
+                                    : pointer_at(a.palette_table, number * 8);
                 BYTE probe = 0;
                 if (!read(palette, 0, probe)) palette = static_cast<BYTE*>(palettes_[i]);
                 at<void*>(g, sprite::kPalette) = palette;

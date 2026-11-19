@@ -523,16 +523,16 @@ def _hello(helper: Helper) -> dict[str, str]:
 # What of the helper the game's Linux build lacks yet: a clause for the player
 # (state.helper_failed). Its new games, ARCHIPELAGO on the menu included, its items with their
 # popups, traps and scrap's drops, received Energy Shields (ticks.shields_tick) and DeathLink
-# deaths (ticks.deathlink_tick), other players' items' labels, Intel Chips, this world's own
-# traps, the OS Install Disks' count, the finds' follow-ups and RETURN HOME go through the Linux
-# helper instead (ticks.linux_newgame_tick and the other linux_ ticks). Not yet on Linux: the
-# ASSIST lock, the file select's AP logo and ITEMS row, the title screen's lines, the Feats guard,
-# the repair of tall popups' text and the saves' look without the client (native/README.md, "The
+# deaths (ticks.deathlink_tick), other players' items' labels, Intel Chips, the ASSIST lock, this
+# world's own traps, the OS Install Disks' count, the finds' follow-ups and RETURN HOME go through
+# the Linux helper instead (ticks.linux_newgame_tick and the other linux_ ticks). Not yet on
+# Linux: the file select's AP logo and ITEMS row, the title screen's lines, the Feats guard, the
+# repair of tall popups' text and the saves' look without the client (native/README.md, "The
 # Linux helper", "Not on Linux yet").
 LINUX_NOT_READY = (
-    "its other parts inside the game (the ASSIST lock, the file select's AP logo and items row, "
-    "the title screen's lines, the guard on Feats and achievements, the repair of tall popups' "
-    "text, the saves' look without the client) aren't ready for the game's Linux version yet"
+    "its other parts inside the game (the file select's AP logo and items row, the title "
+    "screen's lines, the guard on Feats and achievements, the repair of tall popups' text, the "
+    "saves' look without the client) aren't ready for the game's Linux version yet"
 )
 
 

@@ -239,7 +239,8 @@ constexpr size_t kMessageSlots = zap::hd::kSlots * zap::message::kSize;
 // handlers' 48 (docs/re/linux.md).
 constexpr size_t kItemPool = zap::ItemLooks::kSlots * zap::obj::kItemSize;
 constexpr size_t kObjectPool = zap::ItemLooks::kObjectSlots * zap::obj::kGeneralSize;
-constexpr size_t kPaletteTable = 65 * sizeof(void*), kEventHandlers = 48 * sizeof(void*);
+constexpr size_t kPaletteTable = zap::sprite::kPaletteCount * sizeof(void*),
+                 kEventHandlers = 48 * sizeof(void*);
 // Keep in step with client/linux_targets.py (TARGETS and HELPER_TARGETS, by CONFIG_KEYS);
 // tests/test_linux_targets.py checks them. The test build's are the stand-in game's.
 using G = zap::GameAddresses;
@@ -347,6 +348,8 @@ constexpr ConfigKey kConfigKeys[] = {
     {"routine_table", &G::routine_table, 16 * sizeof(void*), "gExitActions", 0},
     // DeathLink's received deaths (Game::kill): the player's death, as the damage code calls it.
     {"death_fn", &G::death_fn, 0, "_Z17PlayerDestructionP9SpriteRecc", 0},
+    // The ASSIST lock (menu.h): ASSIST's own callback, put back when it is unlocked.
+    {"assist_menu_fn", &G::assist_menu_fn, 0, "_Z10AssistMenuv", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -426,6 +429,7 @@ constexpr ConfigKey kConfigKeys[] = {
     {"fade_level", &G::fade_level, 1, "zap_fade_level", 0},
     {"routine_table", &G::routine_table, 16 * sizeof(void*), "zap_routines", 0},
     {"death_fn", &G::death_fn, 0, "zap_death", 0},
+    {"assist_menu_fn", &G::assist_menu_fn, 0, "zap_assist_menu", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -706,6 +710,15 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "shield") {  // a received Energy Shield (game_calls.h, spawn_shield)
         return on_game([] { return g_game.spawn_shield(zap::ticks_ms()); }, false);
     }
+    if (request == "assists lock" || request == "assists free") {  // the ASSIST lock (menu.h)
+        const bool lock = request == "assists lock";
+        return on_game(
+            [lock] {
+                g_game.set_assists_locked(lock);
+                return std::string(lock ? "locked" : "free");
+            },
+            true);
+    }
     if (request == "intel on" || request == "intel off") {  // Intel Chips (intel.h)
         const bool on = request == "intel on";
         return on_game([on] { g_game.set_intel(on); return std::string(on ? "intel on" : "intel off"); },
@@ -876,15 +889,19 @@ void game_frame(uintptr_t site) {
     // (settled) is this frame's when the mailbox's requests run (note_play does nothing until
     // configured).
     guarded([] { g_game.note_play(zap::ticks_ms()); });
-    // A client's popups stay queued for its save, as on Windows; its plan, its labels and its
-    // Intel Chips go (the records, the popup's width and the pixels put back: no offline look
-    // keeps them here).
+    // A client's popups stay queued for its save, as on Windows; its plan, its labels, its Intel
+    // Chips and its ASSIST lock go (the records, the popup's width, the entry and the pixels put
+    // back: no offline look keeps them here).
     // Before the mailbox: the serving thread marks a client gone before it takes the next one,
     // so nothing that next client asks is dropped with the last one's.
     if (g_client_left.exchange(false)) {
         guarded([] { g_game.disarm_newgame(); });
         guarded([] { g_game.restore_ap_items(); });
         guarded([] { g_game.restore_intel(); });  // the Area Map's record the game's again
+        guarded([] {  // ASSIST unlocked, as drop_save_look on Windows
+            g_game.set_assists_locked(false);
+            g_game.restore_assists();
+        });
         guarded([] { g_game.restore_translation(); });  // the names, entry 70, the icons
         guarded([] {  // the disks' count off and put back, as drop_save_look on Windows
             g_game.set_discs(0, 0, "");
@@ -905,6 +922,7 @@ void game_frame(uintptr_t site) {
     guarded([] { g_game.watch_map_names(); });  // the cursor's names while the map is open
     guarded([] { g_game.watch_ap_items(); });
     guarded([] { g_game.watch_intel(); });  // the Area Map named INTEL CHIP while `intel on`
+    guarded([] { g_game.watch_assists(); });  // ASSIST locked in the options menu while asked
     guarded([] { g_game.watch_map_marks(); });  // the squares raised, the on-screen write patched
     // In a translation: the helper's names in its tables, its icons in its sheets, the popups'
     // borrowed entries emptied once their message has gone (translation.h).

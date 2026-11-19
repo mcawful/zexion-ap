@@ -67,6 +67,7 @@ from .ticks import (  # noqa: E402
     how_to_play,
     labels_tick,
     language_tick,
+    linux_assists_tick,
     linux_discs_tick,
     linux_finds_tick,
     linux_intel_tick,
@@ -519,6 +520,7 @@ async def poll(ctx: ZexionContext) -> None:
         await side_tick(ctx, "language", lambda: linux_language_tick(ctx))
         await side_tick(ctx, "disk count", lambda: linux_discs_tick(ctx, p))
         await side_tick(ctx, "Intel Chips", lambda: linux_intel_tick(ctx))
+        await side_tick(ctx, "assist lock", lambda: linux_assists_tick(ctx))
     for name, tick in (
         ("new game", lambda: newgame_tick(ctx)),
         ("item labels", lambda: labels_tick(ctx)),

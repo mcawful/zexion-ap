@@ -400,6 +400,7 @@ CONFIG_SYMBOLS = {
     "fade_level": "zap_fade_level",
     "routine_table": "zap_routines",
     "death_fn": "zap_death",
+    "assist_menu_fn": "zap_assist_menu",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -831,6 +832,21 @@ def test_intel_chips_name_the_area_map_until_the_client_goes(game: Game) -> None
     with game.connect() as sock:  # the last client gone: the game's record again
         reply = wait_for(sock, f"read {record + 0x0A:#x} 8", lambda r: r == "data AREA MAP")
         assert reply == "data AREA MAP"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_the_assist_lock_is_taken_once_configured(game: Game) -> None:
+    # `assists lock` and `assists free` (Game::set_assists_locked; the lock itself needs the
+    # options menu, which the stand-in never opens: stand-in tests of it in
+    # native/tests/menu_tests.cpp, on Windows).
+    at = config_addresses()
+    with game.connect() as sock:
+        assert ask(sock, "assists lock") == "refused not configured"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, "assists lock") == "locked"
+        assert ask(sock, "assists free") == "free"
+        assert ask(sock, "assists lock") == "locked"
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
