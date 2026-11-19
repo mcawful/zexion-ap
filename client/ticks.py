@@ -15,6 +15,7 @@ ticks, which run while none is attached (through the Linux helper, with the game
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -725,6 +726,10 @@ async def linux_newgame_tick(ctx: ZexionContext) -> None:
     g = ctx.game_conn
     if g is None or getattr(g, "platform", "windows") != "linux":
         return
+    if ctx.helper_left and (ctx.conn is None or not ctx.slot):
+        # Let go while no connection steps (zexion_client.leave_helper_tick): the helper dresses
+        # the save itself until one does.
+        return
     try:
         mod = ctx.linux_mod
         if mod is not None and mod.pm is g.pm and not mod.current():
@@ -838,6 +843,25 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
         log.warning(f"The Linux helper did not take the seed: {reply}")
 
 
+LINUX_KEEPALIVE_SECONDS = 10.0  # the Linux helper drops a client silent for 30 s
+
+
+async def linux_keepalive_tick(ctx: ZexionContext) -> None:
+    """With the game's Linux build: a ``ping`` to the Linux helper, so a client that means to stay
+    attached is never silent for the 30 s after which the helper takes it for gone (dropping its
+    plan, labels, Intel Chips, ASSIST lock and disk count, and dressing the save with the look
+    without a client). The game loop's own requests and reads keep it busy as a rule, but one
+    poll can wait on the server longer (a stored-data reply, say), and this runs on its own
+    (zexion_client.keepalive_loop). Only for a connection the helper was configured on: one lost
+    is found by the poll's ticks (``current``, linux_newgame_tick), not here. An error is left to
+    them too."""
+    mod = ctx.linux_mod
+    if mod is None or not mod.current():
+        return
+    with contextlib.suppress(linux_helper.LinuxHelperError):
+        await asyncio.to_thread(mod.request, "ping")
+
+
 async def linux_language_tick(ctx: ZexionContext) -> None:
     """With the game's Linux build: the language the game shows, asked of the Linux helper
     (``lang``) as language_tick asks the Windows helper's hello, every LANGUAGE_ASK_SECONDS; the
@@ -928,7 +952,8 @@ async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> N
     """With the game's Linux build, after the step: the follow-up popups of this world's finds
     (followups_tick) and the Landing Pod's RETURN HOME (mission_tick), through the Linux helper
     with what it was told (LinuxMod.told); a prompt queued in this load and dropped before it
-    showed, with the helper's last connection (its status ``not asked``), offered again. A
+    showed, or answered YES before its ending started, with the helper's last connection (its
+    status ``not asked``), offered again. A
     helper that fails is linux_mod_lost."""
     mod = ctx.linux_mod
     if mod is None or not mod.current():
@@ -941,12 +966,14 @@ async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> N
         if home.queued:
             # A Linux helper's connection that closes cancels what was asked on it (the disks'
             # goal off: native/README.md, "The Linux helper"). Followed while on its way: dropped
-            # before it showed ("not asked"), offered again; shown, answered, lapsed or ended,
-            # no longer followed, so a prompt answered NO is not offered again.
+            # before it showed ("not asked"), offered again; and after a YES ("yes: ending when
+            # idle ...") until the ending has started, since a connection that closes before
+            # then drops the queued ending too. Shown, lapsed or ended ("ending started"), no
+            # longer followed, so a prompt answered NO is not offered again.
             reply = await asyncio.to_thread(mod.request, discs.MISSION_STATUS)
             if reply == "not asked":
                 home.again()
-            elif not reply.startswith(("asked", "opening")):
+            elif not reply.startswith(("asked", "opening", "yes")):
                 home.queued = False
         await followups_tick(ctx, p, step, mod, mod.told)
         if ctx.linux_mod is mod:

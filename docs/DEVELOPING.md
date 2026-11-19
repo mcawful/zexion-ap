@@ -83,9 +83,9 @@ worlds/zexion/ → generation → slot data → client
   collected in this build of the game", after which nothing is marked), which is part of the
   poll's step, not a side task.
   With no server connection, while a save it has not dressed is loaded and no ending is on
-  its way, it lets the helper go, so the helper gives AP saves their look as with no client,
-  and attaches it again on connecting ([`native/README.md`](../native/README.md), "AP saves
-  without the client").
+  its way, it lets the helper go (on Linux, closes the Linux helper's connection), so the helper
+  gives AP saves their look as with no client, and attaches it again on connecting
+  ([`native/README.md`](../native/README.md), "AP saves without the client").
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
   the look of other players' items, and the rest of the features below. It hooks the game's
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
@@ -372,9 +372,10 @@ What there is:
   `restore` refuse while a process going by `Zexion` or `Zexion.exe` runs (by its `comm`, its
   executable's or a command-line entry's file name: `client/procfs.py`). They also refuse when
   that can't be told: run from a sandbox whose `/proc` hides the host's processes (a nested
-  process-id namespace, a Flatpak terminal, WSL), or with a process of the user's that can't be
-  read. With the Linux build running under Flatpak's Steam it found the game by its name,
-  `Zexion` (2026-11-18); the Windows exe under Proton, `Zexion.exe`, is assumed, not seen.
+  process-id namespace, a Flatpak terminal, WSL, found by its interop handler, its kernel's
+  release or its variables), or with a process of the user's that can't be read. With the Linux
+  build running under Flatpak's Steam it found the game by its name, `Zexion` (2026-11-18); the
+  Windows exe under Proton, `Zexion.exe`, is assumed, not seen.
 
 Running the Windows build under Proton (a forced compatibility tool), with the proxy needing
 `WINEDLLOVERRIDES="version=n,b"` and the Windows Archipelago run inside the game's prefix, is

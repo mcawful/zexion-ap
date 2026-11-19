@@ -102,6 +102,60 @@ def test_a_sandbox_that_hides_processes_is_an_error_not_an_absence(
         procfs.find_pid("Zexion", proc, root)
 
 
+def _wsl_proc(tmp_path: Path, how: str) -> Path:
+    """A stand-in ``/proc`` with the one sign of WSL ``how`` names (none for "none")."""
+    proc = _proc(tmp_path, {})
+    if how in ("interop", "interop-late", "other"):
+        binfmt = proc / "sys" / "fs" / "binfmt_misc"
+        binfmt.mkdir(parents=True)
+        entry = {"interop": "WSLInterop", "interop-late": "WSLInterop-late", "other": "python3"}
+        (binfmt / entry[how]).write_text("enabled\n")
+    elif how in ("wsl2", "wsl1", "native"):
+        (proc / "sys" / "kernel").mkdir(parents=True)
+        release = {
+            "wsl2": "5.15.153.1-microsoft-standard-WSL2",
+            "wsl1": "4.4.0-19041-Microsoft",
+            "native": "6.8.0-45-generic",
+        }[how]
+        (proc / "sys" / "kernel" / "osrelease").write_text(release + "\n")
+    return proc
+
+
+@pytest.mark.parametrize("how", ["interop", "interop-late", "wsl2", "wsl1"])
+def test_wsl_is_found_by_any_of_its_signs(tmp_path: Path, how: str) -> None:
+    # WSL 2 with systemd registers WSLInterop-late; with interop off no handler is there at all.
+    proc = _wsl_proc(tmp_path, how)
+    assert "WSL" in (procfs._blind_spot(proc, _root(tmp_path), {}) or "")
+    with pytest.raises(procfs.ProcessError, match="WSL"):
+        procfs.find_pid("Zexion", proc, _root(tmp_path))
+
+
+@pytest.mark.parametrize("variable", ["WSL_DISTRO_NAME", "WSL_INTEROP"])
+def test_wsl_is_found_by_the_variables_it_sets_with_no_other_sign(
+    tmp_path: Path, variable: str
+) -> None:
+    proc = _wsl_proc(tmp_path, "none")
+    assert procfs._blind_spot(proc, _root(tmp_path), {}) is None
+    assert "WSL" in (procfs._blind_spot(proc, _root(tmp_path), {variable: "Ubuntu"}) or "")
+
+
+@pytest.mark.parametrize("how", ["none", "native", "other"])
+def test_no_sign_of_wsl_is_no_blind_spot(tmp_path: Path, how: str) -> None:
+    proc = _wsl_proc(tmp_path, how)
+    environ = {"HOME": "/home/u", "WSL_DISTRO_NAME": ""}
+    assert procfs._blind_spot(proc, _root(tmp_path), environ) is None
+    assert procfs.find_pid("Zexion", proc, _root(tmp_path)) is None
+
+
+def test_the_variables_count_only_for_the_real_proc(tmp_path: Path, monkeypatch) -> None:
+    # A stand-in /proc is no one's: a developer in WSL running these tests is not refused.
+    monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu")
+    proc = _wsl_proc(tmp_path, "none")
+    assert procfs._blind_spot(proc, _root(tmp_path)) is None
+    monkeypatch.setattr(procfs, "PROC", proc)
+    assert "WSL" in (procfs._blind_spot(proc, _root(tmp_path)) or "")
+
+
 def test_an_unreadable_proc_is_an_error_not_an_absence(tmp_path: Path) -> None:
     with pytest.raises(procfs.ProcessError):
         procfs.find_pid("Zexion", tmp_path / "missing", _root(tmp_path))

@@ -58,6 +58,7 @@ from .ticks import (  # noqa: E402
     ASSISTS,
     INTEL,
     LINUX_HOLD_SECONDS,
+    LINUX_KEEPALIVE_SECONDS,
     attach_helper,
     client_back_tick,
     deathlink_tick,
@@ -429,6 +430,16 @@ async def game_loop(ctx: ZexionContext) -> None:
             ctx.said.clear("loop")
 
 
+async def keepalive_loop(ctx: ZexionContext) -> None:
+    """With the game's Linux build, the Linux helper told the client is still there
+    (ticks.linux_keepalive_tick) while the game loop is busy with something else; it does
+    nothing with the Windows helper."""
+    while not ctx.exit_event.is_set():
+        await asyncio.sleep(LINUX_KEEPALIVE_SECONDS)
+        with contextlib.suppress(Exception):  # the poll's own requests find what failed
+            await ticks.linux_keepalive_tick(ctx)
+
+
 def shields_due(ctx: ZexionContext, seed: state.SeedState) -> bool:
     """Whether the poll runs shields_tick: with a helper to spawn one (the Windows helper, or the
     Linux helper with the game's Linux build), or with a shield to look for or a count to send
@@ -491,9 +502,13 @@ async def leave_helper_tick(ctx: ZexionContext) -> None:
     the helper go, as if the client had closed, so the helper dresses an AP save itself from the
     client's file (native/README.md, "AP saves without the client"). Kept: a save dressed before
     a drop (state.SeedState.dressed), an ending, and an armed new game at the title. The next
-    connection attaches it again before its first step (poll)."""
+    connection attaches it again before its first step (poll). With the game's Linux build the
+    Linux helper's connection is closed (LinuxProcess.disconnect), which the helper takes for the
+    client gone; it is configured again, as after any lost connection, by the next connection's
+    first poll (ticks.linux_newgame_tick)."""
     seed = ctx.seed_state
-    if ctx.helper is None or ctx.game_conn is None:
+    linux = ctx.helper is None and ctx.linux_mod is not None
+    if (ctx.helper is None and not linux) or ctx.game_conn is None:
         return
     if seed is not None and (seed.dressed or seed.session.holding):
         return  # the client's look, or its ending (the Feats guard, RETURN HOME): kept as is
@@ -507,7 +522,19 @@ async def leave_helper_tick(ctx: ZexionContext) -> None:
         return
     if no_save:
         return
-    ctx.drop_helper()
+    if linux:
+        # What drop_helper puts back for the Windows helper: a plan it held is armed again in the
+        # next one. Its popups and counts the helper keeps or drops itself (client_left).
+        conn = ctx.conn
+        if conn is not None and conn.newgame is state.NewGame.ARMED:
+            conn.newgame = None
+        ctx.linux_mod = None
+        try:
+            await asyncio.to_thread(ctx.game_conn.pm.disconnect)
+        except Exception as exc:  # it closes in time all the same (a silence of 30 s)
+            log.debug(f"Letting go of the Linux helper failed ({exc!r}).")
+    else:
+        ctx.drop_helper()
     ctx.helper_left = True  # attached again as soon as a connection steps
     detail("Not connected: the mod gives this save its look until the client connects.")
 
@@ -587,6 +614,10 @@ async def poll(ctx: ZexionContext) -> None:
         # goes on without it, as after any failed attach; not for a mod that doesn't match, or
         # a closed game.
         now = time.monotonic()
+        if ctx.linux_mod is None and getattr(ctx.game_conn, "platform", "windows") == "linux":
+            # The Linux helper, let go: configured in this poll's first part, or held for as after
+            # any lost one, so the step writes nothing with no popup meanwhile.
+            ctx.linux_back_by = now + LINUX_HOLD_SECONDS
         if ctx.helper_back_by == 0.0:
             ctx.helper_back_by = now + HELPER_RETRY_SECONDS
         if now < ctx.attach_again_at:  # refused to unload just now: asked again in a while
@@ -831,11 +862,13 @@ def launch(*args: str) -> None:
         ctx.keep_randomizer = parsed.keep_randomizer
         ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
         loop_task = asyncio.create_task(game_loop(ctx), name="Zexion game loop")
+        keepalive_task = asyncio.create_task(keepalive_loop(ctx), name="Zexion keep-alive")
         if gui_enabled:
             ctx.run_gui()
         ctx.run_cli()
         await ctx.exit_event.wait()
         loop_task.cancel()
+        keepalive_task.cancel()
         await ctx.shutdown()
 
     import colorama
