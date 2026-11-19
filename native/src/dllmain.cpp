@@ -224,8 +224,12 @@ void take_offline() {
     std::vector<zap::OfflineSeed> put = std::exchange(g_put_seeds, {});
     ReleaseSRWLockExclusive(&g_offline_lock);
     if (files) take_files(std::move(*files));
-    // After the files, which may have been read before these were put.
-    if (!put.empty()) g_game.merge_offline(std::move(put));
+    // After the files, which may have been read before these were put. The client puts its own
+    // seed alone: the one its look applies in (Game::seed_look_loaded).
+    if (!put.empty()) {
+        g_game.note_client_seed(put.back());
+        g_game.merge_offline(std::move(put));
+    }
 }
 
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).

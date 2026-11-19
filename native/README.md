@@ -835,7 +835,7 @@ the restart doubles above.
 - **When:** each frame call while the options menu is on top (`src/menu.cpp`). `locked` means
   armed: whether an entry was found shows only in the game. The client locks it while a seed
   that disallows assists has its save loaded, until the slot receives Assist Unlock. The helper
-  locks it only while a save of a seed it knows is loaded (`Game::seed_look_loaded`, "Intel
+  locks it only while the loaded save is the look's own (`Game::seed_look_loaded`, "Intel
   Chips"), and puts it back, the padlock too, in another save or none, whatever the client last
   said: its server dropping leaves the ask as it was. Stand-in tests only, not run in game.
 - **Found again each frame:** never taken on the pointer kept from the frame it was locked. Leaving
@@ -1306,14 +1306,22 @@ Working in game: 2026-10-23 ("Live item objects").
   (3551, the map reveal) (`src/intel.cpp`), only if the record reads as the game loads it or as
   the helper left it.
 - **When:** each frame call while the client has sent `intel on` (this seed's save loaded, its
-  Area Maps Intel Chips) and a save of a seed the helper knows is loaded (`Game::seed_look_loaded`:
-  an AP save, as the Feats guard takes one, and while the helper holds labels, the labels' seed's
-  save). It does the same for the ASSIST lock and the disk count ("The assist menu", "The OS
-  Install Disks goal"): the helper does not wait for the client to say the save left, so with the
-  server down a normal or plain randomizer save loaded after the seed's has the game's own Area
-  Map, ASSIST and scanner line, and they are applied again when the seed's save is loaded. With no
-  labels held, another seed the helper knows (a file from an earlier client run) counts as the
-  seed's save until the client says otherwise. Stand-in tests only, not run in game.
+  Area Maps Intel Chips) and the loaded save is the look's own (`Game::seed_look_loaded`):
+  - with a client, the save of the seed whose file it has put (`offline_put seed`, the helper
+    keeps the last one a client put as the client's seed until it goes away); until it has put it,
+    the save of the seed the helper holds labels for. With neither, the game's own: the client
+    asks for the look from the toggle ticks, the seed's file follows once the server has listed
+    the items (`offline_seed`: the client looks again each poll until it has the text, then every
+    5 s), and labels sent with no randomizer save loaded are for no seed. In that window an Area
+    Map picked up in the seed's own save reveals as the game's does;
+  - with no client (or a client that said `other_save`), the save of the seed the offline look
+    has dressed ("AP saves without the client").
+
+  It does the same for the ASSIST lock and the disk count ("The assist menu", "The OS Install
+  Disks goal"): the helper does not wait for the client to say the save left, so with the server
+  down another save, whether a normal one, a plain randomizer one or another known seed's, has
+  the game's own Area Map, ASSIST and scanner line, and they come back when the seed's save is
+  loaded. Stand-in tests only, not run in game.
 - **Put back:** `intel off`, with the rest, and each frame call in a save that is not the seed's
   (above); an unload refuses while it cannot.
 - **Received:** a client's `popup 49` in an `apply` with `intel` (sent for a seed whose Area
@@ -1547,10 +1555,13 @@ second review round's fix (the counted set started over when the helper is attac
 unless that attach loaded it), stand-in tested only.
 
 The scanner's line, the equipment screen's disk, the pause row's count and the disk glyph show
-only while a save of a seed the helper knows is loaded (`Game::seed_look_loaded`, "Intel
-Chips"); in another save or none the game's own are back whatever the client last sent (stand-in
-tests only, not run in game). `discs_status` describes the last equipment screen built in such a
-save, so it is not updated while another save's screen is up.
+only while the loaded save is the look's own (`Game::seed_look_loaded`, "Intel Chips"); in
+another save or none the game's own are back whatever the client last sent (stand-in tests only,
+not run in game). The scanner's text is looked at every 30th frame call (`kScanFrames`), so its
+line follows the save up to 30 frame calls late; the rest follow it in the same frame call.
+`discs_status` describes the last equipment screen built in such a save, so it is not updated
+while another save's screen is up. Another slot of the same seed loaded during a drop shows the
+last slot's count (the client's, for the slot it set it in).
 
 Put back: `discs` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way
@@ -1665,8 +1676,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   a save it has not dressed is loaded: one loaded after a drop's save was left, or the one in play
   when the player disconnects. Such a save then gets this look and its notice too. The client
   keeps the helper for a save it dressed before a drop (its look stays, in that seed's save only:
-  another save loaded during the drop has the game's own Intel Chip, ASSIST and scanner line, put
-  back by the helper itself; stand-in tests only, not run in game), in the ending (its hold),
+  another save loaded during the drop, a normal one or another seed's, has the game's own Intel
+  Chip, ASSIST and scanner line, put back by the helper itself; stand-in tests only, not run in
+  game), in the ending (its hold),
   and at the title, where after a drop an armed new game stays armed until a save is loaded. It
   attaches again on connecting, before it gives any item; an attach that fails, for a helper that
   may still come ("Getting in"), holds the items back for up to 30 s (counted afresh at each
@@ -2248,7 +2260,10 @@ the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe cli
   again, a client gone drops), the received shield, scraps' drops, traps and death, this world's own
   traps and disks watched by their map cells (a pickup, a load that is none, a pickup a load undid,
   made again before play settled, or carried to another slot's save, and a TELEPORT TO's countdown
-  and load; an own disk's count with no client), the ASSIST watch and the scanner's text, and RETURN
+  and load; an own disk's count with no client), the ASSIST watch and the scanner's text, the Intel
+  Chip, ASSIST lock, scanner line, equipment screen and pause row applied only in the look's own
+  save (a client's seed put or its labels, another known seed's save, a normal save, none, the
+  client gone, the offline look in its save), and RETURN
   HOME WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
   request lapsing outside home's cell, at a start that is not home too, the `mission_prompt` parser,
   a death's own fade left alone, the helper's own popup holding the fade while it is the game's last

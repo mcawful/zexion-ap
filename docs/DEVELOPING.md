@@ -207,9 +207,11 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   2026-10-25; a received chip's own popup before its hint: 2026-11-08 ("Intel Chips"; "Popups");
   one received while the client was disconnected, its hint made once after the reconnect:
   2026-11-08 (develop 5597753). Not run in game: a received chip's two popups held for the next
-  load; the helper putting back the Intel Chip, the ASSIST lock and the scanner's line in another
-  save loaded while the server connection is down (`native/README.md`, "Intel Chips"; stand-in
-  tests only).
+  load; the helper putting back the Intel Chip, the ASSIST lock and the disk count (the scanner's
+  line, the equipment screen, the pause row) in another save loaded while the server connection
+  is down, and applying them again in the seed's own save (`native/README.md`, "Intel Chips";
+  stand-in tests only). Also not run in game: the look waiting for the client's seed file on a
+  first connection.
 - Area Maps kept in their own world with Area Map Hints off, so the game's own pickup reveals
   the map around the square it lay in: 2026-11-09 (develop 4205871; `docs/re/locations.md`,
   "Where the world departs from the game"; why: `docs/re/memory.md`, "Intel Chips"). Not run in

@@ -193,6 +193,9 @@ public:
     bool ap_save_loaded() const;
     void watch_feats();
     void add_known_seeds(const std::vector<OfflineSeed>& seeds);
+    // Game thread: the seed file the client has put is its own seed, the one its look is for;
+    // dropped when it goes away (client_gone).
+    void note_client_seed(const OfflineSeed& seed);
     size_t known_seeds() const { return known_seeds_.size(); }  // tests
     void restore_feats();
     void release_steam() { feats_.release_steam(); }
@@ -566,11 +569,13 @@ private:
     int map_seed_passes_ = 0;  // map looks in a row that read the labels' seed loaded (to 2)
     // The labels' seed (the loaded item table and start when set): the map changes only in it.
     std::optional<OfflineSeed> labels_seed_;
+    std::optional<OfflineSeed> client_seed_;  // the client's own seed (its item table and start)
     // That seed's save loaded, in play or in a menu (such as the map).
     bool labels_seed_loaded() const;
-    // A save the seed's look applies in: a known seed's save is loaded (ap_save_loaded), and
-    // while labels are held, the labels' seed's. The Intel Chip, the ASSIST lock and the disk
-    // count (the scanner's line, the equipment screen, the pause row) show only then.
+    // A save the seed's look applies in: the dressed offline seed's, or with a client, its own
+    // seed's (note_client_seed; until it has put it, the labels' seed's). The Intel Chip, the
+    // ASSIST lock and the disk count (the scanner's line, the equipment screen, the pause row)
+    // show only then.
     bool seed_look_loaded() const;
     bool discs_shown() const;
     MapCursorNames map_names_;

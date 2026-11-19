@@ -290,11 +290,14 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
     helper, told = ctx.helper, ctx.told
     if helper is None or time.monotonic() < told.offline_at:
         return
-    told.offline_at = time.monotonic() + OFFLINE_WRITE_SECONDS
     seed_name = ctx.server_seed_name or ctx.seed_name  # the server's (RoomInfo)
     if not seed_name or not ctx.slot:
         return
     config, seed = await offline_config(ctx), offline_seed(ctx, p)
+    # With the config built and no seed text yet (the server has not listed the items), the next
+    # poll looks again: the helper's look for this seed waits for its file.
+    if seed is not None or config is None:
+        told.offline_at = time.monotonic() + OFFLINE_WRITE_SECONDS
     name = offline.seed_file_name(seed_name, ctx.team, ctx.slot)
     for kind, text, file in (("config", config, ""), ("seed", seed, name)):
         if text is None or told.offline_sent.get(kind) == text:

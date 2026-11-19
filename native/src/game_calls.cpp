@@ -1390,9 +1390,23 @@ bool Game::labels_seed_loaded() const {
 }
 
 bool Game::seed_look_loaded() const {
-    // The labels' seed when the helper holds labels (a client's, or the offline look's); else any
-    // seed it knows, as the offline look and the Feats guard take an AP save.
-    return ap_save_loaded() && (!labels_seed_ || labels_seed_loaded());
+    if (!configured_ || !rando_save_loaded()) return false;
+    // The offline look (no client, or a client's other_save): the dressed seed's own save.
+    if (offline_index_ >= 0) {
+        return static_cast<size_t>(offline_index_) < offline_seeds_.size() &&
+               section_is(offline_seeds_[static_cast<size_t>(offline_index_)], at_.rando_blob);
+    }
+    // A client's look: its own seed, as it put it. Until it has, the labels' seed (held for it).
+    if (client_seed_) return section_is(*client_seed_, at_.rando_blob);
+    return labels_seed_loaded();
+}
+
+void Game::note_client_seed(const OfflineSeed& seed) {
+    OfflineSeed key;
+    key.locations = seed.locations;
+    std::memcpy(key.table, seed.table, sizeof(key.table));
+    std::memcpy(key.start, seed.start, sizeof(key.start));
+    client_seed_ = std::move(key);
 }
 
 void Game::watch_map_names() {
@@ -1722,7 +1736,6 @@ void Game::restore_ap_items() {
     put_back_ap_items();
     looks_.set_items({});
     ap_items_.set_labels({});
-    labels_seed_.reset();  // no labels held: no seed they are for (seed_look_loaded)
 }
 
 void Game::put_back_save_look() {
@@ -1786,6 +1799,7 @@ void Game::client_gone(WidgetCallback callback) {
     put_back_game(callback);
     forget_client();
     drop_client_notices();
+    client_seed_.reset();
     active_ = false;
 }
 

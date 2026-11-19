@@ -214,6 +214,23 @@ def test_a_seed_file_whose_write_failed_is_put_again(monkeypatch) -> None:
     assert len(ctx.helper.requests) == 2 and "seed" not in ctx.told.offline_sent
 
 
+def test_the_seed_file_is_looked_for_every_poll_until_there_is_one(monkeypatch) -> None:
+    # The helper's look for this seed waits for its file: with no seed text yet (the server has
+    # not listed the items) the next poll looks again, not five seconds later.
+    ctx = offline_ctx(native.HelperError("unused"))
+    ctx.helper = Refusing("stored")
+    text: list[str | None] = [None]
+    monkeypatch.setattr(ticks, "offline_seed", lambda c, p: text[0])
+    monkeypatch.setattr(ctx, "drop_helper", lambda: None, raising=False)
+    ctx.told.offline_at = 0.0
+    run(ticks.offline_tick(ctx, no_finds()))
+    assert ctx.told.offline_at == 0.0, "no seed text: looked at again next poll"
+    text[0] = "seed text"
+    run(ticks.offline_tick(ctx, no_finds()))
+    assert any(r.startswith("offline_put seed ") for r in ctx.helper.requests)
+    assert ctx.told.offline_at > 0.0, "sent: the next look in a few seconds"
+
+
 def test_the_offline_file_locks_assist_until_assist_unlock_is_received() -> None:
     # Before this seed's save is seen in a connection, conn.lock_assists is the slot data's:
     # the file follows Assist Unlock, received on an earlier connection, all the same.

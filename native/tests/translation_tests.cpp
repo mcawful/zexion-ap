@@ -357,6 +357,7 @@ void test_the_scanner_line() {
     start(game);
     g_rando_marker = 1;  // in a known seed's save only (Game::seed_look_loaded)
     game.add_known_seeds({zap::offline_seed_of(g_section)});
+    game.note_client_seed(zap::offline_seed_of(g_section));
     game.set_discs(3, 12, "COLLECT 12 OS INSTALL DISKS!", true);
     frames(game, 1);
     check(entry_text(g_small, 12) == L"COLLECT 12 OS INSTALL DISKS!", "the scanner's line");
@@ -1091,6 +1092,7 @@ void test_the_mixed_case() {
         // The scanner's line only in a known seed's save (Game::seed_look_loaded).
         g_rando_marker = 1;
         game.add_known_seeds({zap::offline_seed_of(g_section)});
+        game.note_client_seed(zap::offline_seed_of(g_section));
         game.set_discs(3, 12, "Collect 12 OS Install Disks!", true);
         frames(game, 1);
         if (language.on) {
