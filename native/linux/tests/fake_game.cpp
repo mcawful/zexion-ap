@@ -84,6 +84,8 @@ __attribute__((noinline, used)) void zap_force_seed() { asm volatile(""); }
 // +8) and the message slots. The stand-in functions keep what they were given, for the test to
 // read: the last popup's text, its sound, the HUD numbers.
 unsigned char zap_player[0x1110];
+// The game's pointer to the player in play (gMainCharacterSpriteP), at zap_player as in play.
+void* zap_main_character;
 unsigned char zap_save_loaded;  // 0: a save loaded (0xFF: none)
 unsigned char zap_cursor;       // 0: no menu up
 void* zap_records;
@@ -329,6 +331,7 @@ int main() {
     zap_text_table = zap_texts;
     zap_player[0x107A] = 2;
     zap_player[0x107B] = 3;
+    zap_main_character = zap_player;
     // The scraps' events: type 11, subtype 1, the object, F3 03 FF FF 01, then (5, 8) at +0x12,
     // sound -1 at +0x1A, 1.0f at +0x1C, the next event at +0x20 and the event's own at +0x24.
     const unsigned char spawn[0x28] = {

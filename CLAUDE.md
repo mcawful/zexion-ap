@@ -42,8 +42,9 @@ Where things are:
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
   its `install` (an empty slot, after a verified backup) and `restore` write the save folder.
   The client never writes it. The same hooks block writes to the mod's offline files,
-  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts): only the helper writes
-  them, and they change what the mod does with no client running.
+  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts; on Linux the seeds' files, in
+  `$XDG_DATA_HOME/ZexionAP`, else `~/.local/share/ZexionAP`): only the helper writes them, and
+  they change what the mod does with no client running.
 - **Ask first, every time,** before anything that changes the running game or the saves:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run (it may load
   the helper, and with or without it writes the game's map: "The client"), the client's
@@ -302,7 +303,7 @@ Committed under `.claude/`, so they apply to anyone working here:
 
 - `.claude/settings.json`: the hook `guard_protected.py` blocks writes into the game install,
   the save folder, Steam's cloud cache for the game and the mod's offline files
-  (`%LOCALAPPDATA%\ZexionAP`) (rules: its docstring; cases:
+  (`%LOCALAPPDATA%\ZexionAP`, and Linux's) (rules: its docstring; cases:
   `tests/test_guard_hook.py`). The guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.

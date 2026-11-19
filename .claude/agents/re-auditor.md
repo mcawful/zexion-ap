@@ -88,7 +88,8 @@ around the change.
    never re-sent after a disconnect.
 7. **Writes to protected folders.** Anything in `client/` or `tools/` that opens the game
    install, the save folder, Steam's cloud cache or the mod's offline files
-   (`%LOCALAPPDATA%\ZexionAP`; only the helper writes them) for writing, other than
+   (`%LOCALAPPDATA%\ZexionAP`, on Linux `$XDG_DATA_HOME/ZexionAP`, else under
+   `~/.local/share`; only the helper writes them) for writing, other than
    `save_lab.py install` and `restore` (the client writes neither of the first two). The tools'
    paths must go through `tools/protected.py` (`assert_writable`). Also flag any new path around the
    backup checks in those two.

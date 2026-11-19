@@ -100,7 +100,8 @@ worlds/zexion/ → generation → slot data → client
   the helper. A `zexion_ap.disabled` file beside them turns off the game folder's copy: neither
   the proxy nor the client loads it (a client run from source still loads its own build).
 - **The offline cache.** The client sends the helper a small file per seed it connects to and
-  the addresses it found for this build; the helper keeps them in `%LOCALAPPDATA%\ZexionAP`.
+  the addresses it found for this build; the helper keeps them in `%LOCALAPPDATA%\ZexionAP` (the
+  Linux helper the seeds alone, under `$XDG_DATA_HOME`: `native/README.md`, "The Linux helper").
   With no client, the helper uses them to give AP saves their look. With or without a client,
   they also tell it which saves are AP saves, which earn no Feats or Steam achievements.
   Deleting the folder is safe: the client sends the files again the next time it attaches to
@@ -291,8 +292,10 @@ Steam Deck"). What exists so far:
   (`native/src/game_calls.h`, built for both through `native/src/platform.h` and the Linux parts
   of the memory layer; it runs only those parts), shows other players' items as Archipelago items
   (on the map too), sets off traps, shows its text in a translation's font, and runs the OS
-  Install Disks goal (its count, this world's own disks counted at their pickup with no client, in
-  a game run a client connected in, and RETURN HOME). Tested against a stand-in game
+  Install Disks goal (its count, this world's own disks counted at their pickup with no client,
+  and RETURN HOME); it keeps the seeds' files (under `$XDG_DATA_HOME`) and, with one and no client,
+  configures itself from the game's symbols, so this world's own traps and disks work with no
+  client (the look without the client is not on Linux yet). Tested against a stand-in game
   (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job). Working in
   game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls and serving
   reads (`native/README.md`, "The Linux helper"); new games, grants, scrap's drops, Energy

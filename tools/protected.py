@@ -7,7 +7,10 @@ Four places are protected:
   ``~/.local/share``, or Flatpak Steam's: any ``Gallant Leaf/Zexion``),
 - Steam's cloud cache for the game (``Steam/userdata/<account>/3392510``),
 - the mod's offline files (``%LOCALAPPDATA%/ZexionAP``: the seed list, labels and disk counts
-  the helper keeps for play without the client). Only the helper writes them.
+  the helper keeps for play without the client; on Linux the seeds' files, in
+  ``$XDG_DATA_HOME/ZexionAP``, else ``~/.local/share/ZexionAP``, as the game's saves are, so
+  under Flatpak Steam's home too; ``.var/app/com.valvesoftware.Steam/data``, Flatpak's own
+  default ``XDG_DATA_HOME``, is covered as well). Only the helper writes them.
 
 Matching is by pattern rather than by this machine's paths, so the same rules hold on any PC.
 The write-guard hook (``.claude/hooks/guard_protected.py``) and the tools in this folder share
@@ -42,6 +45,12 @@ _PROTECTED = [
     re.compile(
         r"(?:appdata\W{0,8}local|local(?:app(?:lication)?)?data)\W{0,8}zexionap(?![\w-]|\.\w)"
     ),
+    # On Linux: ``ZexionAP`` after ``.local/share`` (Snap's ``…/common/.local/share`` too),
+    # ``XDG_DATA_HOME`` (unexpanded, or not set here) or Flatpak Steam's ``…Steam/data``.
+    re.compile(
+        r"(?:\.local\W{0,8}share|xdg_data_home|com\.valvesoftware\.steam\W{0,8}data)"
+        r"\W{0,8}zexionap(?![\w-]|\.\w)"
+    ),
 ]
 # The same folders as path components, for ``word_may_name_protected``. ``_DIGITS`` stands for
 # the Steam account id.
@@ -52,6 +61,9 @@ _PROTECTED_PARTS: list[tuple] = [
     ("userdata", _DIGITS, str(STEAM_APP_ID)),
     ("appdata", "local", "zexionap"),
     ("localappdata", "zexionap"),  # the variable left unexpanded (``$env:LOCALAPPDATA``)
+    (".local", "share", "zexionap"),  # Linux: the data folder SDL and the helper use
+    ("xdg_data_home", "zexionap"),  # the variable left unexpanded (``$XDG_DATA_HOME``)
+    ("com.valvesoftware.steam", "data", "zexionap"),  # Flatpak Steam's XDG_DATA_HOME
 ]
 
 # Environment variables that commonly prefix a path to the saves or the Steam library.
@@ -60,6 +72,7 @@ _ENV_NAMES = (
     "LOCALAPPDATA",
     "USERPROFILE",
     "HOME",
+    "XDG_DATA_HOME",  # Linux: ``$XDG_DATA_HOME/ZexionAP`` is the offline folder
     "TEMP",  # %LOCALAPPDATA%\Temp: ``$TEMP/../ZexionAP`` is the offline folder
     "TMP",
     "PROGRAMFILES(X86)",
@@ -100,22 +113,30 @@ def _local_appdata() -> str:
     return normalize(os.environ.get("LOCALAPPDATA") or "").rstrip("/")
 
 
+def _offline_bases() -> list[str]:
+    """The folders this machine's environment puts the offline folder in, read as ``normalize``
+    reads a path: ``LOCALAPPDATA`` and, on Linux, ``XDG_DATA_HOME``, each when set."""
+    data_home = normalize(os.environ.get("XDG_DATA_HOME") or "").rstrip("/")
+    return [base for base in (_local_appdata(), data_home) if base]
+
+
 def _offline_patterns() -> list[re.Pattern]:
-    """The offline folder where this machine's ``LOCALAPPDATA`` puts it, for a value that is
-    not the usual ``AppData/Local`` (the fixed pattern in ``_PROTECTED`` covers that and the
-    unexpanded variable)."""
-    base = _local_appdata()
-    if not base:
-        return []
-    return [re.compile(re.escape(base + "/zexionap") + r"(?![\w-]|\.\w)")]
+    """The offline folder where this machine's ``LOCALAPPDATA`` or ``XDG_DATA_HOME`` puts it,
+    for a value that is not the usual ``AppData/Local`` or ``~/.local/share`` (the fixed
+    patterns in ``_PROTECTED`` cover those and the unexpanded variables)."""
+    return [
+        re.compile(re.escape(base + "/zexionap") + r"(?![\w-]|\.\w)") for base in _offline_bases()
+    ]
 
 
 def _offline_parts() -> list[tuple]:
-    """The same folder as path components, for ``word_may_name_protected``."""
-    parts = _path_parts(_local_appdata())
-    if not parts or any(re.search(r"[*?\[{]", p) for p in parts):
-        return []
-    return [(*parts, "zexionap")]
+    """The same folders as path components, for ``word_may_name_protected``."""
+    found = []
+    for base in _offline_bases():
+        parts = _path_parts(base)
+        if parts and not any(re.search(r"[*?\[{]", p) for p in parts):
+            found.append((*parts, "zexionap"))
+    return found
 
 
 def _plain(text: str) -> str:

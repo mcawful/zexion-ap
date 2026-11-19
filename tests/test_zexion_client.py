@@ -1372,7 +1372,7 @@ def test_on_linux_the_labels_go_through_the_linux_helper() -> None:
 
 
 def test_on_linux_the_seeds_own_traps_are_handed_to_the_linux_helper(monkeypatch) -> None:
-    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "taken"}))
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "stored"}))
     ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
     ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
     monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps 100:103")
@@ -1383,6 +1383,29 @@ def test_on_linux_the_seeds_own_traps_are_handed_to_the_linux_helper(monkeypatch
     asyncio.run(ticks.linux_seed_tick(ctx, None))
     puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
     assert puts == [sent], "once a text"
+
+
+@pytest.mark.parametrize(
+    ("reply", "put_again"),
+    [
+        ("unchanged", False),
+        ("error no folder", False),  # taken for this run, not kept: the same would be refused again
+        ("error cannot write, error 28", False),  # its write failed: taken all the same
+        ("error bad name", True),
+    ],
+)
+def test_on_linux_a_seed_not_kept_is_put_again_only_if_it_was_not_taken(
+    monkeypatch, reply, put_again
+) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": reply}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps -")
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    ctx.linux_mod.told.offline_at = 0.0
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
+    assert len(puts) == (2 if put_again else 1)
 
 
 def test_the_linux_seed_needs_only_the_connection() -> None:

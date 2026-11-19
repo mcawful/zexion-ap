@@ -63,7 +63,9 @@ public:
     // checked against a client's (native/linux/src/helper.cpp); those it does not use are null,
     // and so are the parts that would read them (it runs only the ported parts). The hooks are
     // set_hooks'. Always "".
-    std::string configure(GameAddresses found);
+    // `active`: a client's config (false: the Linux helper's own, from the game's symbols, with
+    // no client: only what runs with none uses it, as the Windows helper's cached one).
+    std::string configure(GameAddresses found, bool active = true);
 #endif
     bool configured() const { return configured_; }
     // Game thread: a save loaded with a menu open (pause, map, equipment screen, quit menu).
@@ -264,7 +266,7 @@ public:
     void restore_translation();
     // No icons painted into the icon sheets (the Linux helper's, when the game's sprite
     // definitions are not counted as traced, so 101 and 104 may not be the sheets).
-    void hold_icon_sheets() { icon_sheets_held_ = true; }
+    void hold_icon_sheets(bool held = true) { icon_sheets_held_ = held; }
     void* map_original(void* child) const;
     void hide_title();
     std::string title_state() const;

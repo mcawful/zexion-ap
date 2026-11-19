@@ -47,10 +47,14 @@ def _ptrace_scope() -> int:
 
 
 class Game:
-    """The stand-in game, started with ``preload``; its pid and its marker's address."""
+    """The stand-in game, started with ``preload``; its pid and its marker's address.
+    ``data_home`` is its XDG_DATA_HOME: the helper's seed files go in its ``ZexionAP``, never the
+    real one."""
 
-    def __init__(self, preload: Path) -> None:
-        env = {**os.environ, "LD_PRELOAD": str(preload)}
+    def __init__(self, preload: Path, data_home: Path, **env_more: str) -> None:
+        self.offline = data_home / "ZexionAP"
+        env = {**os.environ, "LD_PRELOAD": str(preload), "XDG_DATA_HOME": str(data_home)}
+        env.update(env_more)
         self.proc = subprocess.Popen(
             [str(GAME)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
@@ -91,8 +95,8 @@ class Game:
 
 
 @pytest.fixture
-def game(request):
-    started = Game(request.param)
+def game(request, tmp_path):
+    started = Game(request.param, tmp_path / "data")
     yield started
     if started.proc.poll() is None:
         started.proc.kill()
@@ -244,7 +248,7 @@ def test_the_release_helper_does_nothing_in_another_program(game: Game) -> None:
 def test_a_disabled_file_beside_the_helper_turns_it_off(tmp_path: Path) -> None:
     shutil.copy2(HOOKTEST, tmp_path / HOOKTEST.name)
     (tmp_path / native.DISABLED_NAME).write_text("")
-    started = Game(tmp_path / HOOKTEST.name)
+    started = Game(tmp_path / HOOKTEST.name, tmp_path / "data")
     try:
         with pytest.raises(OSError):
             started.connect(timeout=0.3)
@@ -657,7 +661,7 @@ def test_this_worlds_own_trap_goes_off_at_its_pickup(game: Game) -> None:
     with game.connect() as sock:
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
-        assert ask(sock, put) == "taken"  # no offline files on Linux: the helper's alone
+        assert ask(sock, put) == "stored"
         assert ask(sock, offline.put_request("config", "x")) == "error not on the Linux build"
         # The seed's save in play (its section's table and start are the stand-in's zeros).
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"
@@ -691,7 +695,7 @@ def test_an_own_disk_picked_up_with_no_client_shows_its_count(game: Game) -> Non
     with game.connect() as sock:
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
-        assert ask(sock, put) == "taken"
+        assert ask(sock, put) == "stored"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the seed's save
         settle(sock)
         before = read_at(sock, shown, 4)
@@ -704,6 +708,120 @@ def test_an_own_disk_picked_up_with_no_client_shows_its_count(game: Game) -> Non
         wait_for(sock, f"read {shown:#x} 4", lambda r: r != "data " + before.decode("latin-1"))
         text = read_at(sock, stand_in("zap_shown"), 64).split(b"\x00")[0].upper()
         assert b"DISK 3" in text, text  # 1 shared + the two picked up
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_seed_put_is_kept_in_the_helpers_folder(game: Game) -> None:
+    # As the Windows helper keeps it (offline.cpp): XDG_DATA_HOME/ZexionAP/seeds/NAME.txt, written
+    # whole, "unchanged" the second time; a config is refused (the helper configures itself).
+    from client import offline
+
+    seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(100, 103)])
+    name = offline.seed_file_name("S", 0, 1)
+    with game.connect() as sock:
+        assert ask(sock, offline.put_request("seed", seed, name)) == "stored"
+        assert ask(sock, offline.put_request("seed", seed, name)) == "unchanged"
+        assert ask(sock, offline.put_request("config", "x")) == "error not on the Linux build"
+    kept = game.offline / "seeds" / f"{name}.txt"
+    assert kept.read_text() == seed
+    assert (game.offline.stat().st_mode & 0o777) == 0o700
+    assert not list((game.offline / "seeds").glob("*.tmp"))
+
+
+def test_with_a_seed_file_and_no_client_the_helper_configures_itself(tmp_path: Path) -> None:
+    # A seed file left by an earlier run: read at start, the helper configured from the game's
+    # own symbols with no client (inactive), so this world's own trap goes off at its pickup.
+    from client import offline
+
+    data = tmp_path / "data"
+    cell = 100
+    seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
+    (data / "ZexionAP" / "seeds").mkdir(parents=True)
+    (data / "ZexionAP" / "seeds" / "S-0-1.txt").write_text(seed)
+    started = Game(HOOKTEST, data)
+    try:
+        at = config_addresses()
+        with started.connect() as sock:  # reads only: no config
+            assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # its save
+            frames = int(ask(sock, "ping").split("frames=")[1])
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+            assert ask(sock, f"write {at['map_grid'] + cell:#x} 1b") == "written 1"  # picked up
+            assert wait_for(sock, "trap_status", lambda r: "set 103" in r).endswith("set 103")
+    finally:
+        if started.proc.poll() is None:
+            started.proc.kill()
+            started.proc.wait()
+
+
+def test_with_no_client_nothing_runs_while_the_player_pointer_reads_elsewhere(
+    tmp_path: Path,
+) -> None:
+    # Configured from the game's symbols, the helper touches the game only while its player
+    # pointer reads the player state the config's inventory lies in, as the client's attach
+    # checks: a pickup meanwhile goes off once it reads there again.
+    from client import offline
+
+    data = tmp_path / "data"
+    cell = 100
+    seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
+    (data / "ZexionAP" / "seeds").mkdir(parents=True)
+    (data / "ZexionAP" / "seeds" / "S-0-1.txt").write_text(seed)
+    started = Game(HOOKTEST, data)
+    try:
+        at = config_addresses()
+        pointer = stand_in("zap_main_character")
+        with started.connect() as sock:
+            player = read_at(sock, pointer, 8)
+            # Configured itself (a request that needs it taken), its trap's cell looked at.
+            assert wait_for(sock, "assists free", lambda r: r == "free") == "free"
+            assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"
+            frames = int(ask(sock, "ping").split("frames=")[1])
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+            assert ask(sock, f"write {pointer:#x} {'00' * 8}") == "written 8"  # elsewhere
+            assert ask(sock, f"write {at['map_grid'] + cell:#x} 1b") == "written 1"  # picked up
+            time.sleep(1.0)
+            assert "set 103" not in ask(sock, "trap_status")
+            assert ask(sock, f"write {pointer:#x} {player.hex()}") == "written 8"  # back
+            assert wait_for(sock, "trap_status", lambda r: "set 103" in r).endswith("set 103")
+    finally:
+        if started.proc.poll() is None:
+            started.proc.kill()
+            started.proc.wait()
+
+
+def test_a_seed_taken_but_not_kept_stays_the_helpers_when_its_client_goes(tmp_path: Path) -> None:
+    # No folder (the data folder and HOME not absolute): `error no folder`, the seed the helper's
+    # all the same, and still once the client has gone and the files were read again.
+    from client import offline
+
+    cell = 100
+    seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
+    put = offline.put_request("seed", seed, offline.seed_file_name("S", 0, 1))
+    started = Game(HOOKTEST, Path("relative"), HOME="relative")
+    try:
+        at = config_addresses()
+        with started.connect() as sock:
+            config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+            assert ask(sock, config) == "ok"
+            assert ask(sock, put) == "error no folder"
+        with started.connect() as sock:  # the client gone, the files read again: none
+            assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"
+            frames = int(ask(sock, "ping").split("frames=")[1])
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+            assert ask(sock, f"write {at['map_grid'] + cell:#x} 1b") == "written 1"
+            assert wait_for(sock, "trap_status", lambda r: "set 103" in r).endswith("set 103")
+    finally:
+        if started.proc.poll() is None:
+            started.proc.kill()
+            started.proc.wait()
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_with_no_seed_file_the_helper_waits_for_a_client(game: Game) -> None:
+    with game.connect() as sock:
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+        assert ask(sock, "intel on") == "refused not configured"
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

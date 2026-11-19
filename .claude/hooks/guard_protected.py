@@ -1,6 +1,7 @@
 """PreToolUse hook: block writes into the game install, the real saves, Steam's cloud cache for
 the game, and the mod's offline files (``%LOCALAPPDATA%\\ZexionAP``: the seed list, labels and
-disk counts the helper keeps; only the helper writes them).
+disk counts the helper keeps; on Linux the seeds' files, in ``$XDG_DATA_HOME/ZexionAP``, else
+``~/.local/share/ZexionAP``, and Flatpak's default data folder; only the helper writes them).
 
 Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows stderr to Claude.
 
@@ -86,7 +87,8 @@ _TOOLS_DIR = Path(__file__).resolve().parent.parent.parent / "tools"
 BLOCK_HINT = (
     "Blocked by .claude/hooks/guard_protected.py: this would write into the Zexion install, the "
     "real save folder, Steam's cloud cache for the game, or the mod's offline files "
-    "(%LOCALAPPDATA%\\ZexionAP). Read-only commands are fine. Save experiments go through "
+    "(%LOCALAPPDATA%\\ZexionAP, or on Linux $XDG_DATA_HOME/ZexionAP). Read-only commands are "
+    "fine. Save experiments go through "
     "tools/save_lab.py (see /save-lab), which backs up first."
 )
 
@@ -964,7 +966,8 @@ def _names_app_id(text: str, words: list[Word], protected) -> bool:
 def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     """Whether words may build a protected path from pieces: the app id as a path component
     (``_names_app_id``); a ``ZexionAP`` piece in a command that mentions ``LOCALAPPDATA`` (or
-    ``AppData/Local``, or ``GetFolderPath(28)``), however far apart, or that names ``TEMP`` or
+    ``AppData/Local``, or ``GetFolderPath(28)``; on Linux ``XDG_DATA_HOME``, ``.local/share`` or
+    Flatpak Steam's ``…Steam/data``), however far apart, or that names ``TEMP`` or
     ``TMP`` and takes its parent (a ``..`` piece, ``dirname``, ``Split-Path``, ``.Parent``); or,
     in a command that mentions ``gallant`` or ``steamapps``, a ``Zexion`` piece that starts a word
     or a quoted or comma-separated piece of one, or follows a variable or a ``…Leaf`` or
@@ -981,11 +984,13 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     # ``GetFolderPath(28)`` (or ``0x1c``) is LocalApplicationData by number. The folder counts
     # only where it ends (or a ``..`` follows): ``AppData/Local/Temp/…``, every scratch, TEMP and
     # test-folder path, is not the folder itself, and the word ``ZexionAP`` beside one is no
-    # build of the protected path.
+    # build of the protected path. On Linux the same for ``XDG_DATA_HOME``, the
+    # ``.local/share`` it defaults to, and Flatpak Steam's ``…Steam/data``.
     end = r"(?=/\.\.|(?![/\w]))"
     local = re.search(
         rf"local(?:app(?:lication)?)?data{end}|appdata/local{end}"
-        r"|getfolderpath\([^)]*?\b(?:28|0x1c)\b",
+        r"|getfolderpath\([^)]*?\b(?:28|0x1c)\b"
+        rf"|xdg_data_home{end}|\.local/share{end}|com\.valvesoftware\.steam/data{end}",
         low,
     )
     names_folder = any(c == "zexionap" for p in parts for c in p)

@@ -49,6 +49,11 @@ OFFLINE_FAILED = (
     "client won't have it, and if the mod didn't get it at all, the file select's disk counts "
     "and your own traps won't work either."
 )
+# The same on Linux, where the mod took the seed for this run but couldn't keep it.
+LINUX_OFFLINE_FAILED = (
+    "Couldn't save this seed's file for the mod (details in the log): your own traps and disks "
+    "work in this run of the game, but not in a later one started without the client."
+)
 
 # The client's window shows what the player acts on (the connection, the mod, ARCHIPELAGO,
 # warnings); what it sets up in the game for the seed is a detail, shown with --verbose.
@@ -752,7 +757,7 @@ def linux_seed(ctx: ZexionContext, p: Poll) -> str | None:
     the seed's identity (its table and start), this world's own traps and, with the OS Install
     Disks goal once the items are listed, the disks (the count every save shares and this
     world's own disks' cells, which the helper counts at their pickup with no client:
-    Game::watch_own_disks), with no labels (the Linux helper keeps no offline look: the client
+    Game::watch_own_disks), with no labels (the Linux helper has no offline look yet: the client
     gives them itself). Known from the connection's slot data, without waiting for the server's
     scouts as offline_seed does; the disks join it once the items are listed."""
     conn = ctx.conn
@@ -775,9 +780,11 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
     """With the game's Linux build: this seed's file (linux_seed) handed to the Linux helper for
     this world's own traps, which it sets off at their pickup (native/README.md, "Traps"), and
     own disks, whose count it shows at their pickup with no client, from the connection's first
-    poll and again when it changes, looked at every OFFLINE_WRITE_SECONDS. No file is kept on
-    Linux: the helper takes the text ("taken") and keeps it until the game closes. A helper that
-    fails is linux_mod_lost."""
+    poll and again when it changes, looked at every OFFLINE_WRITE_SECONDS. The helper keeps it as
+    the Windows one does, in its own folder (``stored``, ``unchanged``: native/README.md, "The
+    Linux helper"), for its later runs with no client; one it took but could not keep (no folder
+    for it, too large) is its own until the game closes, and not put again. A helper that fails
+    is linux_mod_lost."""
     mod = ctx.linux_mod
     if mod is None or time.monotonic() < mod.told.offline_at:
         return
@@ -799,9 +806,17 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
     except linux_helper.LinuxHelperError as exc:
         linux_mod_lost(ctx, exc)
         return
-    if reply == "taken":
+    kept = reply in ("stored", "unchanged")
+    # Taken for this run but not kept: no folder, too large, or its write failed.
+    unkept = reply in ("error no folder", "error too large") or reply.startswith("error cannot ")
+    if kept or unkept:
         mod.told.offline_sent["seed"] = seed
+    if kept:
         ctx.said.clear("linux seed")
+    elif unkept:
+        if ctx.said("linux seed", "not kept"):
+            logger.warning(LINUX_OFFLINE_FAILED)
+            log.warning(f"The Linux helper did not keep the seed's file: {reply}")
     elif ctx.said("linux seed", reply):
         logger.warning(
             "Zexion's mod on Linux didn't take this seed's own traps and disks; they may do "

@@ -2250,7 +2250,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
-  | `offline_put seed NAME` and the seed's file (frame) | `taken`, or `error <why>`: the seed parsed as the Windows helper's ("AP saves without the client"), kept in the helper, no file written, for this world's own traps ("Traps") and own disks ("This world's own disks, counted at their pickup", below); `offline_put config` is `error not on the Linux build` |
+  | `offline_put seed NAME` and the seed's file | `stored`, `unchanged`, or `error <why>`: the seed parsed and its file written as the Windows helper's ("AP saves without the client"), into the helper's folder ("Seed files", below), and the seed the running helper's from the next frame call whether kept or not (`error no folder`, `error too large`), for this world's own traps ("Traps") and own disks ("This world's own disks, counted at their pickup", below); `offline_put config` is `error not on the Linux build` |
   | `trap_status` (frame) | as the Windows helper's ("Traps") |
   | `discs` and `discs_status` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
   | `drop_status` (frame) | as the Windows helper's ("The pipe", "Received scrap") |
@@ -2303,7 +2303,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   put back.
   `Game` and every part it holds build there too, the Windows-only pieces of those left out:
   `Game::configure` takes the helper's checked addresses instead of resolving a client's, the
-  offline cache reads and writes no files (`src/offline.cpp`), and the Feats screen's Steam hook
+  offline cache reads and writes the seeds' files alone, with no config file (`src/offline.cpp`;
+  "Seed files", below), and the Feats screen's Steam hook
   and ending patch do nothing (`src/feats.cpp`); neither part runs.
   Tested on stand-ins (`linux/tests/newgame_tests.cpp`, and through the socket in
   `tests/test_native_linux.py`); not run in the game. Not known: whether an exception the game's
@@ -2445,10 +2446,11 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   attached; with one, its follow-up shows the count, and the cells are watched all the same, so a
   disk picked up with a client is no pickup once it goes. The seed's own disks' cells and the
   count every save shares come with the seed's text the client hands over (`offline_put seed`,
-  `ticks.linux_seed`, once the items are listed), which the helper keeps until the game closes: no
-  seed file is written on Linux yet, so this counts only in the game run a client connected in,
-  from its first put of the seed with the items listed; a disk picked up before then is not
-  counted, and nothing makes it up later. A client that goes leaves the helper with none attached
+  `ticks.linux_seed`, once the items are listed), which the helper keeps in its seed file ("Seed
+  files", below): so it counts in any later run of the game too, with no client at all (the
+  helper configured from the game's own symbols), once a client has put the seed with the items
+  listed; a disk picked up before the first such put is not counted, and nothing makes it up
+  later. A client that goes leaves the helper with none attached
   (`Game::client_left`, which `client_gone` does on Windows), and so does any connection that
   closes (a request with no reply), until the next `config`: so a client configuring on another
   connection than before takes the disks the save holds for counted at its next look
@@ -2559,13 +2561,43 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   for the requests (`tests/test_native_linux.py`: refused unconfigured, then taken; the stand-in
   opens no options menu) and with stand-ins for the client (`tests/test_zexion_client.py`); the
   lock itself is stand-in tested on Windows (`tests/menu_tests.cpp`); not run in the game.
+- **Seed files.** `offline_put seed` writes the seed's file as the Windows helper does ("AP saves
+  without the client", `src/offline.cpp`), into `$XDG_DATA_HOME/ZexionAP/seeds/NAME.txt`, else
+  under `~/.local/share` (an absolute path only): the base the game's own saves use, as SDL
+  finds it in the same process, so under Flatpak's Steam, whose home is
+  `~/.var/app/com.valvesoftware.Steam`, its `.local/share/ZexionAP` (inferred from the saves'
+  folder there: `docs/re/builds.md`, "B1 on Linux"; not seen; the folder is found once, in the
+  helper's constructor, before the game's threads run), whole, through a temporary file made
+  afresh (not through a link) and synced, then renamed over it, the folders made for the user
+  alone (mode 0700); a file is read only if it is a plain file, through no link. The serving
+  thread reads them, at most 256, newest first, when the helper starts and each time a client
+  goes, saying on stderr a file it could not read; the next frame call takes them, in place of
+  the last ones with no client and added to them with one (`Game::set_offline`,
+  `merge_offline`). A seed taken but not kept (`error no folder`, `error too large`, a write that
+  failed: the client takes each for taken, and puts it again only when it changes) stays the
+  helper's until the game closes, added again after each read. No config is kept: with a seed
+  file read and no client yet, the helper configures itself from the game's own symbols
+  (`configure_self`: the addresses a client's `config` must give, checked as one, said on
+  stderr), with no client attached, so this world's own traps and disks work with no client;
+  with no seed file it waits for a client, as before. Configured so, or once its client has gone,
+  it touches the game only while the game's player pointer (`gMainCharacterSpriteP`) reads the
+  player state the config's `inventory` lies in, as the client checks before it attaches. With a
+  disk seed's file, the pause screen's disk row shows its save's count with no client, and in a
+  translation the helper's icons are painted into the icon sheets in any save, as on Windows
+  with its cached config. The guard hook and `tools/protected.py` protect the folder as they do
+  the Windows one. Tested on the stand-in game through the socket (`tests/test_native_linux.py`:
+  a seed put stored in the stand-in's own data folder, `unchanged` the second time; with a seed
+  file at start and no client, an own trap going off at its pickup, and not while the player
+  pointer reads elsewhere; a seed not kept still the helper's after its client went; with no seed
+  file, a request refused until a client configures); not run in the game.
 - **Not on Linux yet.** The parts above that the Linux helper does not run, with a client or
   without: the Feats guard ("Feats and achievements in AP saves"), the title screen's lines ("The
   title screen's lines"), the file select's AP logo and ITEMS row ("AP saves on the file select",
   the major-item list in "Grants"), the repair of tall popups' text ("Grants and popups", below
-  the Linux bullet's), and AP saves without the client ("AP saves without the client"; this
-  world's own disks are counted at their pickup with no client, above, but only in a game run a
-  client connected in). The client says so once (`native.LINUX_NOT_READY`).
+  the Linux bullet's), and AP saves' look without the client ("AP saves without the client": the
+  labels, INTEL CHIP, ASSIST and the disk count dressed with no client, and its notices; the seed
+  files, and this world's own traps and disks with no client, are on Linux, above). The client
+  says so once (`native.LINUX_NOT_READY`).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
@@ -2578,9 +2610,9 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   - this world's own traps come from the seed's text the client hands the helper
     (`offline_put seed`, `ticks.linux_seed_tick`) at its connection's first poll (its identity
     and traps from the slot data, and the disks once the items are listed: `ticks.linux_seed`),
-    kept until the game closes: no file
-    is written, so one picked up before a client first connected since the game started does
-    nothing, and nothing makes it up later;
+    kept in its seed file ("Seed files", above), so they go off with no client in later runs
+    too; one picked up before a client first put the seed does nothing, and nothing makes it up
+    later;
   - nothing differs for RETURN HOME WITH THE DISKS? or the game's own ending: traps are held
     through them as on Windows;
   - there is no unload, so nothing waits for a running trap's patch: it is put back once its

@@ -23,6 +23,7 @@
 #include <functional>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -114,6 +115,17 @@ constexpr char kSpriteDefCount[] = "gSpriteDefCount";
 #endif
 constexpr int16_t kTracedSpriteDefs = zap::kHdIconSheet - 5;
 uint64_t g_sprite_def_count = 0;
+
+// The game's pointer to the player in play: the helper configures itself, and runs with no client
+// configured, only while it points at the player state the config's `inventory` lies in, as the
+// client checks before it attaches (client/game.py; docs/re/linux.md, "Read from the running
+// game"). In the test build, the stand-in game's.
+#ifdef ZAP_HOOKTEST
+constexpr char kPlayerPointer[] = "zap_main_character";
+#else
+constexpr char kPlayerPointer[] = "gMainCharacterSpriteP";
+#endif
+uint64_t g_player_pointer = 0;
 
 // The main program's GNU build id, and its writable segments: dl_iterate_phdr lists it first.
 int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
@@ -444,7 +456,7 @@ bool g_expected_known = false;
 bool read_own_symbols() {
     std::ifstream file("/proc/self/exe", std::ios::binary);
     std::string elf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    std::vector<std::string> names{kFrameFunction, kSpriteDefCount};
+    std::vector<std::string> names{kFrameFunction, kSpriteDefCount, kPlayerPointer};
     for (const ConfigKey& key : kConfigKeys) names.emplace_back(key.symbol);
     auto found = zap::linux_helper::find_symbols(elf, names);
     for (const std::string& name : names) {
@@ -452,6 +464,7 @@ bool read_own_symbols() {
     }
     g_frame_function = found[kFrameFunction];
     g_sprite_def_count = found[kSpriteDefCount].value;
+    g_player_pointer = found[kPlayerPointer].value;
     for (size_t i = 0; i < kConfigKeyCount; ++i) {
         g_expected[i] = found[kConfigKeys[i].symbol].value + kConfigKeys[i].offset;
     }
@@ -604,6 +617,143 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config,
     return ran ? result : "refused no frame";
 }
 
+// Game thread: the game configured with `found` (parse_config's: always the game's own, so one
+// after the first changes nothing the choice or the popups hold), a client's (`active`) or the
+// helper's own (configure_self).
+void install_config(const zap::GameAddresses& found, bool active) {
+    g_game.set_hooks({.panel = reinterpret_cast<void*>(&panel_hook),
+                      .equipment = reinterpret_cast<void*>(&equipment_hook),
+                      .equipment_panel = reinterpret_cast<void*>(&equipment_panel_hook),
+                      .mission_open = reinterpret_cast<void*>(&mission_open_hook),
+                      .mission_yes = reinterpret_cast<void*>(&mission_yes_hook),
+                      .mission_end = reinterpret_cast<void*>(&mission_end_hook),
+                      .map = reinterpret_cast<void*>(&map_hook),
+                      .options_back = reinterpret_cast<void*>(&options_back_hook)});
+    g_game.configure(found, active);
+    // The icon sheets as traced only with the game's definitions counted as traced, read again at
+    // each config (a self-config at the first frame may come before the game counts them).
+    int16_t defs = 0;
+    auto* count = reinterpret_cast<const BYTE*>(g_sprite_def_count);
+    g_game.hold_icon_sheets(count == nullptr || !zap::read(count, 0, defs) ||
+                            defs != kTracedSpriteDefs);
+}
+
+// Whether the game's player pointer reads the player state `inventory` (the game's own symbols'
+// address, g_expected) lies in.
+bool player_where_expected() {
+    uint64_t inventory = 0;
+    for (size_t i = 0; i < kConfigKeyCount; ++i) {
+        if (std::strcmp(kConfigKeys[i].name, "inventory") == 0) inventory = g_expected[i];
+    }
+    uint64_t player = 0;
+    auto* pointer = reinterpret_cast<const BYTE*>(g_player_pointer);
+    return g_expected_known && inventory != 0 && pointer != nullptr &&
+           zap::read(pointer, 0, player) && player == inventory - kInventoryInPlayer;
+}
+
+// AP saves without the client (native/README.md, "AP saves without the client"): the seeds'
+// files (offline.h) read on the serving thread at start and each time a client goes, and the
+// seeds put since; the next frame takes both (take_offline).
+std::mutex g_offline_mutex;
+std::optional<zap::OfflineFiles> g_offline_files;  // read, not yet taken
+struct PutSeed {
+    zap::OfflineSeed seed;
+    bool kept;  // its file written ("stored", "unchanged")
+};
+std::vector<PutSeed> g_put_seeds;  // put since, not yet taken
+// The folder, found once in the constructor (getenv there, before the game's threads run: never
+// while they may set the environment).
+std::wstring g_offline_folder;
+
+// Serving thread (file I/O; never the frame call). A file that could not be read is said once.
+void read_offline() {
+    zap::OfflineFiles files = zap::read_offline_files(g_offline_folder, g_build);
+    static std::string said;
+    if (!files.error.empty() && files.error != said) {
+        std::fprintf(stderr, "zexion-ap %s: seed files: %s\n", kVersion, files.error.c_str());
+        said = files.error;
+    }
+    std::lock_guard<std::mutex> lock(g_offline_mutex);
+    g_offline_files = std::move(files);
+}
+
+// Serving thread: a seed a client has just put, for the next frame (one of its name waiting is
+// replaced, as on Windows).
+void note_put_seed(zap::OfflineSeed seed, bool kept) {
+    std::lock_guard<std::mutex> lock(g_offline_mutex);
+    auto same = std::find_if(g_put_seeds.begin(), g_put_seeds.end(),
+                             [&](const PutSeed& s) { return s.seed.name == seed.name; });
+    if (same != g_put_seeds.end()) {
+        *same = {std::move(seed), kept};
+    } else {
+        g_put_seeds.push_back({std::move(seed), kept});
+    }
+}
+
+// Game thread: with no client yet, the helper configured from the game's own symbols (the
+// addresses a client's config must give: parse_config), inactive, as the Windows helper's cached
+// config is: only what runs with no client uses it. Only with a seed file read to work from, so
+// a game with none is left alone until a client configures, and only once the game's player
+// pointer reads where the config's player state is (tried again each frame until then).
+bool g_seed_files = false;  // a seed file has been read
+void configure_self() {
+    static bool failed = false;
+    if (failed || !g_seed_files || g_game.configured() || !g_expected_known) return;
+    if (!player_where_expected()) return;
+    std::string request = "config";
+    char address[32];
+    for (size_t i = 0; i < kConfigKeyCount; ++i) {
+        std::snprintf(address, sizeof address, "%#llx",
+                      static_cast<unsigned long long>(g_expected[i]));
+        request += std::string(" ") + kConfigKeys[i].name + "=" + address;
+    }
+    zap::GameAddresses found;
+    std::string why = parse_config(request, found);
+    if (why.empty()) {
+        install_config(found, false);
+        std::fprintf(stderr, "zexion-ap %s: configured from the game's symbols, no client\n",
+                     kVersion);
+    } else {
+        failed = true;  // the same symbols would fail the same: not tried again
+        std::fprintf(stderr, "zexion-ap %s: not configured with no client: %s\n", kVersion,
+                     why.c_str());
+    }
+}
+
+// Game thread: the files read last and the seeds put since, if new. Files read with no client
+// replace the last ones; with one, they are added to them (Game::set_offline, merge_offline).
+// A seed taken but not kept (no folder, a write that failed) is the helper's until the game
+// closes: added again after each read of the files replaces the seeds (set_offline).
+void take_offline() {
+    static std::vector<zap::OfflineSeed> unkept;
+    std::optional<zap::OfflineFiles> files;
+    std::vector<PutSeed> put;
+    if (g_offline_mutex.try_lock()) {
+        files = std::exchange(g_offline_files, std::nullopt);
+        put = std::exchange(g_put_seeds, {});
+        g_offline_mutex.unlock();
+    }
+    if (files) {
+        if (!files->seeds.empty()) g_seed_files = true;
+        if (g_game.active()) {
+            g_game.merge_offline(std::move(files->seeds));
+        } else {
+            g_game.set_offline(std::move(files->seeds));
+            if (!unkept.empty()) g_game.merge_offline(std::vector<zap::OfflineSeed>(unkept));
+        }
+    }
+    std::vector<zap::OfflineSeed> seeds;
+    for (PutSeed& p : put) {
+        if (!p.kept) {
+            std::erase_if(unkept, [&](const zap::OfflineSeed& s) { return s.name == p.seed.name; });
+            unkept.push_back(p.seed);
+        }
+        seeds.push_back(std::move(p.seed));
+    }
+    if (!seeds.empty()) g_game.merge_offline(std::move(seeds));  // after the files, read earlier
+    configure_self();  // each frame until it has configured, a seed file once read
+}
+
 // The requests that act on the game (native/README.md, "The Linux helper"), or nothing for one
 // core.cpp answers.
 std::optional<std::string> game_request(std::string_view request) {
@@ -612,23 +762,7 @@ std::optional<std::string> game_request(std::string_view request) {
         std::string error = parse_config(request, found);
         return on_game(
             [&] {
-                // A config's addresses are always the game's own (parse_config), so one after
-                // the first changes nothing the choice or the popups hold.
-                g_game.set_hooks({.panel = reinterpret_cast<void*>(&panel_hook),
-                                  .equipment = reinterpret_cast<void*>(&equipment_hook),
-                                  .equipment_panel = reinterpret_cast<void*>(&equipment_panel_hook),
-                                  .mission_open = reinterpret_cast<void*>(&mission_open_hook),
-                                  .mission_yes = reinterpret_cast<void*>(&mission_yes_hook),
-                                  .mission_end = reinterpret_cast<void*>(&mission_end_hook),
-                                  .map = reinterpret_cast<void*>(&map_hook),
-                                  .options_back = reinterpret_cast<void*>(&options_back_hook)});
-                g_game.configure(found);
-                // The icon sheets as traced only with the game's definitions counted as traced.
-                int16_t defs = 0;
-                auto* count = reinterpret_cast<const BYTE*>(g_sprite_def_count);
-                if (count == nullptr || !zap::read(count, 0, defs) || defs != kTracedSpriteDefs) {
-                    g_game.hold_icon_sheets();
-                }
+                install_config(found, true);
                 return std::string("ok");
             },
             false, error);
@@ -731,20 +865,16 @@ std::optional<std::string> game_request(std::string_view request) {
         return on_game([] { return g_game.drop_status(); }, false);
     }
     if (request.starts_with("offline_put ")) {
-        // No offline files here (offline.cpp): a seed's text is taken for the running helper's
-        // own traps and own disks, from the next frame, and kept until the game closes.
+        // Here, on the serving thread: the seed's file written into the helper's folder
+        // (offline.cpp, offline_folder), and its text the running helper's from the next frame
+        // (take_offline) whether the file could be kept or not, as on Windows.
         zap::OfflineSeed seed;
         std::string reply =
-            zap::put_offline_file(std::wstring(), g_build, std::string(request), &seed);
-        if (seed.name.empty()) return reply;
-        return on_game(
-            [&] {
-                std::vector<zap::OfflineSeed> seeds;
-                seeds.push_back(std::move(seed));
-                g_game.merge_offline(std::move(seeds));
-                return reply;
-            },
-            false);
+            zap::put_offline_file(g_offline_folder, g_build, std::string(request), &seed);
+        if (!seed.name.empty()) {
+            note_put_seed(std::move(seed), reply == "stored" || reply == "unchanged");
+        }
+        return reply;
     }
     if (request == "newgame_status") {
         return on_game([] { return g_game.newgame_status(); }, false);
@@ -776,6 +906,7 @@ void serve_client(int client) {
 
 void* serve(void* arg) {
     int listener = static_cast<int>(reinterpret_cast<intptr_t>(arg));
+    read_offline();  // the seeds' files, for the first frame (take_offline)
     for (;;) {
         int client = accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
         if (client < 0) {
@@ -788,6 +919,7 @@ void* serve(void* arg) {
             cred.uid == geteuid()) {
             serve_client(client);
             g_client_left = true;  // as the Windows helper does, its plan is not kept for it
+            read_offline();        // and the seeds' files read again, as there
         }
         close(client);
     }
@@ -851,6 +983,7 @@ __attribute__((constructor)) void start() {
         std::fprintf(stderr, "zexion-ap %s: no SDL_GL_SwapWindow after the helper's\n", kVersion);
     }
     g_folder = !folder.empty() && folder == folder_of("/proc/self/exe");
+    g_offline_folder = zap::offline_folder();  // here, before the game's threads (getenv)
     if (!read_own_symbols()) {
         std::fprintf(stderr, "zexion-ap %s: the game's symbols were not found: no new games\n",
                      kVersion);
@@ -909,8 +1042,14 @@ void game_frame(uintptr_t site) {
             g_game.restore_discs();
         });
     }
+    // The seeds' files read since (and, with none configured, the game's own config), before
+    // the mailbox as on Windows: a client's config this frame comes after them.
+    guarded([] { take_offline(); });
     guarded([] { g_mailbox.serve(); });
     if (!g_game.configured()) return;
+    // Configured with no client: nothing touches the game while its player pointer reads
+    // elsewhere (a load, the title before the first play), as the client's attach checks.
+    if (!g_game.active() && !player_where_expected()) return;
     try {
         g_game.watch_newgame();
     } catch (...) {

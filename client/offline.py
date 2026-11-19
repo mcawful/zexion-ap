@@ -1,7 +1,8 @@
 """What the client leaves for the in-game helper, so AP saves keep their look without it.
 
 The client sends the helper two kinds of file (``offline_put``), which it writes into
-``%LOCALAPPDATA%\\ZexionAP`` and reads when no client runs: ``config-<build>.txt``, the
+``%LOCALAPPDATA%\\ZexionAP`` (the Linux helper the seeds alone, under ``$XDG_DATA_HOME``) and
+reads when no client runs: ``config-<build>.txt``, the
 ``config`` addresses plus the first bytes of each function among them (``check KEY HEX``, used
 only if the game still holds them), and ``seeds/<seed>-<team>-<slot>.txt`` in the format
 native/src/offline.h describes. The helper writes them, not the client: a client run from a

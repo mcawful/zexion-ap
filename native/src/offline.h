@@ -1,7 +1,8 @@
 // AP saves without the client (native/README.md, "AP saves without the client";
 // docs/re/memory.md, "AP saves without the client"). The client sends each seed's file and its
 // resolved addresses (`offline_put`); the helper writes them under %LOCALAPPDATA%\ZexionAP (an
-// MSIX-packaged client's AppData writes are redirected, inferred), never the game's folder, and
+// MSIX-packaged client's AppData writes are redirected, inferred; the Linux helper the seeds
+// alone, under $XDG_DATA_HOME, else ~/.local/share), never the game's folder, and
 // reads them at start and each time a client goes away. A seed file matches a save by the
 // section's location count, item table and start record (client/save_patch.py, section_matches).
 //
@@ -82,8 +83,9 @@ struct OfflineFiles {
     std::string error;  // the last file that could not be read, and why
 };
 
-// The per-user folder (%LOCALAPPDATA%\ZexionAP), or "" if LOCALAPPDATA is not an absolute
-// path. The functions below take the folder, so tests give their own.
+// The per-user folder (%LOCALAPPDATA%\ZexionAP; on Linux $XDG_DATA_HOME/ZexionAP, else
+// ~/.local/share/ZexionAP), or "" if that base is not an absolute path. The functions below
+// take the folder, so tests give their own.
 std::wstring offline_folder();
 // Pipe thread (file I/O; never the frame call): reads the folder's config for `build` (the
 // client's `config` request, parse_config, then its check lines) and its seeds, the newest
