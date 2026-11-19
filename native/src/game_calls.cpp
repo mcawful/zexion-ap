@@ -1722,6 +1722,7 @@ void Game::restore_ap_items() {
     put_back_ap_items();
     looks_.set_items({});
     ap_items_.set_labels({});
+    labels_seed_.reset();  // no labels held: no seed they are for (seed_look_loaded)
 }
 
 void Game::put_back_save_look() {

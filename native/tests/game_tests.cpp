@@ -3341,6 +3341,37 @@ void test_the_seed_look_follows_the_save() {
     }
 }
 
+// Labels dropped (a client gone, the offline look undressed) leave no seed they are for: the next
+// seed's save, with no labels of its own, still gets its look.
+void test_the_look_after_a_labeled_seed_is_dropped() {
+    zap::Game game;
+    ready(game);
+    reset_sprites();
+    reset_texts();
+    reset_events();
+    own_stand_ins(g_records);
+    area_map_as_loaded();
+    stand_in::OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
+                                  reinterpret_cast<void*>(&assist_menu_fn));
+    g_current_menu = options.menu;
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x2F;  // seed A, with labels
+    in_seed_save(game);
+    std::map<int, zap::Label> labels;
+    zap::parse_labels("ap_labels\nlabel 3 4 414C494345", labels);
+    game.set_labels(labels);
+    game.client_gone(&chosen);
+    g_section[0x26C] = 0x30;  // seed B, a solo seed: no labels
+    game.add_known_seeds({zap::offline_seed_of(g_section)});
+    game.set_assists_locked(true);
+    game.set_intel(true);
+    for (int i = 0; i < 4; ++i) game.watch_all(&chosen);
+    check(record_name(49) == "INTEL CHIP" && options.callback() == nullptr,
+          "the next seed's save: INTEL CHIP and the lock, though the last had labels");
+    g_current_menu = nullptr;
+    leave_seed_save();
+}
+
 // The same with no client: a known seed's file dresses its save (Intel Chip, ASSIST lock, the
 // scanner's line, the pause row's count) and leaving the save puts the game's back.
 void test_the_offline_look_applies_in_its_save() {
@@ -4162,6 +4193,7 @@ int main() {
     test_received_disk_popup();
     test_received_intel_chip_popup();
     test_the_seed_look_follows_the_save();
+    test_the_look_after_a_labeled_seed_is_dropped();
     test_the_offline_look_applies_in_its_save();
     test_received_shield();
     test_own_scrap_metal_is_picked_up_as_the_games();
