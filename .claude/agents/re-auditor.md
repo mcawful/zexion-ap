@@ -28,6 +28,8 @@ around the change.
    the Linux build, an address may instead come from the binary's symbol table by name, once its
    GNU build id matches a known build, plus offsets `docs/re/linux.md` records (`CLAUDE.md`,
    "Rules"); flag a symbol's address written into code, or a symbol used without the build check.
+   `LinuxTarget.b1` in `client/linux_targets.py` is for checks only, as `Target.rvas` is: flag any
+   live use of it.
 2. **Unchecked memory access.** A read or write that does not handle: the process having exited
    or restarted (a stale handle, a new base address); a pattern that matched zero or several
    times; a null or out-of-range pointer in a chain; the game being on a build not in
@@ -102,7 +104,15 @@ around the change.
    work on the game thread that can block (pipe I/O, locks held by another thread) or throw
    past the hook; game functions called from any thread but the game's; buffers or messages
    from the pipe trusted without length checks; a change to the game not put back when a
-   client goes away or on unload (`native/README.md`, "Parts").
+   client goes away or on unload (`native/README.md`, "Parts"). The Linux helper
+   (`native/linux/`) is preloaded into every program the game's launch starts, so also check:
+   that what it does at load is safe in each of them (the game is one process among them); that
+   it exports only `SDL_GL_SwapWindow` and `SteamInternal_ContextInit` (`linux/exports.map`) and
+   no C++ runtime symbol that could stand in for the game's own; that its abstract socket stays
+   gated by `SO_PEERCRED` (only its own user); that writes into the game go through
+   `process_vm_writev` and are limited to the game's `.bss`, with code patched only by the
+   shared layer through `mprotect`; and that it never unloads, so nothing may
+   wait on an unload to undo a change (a patch with a timer puts itself back).
 
 ## Method
 

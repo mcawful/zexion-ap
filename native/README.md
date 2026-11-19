@@ -1647,7 +1647,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   client"). While the save stays dressed, each look sets that look again where it was changed: a
   client of another seed, attaching with the save in play, takes its own look back, which is not
   this save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26). A client
-  with no server connection (the server down, say) lets the helper go, as if it had closed, while
+  with no server connection (the server down, say) lets the helper go, as if it had closed (on
+  Linux it closes the Linux helper's connection, and configures it again on connecting, before
+  that poll's step: the step waits for it as after an attach), while
   a save it has not dressed is loaded: one loaded after a drop's save was left, or the one in play
   when the player disconnects. Such a save then gets this look and its notice too. The client
   keeps the helper for a save it dressed before a drop (its look stays), in the ending (its hold),
@@ -2236,7 +2238,8 @@ received items too. The client's own lines also said other players' items' label
 lock were set for the seed (not looked at in the game). Not checked: the popups' sounds and the
 HUD after the grants.
 
-Run 2, the same day and setup, the helper of 4e0203f's sources, a two-slot seed (`lab/run2/`: RunA
+Run 2, the same day and setup, the helper of 4e0203f's sources (no hash recorded: which binary ran
+is known by its sources only), a two-slot seed (`lab/run2/`: RunA
 played, RunB a plain Archipelago client with DeathLink), both with the OS Install Disks goal (16,
 3 required), DeathLink and the Landing Pod as start. Seen by the owner: the pause screen's disk
 row from 0; received disks' popups with their count notices, the pause row and the file select's
@@ -2251,7 +2254,8 @@ completed their goal." `GameUnlocks.sav` as the ending wrote it was byte for byt
 before the run (`cmp`; the title's fold of a run's Feats comes later, and an unlock already set
 before could not show). Not run in the game yet: this world's own traps and disks counted with no
 client, the scanner's line and the equipment screen's disk (not reached), the Steam Runtime
-without Flatpak, a Steam Deck.
+without Flatpak, a Steam Deck. What both runs saw, with the build and what was not seen, is
+recorded in `docs/re/linux.md`, "Seen in the running game, 2026-11-19".
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
@@ -2348,7 +2352,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
 - **The socket.** An abstract unix socket, `zexion-ap-<pid>`, `SOCK_SEQPACKET`: one request a
   message, one reply a message, one client at a time, as the Windows pipe. The next client's
   connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
-  when its first request has no reply), and a client that sends nothing for 30 s is dropped.
+  when its first request has no reply), and a client that sends nothing for 30 s is dropped (the
+  client sends `ping` every 10 s while it is configured on the connection:
+  `ticks.linux_keepalive_tick`, which runs apart from the game loop).
   The pid is the game's own, which inside Flatpak's Steam is not the host's (seen: 873 for
   the host's 33866): the client takes it from `NSpid`. An abstract socket
   has no file permissions, and any process can bind a name first: the helper serves only a
@@ -2448,9 +2454,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   number display's third argument, `true`, as the game passes it: `docs/re/linux.md`, "Mapped
   by disassembly: HUD, items, sound, popups, deaths"), Magnus Armor's suit color, then the
   popups one a frame call apart as there, each with its item's sound, waiting for their own save.
-  What differs: `menu_state` is the cursor mode on Linux, which the mouse can set to 1
-  (`docs/re/linux.md`, open): if it reads 1 in play, an `apply` is refused (`refused not in play`)
-  and popups wait. Not measured.
+  What differs: `menu_state` is the cursor mode on Linux, which the mouse can set to 1, but
+  in play it read 0 with the mouse used (2026-11-19: `docs/re/linux.md`, `menu_state`); if it
+  read 1 in play, an `apply` would be refused (`refused not in play`) and popups wait.
 
   A client that goes takes its plan with it, but its popups stay queued for their save, as on
   Windows. Tested on the stand-in game through the socket (`tests/test_native_linux.py`: an
@@ -2619,10 +2625,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     helper does not, and the look without the client (below) does not ask for it either. A Linux
     client's connection closes with any request that
     gets no reply, so the client follows a prompt it queued while it is on its way
-    (`mission_status`, `ticks.linux_finds_tick`): one dropped before it showed (`not asked`) is
-    offered again at once; one shown, answered, lapsed or ended is not, so a NO is never undone. A
-    YES whose ending had not started yet is lost with the cancel: the prompt comes after the next
-    save at the Landing Pod;
+    (`mission_status`, `ticks.linux_finds_tick`) while it is on its way (`asked`, `opening…`) and
+    after a YES until the ending has started (`yes: ending when idle…`): one the cancel dropped
+    (`not asked`) is offered again at once; one shown, lapsed or with its ending started is not
+    followed any more, so a NO is never undone;
   - the frame call also comes from a swap inside the game's `loadState()` (`docs/re/linux.md`,
     "The per-frame call"), so `watch_mission` may run mid-load, as the grants, popups, drops and
     traps may: by the code the prompt gives up an opener or a fade another transition took
@@ -2755,10 +2761,13 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   reconnect lists the items afresh: `ZexionContext.linux_full_seeds`). The file select's counts,
   from the save slots, and its logo show as on Windows ("The file select's AP logo and disk
   counts", below). What differs on Linux:
-  - a client that loses its server connection keeps the Linux helper, configured, so this look
-    does not dress the save: the client takes its labels and disk count back (no connection, no
-    seed), its INTEL CHIP and ASSIST lock stay, and no notice comes, until the server is back or
-    the client closes (the Windows client lets its helper go for the look: `leave_helper_tick`);
+  - a client that loses its server connection lets the Linux helper's connection go, as the
+    Windows client lets its helper go (`leave_helper_tick`: under the same conditions, with
+    `LinuxProcess.disconnect`), so the helper takes it for a client that went (below) and this
+    look dresses the save, its notice with it; the client configures the helper again, and
+    tells it all afresh, on its first poll with a connection, before that poll's step (stand-in
+    tests only, not run in the game). Until then it sends no `ping`, as there is no connection
+    to keep;
   - a client that goes leaves the look to dress the save again from scratch at the helper's next
     look, its not-connected notice with it, as `client_gone` does on Windows: its own parts put
     back and the look left (`leave_offline`, `linux/src/helper.cpp`), its notices not shown yet

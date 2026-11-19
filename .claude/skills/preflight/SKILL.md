@@ -21,13 +21,13 @@ helper's build, its ctest tests, and `tests/test_native_linux.py` against it) th
 does not run. Locally, `tests/test_native_linux.py` skips unless `native/build/` holds
 `libzexion_ap.so`, `libzexion_ap_hooktest.so` and `zap_fake_game` (or `ZEXION_NATIVE_BUILD`
 names another build folder); build them as `CLAUDE.md` ("Checks") shows when `native/linux/` or
-`client/linux_helper.py` changed. Locally,
+`client/linux_helper.py` changed. Also locally,
 `tests/test_native.py` skips its load test unless `native/build/Release/zexion_ap.dll` exists (or
 `ZEXION_DLL` names a build); build it as `CLAUDE.md` ("Checks") shows when `native/` or
 `client/native.py` changed. Without `sh` the hook runner's tests skip, and without the world
 linked into `.ap/` so do `test_client_agrees.py`'s; CI fails on any of these, the load
-test's missing build included (`ZEXION_REQUIRE`, `docs/DEVELOPING.md`, "Checks"), so name any
-such skip in the report.
+test's and `test_native_linux.py`'s missing builds included (`ZEXION_REQUIRE`,
+`docs/DEVELOPING.md`, "Checks"), so name any such skip in the report.
 
 ## Before you start
 

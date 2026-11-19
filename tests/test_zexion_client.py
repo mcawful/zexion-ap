@@ -1203,6 +1203,7 @@ def test_with_the_linux_build_the_step_goes_on_without_the_helper(monkeypatch, c
     the player is told nothing about it."""
     ctx, _ = failing_reattach(monkeypatch)
     ctx.game_conn.platform = "linux"
+    ctx.helper_left = False  # no Windows helper was ever let go (the Linux one: leave_helper_tick)
     monkeypatch.setattr(zc, "attach_helper", ticks.attach_helper)
     steps: list[dict] = []
 
@@ -1230,6 +1231,11 @@ class LinuxHelperStandIn:
         self.sent: list[str] = []
         self.connection = 1  # linux_helper.LinuxProcess's: the connections made
         self.connected = True
+        self.disconnects = 0
+
+    def disconnect(self) -> None:  # linux_helper.LinuxProcess's: closed, made again on use
+        self.connected = False
+        self.disconnects += 1
 
     def request(self, text: str) -> str:
         self.sent.append(text)
@@ -1615,6 +1621,9 @@ def test_on_linux_a_failed_follow_up_drops_the_linux_helper_not_the_windows_one(
         ("not asked", True, False),  # dropped before it showed: offered again
         ("asked", False, True),  # still on its way
         ("opening after the fade", False, True),
+        ("yes: ending when idle (another transition came first)", False, True),
+        ("yes: ending when idle, the screen kept black", False, True),
+        ("ending started", False, False),  # the ending is going: nothing left to drop
         ("shown", False, False),  # it reached the player: NO is not undone by a reconnect
         ("lapsed: the player left the landing pod", False, False),
     ],
@@ -1690,3 +1699,113 @@ def test_on_linux_the_helper_retry_leaves_the_linux_helpers_plan_alone(caplog) -
         assert not asyncio.run(ticks.attach_helper(ctx))
     assert ctx.conn.newgame is state.NewGame.ARMED  # not reset as drop_helper would
     assert not [r for r in caplog.records if r.name == "Client"]  # nothing to say there
+
+
+# --- the Linux helper let go while no connection steps, and kept from going silent --------------
+
+
+def linux_away(shown: str = game.IN_PLAY, replies: dict | None = None) -> zc.ZexionContext:
+    """A dropped connection, the Linux build showing ``shown``, its helper configured."""
+    ctx = context(connection(), linux_game({"config": "ok", **(replies or {})}), dropped=True)
+    ctx.game_conn.shown = shown
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    return ctx
+
+
+def test_on_linux_a_save_loaded_while_dropped_lets_the_linux_helper_go(caplog) -> None:
+    # Its lang every 5 s would keep the helper's client open for good: the helper dresses the save
+    # itself once the connection closes, as the Windows helper does when it is let go.
+    ctx = linux_away()
+    ctx.conn.newgame = state.NewGame.ARMED
+    with caplog.at_level(logging.DEBUG):
+        asyncio.run(zc.leave_helper_tick(ctx))
+    assert ctx.linux_mod is None and ctx.helper_left
+    assert ctx.game_conn.pm.disconnects == 1 and ctx.conn.newgame is None  # armed again later
+    assert any("Not connected" in r.getMessage() for r in caplog.records)
+
+
+def test_on_linux_the_helper_let_go_is_not_configured_while_no_connection_steps() -> None:
+    ctx = linux_away()
+    asyncio.run(zc.leave_helper_tick(ctx))
+    pm = ctx.game_conn.pm
+    sent = len(pm.sent)
+    asyncio.run(ticks.linux_newgame_tick(ctx))  # a poll with no connection: not configured again
+    asyncio.run(zc.leave_helper_tick(ctx))  # nor let go twice
+    assert ctx.linux_mod is None and len(pm.sent) == sent and pm.disconnects == 1
+    ctx.slot = 1  # a connection steps: configured again, before that poll's step
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is not None and pm.sent[sent].startswith("config ")
+
+
+def test_on_linux_a_reconnect_holds_the_step_until_the_helper_is_configured(monkeypatch) -> None:
+    # As after a Windows helper let go (helper_back_by): the step gives nothing with no popup.
+    ctx = linux_away()
+    asyncio.run(zc.leave_helper_tick(ctx))
+    ctx.game_conn.pm.replies["config"] = "refused"  # not taken when the connection comes back
+    ctx.slot = 1
+    steps: list[dict] = []
+
+    def step(g, received, **kwargs):
+        steps.append(kwargs)
+        raise game.GameNotRunning("Zexion is not running")
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert steps and not steps[0]["give"] and not ctx.helper_left
+
+
+@pytest.mark.parametrize(
+    ("shown", "dressed", "holding"),
+    [(game.NO_SAVE, False, False), (game.IN_PLAY, True, False), (game.IN_PLAY, False, True)],
+)
+def test_on_linux_the_helper_is_kept_where_the_windows_one_is(shown, dressed, holding) -> None:
+    ctx = linux_away(shown)
+    ctx.seed_state.dressed, ctx.seed_state.session.holding = dressed, holding
+    mod = ctx.linux_mod
+    asyncio.run(zc.leave_helper_tick(ctx))
+    assert ctx.linux_mod is mod and not ctx.helper_left and ctx.game_conn.pm.disconnects == 0
+
+
+def test_on_windows_nothing_is_let_go_without_a_helper_or_a_linux_helper() -> None:
+    ctx = context(connection(), Showing(game.IN_PLAY), dropped=True)
+    asyncio.run(zc.leave_helper_tick(ctx))
+    assert not ctx.helper_left
+
+
+def test_on_linux_the_client_pings_the_helper_it_is_attached_to() -> None:
+    # The helper drops a client silent for 30 s: the ping keeps it, whatever the poll waits on.
+    ctx = linux_away(replies={"ping": "pong frames=1"})
+    asyncio.run(ticks.linux_keepalive_tick(ctx))
+    assert ctx.game_conn.pm.sent[-1] == "ping"
+
+
+def test_on_linux_the_ping_is_left_to_a_helper_not_configured_on_this_connection() -> None:
+    ctx = linux_away(replies={"ping": "pong frames=1"})
+    pm = ctx.game_conn.pm
+    sent = len(pm.sent)
+    pm.connection = 2  # made again since: the poll's ticks configure it again
+    asyncio.run(ticks.linux_keepalive_tick(ctx))
+    ctx.linux_mod = None  # let go, or lost
+    asyncio.run(ticks.linux_keepalive_tick(ctx))
+    assert len(pm.sent) == sent
+
+
+def test_a_ping_that_fails_is_left_to_the_poll() -> None:
+    ctx = linux_away(replies={"ping": linux_helper.NoReply("no answer")})
+    asyncio.run(ticks.linux_keepalive_tick(ctx))  # no error; the poll finds the connection closed
+    assert ctx.linux_mod is not None
+
+
+def test_the_ping_is_sent_every_few_seconds_to_stay_inside_the_helpers_30(monkeypatch) -> None:
+    assert ticks.LINUX_KEEPALIVE_SECONDS * 2 < 30
+    ctx = linux_away(replies={"ping": "pong frames=1"})
+    ctx.exit_event = types.SimpleNamespace(is_set=lambda: len(naps) >= 2)
+    naps: list[float] = []
+
+    async def nap(seconds: float) -> None:
+        naps.append(seconds)
+
+    monkeypatch.setattr(zc.asyncio, "sleep", nap)
+    asyncio.run(zc.keepalive_loop(ctx))
+    assert naps == [ticks.LINUX_KEEPALIVE_SECONDS] * 2
+    assert ctx.game_conn.pm.sent.count("ping") == 2
