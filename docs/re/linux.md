@@ -391,8 +391,7 @@ disassembly, as in the sections above. None was read in the running game.
   `load_gl` finds them with `dlsym(RTLD_DEFAULT, …)`. The other four it uses
   (`glGetTexLevelParameteriv`, `glPixelStorei`, `glTexSubImage2D`, `glIsTexture`) are not the
   game's imports: they are assumed to resolve from the same library (the test PC's
-  `libGL.so.1`, libglvnd's, exports all four: `nm -D`, 2026-11-18). That the texture behind
-  `sprite_texture` is painted as on Windows is not run.
+  `libGL.so.1`, libglvnd's, exports all four: `nm -D`, 2026-11-18). The texture behind `sprite_texture` is painted as on Windows: the AP logo the helper paints into the font's glyphs showed on an AP save's file select entry (seen in the game, 2026-11-19, B1 on Linux, Flatpak Steam; the four functions resolved there).
 
 | Field | |
 |---|---|
@@ -1154,7 +1153,7 @@ sections above. Glyph i of an entry is row i / 29, column i % 29; "the logo's ce
 | Field | |
 |---|---|
 | Value | The table above. |
-| Status | measured (by disassembly and reads of the binary and the installed `Sprites.png`, 2026-11-19), each row as its Status says; not run in the game; assumed: style `0x15` white with the file select open, the fades' effect on palette 26 glyphs (`setFade` not traced), and the helper's painting of `sprite_texture` ("item looks"); not traced: what calls the back action, and whether the delete clears a slot's key bytes |
+| Status | measured (by disassembly and reads of the binary and the installed `Sprites.png`, 2026-11-19), each row as its Status says; the AP logo seen on the file select in the game (2026-11-19, B1 on Linux, Flatpak Steam), so the helper's painting of `sprite_texture` ("item looks") and its glyphs showing work there; the disk counts not run in the game; assumed: the fades' effect on palette 26 glyphs (`setFade` not traced); not traced: what calls the back action, and whether the delete clears a slot's key bytes |
 | Method | `memory.md`'s "The file select" matched against `all.asm`: `refreshGameFile`, `displayNumberInSpriteString`, `setSpriteStringVisiblity`, `newSpriteString`, `moveSpriteString`, `SWMoveSprite`, `SaveFileMenu`, `CopyFileMenu`, `ClearFileMenu`, `SaveGameMenuAction`, `CopyGameMenuAction`, `ClearGameMenuAction`, the four select actions, `BackoutFromDifficulty`, `BackoutFromClear`, `BackoutFromCopy`, `syncSaveGameMenu`, `SaveFileReturn`, `SaveGamePlayerCursor` (no write to an entry's glyphs), `updateGame`'s exit action and `setFade`'s calls, read by hand (cut into scratch files, not kept); a census of `refreshGameFile`'s callers and of the `0xF` calls by `grep` and `awk` over `all.asm`; the strings read from the binary's `LOAD` segments, and `Files/Sprites.png`'s alpha read with Pillow from the install, found through `tools/protected.py`'s `game_dir()`, by scratch Python scripts, not kept |
 | Build | B1 (Linux: `lab/linux-b1/Zexion`, SHA-256 `cd64cd9ec469…`), against B1 (Windows) as `memory.md` records it, and `native/src/files.cpp`, `files.h` and `game_calls.cpp` as of 2026-11-19 |
 | Evidence | `lab/linux-b1/all.asm`, 2026-11-19, at the addresses the table cites, read in one pass with no second review. From the binary: the entry strings at `0x693850` (145 characters) and `0x69383E` (15), the label's text at `0x695298`, the titles at `0x6954A1`, `0x69528B` and `0x6952EC`. The installed `Files/Sprites.png` (1,051,762 bytes, SHA-256 beginning `91d1e9422e40`, the one "item looks" read): the six cells 0 opaque pixels |

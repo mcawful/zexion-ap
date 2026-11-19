@@ -307,17 +307,17 @@ What there is:
   out of AP saves, with the Feats screen's note, and repairs tall popups' text. Tested against a
   stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job).
   Working in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls
-  and serving reads; 2026-11-19: new games (ARCHIPELAGO), grants with their popups, the title's
-  lines, the file select's AP logo, the look without the client, and `menu_state` read in play
-  with the mouse used (`native/README.md`, "The Linux helper"); scrap's drops, Energy Shields,
-  DeathLink's deaths, Intel Chips, the ASSIST lock, labels, traps, translations, the disks' goal,
-  the file select's counts and ITEMS row, the Feats guard and the tall text's repair are not run
-  in the game yet (the client's lines said Intel Chips, the ASSIST lock and the labels were set;
-  not looked at). How to run it in the game, and what to try first: `native/README.md`, "Running
-  it in the game". The most likely first failure: on Linux `menu_state` is the game's cursor mode
-  (`gCursorMode`), which the mouse may set to 1 in play, so that `apply` answers `refused not in
-  play` and popups wait (`re/linux.md`, `menu_state`: open). `tools/helper.py status` finds the
-  game, checks its build, makes sure the socket is the game's, and reads its memory through it
+  and serving reads; 2026-11-19: new games (ARCHIPELAGO), grants with their popups, both traps, an
+  Energy Shield, location checks, an Intel Chip and its hint, popups in English(HD) and Japanese,
+  the title's lines, the file select's AP logo and ITEMS row, the look without the client, and
+  `menu_state` read in play with the mouse used (`native/README.md`, "The Linux helper"); scrap's
+  drops, DeathLink's deaths, the disks' goal and the file select's counts, the Feats guard and the
+  tall text's repair are not run in the game yet (the client's lines said the ASSIST lock and the
+  labels were set; not looked at). How to run it in the game, and what to try first:
+  `native/README.md`, "Running it in the game". `menu_state` is the game's cursor mode on Linux
+  (`gCursorMode`), which the mouse may set to 1, but only in menus: in play it stays 0 (read live,
+  2026-11-19: `re/linux.md`, `menu_state`). `tools/helper.py status` finds the game, checks its
+  build, makes sure the socket is the game's, and reads its memory through it
   (`client/linux_helper.py`); `helper.py load` and `unload` are Windows-only. `tools/grant.py` and
   `check_patterns.py --live` attach as the client does (`game.Game.attach`), so through the Linux
   helper, `grant.py set` writing through its `write` (no such run recorded); `--live` prints each

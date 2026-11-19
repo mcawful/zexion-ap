@@ -76,10 +76,11 @@ folder on Windows; on Linux and macOS it is `.venv/bin/`, in every command in th
 the mod supports, the helper, `client/process.py` (the Windows API) and the live tools
 `memscan.py` and `helper.py load` and `unload` are Windows-only. The client also runs against the
 game's Linux build, which has a helper of its own that runs every part of the Windows helper's but
-unloading (run in the game, 2026-11-19: new games, grants with their popups, the title screen's
-lines, the file select's AP logo and the look without the client; the rest not yet), and so do
-`grant.py`, `check_patterns.py --live` and `helper.py status`
-([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
+unloading (run in the game, 2026-11-19: new games, grants with their popups, traps, Energy
+Shields, checks, Intel Chips, translations, the title screen's lines, the file select's AP logo
+and ITEMS row and the look without the client; the rest not yet), and so do `grant.py`,
+`check_patterns.py --live` and `helper.py status` ([`docs/DEVELOPING.md`](docs/DEVELOPING.md),
+"Platforms").
 
 uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
 (`--user` leaves it off `PATH`); or uv's own installer
@@ -158,11 +159,12 @@ Nothing in `tests/` needs the game, and CI never runs it.
   too, translations, the OS Install Disks goal, AP saves' look without the client, the file
   select's AP logo, disk counts and ITEMS row, the title screen's lines, Feats and Steam
   achievements kept out of AP saves and tall popups' text repaired (run in the game for new games,
-  grants with their popups, the title screen's lines, the file select's AP logo and the look
-  without the client, 2026-11-19; the rest not yet): [`docs/DEVELOPING.md`](docs/DEVELOPING.md),
-  "Platforms". `/reload_mod` unloads it and loads it again a few seconds later (for a misbehaving
-  mod; popups still queued are lost); on Linux, where the Linux helper stays for the game's run,
-  it says to restart Zexion instead.
+  grants with their popups, traps, Energy Shields, checks, Intel Chips, translations, the title
+  screen's lines, the file select's AP logo and ITEMS row and the look without the client,
+  2026-11-19; the rest not yet): [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms".
+  `/reload_mod` unloads it and loads it again a few seconds later (for a misbehaving mod; popups
+  still queued are lost); on Linux, where the Linux helper stays for the game's run, it says to
+  restart Zexion instead.
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper, and the client says so (its own build, `native/build` or
   `ZEXION_DLL`, still loads).
