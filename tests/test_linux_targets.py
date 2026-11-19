@@ -90,6 +90,7 @@ B1_HELPER_SYMBOLS = [
     ("_Z9PauseGamev", 0x6189E2, 0xC2B, 2),
     ("_Z22refreshPauseFromOptionP14GameMenuScreen", 0x618777, 0x26B, 2),
     ("gExitActions", 0x12F5720, 0x80, 1),
+    ("_Z17PlayerDestructionP9SpriteRecc", 0x51C15C, 0x11BF, 2),
 ]
 
 

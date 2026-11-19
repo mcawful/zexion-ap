@@ -283,7 +283,7 @@ class ZexionContext(CommonContext):
         queued = self.seed_state.deaths.receive()
         if queued > 1:
             detail(f"DeathLink: {queued} deaths are queued, dealt one after another.")
-        if self.helper is None:
+        if self.helper is None and self.linux_mod is None:  # neither helper: on Linux, its own
             logger.warning(
                 "DeathLink: the Zexion mod isn't running, so this death waits until it is."
             )

@@ -1473,6 +1473,25 @@ def test_on_linux_the_poll_asks_the_linux_helper_for_shields() -> None:
     assert zc.shields_due(ctx, seed)
 
 
+def test_on_linux_a_received_death_is_not_said_to_wait_for_the_mod(caplog, monkeypatch) -> None:
+    # The Linux helper deals it (ticks.deathlink_tick): no "the Zexion mod isn't running".
+    base = zc.ZexionContext.__mro__[1]  # CommonContext's stand-in here
+    monkeypatch.setattr(base, "on_deathlink", lambda self, data: None, raising=False)
+    conn = connection()
+    conn.death_link_on = True
+    ctx = context(conn, linux_game({"config": "ok"}))
+    ctx.helper = None
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    death = {"time": 1.0, "source": "Other", "cause": "Other died."}
+    with caplog.at_level("WARNING"):
+        ctx.on_deathlink(death)
+        assert not any("isn't running" in r.getMessage() for r in caplog.records)
+        ctx.linux_mod = None  # no helper of either kind: said
+        ctx.on_deathlink(dict(death, time=2.0))
+    assert sum("isn't running" in r.getMessage() for r in caplog.records) == 1
+    assert ctx.seed_state.deaths.owed == 2
+
+
 def test_on_windows_the_linux_tick_does_nothing() -> None:
     ctx = context(connection(), Running(game.NO_SAVE))
     asyncio.run(ticks.linux_newgame_tick(ctx))

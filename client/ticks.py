@@ -8,7 +8,7 @@ Each tick asks the helper only when something changed or a retry is due, and kee
 told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs them (its
 ``poll``, through ``side_tick``, so a failing one never stops items or checks), only while a
 helper is attached, except offline_tick, shields_tick (run with the Windows helper or the Linux
-one: zexion_client.shields_due) and deathlink_tick, which check.
+one: zexion_client.shields_due) and deathlink_tick (either helper), which check.
 """
 
 from __future__ import annotations
@@ -534,7 +534,8 @@ async def send_shield_count(ctx: ZexionContext, sh: shields.Shields, key: str) -
 
 async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
     """Send a death of the player's own to the other players, and deal the ones received from
-    them, queued, through the helper, one each time the player is in play (client/deathlink.py)."""
+    them, queued, through the helper (with the game's Linux build, the Linux helper), one each
+    time the player is in play (client/deathlink.py)."""
     seed = ctx.seed_state
     deaths = seed.deaths
     now = time.monotonic()
@@ -552,10 +553,37 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
         deaths.owed = 0
         detail("DeathLink: the ending began, so the received deaths queued are dropped.")
     helper = ctx.helper
-    if not deaths.owed or helper is None or state_now != game.IN_PLAY or now < seed.death_retry_at:
+    mod = ctx.linux_mod if helper is None else None  # the game's Linux build: its helper's
+    if not deaths.owed or (helper is None and mod is None):
+        return
+    if state_now != game.IN_PLAY or now < seed.death_retry_at:
         return
     deaths.dealing(now)  # a death seen after a lost reply is this one
-    reply = await asyncio.to_thread(helper.request, "die", native.APPLY_SECONDS)
+    if helper is not None:
+        reply = await asyncio.to_thread(helper.request, "die", native.APPLY_SECONDS)
+    else:
+        try:
+            reply = await asyncio.to_thread(mod.request, "die")
+        except linux_helper.NoReply as exc:
+            # It may have been dealt: a death seen soon is this one, soon from now (a reply that
+            # timed out took the socket's whole timeout, longer than DEALT_SECONDS).
+            deaths.dealing(time.monotonic())
+            linux_mod_lost(ctx, exc)
+            return
+        except linux_helper.LinuxHelperError as exc:
+            deaths.refused()  # it never reached the Linux helper: still queued
+            linux_mod_lost(ctx, exc)
+            return
+        except Exception:  # not sent (a cancellation, which may still deliver it, stays dealing)
+            deaths.refused()
+            raise
+    if mod is not None and reply == "error unknown request" and ctx.said("linux mod", "die"):
+        # A Linux helper of this version built before deaths were ported: they wait for it.
+        logger.warning(
+            "Zexion's mod in the game is older than this client and can't deal DeathLink "
+            "deaths: copy this client's libzexion_ap.so into the game's folder and restart "
+            "Zexion. Received deaths wait until then."
+        )
     if reply == "died":
         deaths.dealt(time.monotonic())
         ctx.said.clear("death")

@@ -521,7 +521,8 @@ def helper_failed(exc: native.HelperError) -> str | None:
     if isinstance(exc, native.LinuxPartial):
         return (
             "On Linux the Zexion mod starts new games of this seed, shows your items' popups and "
-            f"other players' items, and sets off traps, but {exc}."
+            "other players' items, sets off traps, and gives received Energy Shields and "
+            f"DeathLink deaths, but {exc}."
         )
     meanwhile = "new games of this seed can't be started, and items arrive without popups."
     if isinstance(exc, native.ModMismatch):

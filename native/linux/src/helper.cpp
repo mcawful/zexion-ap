@@ -345,6 +345,8 @@ constexpr ConfigKey kConfigKeys[] = {
     {"fade", &G::fade, zap::fade_state::kSize, "gGameState", 0x13448},
     {"fade_level", &G::fade_level, 1, "gGameState", 0x138A3},
     {"routine_table", &G::routine_table, 16 * sizeof(void*), "gExitActions", 0},
+    // DeathLink's received deaths (Game::kill): the player's death, as the damage code calls it.
+    {"death_fn", &G::death_fn, 0, "_Z17PlayerDestructionP9SpriteRecc", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -423,6 +425,7 @@ constexpr ConfigKey kConfigKeys[] = {
     {"fade", &G::fade, zap::fade_state::kSize, "zap_fade", 0},
     {"fade_level", &G::fade_level, 1, "zap_fade_level", 0},
     {"routine_table", &G::routine_table, 16 * sizeof(void*), "zap_routines", 0},
+    {"death_fn", &G::death_fn, 0, "zap_death", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -703,6 +706,9 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "shield") {  // a received Energy Shield (game_calls.h, spawn_shield)
         return on_game([] { return g_game.spawn_shield(zap::ticks_ms()); }, false);
     }
+    if (request == "die") {  // a DeathLink death received (game_calls.h, kill)
+        return on_game([] { return g_game.kill(zap::ticks_ms()); }, false);
+    }
     if (request == "drop_status") {  // the received scraps' drops (game_calls.h): live checks
         return on_game([] { return g_game.drop_status(); }, false);
     }
@@ -861,6 +867,10 @@ void game_frame(uintptr_t site) {
         } catch (...) {
         }
     };
+    // First, as the Windows helper's frame: the cell clock a death, a shield or a drop waits on
+    // (settled) is this frame's when the mailbox's requests run (note_play does nothing until
+    // configured).
+    guarded([] { g_game.note_play(zap::ticks_ms()); });
     // A client's popups stay queued for its save, as on Windows; its plan and its labels go (the
     // records, the popup's width and the pixels put back: no offline look keeps them here).
     // Before the mailbox: the serving thread marks a client gone before it takes the next one,
@@ -876,7 +886,6 @@ void game_frame(uintptr_t site) {
     }
     guarded([] { g_mailbox.serve(); });
     if (!g_game.configured()) return;
-    guarded([] { g_game.note_play(zap::ticks_ms()); });  // the traps' quarter second in play
     try {
         g_game.watch_newgame();
     } catch (...) {

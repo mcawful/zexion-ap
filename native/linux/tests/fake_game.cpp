@@ -183,6 +183,15 @@ void* zap_routines[16];
 // zap_ailments), patched in place while a trap's timer runs.
 short zap_ailments;
 unsigned char zap_halt;
+// DeathLink: the player's death (PlayerDestruction's arguments), noted: the player and kind.
+int zap_death_count;
+void* zap_death_player;
+int zap_death_kind = -1;
+__attribute__((noinline, used)) void zap_death(void* player, char kind) {
+    ++zap_death_count;
+    zap_death_player = player;
+    zap_death_kind = kind;
+}
 void zap_weapon_cool();
 // The map: the item update's two tests of the ID (zap_power_up: PowerUpMoveProc's at 0 and
 // 0x112, the code between as filler), the move procedures (entry 120 the map's: none open here)

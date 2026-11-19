@@ -206,3 +206,17 @@ def test_a_connection_made_again_that_fails_says_the_request_never_went_out(monk
         process.request("shield")
     assert not isinstance(raised.value, linux_helper.NoReply)
     assert process.connection == 1
+
+
+def test_a_socket_that_cant_be_made_again_says_the_request_never_went_out(monkeypatch) -> None:
+    process = object.__new__(linux_helper.LinuxProcess)
+    process.game, process._timeout, process._closed = None, 0.2, False
+    process._lock, process.connection = threading.Lock(), 1
+    process._helper = types.SimpleNamespace(connected=False)
+
+    def no_files(self):
+        raise OSError(24, "Too many open files")
+
+    monkeypatch.setattr(linux_helper.LinuxHelper, "__enter__", no_files)
+    with pytest.raises(linux_helper.LinuxHelperError, match="connecting to the helper again"):
+        process.request("die")

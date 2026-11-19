@@ -399,6 +399,7 @@ CONFIG_SYMBOLS = {
     "fade": "zap_fade",
     "fade_level": "zap_fade_level",
     "routine_table": "zap_routines",
+    "death_fn": "zap_death",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -610,6 +611,7 @@ def test_with_no_logos_painted_the_stand_ins_stay_the_games(game: Game) -> None:
 
 
 DISRUPTION_TIMER = 0xDC2  # the player's (native/src/trap.h)
+ENERGY = 0xCEA  # the player's current energy (native/src/game_calls.cpp, kEnergy)
 HIT_JUMPS = (0x0B, 0x33)  # the Linux build's two jne's in the hit patch (trap.h)
 
 
@@ -783,6 +785,28 @@ def test_a_received_energy_shield_is_spawned_once_the_player_has_settled(game: G
         assert ask(sock, "apply\npopup 50 from Tester") == "applied"
         time.sleep(1.5)
         assert read_at(sock, calls, 4) == (1).to_bytes(4, "little")
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_deathlink_death_is_dealt_as_the_damage_code_deals_one(game: Game) -> None:
+    # `die` (Game::kill): energy 0, then the death routine with the player and kind 0, once in
+    # play in one cell for a second; refused while the game is halted.
+    at = config_addresses()
+    deaths = stand_in("zap_death_count")
+    with game.connect() as sock:
+        assert ask(sock, "die") == "refused not configured"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        halt = at["halt_flag"]
+        assert ask(sock, f"write {halt:#x} 01") == "written 1"
+        assert wait_for(sock, "die", lambda r: r != "refused not settled") == "refused halted"
+        assert ask(sock, f"write {halt:#x} 00") == "written 1"
+        assert ask(sock, "die") == "died"
+        assert read_at(sock, deaths, 4) == (1).to_bytes(4, "little")
+        player = int.from_bytes(read_at(sock, stand_in("zap_death_player"), 8), "little")
+        assert player == stand_in("zap_player")
+        assert read_at(sock, stand_in("zap_death_kind"), 4) == (0).to_bytes(4, "little")
+        assert player_word(sock, at, ENERGY) == 0
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
