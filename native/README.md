@@ -2188,14 +2188,15 @@ scrap's drops and Energy Shields (`apply`, `shield`: "Grants", "Popups", "Receiv
 (`intel on`: "Intel Chips"), locks ASSIST (`assists lock`: "The assist menu"), shows other
 players' items as Archipelago items (`ap_labels`: "Other players' items", "Other Zexion players'
 items, as themselves"), sets off traps ("Traps"), shows its text in a translation's font
-("Translations"), and runs the OS Install Disks goal, its count and RETURN HOME WITH THE DISKS?
-("The OS Install Disks goal"). It holds the Windows helper's `Game` (`src/game_calls.h`) and runs
-only those parts of it: below. None of the other parts above runs on Linux yet: the client reads
-and writes the game through it (`game.Game.attach_linux`), gives its items, labels, seed, shields,
-deaths, Intel Chips, the ASSIST lock, the disks' count, the finds' follow-ups and the Landing
-Pod's prompt through it and asks it the language (`client/linux_helper.py`'s `LinuxMod`), and
-otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested against a
-stand-in game (`tests/test_native_linux.py`).
+("Translations"), runs the OS Install Disks goal, its count and RETURN HOME WITH THE DISKS? ("The
+OS Install Disks goal"), and keeps AP saves' look without the client ("AP saves without the
+client"). It holds the Windows helper's `Game` (`src/game_calls.h`) and runs only those parts of
+it: below. None of the other parts above runs on Linux yet: the client reads and writes the game
+through it (`game.Game.attach_linux`), gives its items, labels, seed, shields, deaths, Intel
+Chips, the ASSIST lock, the disks' count, the finds' follow-ups and the Landing Pod's prompt
+through it and asks it the language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as
+without a helper; `tools/helper.py status` talks to it too. Tested against a stand-in game
+(`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
 branch copied into the game's folder: loaded by the launch options, it served `hello`
@@ -2256,6 +2257,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `drop_status` (frame) | as the Windows helper's ("The pipe", "Received scrap") |
   | `shield` (frame) | as the Windows helper's ("The pipe", "Received Energy Shields") |
   | `die` (frame) | as the Windows helper's ("The pipe", "DeathLink") |
+  | `other_save`, `client_back` (frame) | as the Windows helper's ("The pipe", "AP saves without the client") |
   | `intel on`, `intel off` (frame) | as the Windows helper's ("The pipe", "Intel Chips") |
   | `assists lock`, `assists free` (frame) | as the Windows helper's ("The pipe", "The assist menu") |
   | `mission_prompt COLUMN ROW`, `mission_status`, `mission_black` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
@@ -2346,10 +2348,10 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   - the writability checks before the records' writes read `/proc/self/maps`, which the memory
     layer keeps for 250 ms between reads, never for a range unmapped since (`mincore`), and
     drops after its own `mprotect` (`src/game_mem_linux.cpp`);
-  - a client that goes takes its labels with it, the records, the width and the pixels put
-    back at the next frame call: no offline look dresses the save here ("AP saves without the
-    client" is not ported). The client sends them again on a new connection (a request with no
-    reply ends one: `LinuxMod.current`).
+  - a client that goes takes its labels with it, the records, the width and the pixels put back at
+    the next frame call; the look without the client (below) then dresses a known seed's save
+    again with its seed file's labels. The client sends them again on a new connection (a request
+    with no reply ends one: `LinuxMod.current`).
 
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`: `ap_labels`
   refused unconfigured, then a label for the player's cell names Scrap Energy's record after it,
@@ -2432,7 +2434,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     handler takes `(widget, event)` and the pause menu's way back its menu, as on Windows
     (`equipment_panel_hook`, `options_back_hook`, `linux/src/helper.cpp`);
   - a client that goes turns the count off and puts its changes back (`set_discs`, then
-    `restore_discs`), as `drop_save_look` does on Windows: no offline look keeps it.
+    `restore_discs`), as `drop_save_look` does on Windows; the look without the client (below)
+    then sets its seed file's count again for a known seed's save.
 
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`): `discs` writes
   the scanner's Text entry as the client's line in capitals and makes the stand-in's KEYS branch
@@ -2446,11 +2449,11 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   attached; with one, its follow-up shows the count, and the cells are watched all the same, so a
   disk picked up with a client is no pickup once it goes. The seed's own disks' cells and the
   count every save shares come with the seed's text the client hands over (`offline_put seed`,
-  `ticks.linux_seed`, once the items are listed), which the helper keeps in its seed file ("Seed
-  files", below): so it counts in any later run of the game too, with no client at all (the
-  helper configured from the game's own symbols), once a client has put the seed with the items
-  listed; a disk picked up before the first such put is not counted, and nothing makes it up
-  later. A client that goes leaves the helper with none attached
+  `ticks.linux_seed` once the items are listed, then the whole seed file: `offline_seed`), which
+  the helper keeps in its seed file ("Seed files", below): so it counts in any later run of the
+  game too, with no client at all (the helper configured from the game's own symbols), once a
+  client has put the seed with the items listed; a disk picked up before the first such put is not
+  counted, and nothing makes it up later. A client that goes leaves the helper with none attached
   (`Game::client_left`, which `client_gone` does on Windows), and so does any connection that
   closes (a request with no reply), until the next `config`: so a client configuring on another
   connection than before takes the disks the save holds for counted at its next look
@@ -2474,14 +2477,15 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     ending's wrapper take none on either build;
   - the prompt checks that event 3667's handler is in the game's code through a handle that
     stands for the main binary (`main_image`, `src/game_mem_linux.cpp`);
-  - a client that goes cancels a prompt on its way, with the disks' count it turns off (the
-    screen faded back in if it was kept black), where on Windows the offline look asks for it
-    again: there is none here. A Linux client's connection closes with any request that gets no
-    reply, so the client follows a prompt it queued while it is on its way (`mission_status`,
-    `ticks.linux_finds_tick`): one dropped before it showed (`not asked`) is offered again at
-    once; one shown, answered, lapsed or ended is not, so a NO is never undone. A YES whose
-    ending had not started yet is lost with the cancel: the prompt comes after the next save at
-    the Landing Pod;
+  - a client that goes cancels a prompt on its way, with the disks' count it turns off (the screen
+    faded back in if it was kept black), where the Windows helper asks for it again as it puts its
+    parts back (`put_back_game`): the Linux helper does not, and the look without the client
+    (below) does not ask for it either. A Linux client's connection closes with any request that
+    gets no reply, so the client follows a prompt it queued while it is on its way
+    (`mission_status`, `ticks.linux_finds_tick`): one dropped before it showed (`not asked`) is
+    offered again at once; one shown, answered, lapsed or ended is not, so a NO is never undone. A
+    YES whose ending had not started yet is lost with the cancel: the prompt comes after the next
+    save at the Landing Pod;
   - the frame call also comes from a swap inside the game's `loadState()` (`docs/re/linux.md`,
     "The per-frame call"), so `watch_mission` may run mid-load, as the grants, popups, drops and
     traps may: by the code the prompt gives up an opener or a fade another transition took
@@ -2534,23 +2538,25 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
 - **Intel Chips.** `intel on` and `intel off` are taken as on Windows ("Intel Chips"), and
   `Game::watch_intel` runs at each frame call: the Area Map's record (49) named INTEL CHIP, its
   map reveal (3551) off, while on and only if the record reads as the game loads it or as the
-  helper left it; a client that goes puts the game's back (`restore_intel`), with no offline look
-  to keep it. Nothing differs on Linux: the game loads the `Objects` records as they are, and the
-  installed file's record 49 reads as `kAreaMap` (whether anything writes the records after the
-  load is not swept: the check before each write leaves one that reads otherwise alone)
-  (`docs/re/linux.md`, "Mapped by disassembly: Intel Chips"). A received one's popup and its name
-  in a translation were shared already ("Grants and popups", "Translations"). The client sends it
-  through `LinuxMod` (`ticks.linux_intel_tick`); a Linux helper of this version built before Intel
-  Chips refuses it, which the client asks again every few seconds, saying nothing. Tested on the
-  stand-in game through the socket (`tests/test_native_linux.py`: refused unconfigured, named with
-  its event off, put back by `intel off` and by the client going) and with stand-ins for the
-  client (`tests/test_zexion_client.py`); not run in the game.
+  helper left it; a client that goes puts the game's back (`restore_intel`), and the look without
+  the client (below) then names it again for a known seed's save. Nothing differs on Linux: the
+  game loads the `Objects` records as they are, and the installed file's record 49 reads as
+  `kAreaMap` (whether anything writes the records after the load is not swept: the check before
+  each write leaves one that reads otherwise alone) (`docs/re/linux.md`, "Mapped by disassembly:
+  Intel Chips"). A received one's popup and its name in a translation were shared already ("Grants
+  and popups", "Translations"). The client sends it through `LinuxMod` (`ticks.linux_intel_tick`);
+  a Linux helper of this version built before Intel Chips refuses it, which the client asks again
+  every few seconds, saying nothing. Tested on the stand-in game through the socket
+  (`tests/test_native_linux.py`: refused unconfigured, named with its event off, put back by
+  `intel off` and by the client going) and with stand-ins for the client
+  (`tests/test_zexion_client.py`); not run in the game.
 - **The ASSIST lock.** `assists lock` and `assists free` are taken as on Windows ("The assist
   menu"), and `Game::watch_assists` runs at each frame call: while locked, the options menu's
   ASSIST entry found afresh each frame call, drawn in STYLE: AUTO's style with the padlock after
   it (painted through the same unproven OpenGL path as the logos: "Other players' items" here),
   its callback cleared and moved past the panel's selectable entries, and all of it put back when
-  freed or when a client goes (no offline look keeps it here); in a translation, the entry's text
+  freed or when a client goes (the look without the client, below, then locks it again for a
+  known seed's save that disallows assists); in a translation, the entry's text
   built again with the HD padlock. Nothing the lock reads or writes differs on Linux but the
   callback's arguments, none, which the lock only clears and puts back; the options menu has one
   more way to be built again (the translation-mod screens' way back), which finding the entry
@@ -2590,14 +2596,42 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   file at start and no client, an own trap going off at its pickup, and not while the player
   pointer reads elsewhere; a seed not kept still the helper's after its client went; with no seed
   file, a request refused until a client configures); not run in the game.
+- **The look without the client.** `Game::watch_offline` runs at each frame call, before the
+  watches that apply what it sets (on Windows `watch_all` runs INTEL CHIP's and the disks' watches
+  before it, so they apply its changes a frame later there) ("AP saves without the client"): with
+  no client (configured from the game's symbols, or its client gone), or with one
+  that said `other_save`, a known seed's save is dressed once in play since it loaded, from its
+  seed file: the item labels, INTEL CHIP, the ASSIST lock and the disk count and scanner's line,
+  with the not-connected notice (or, for `other_save`, the other-seed notice) once a load; left,
+  it is put back. A client's `config` takes the look off first and withdraws the notices not
+  shown yet; the client then asks `client_back`, which pops up ARCHIPELAGO CLIENT CONNECTED. once
+  if that save was dressed (`ticks.linux_client_back_tick`, before the poll's step), and
+  `other_save` for another seed's save in play (`linux_other_save_tick`). The client hands over
+  the whole seed file, its labels included, once known (`offline_seed`, as on Windows), and what
+  the slot data alone gives until then, never after the whole file went in that client run (a
+  reconnect lists the items afresh: `ZexionContext.linux_full_seeds`). What differs on Linux:
+  - the file select's counts are not taken (the save slots' addresses are not configured: the
+    file select is not on Linux), and neither is its logo;
+  - a client that loses its server connection keeps the Linux helper, configured, so this look
+    does not dress the save: the client takes its labels and disk count back (no connection, no
+    seed), its INTEL CHIP and ASSIST lock stay, and no notice comes, until the server is back or
+    the client closes (the Windows client lets its helper go for the look: `leave_helper_tick`);
+  - a client that goes leaves the look to dress the save again from scratch at the helper's next
+    look, its not-connected notice with it, as `client_gone` does on Windows: its own parts put
+    back and the look left (`leave_offline`, `linux/src/helper.cpp`), its notices not shown yet
+    withdrawn.
+
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`: with a seed file
+  and no client, the save dressed (INTEL CHIP) with the not-connected notice; a client's config
+  taking the look back, `client_back` shown once, `other_save` dressing it again with the
+  other-seed notice, and that client gone, dressed afresh with the not-connected notice again)
+  and with stand-ins for the client (`tests/test_zexion_client.py`: the whole seed file not
+  replaced by the slot data's after a reconnect); not run in the game.
 - **Not on Linux yet.** The parts above that the Linux helper does not run, with a client or
   without: the Feats guard ("Feats and achievements in AP saves"), the title screen's lines ("The
-  title screen's lines"), the file select's AP logo and ITEMS row ("AP saves on the file select",
-  the major-item list in "Grants"), the repair of tall popups' text ("Grants and popups", below
-  the Linux bullet's), and AP saves' look without the client ("AP saves without the client": the
-  labels, INTEL CHIP, ASSIST and the disk count dressed with no client, and its notices; the seed
-  files, and this world's own traps and disks with no client, are on Linux, above). The client
-  says so once (`native.LINUX_NOT_READY`).
+  title screen's lines"), the file select's AP logo, ITEMS row and disk counts ("AP saves on the
+  file select", the major-item list in "Grants"), and the repair of tall popups' text ("Grants
+  and popups", below the Linux bullet's). The client says so once (`native.LINUX_NOT_READY`).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
@@ -2607,12 +2641,12 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     `0x35` and `0x38` bytes, the second jumps at `+0x33` and `+0x36`; `docs/re/linux.md`,
     "Mapped by disassembly: traps"), checked byte for byte but the loads, which must lead to
     `ailments`, as on Windows;
-  - this world's own traps come from the seed's text the client hands the helper
-    (`offline_put seed`, `ticks.linux_seed_tick`) at its connection's first poll (its identity
-    and traps from the slot data, and the disks once the items are listed: `ticks.linux_seed`),
-    kept in its seed file ("Seed files", above), so they go off with no client in later runs
-    too; one picked up before a client first put the seed does nothing, and nothing makes it up
-    later;
+  - this world's own traps come from the seed's text the client hands the helper (`offline_put
+    seed`, `ticks.linux_seed_tick`) at its connection's first poll (at first its identity and
+    traps from the slot data, and the disks once the items are listed: `ticks.linux_seed`; then
+    the whole seed file once known: `offline_seed`), kept in its seed file ("Seed files", above),
+    so they go off with no client in later runs too; one picked up before a client first put the
+    seed does nothing, and nothing makes it up later;
   - nothing differs for RETURN HOME WITH THE DISKS? or the game's own ending: traps are held
     through them as on Windows;
   - there is no unload, so nothing waits for a running trap's patch: it is put back once its

@@ -757,9 +757,10 @@ def linux_seed(ctx: ZexionContext, p: Poll) -> str | None:
     the seed's identity (its table and start), this world's own traps and, with the OS Install
     Disks goal once the items are listed, the disks (the count every save shares and this
     world's own disks' cells, which the helper counts at their pickup with no client:
-    Game::watch_own_disks), with no labels (the Linux helper has no offline look yet: the client
-    gives them itself). Known from the connection's slot data, without waiting for the server's
-    scouts as offline_seed does; the disks join it once the items are listed."""
+    Game::watch_own_disks), with no labels: the fallback until offline_seed's whole file, which
+    carries them for the look without the client, is known. Known from the connection's slot
+    data, without waiting for the server's scouts as offline_seed does; the disks join it once
+    the items are listed."""
     conn = ctx.conn
     if conn is None:
         return None
@@ -771,29 +772,41 @@ def linux_seed(ctx: ZexionContext, p: Poll) -> str | None:
         disc_info = (shared, hunt.required, discs.scan_line(hunt.required), own)
     cells = conn.plan.cells
     traps = [(cells[i][1] * ids.MAP_SIZE + cells[i][0], code) for i, code in conn.traps.items()]
+    # Assist Unlock lifts the lock in every save of the seed, as offline_seed has it.
+    lock = conn.lock_assists and not ctx.assists_unlocked()
     return offline.seed_text(
-        conn.plan.table, conn.plan.start, conn.intel_chip, conn.lock_assists, disc_info, None, traps
+        conn.plan.table, conn.plan.start, conn.intel_chip, lock, disc_info, None, traps
     )
 
 
 async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
     """With the game's Linux build: this seed's file (linux_seed) handed to the Linux helper for
     this world's own traps, which it sets off at their pickup (native/README.md, "Traps"), and
-    own disks, whose count it shows at their pickup with no client, from the connection's first
-    poll and again when it changes, looked at every OFFLINE_WRITE_SECONDS. The helper keeps it as
-    the Windows one does, in its own folder (``stored``, ``unchanged``: native/README.md, "The
-    Linux helper"), for its later runs with no client; one it took but could not keep (no folder
-    for it, too large) is its own until the game closes, and not put again. A helper that fails
-    is linux_mod_lost."""
+    own disks, whose count it shows at their pickup with no client, and once known the whole
+    seed file (offline_seed: its labels, Intel Chips and ASSIST, for the look without the
+    client), from the connection's first poll and again when it changes, looked at every
+    OFFLINE_WRITE_SECONDS. The helper keeps it as the Windows one does, in its own folder
+    (``stored``, ``unchanged``: native/README.md, "The Linux helper"), for its later runs with
+    no client; one it took but could not keep (no folder for it, too large, a failed write) is
+    its own until the game closes, and not put again. A helper that fails is linux_mod_lost."""
     mod = ctx.linux_mod
     if mod is None or time.monotonic() < mod.told.offline_at:
         return
     mod.told.offline_at = time.monotonic() + OFFLINE_WRITE_SECONDS
     seed_name = ctx.server_seed_name or ctx.seed_name
-    seed = linux_seed(ctx, p)
-    if not seed_name or not ctx.slot or seed is None or mod.told.offline_sent.get("seed") == seed:
+    if not seed_name or not ctx.slot:
         return
     name = offline.seed_file_name(seed_name, ctx.team, ctx.slot)
+    # The whole seed file once known (its labels, for the look with no client: offline_seed, as
+    # on Windows), else what the slot data alone gives, for this world's own traps meanwhile; but
+    # never that once the whole one went in this client run (a reconnect lists the items afresh:
+    # the poorer text would replace the file the look dresses saves from).
+    full = offline_seed(ctx, p)
+    if full is None and name in ctx.linux_full_seeds:
+        return
+    seed = full if full is not None else linux_seed(ctx, p)
+    if seed is None or mod.told.offline_sent.get("seed") == seed:
+        return
     request = offline.put_request("seed", seed, name)
     if len(request.encode()) > offline.MAX_REQUEST:  # it would end the connection
         if ctx.said("linux seed", "too large"):
@@ -811,6 +824,8 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
     unkept = reply in ("error no folder", "error too large") or reply.startswith("error cannot ")
     if kept or unkept:
         mod.told.offline_sent["seed"] = seed
+        if full is not None:
+            ctx.linux_full_seeds.add(name)
     if kept:
         ctx.said.clear("linux seed")
     elif unkept:
@@ -855,6 +870,31 @@ async def linux_discs_tick(ctx: ZexionContext, p: Poll) -> None:
         return
     try:
         await discs_helper_tick(ctx, p, mod, mod.told)
+    except linux_helper.LinuxHelperError as exc:
+        linux_mod_lost(ctx, exc)
+
+
+async def linux_client_back_tick(ctx: ZexionContext) -> None:
+    """With the game's Linux build: ARCHIPELAGO CLIENT CONNECTED for a save the Linux helper
+    dressed with no client (client_back_tick, with what it told this helper: LinuxMod.told). A
+    helper that fails is linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None or not mod.current():
+        return
+    try:
+        await client_back_tick(ctx, mod, mod.told)
+    except linux_helper.LinuxHelperError as exc:
+        linux_mod_lost(ctx, exc)
+
+
+async def linux_other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
+    """With the game's Linux build: another seed's AP save told so, and given its look, by the
+    Linux helper (other_save_tick, with LinuxMod.told). A helper that fails is linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None or not mod.current():
+        return
+    try:
+        await other_save_tick(ctx, step, mod, mod.told)
     except linux_helper.LinuxHelperError as exc:
         linux_mod_lost(ctx, exc)
 
@@ -988,11 +1028,13 @@ def how_to_play(ctx: ZexionContext, step: session.Step) -> None:
     conn.newgame_lines = ()
 
 
-async def other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
+async def other_save_tick(ctx: ZexionContext, step: session.Step, helper=None, told=None) -> None:
     """Once a load: a randomizer save of another seed in play. If it is an AP save (a seed the
     helper has a file for), the helper and the window tell the player items wait, and the save
-    gets its look (other_save; client/offline.py); a plain randomizer game is left alone."""
-    helper, told = ctx.helper, ctx.told
+    gets its look (other_save; client/offline.py); a plain randomizer game is left alone. Through
+    ``helper`` (else ctx.helper; what it was told: ``told``, else ctx.told)."""
+    helper = helper if helper is not None else ctx.helper
+    told = told if told is not None else ctx.told
     if not step.other_seed:
         # Asked again for the next such save: the helper says it once a load, and again after
         # a reconnect (Game::other_save).
@@ -1046,12 +1088,15 @@ async def language_tick(ctx: ZexionContext) -> None:
         log.info(f"The game's language: {lang}")
 
 
-async def client_back_tick(ctx: ZexionContext) -> None:
+async def client_back_tick(ctx: ZexionContext, helper=None, told=None) -> None:
     """Once per attach, once the poll before found this seed's save in play: if the helper
     dressed it with no client (client/offline.py), it pops up ARCHIPELAGO CLIENT CONNECTED
     (client_back). Asked before the poll's step, so the notice is queued ahead of the popups the
-    step hands over: those of what was received while the client was away."""
-    helper, told, load = ctx.helper, ctx.told, ctx.load
+    step hands over: those of what was received while the client was away. Through ``helper``
+    (else ctx.helper; what it was told: ``told``, else ctx.told)."""
+    helper = helper if helper is not None else ctx.helper
+    told = told if told is not None else ctx.told
+    load = ctx.load
     if told.client_back_sent or not load.seed_loaded or not load.in_play:
         return
     reply = await asyncio.to_thread(helper.request, "client_back")

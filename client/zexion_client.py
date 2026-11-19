@@ -68,6 +68,7 @@ from .ticks import (  # noqa: E402
     labels_tick,
     language_tick,
     linux_assists_tick,
+    linux_client_back_tick,
     linux_discs_tick,
     linux_finds_tick,
     linux_intel_tick,
@@ -75,6 +76,7 @@ from .ticks import (  # noqa: E402
     linux_language_tick,
     linux_mod_lost,
     linux_newgame_tick,
+    linux_other_save_tick,
     linux_replay_tick,
     linux_seed_tick,
     log,
@@ -149,6 +151,9 @@ class ZexionContext(CommonContext):
         # connection's number): one configured on another had a stretch with no client, in which
         # the helper counted this world's own disks itself (ticks.linux_newgame_tick).
         self.linux_configured_on: tuple | None = None
+        # The seed files whose whole text (offline_seed) went to the Linux helper in this client
+        # run: from then on the slot data's alone (linux_seed) never replaces it (linux_seed_tick).
+        self.linux_full_seeds: set[str] = set()
         self.helper_retry_at = 0.0
         # Let go while no connection stepped, for the helper's own look (leave_helper_tick).
         self.helper_left = False
@@ -595,6 +600,8 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.helper is not None:
         # CLIENT CONNECTED before the popups this poll's step hands over.
         await side_tick(ctx, "client-back notice", lambda: client_back_tick(ctx))
+    else:  # the game's Linux build: its own helper's
+        await side_tick(ctx, "client-back notice", lambda: linux_client_back_tick(ctx))
     try:
         followups: dict[int, str] = {}
         try:
@@ -734,6 +741,8 @@ async def poll(ctx: ZexionContext) -> None:
     if ctx.helper is not None:
         # Another seed's save: told so in the game.
         await side_tick(ctx, "other save's notice", lambda: other_save_tick(ctx, step))
+    else:  # the game's Linux build: its own helper's
+        await side_tick(ctx, "other save's notice", lambda: linux_other_save_tick(ctx, step))
     if not step.seed_matches or ctx.conn is not conn:
         return  # nothing to send, or the connection changed meanwhile
     if not looked_before:

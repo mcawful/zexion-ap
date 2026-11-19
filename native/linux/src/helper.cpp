@@ -844,6 +844,12 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "shield") {  // a received Energy Shield (game_calls.h, spawn_shield)
         return on_game([] { return g_game.spawn_shield(zap::ticks_ms()); }, false);
     }
+    if (request == "other_save") {  // a client of another seed's: the save's look kept
+        return on_game([] { return g_game.other_save(); }, true);
+    }
+    if (request == "client_back") {  // CLIENT CONNECTED, once, for a save dressed with none
+        return on_game([] { return std::string(g_game.client_back() ? "shown" : "none"); }, true);
+    }
     if (request == "assists lock" || request == "assists free") {  // the ASSIST lock (menu.h)
         const bool lock = request == "assists lock";
         return on_game(
@@ -1024,11 +1030,14 @@ void game_frame(uintptr_t site) {
     guarded([] { g_game.note_play(zap::ticks_ms()); });
     // A client's popups stay queued for its save, as on Windows; its plan, its labels, its Intel
     // Chips and its ASSIST lock go (the records, the popup's width, the entry and the pixels put
-    // back: no offline look keeps them here).
+    // back); the look without the client (watch_offline, below) may dress the save again.
     // Before the mailbox: the serving thread marks a client gone before it takes the next one,
     // so nothing that next client asks is dropped with the last one's.
     if (g_client_left.exchange(false)) {
         guarded([] { g_game.client_left(); });  // an own disk's count the helper's again
+        // The look without the client dressed again from scratch at the next look, its
+        // not-connected notice with it, as client_gone does on Windows (put_back_game).
+        guarded([] { g_game.leave_offline(); });
         guarded([] { g_game.disarm_newgame(); });
         guarded([] { g_game.restore_ap_items(); });
         guarded([] { g_game.restore_intel(); });  // the Area Map's record the game's again
@@ -1041,6 +1050,9 @@ void game_frame(uintptr_t site) {
             g_game.set_discs(0, 0, "");
             g_game.restore_discs();
         });
+        // Its notices not shown yet withdrawn (another seed's, CLIENT CONNECTED.), as client_gone
+        // does on Windows: the offline look dresses the save again with no client from here.
+        guarded([] { g_game.drop_client_notices(); });
     }
     // The seeds' files read since (and, with none configured, the game's own config), before
     // the mailbox as on Windows: a client's config this frame comes after them.
@@ -1057,6 +1069,9 @@ void game_frame(uintptr_t site) {
     }
     // The ARCHIPELAGO choice while a plan offers it, RANDOMIZER back otherwise.
     guarded([] { g_game.watch_menu(&archipelago_chosen); });
+    // An AP save's look with no client, or with one of another seed (labels, INTEL CHIP, ASSIST,
+    // the disks), set before the watches below apply it, as watch_all orders it on Windows.
+    guarded([] { g_game.watch_offline(); });
     // Other players' items: the stand-ins' records named and restyled, the logo painted, the
     // popup's width, other Zexion players' items dressed as themselves (apitem.h, looks.h).
     guarded([] { g_game.watch_map_names(); });  // the cursor's names while the map is open

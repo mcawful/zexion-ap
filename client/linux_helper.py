@@ -2,8 +2,8 @@
 find the running game, check its build, talk to the helper's socket, read the game's memory
 through it, and drive the helper's own parts (``LinuxMod``: its ``config``, new games,
 ``apply``, ``ap_labels``, ``offline_put seed``, ``discs``, ``lang``, ``shield``, ``die``,
-``intel on``/``intel off``, ``assists lock``/``assists free`` and RETURN HOME's ``mission_*``
-requests).
+``intel on``/``intel off``, ``assists lock``/``assists free``, ``client_back``, ``other_save``
+and RETURN HOME's ``mission_*`` requests).
 
 The game is found in the host's ``/proc`` by its kernel name or its binary's (``procfs``; not
 by command line, which Steam's launch wrappers share) and its build checked by the binary it
@@ -381,19 +381,18 @@ class LinuxMod:
     received Energy Shields (``request``, for ticks.shields_tick) and DeathLink's deaths
     (``request``, for ticks.deathlink_tick), among others. LinuxHelperError when the helper
     refuses the addresses. ``told``: what the client's ticks told it (ticks.labels_tick,
-    linux_seed_tick, linux_discs_tick, linux_intel_tick, linux_assists_tick and the finds' and
-    RETURN HOME's), as the Windows helper's ctx.told. It holds for one connection of ``pm`` only
-    (``current``): the helper drops the plan and the labels when it closes (it keeps the seed's
-    text, which is told again all the same and replaces its own record: Game::merge_offline)."""
+    linux_seed_tick, linux_discs_tick, linux_intel_tick, linux_assists_tick,
+    linux_client_back_tick, linux_other_save_tick and the finds' and RETURN HOME's; it starts
+    with nothing told, CLIENT CONNECTED asked as of the Windows helper), as the Windows helper's
+    ctx.told. It holds for one connection of ``pm`` only (``current``): the helper drops the
+    plan and the labels when it closes (it keeps the seed's text, which is told again all the
+    same and replaces its own record: Game::merge_offline)."""
 
     def __init__(self, pm: LinuxProcess) -> None:
         from . import linux_targets, state  # here: neither imports this module
 
         self.pm = pm
         self.told = state.HelperState()
-        # No offline look on Linux, so no CLIENT CONNECTED to ask for first (client_back_tick):
-        # the finds' follow-ups and the Landing Pod's prompt need not wait for it.
-        self.told.client_back_sent = True
         reply = pm.request(linux_targets.helper_config(pm.game.image))
         if reply != "ok":
             raise LinuxHelperError(f"the helper did not take the game's addresses: {reply}")

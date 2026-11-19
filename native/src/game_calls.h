@@ -76,6 +76,9 @@ public:
     // back): no client attached, so an own disk's count is the helper's to show
     // (watch_own_disks) until a client configures again.
     void client_left() { active_ = false; }
+    // A client gone, or a client's config: its notices not shown yet withdrawn, other_save reset
+    // (client_gone's and use's; the Linux helper's when its client goes).
+    void drop_client_notices();
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
     // After configure (which loads the OpenGL functions): the OpenGL functions to paint with (tests).
@@ -496,8 +499,6 @@ private:
     bool drop_notice(const char* text);
     // The not-connected warning withdrawn; if it had not shown, given again with the next dress.
     void drop_offline_warning();
-    // A client gone, or a client's config: its notices not shown yet withdrawn, other_save reset.
-    void drop_client_notices();
     bool offline_warned_ = false;  // this load's warning queued
     // The seed dressed offline this load (-1: none), kept through short connections (client_back).
     int offline_played_ = -1;

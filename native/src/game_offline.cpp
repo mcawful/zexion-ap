@@ -204,9 +204,12 @@ void Game::watch_offline() {
         }
     }
     // The file select: each known disk seed's save by its own section copy, with or without a
-    // client (which keeps the seed's file, and so what every save of it shares, up to date).
+    // client (which keeps the seed's file, and so what every save of it shares, up to date). Not
+    // without the save slots' addresses: the Linux helper's has none (the file select is not
+    // ported there, and slot_section reads them directly).
     std::map<int, int> counts;
-    for (int n = 1; n <= slot::kCount; ++n) {
+    const bool slots = at_.slot_array != nullptr && at_.rando_slots != nullptr;
+    for (int n = 1; slots && n <= slot::kCount; ++n) {
         const BYTE* copy = slot_section(n);
         if (copy == nullptr) continue;
         const BYTE* block = at_.slot_array + static_cast<ptrdiff_t>(n - 1) * slot::kStride;

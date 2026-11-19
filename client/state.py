@@ -522,7 +522,8 @@ def helper_failed(exc: native.HelperError) -> str | None:
         return (
             "On Linux the Zexion mod starts new games of this seed, shows your items' popups and "
             "other players' items, sets off traps, turns Area Maps into Intel Chips, locks the "
-            f"assist menu, and gives received Energy Shields and DeathLink deaths, but {exc}."
+            "assist menu, gives received Energy Shields and DeathLink deaths, and gives AP saves "
+            f"their look when the client isn't connected, but {exc}."
         )
     meanwhile = "new games of this seed can't be started, and items arrive without popups."
     if isinstance(exc, native.ModMismatch):

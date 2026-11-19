@@ -705,8 +705,10 @@ def test_an_own_disk_picked_up_with_no_client_shows_its_count(game: Game) -> Non
     with game.connect() as sock:  # the client gone: the helper's to count
         settle(sock)
         assert ask(sock, f"write {at['map_grid'] + own[1]:#x} 1b") == "written 1"
-        wait_for(sock, f"read {shown:#x} 4", lambda r: r != "data " + before.decode("latin-1"))
-        text = read_at(sock, stand_in("zap_shown"), 64).split(b"\x00")[0].upper()
+        # After the offline look's notice (the save dressed with no client), its count.
+        text_at = stand_in("zap_shown")
+        wait_for(sock, f"read {text_at:#x} 64", lambda r: "DISK" in r.upper(), seconds=5.0)
+        text = read_at(sock, text_at, 64).split(b"\x00")[0].upper()
         assert b"DISK 3" in text, text  # 1 shared + the two picked up
 
 
@@ -747,6 +749,56 @@ def test_with_a_seed_file_and_no_client_the_helper_configures_itself(tmp_path: P
             wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
             assert ask(sock, f"write {at['map_grid'] + cell:#x} 1b") == "written 1"  # picked up
             assert wait_for(sock, "trap_status", lambda r: "set 103" in r).endswith("set 103")
+    finally:
+        if started.proc.poll() is None:
+            started.proc.kill()
+            started.proc.wait()
+
+
+def test_an_ap_save_gets_its_look_with_no_client_and_its_notices(tmp_path: Path) -> None:
+    # Game::watch_offline: a known seed's save in play with no client is dressed (here INTEL
+    # CHIP) with the not-connected notice; a client's config takes the look back, `client_back`
+    # pops up CLIENT CONNECTED., and `other_save` dresses it again with that client.
+    from client import offline
+
+    data = tmp_path / "data"
+    seed = offline.seed_text([0] * 154, (0, 0, 0), True, False, None, None)
+    (data / "ZexionAP" / "seeds").mkdir(parents=True)
+    (data / "ZexionAP" / "seeds" / "S-0-1.txt").write_text(seed)
+    started = Game(HOOKTEST, data)
+    try:
+        at = config_addresses()
+        record = stand_in("zap_record_table") + 49 * 100
+        shown = stand_in("zap_shown")
+
+        def says(sock: socket.socket, words: str) -> str:
+            # The popup's text as the stand-in keeps it: its line breaks dropped.
+            want = words.replace(" ", "")
+            reply = wait_for(
+                sock, f"read {shown:#x} 64", lambda r: want in r.upper().replace(" ", ""), 5.0
+            )
+            return words if want in reply.upper().replace(" ", "") else reply
+
+        with started.connect() as sock:
+            assert wait_for(sock, "assists free", lambda r: r == "free") == "free"  # configured
+            assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # its save
+            assert "NOT CONNECTED" in says(sock, "NOT CONNECTED")
+            assert wait_for(sock, f"read {record + 0x0A:#x} 10", lambda r: "INTEL" in r) == (
+                "data INTEL CHIP"
+            )
+            config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+            assert ask(sock, config) == "ok"  # a client: its own look, the game's record
+            wait_for(sock, f"read {record + 0x0A:#x} 8", lambda r: r == "data AREA MAP")
+            assert ask(sock, "client_back") == "shown"
+            assert "CLIENT CONNECTED" in says(sock, "CLIENT CONNECTED")
+            assert ask(sock, "client_back") == "none"  # once
+            assert ask(sock, "other_save") == "told"  # a client of another seed
+            assert "ANOTHER SEED" in says(sock, "ANOTHER SEED")
+            wait_for(sock, f"read {record + 0x0A:#x} 10", lambda r: "INTEL" in r, 5.0)
+            assert read_at(sock, record + 0x0A, 10) == b"INTEL CHIP"
+        with started.connect() as sock:  # that client gone: dressed afresh, its notice again
+            assert "NOT CONNECTED" in says(sock, "NOT CONNECTED")
+            assert read_at(sock, record + 0x0A, 10) == b"INTEL CHIP"
     finally:
         if started.proc.poll() is None:
             started.proc.kill()

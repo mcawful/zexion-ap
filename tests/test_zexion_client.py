@@ -1376,6 +1376,7 @@ def test_on_linux_the_seeds_own_traps_are_handed_to_the_linux_helper(monkeypatch
     ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
     ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
     monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps 100:103")
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: None)  # not known yet
     asyncio.run(ticks.linux_seed_tick(ctx, None))
     sent = ctx.game_conn.pm.sent[-1]
     assert sent.startswith("offline_put seed ") and sent.endswith("traps 100:103")
@@ -1401,11 +1402,51 @@ def test_on_linux_a_seed_not_kept_is_put_again_only_if_it_was_not_taken(
     ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
     ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
     monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps -")
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: None)  # not known yet
     asyncio.run(ticks.linux_seed_tick(ctx, None))
     ctx.linux_mod.told.offline_at = 0.0
     asyncio.run(ticks.linux_seed_tick(ctx, None))
     puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
     assert len(puts) == (2 if put_again else 1)
+
+
+def test_on_linux_the_whole_seed_file_is_handed_over_once_known(monkeypatch) -> None:
+    # Its labels, for the look with no client (offline_seed, as on Windows).
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "stored"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps -")
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: "zexion-ap offline 1\nap_labels")
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    assert ctx.game_conn.pm.sent[-1].endswith("\nap_labels")
+
+
+def test_on_linux_the_whole_seed_file_is_never_replaced_by_the_slot_datas(monkeypatch) -> None:
+    # After a reconnect the items are listed afresh: offline_seed is None for a while, and the
+    # slot data's text would replace the file the look dresses saves from.
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "stored"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    full = types.SimpleNamespace(text="zexion-ap offline 1\nap_labels")
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps -")
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: full.text)
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    full.text = None  # a reconnect: not known again yet
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)  # a new connection: told afresh
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
+    assert len(puts) == 1 and puts[0].endswith("\nap_labels")
+
+
+def test_on_linux_client_connected_is_asked_of_the_linux_helper() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "client_back": "shown"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    assert not ctx.linux_mod.told.client_back_sent  # asked on Linux too, now there is a look
+    ctx.load.seed_loaded = ctx.load.in_play = True
+    asyncio.run(ticks.linux_client_back_tick(ctx))
+    asyncio.run(ticks.linux_client_back_tick(ctx))
+    assert ctx.game_conn.pm.sent.count("client_back") == 1
+    assert ctx.linux_mod.told.client_back_sent
 
 
 def test_the_linux_seed_needs_only_the_connection() -> None:
