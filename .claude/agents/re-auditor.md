@@ -28,6 +28,8 @@ around the change.
    the Linux build, an address may instead come from the binary's symbol table by name, once its
    GNU build id matches a known build, plus offsets `docs/re/linux.md` records (`CLAUDE.md`,
    "Rules"); flag a symbol's address written into code, or a symbol used without the build check.
+   `LinuxTarget.b1` in `client/linux_targets.py` is for checks only, as `Target.rvas` is: flag any
+   live use of it.
 2. **Unchecked memory access.** A read or write that does not handle: the process having exited
    or restarted (a stale handle, a new base address); a pattern that matched zero or several
    times; a null or out-of-range pointer in a chain; the game being on a build not in

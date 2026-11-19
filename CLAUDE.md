@@ -38,7 +38,9 @@ Where things are:
   fixed-address executable that keeps its symbol table (`docs/re/builds.md`, "B1 on Linux"):
   there, live addresses come from that table, by name, once the binary's GNU build id matches a
   known build, plus offsets `docs/re/linux.md` records for that build; an address read from the
-  table is never written into code (the owner's decision, 2026-11-18).
+  table is never written into code (the owner's decision, 2026-11-18), except `LinuxTarget.b1`
+  in `client/linux_targets.py`, which is for checks only, as `Target.rvas` is: tests compare the
+  resolved addresses with it and nothing live uses it.
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
   its `install` (an empty slot, after a verified backup) and `restore` write the save folder.
