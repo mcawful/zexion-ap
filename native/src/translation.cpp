@@ -852,8 +852,9 @@ bool PopupAreas::show(const GameAddresses& a, const Loaded& now, int where, BYTE
 #else
     // The Linux build reads the ints the game passes with a popup (its width, place and frames:
     // docs/re/linux.md, `hd_text_fn`): the pickup's own.
-    reinterpret_cast<HdTextFn>(a.hd_text_fn)(text.c_str(), kGamePopupWidth, kPopupX, kPopupY, 100,
-                                             1, kPopupFrames, area.entry, kSmallKind, message);
+    reinterpret_cast<HdTextFn>(a.hd_text_fn)(text.c_str(), kGamePopupWidth, kPopupX, kPopupY,
+                                             kPopupStepX, kPopupStepY, kPopupFrames, area.entry,
+                                             kSmallKind, message);
 #endif
     return true;
 }

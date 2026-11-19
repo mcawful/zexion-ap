@@ -25,6 +25,11 @@ constexpr char kFontPunctuation[] = " .,'!?-:()/&";
 constexpr int kGamePopupWidth = 24;
 // Where the helper's popups go and how long they stay, as the game's pickup popup.
 constexpr int kPopupX = 0xA0, kPopupY = 0x58, kPopupFrames = 0xB4;
+// How far its text window grows and shrinks a frame as it opens and closes, across and down: the
+// game's pickup popup's (its 5th and 6th arguments). The Linux build's update reads them (its
+// message +0x1F4 and +0x1F8; with 0 the box pops in and out whole: seen 2026-11-19); the
+// Windows build's never does (docs/re/memory.md, "Game functions the helper calls").
+constexpr int kPopupStepX = 100, kPopupStepY = 1;
 // A message slot's characters before its NUL: the game copies a longer text over the next slot.
 constexpr size_t kMessageMax = 255;
 // The popup message's box: its center's y (a double) and its half-height (32-bit).

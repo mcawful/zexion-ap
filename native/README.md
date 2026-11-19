@@ -2208,8 +2208,25 @@ that day (the helper of 647b3a2, then with `callers`, as committed in 6dfc54a) c
 game's folder: loaded by the launch options, it served `hello` (`build=B1 hooked=1 folder=1`),
 counted the frame calls (165 in a second on a 165 Hz display, all from `SWHardwareEnd`, the game
 window's swap, at the title screen and in play: `callers`) and served reads that matched the
-binary (`docs/re/linux.md`, "Read from the running game"). Not run in the game yet: every other
-part below, the Steam Runtime without Flatpak, a Steam Deck.
+binary (`docs/re/linux.md`, "Read from the running game").
+
+Working in game: 2026-11-19, B1 (Linux), Flatpak Steam on the test PC (CachyOS), the helper of
+207af39 (`libzexion_ap.so` `d6e91080…`), then with the popup's steps (`b98752ac…`, built from the
+commit that records this run), a seed of `samples/zexion-standard.yaml` hosted locally, the client
+from source (`lab/run/`). Seen by the owner: the title screen's lines once the client configured
+it; ARCHIPELAGO on the game-mode panel, and the seed's new game started from it in an empty slot
+(the client: "The new game holds the AP seed (applied slot 5)"); the AP logo on that slot's entry
+on the file select; a received Energy Tank's and Missile Container's popups with their items (the
+first, before the steps, popping in and out whole: `kPopupStepX` in `src/text.h`); the client's
+notices; and, the game started again with the seed's file kept and no client yet, the save dressed
+by the helper alone (configured from the game's symbols), then ARCHIPELAGO CLIENT CONNECTED. once
+the client was back (the client: "This save was played without the client: told the client is
+back"). Read live through the helper: the game state, the pickup counter and the inventory
+(`tools/grant.py watch`), and `menu_state` in play with the mouse used (0; non-zero only in menus:
+`docs/re/linux.md`, `menu_state`). The client's own lines also said other players' items' labels,
+Intel Chips and the ASSIST lock were set for the seed (not looked at in the game). Not checked:
+the popups' sounds and the HUD after the grants. Not run in the game yet: every other part below,
+the Steam Runtime without Flatpak, a Steam Deck.
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):

@@ -546,6 +546,10 @@ def test_an_apply_gives_the_items_and_shows_their_popup(game: Game) -> None:
         assert b"MACHINE GUN" in shown and b"FROM TESTER" in shown
         assert read_at(sock, stand_in("zap_sound_id"), 4) == (7).to_bytes(4, "little")
         assert read_at(sock, stand_in("zap_hud_calls"), 4) == (2).to_bytes(4, "little")
+        # It opens and closes as the game's pickup popup: steps 100 across and 1 down a frame,
+        # which the Linux build's message update reads (0 would pop it in and out whole).
+        steps = read_at(sock, stand_in("zap_message_steps"), 8)
+        assert steps == (100).to_bytes(4, "little") + (1).to_bytes(4, "little")
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

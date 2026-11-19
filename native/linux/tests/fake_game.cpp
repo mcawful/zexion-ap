@@ -101,9 +101,12 @@ int zap_shown_count;
 int zap_sound_id = -1;
 double zap_hud_values[2];  // the last two numbers (missiles, then bombs)
 int zap_hud_calls;
-__attribute__((noinline, used)) void* zap_message(const char* text, int, int, int, int, int,
-                                                  int) {
+int zap_message_steps[2];  // the last message's 5th and 6th arguments: its open and close steps
+__attribute__((noinline, used)) void* zap_message(const char* text, int, int, int, int step_x,
+                                                  int step_y, int) {
     // Slot 0, with a new serial and no frames left (so the next popup may follow).
+    zap_message_steps[0] = step_x;
+    zap_message_steps[1] = step_y;
     unsigned char* slot = zap_message_slots;
     int serial = ++zap_shown_count;
     std::memcpy(slot + 0x1D8, &serial, 4);

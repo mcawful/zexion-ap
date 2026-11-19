@@ -492,7 +492,7 @@ bool Game::show_popup(std::deque<Popup>::iterator next) {
     int32_t seq_before = 0;
     last_message(last_before, seq_before);
     void* message = reinterpret_cast<MessageFn>(at_.message_fn)(
-        text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
+        text.c_str(), per_line, kPopupX, kPopupY, kPopupStepX, kPopupStepY, kPopupFrames);
     if (message == nullptr) return false;  // all four slots busy: try again next frame
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
     // The translation's font; failing that, the pixel text, the slot's last translated mark

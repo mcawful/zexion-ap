@@ -307,20 +307,21 @@ What there is:
   out of AP saves, with the Feats screen's note, and repairs tall popups' text. Tested against a
   stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job).
   Working in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls
-  and serving reads (`native/README.md`, "The Linux helper"); new games, grants, scrap's drops,
-  Energy Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, labels, traps, translations,
-  the disks' goal, the look without the client, the file select's logo, counts and ITEMS row, the
-  title's lines, the Feats guard and the tall text's repair are not run in the game yet. How to
-  run it in the game, and what to try first: `native/README.md`, "Running it in the game". The
-  most likely first failure: on Linux `menu_state` is the game's cursor mode (`gCursorMode`),
-  which the mouse may set to 1 in play, so that `apply` answers `refused not in play` and popups
-  wait (`re/linux.md`, `menu_state`: open).
-  `tools/helper.py status` finds the game, checks its build, makes sure the socket is the game's,
-  and reads its memory through it (`client/linux_helper.py`); `helper.py load` and `unload` are
-  Windows-only. `tools/grant.py` and `check_patterns.py --live` attach as the client does
-  (`game.Game.attach`), so through the Linux helper, `grant.py set` writing through its `write`
-  (no such run recorded); `--live` prints each target's link address after `Zexion.exe+`, the
-  base being 0 on Linux;
+  and serving reads; 2026-11-19: new games (ARCHIPELAGO), grants with their popups, the title's
+  lines, the file select's AP logo, the look without the client, and `menu_state` read in play
+  with the mouse used (`native/README.md`, "The Linux helper"); scrap's drops, Energy Shields,
+  DeathLink's deaths, Intel Chips, the ASSIST lock, labels, traps, translations, the disks' goal,
+  the file select's counts and ITEMS row, the Feats guard and the tall text's repair are not run
+  in the game yet (the client's lines said Intel Chips, the ASSIST lock and the labels were set;
+  not looked at). How to run it in the game, and what to try first: `native/README.md`, "Running
+  it in the game". The most likely first failure: on Linux `menu_state` is the game's cursor mode
+  (`gCursorMode`), which the mouse may set to 1 in play, so that `apply` answers `refused not in
+  play` and popups wait (`re/linux.md`, `menu_state`: open). `tools/helper.py status` finds the
+  game, checks its build, makes sure the socket is the game's, and reads its memory through it
+  (`client/linux_helper.py`); `helper.py load` and `unload` are Windows-only. `tools/grant.py` and
+  `check_patterns.py --live` attach as the client does (`game.Game.attach`), so through the Linux
+  helper, `grant.py set` writing through its `write` (no such run recorded); `--live` prints each
+  target's link address after `Zexion.exe+`, the base being 0 on Linux;
 - the client: on Linux `game.Game.attach()` attaches to the Linux build (`attach_linux()`), its
   targets from the binary's symbol table (`client/linux_targets.py`, the ones `game.py` reads and
   writes), every read and write through the helper, one request at a time, connecting again once a
@@ -341,16 +342,17 @@ What there is:
   and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step back until
   the Linux helper is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll), so no step
   meanwhile writes the items owed with no popup or drops a waiting trap. One lost after it was
-  configured holds the step back for 30 s too (`ticks.linux_mod_lost`), then the items are
-  written directly with no popup until it is back; one that failed two steps running has the
-  next step's written directly. A Linux helper of this version built before traps, which answers
-  `trap_status` with `error unknown request` (`linux_helper.HelperTooOld`), holds nothing back:
-  items are written directly until it is replaced; any other reply but `queued …` (a frame not
-  come in time: `refused no frame`) is a failed configuration, tried again. The rest of the
-  client runs as without the mod: `native.attach` refuses the Linux build
-  (`native.NoWindowsHelper`, nothing said: the Linux helper runs every part); checks, the goal,
-  DeathLink's deaths out and marking other players' items collected go on. Tested against
-  stand-ins only; not run in the game;
+  configured holds the step back for 30 s too (`ticks.linux_mod_lost`), then the items are written
+  directly with no popup until it is back; one that failed two steps running has the next step's
+  written directly. A Linux helper of this version built before traps, which answers `trap_status`
+  with `error unknown request` (`linux_helper.HelperTooOld`), holds nothing back: items are
+  written directly until it is replaced; any other reply but `queued …` (a frame not come in time:
+  `refused no frame`) is a failed configuration, tried again. The rest of the client runs as
+  without the mod: `native.attach` refuses the Linux build (`native.NoWindowsHelper`, nothing
+  said: the Linux helper runs every part); checks, the goal, DeathLink's deaths out and marking
+  other players' items collected go on. Tested against stand-ins; run in the game for the attach,
+  the seed's new game and grants (2026-11-19: `native/README.md`, "The Linux helper"), the rest
+  not yet;
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak
   (`~/.var/app/com.valvesoftware.Steam/.local/share/Steam`) or Snap Steam, and for the saves in
