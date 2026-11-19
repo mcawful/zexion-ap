@@ -834,7 +834,10 @@ the restart doubles above.
   cursor skips it (only when each entry it moves is live and numbered by its place).
 - **When:** each frame call while the options menu is on top (`src/menu.cpp`). `locked` means
   armed: whether an entry was found shows only in the game. The client locks it while a seed
-  that disallows assists has its save loaded, until the slot receives Assist Unlock.
+  that disallows assists has its save loaded, until the slot receives Assist Unlock. The helper
+  locks it only while a save of a seed it knows is loaded (`Game::seed_look_loaded`, "Intel
+  Chips"), and puts it back, the padlock too, in another save or none, whatever the client last
+  said: its server dropping leaves the ask as it was. Stand-in tests only, not run in game.
 - **Found again each frame:** never taken on the pointer kept from the frame it was locked. Leaving
   Video, GENERAL (which holds the language) or the assist menu closes the options menu and builds
   another (`0x124D30`), whose widgets may take the freed ones' places: its VERSION 1.20, 12 glyphs
@@ -1303,8 +1306,16 @@ Working in game: 2026-10-23 ("Live item objects").
   (3551, the map reveal) (`src/intel.cpp`), only if the record reads as the game loads it or as
   the helper left it.
 - **When:** each frame call while the client has sent `intel on` (this seed's save loaded, its
-  Area Maps Intel Chips).
-- **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
+  Area Maps Intel Chips) and a save of a seed the helper knows is loaded (`Game::seed_look_loaded`:
+  an AP save, as the Feats guard takes one, and while the helper holds labels, the labels' seed's
+  save). It does the same for the ASSIST lock and the disk count ("The assist menu", "The OS
+  Install Disks goal"): the helper does not wait for the client to say the save left, so with the
+  server down a normal or plain randomizer save loaded after the seed's has the game's own Area
+  Map, ASSIST and scanner line, and they are applied again when the seed's save is loaded. With no
+  labels held, another seed the helper knows (a file from an earlier client run) counts as the
+  seed's save until the client says otherwise.
+- **Put back:** `intel off`, with the rest, and each frame call in a save that is not the seed's
+  (above); an unload refuses while it cannot.
 - **Received:** a client's `popup 49` in an `apply` with `intel` (sent for a seed whose Area
   Maps are Intel Chips) reads INTEL CHIP (Intel Chip in a translation), with `intel on` or not
   when it shows, as after a load before the client sends it again ("Popups"). Working in game
@@ -1535,6 +1546,11 @@ screen's count after a reload, a death, and a disk received right after a reload
 second review round's fix (the counted set started over when the helper is attached again,
 unless that attach loaded it), stand-in tested only.
 
+The scanner's line, the equipment screen's disk, the pause row's count and the disk glyph show
+only while a save of a seed the helper knows is loaded (`Game::seed_look_loaded`, "Intel
+Chips"); in another save or none the game's own are back whatever the client last sent (stand-in
+tests only, not run in game).
+
 Put back: `discs` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way
 back from OPTION MENU is still its wrapper.
@@ -1647,7 +1663,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   with no server connection (the server down, say) lets the helper go, as if it had closed, while
   a save it has not dressed is loaded: one loaded after a drop's save was left, or the one in play
   when the player disconnects. Such a save then gets this look and its notice too. The client
-  keeps the helper for a save it dressed before a drop (its look stays), in the ending (its hold),
+  keeps the helper for a save it dressed before a drop (its look stays, in that seed's save only:
+another save loaded during the drop has the game's own Intel Chip, ASSIST and scanner line, put
+back by the helper itself; stand-in tests only, not run in game), in the ending (its hold),
   and at the title, where after a drop an armed new game stays armed until a save is loaded. It
   attaches again on connecting, before it gives any item; an attach that fails, for a helper that
   may still come ("Getting in"), holds the items back for up to 30 s (counted afresh at each

@@ -572,10 +572,24 @@ void test_start_table() {
           "and reported");
 }
 
+// A known seed's randomizer save loaded: the save the Intel Chip, the ASSIST lock and the disk
+// count apply in (Game::seed_look_loaded). Undone by `leave_seed_save`.
+void in_seed_save(zap::Game& game) {
+    g_save_loaded = 3;
+    g_rando_marker = 1;
+    game.add_known_seeds({zap::offline_seed_of(g_section)});
+}
+
+void leave_seed_save() {
+    g_rando_marker = 0;
+    g_save_loaded = 3;
+}
+
 void test_scanner_line() {
     zap::Game game;
     check(configure(game).empty(), "configures");
     reset_texts();
+    in_seed_save(game);
     auto text = [](BYTE* entry) { return std::string(reinterpret_cast<char*>(entry)); };
     auto tail_zero = [](BYTE* entry) {
         for (int i = 21; i < 32; ++i) {
@@ -617,6 +631,7 @@ void test_scanner_line() {
     check(text(other + 12 * 32) == "ENERGY KEYS DETECTED!", "restored before an unload");
     g_text_table = g_texts;
     reset_texts();
+    leave_seed_save();
 
     int count = -1, required = -1;
     std::string line;
@@ -2903,6 +2918,7 @@ void test_assist_watch() {
     stand_in::OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
                                   reinterpret_cast<void*>(&assist_menu_fn));
     g_current_menu = options.menu;
+    in_seed_save(game);
     game.watch_assists();
     check(options.callback() == &assist_menu_fn, "not armed: left alone");
     game.set_assists_locked(true);
@@ -2921,6 +2937,7 @@ void test_assist_watch() {
     check(options.callback() == &assist_menu_fn,
           "restored before an unload");
     g_current_menu = nullptr;
+    leave_seed_save();
 }
 
 // Whether the stand-in game's on-screen marker write holds the game's bytes.
@@ -3243,6 +3260,124 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
     check(games(), "and not applied again");
     g_current_menu = nullptr;
     g_rando_marker = 0;
+}
+
+// The Intel Chip, the ASSIST lock and the disk count (the scanner's line) apply only in the
+// seed's own save: with another save loaded, or none, while the client still asks for them (its
+// server dropped, nothing told it the save changed), the game's own records, menu and line are
+// back, and applied again in the seed's save. With labels held (a client's, or the offline
+// look's), another known seed's save is not the seed's either.
+void test_the_seed_look_follows_the_save() {
+    for (const bool labeled : {false, true}) {
+        const std::string where = labeled ? "with labels held" : "with no labels";
+        zap::Game game;
+        ready(game);
+        reset_sprites();
+        reset_texts();
+        reset_events();
+        own_stand_ins(g_records);
+        area_map_as_loaded();
+        stand_in::OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
+                                      reinterpret_cast<void*>(&assist_menu_fn));
+        g_current_menu = options.menu;
+        std::memset(g_section, 0, sizeof(g_section));
+        g_section[0x26C] = 0x2F;  // the seed's save
+        in_seed_save(game);
+        if (labeled) {
+            std::map<int, zap::Label> labels;
+            zap::parse_labels("ap_labels\nlabel 3 4 414C494345", labels);
+            game.set_labels(labels);
+        }
+        game.set_assists_locked(true);
+        game.set_intel(true);
+        game.set_discs(3, 15, "COLLECT 15 OS INSTALL DISKS!", true);
+        auto run = [&] {
+            for (int i = 0; i < 32; ++i) game.watch_all(&chosen);  // the scanner's look every 30th
+        };
+        auto seed_look = [&] {
+            return record_name(49) == "INTEL CHIP" && options.callback() == nullptr &&
+                   game.scan_written();
+        };
+        auto games_look = [&] {
+            return record_name(49) == "AREA MAP" && options.callback() == &assist_menu_fn &&
+                   !game.scan_written() && std::string(reinterpret_cast<char*>(g_text_table + 12 * 32)) ==
+                       "ENERGY KEYS DETECTED!";
+        };
+        auto asked_for = [&] {
+            return game.intel_on() && game.assists_locked() &&
+                   game.scan_line() == "COLLECT 15 OS INSTALL DISKS!";
+        };
+        run();
+        check(seed_look(), "the seed's save: INTEL CHIP, ASSIST locked, the scanner's line", where);
+
+        g_rando_marker = 0;  // a normal save
+        run();
+        check(games_look() && asked_for(), "a normal save: the game's own, the ask kept", where);
+        g_rando_marker = 1;
+        g_section[0x26C] = 0x30;  // a plain randomizer save: no seed the helper knows
+        run();
+        check(games_look() && asked_for(), "a plain randomizer save: the game's own", where);
+        g_section[0x26C] = 0x2F;
+        g_save_loaded = 0xFF;  // the title
+        run();
+        check(games_look() && asked_for(), "no save loaded: the game's own", where);
+        g_save_loaded = 3;
+        run();
+        check(seed_look(), "the seed's save again: applied again", where);
+
+        // Another seed the helper knows (its file, an earlier client run's).
+        g_section[0x26C] = 0x31;
+        game.add_known_seeds({zap::offline_seed_of(g_section)});
+        run();
+        check(seed_look() == !labeled && (labeled ? games_look() : true),
+              "another known seed's save: the seed's look only with no labels to say whose",
+              where);
+        g_section[0x26C] = 0x2F;
+        run();
+        check(seed_look(), "back in the seed's save", where);
+        game.client_gone(&chosen);
+        g_current_menu = nullptr;
+        leave_seed_save();
+    }
+}
+
+// The same with no client: a known seed's file dresses its save (Intel Chip, ASSIST lock, the
+// scanner's line, the pause row's count) and leaving the save puts the game's back.
+void test_the_offline_look_applies_in_its_save() {
+    zap::Game game;
+    check(configure(game, false).empty(), "configured from the cache");
+    reset_game();
+    reset_sprites();
+    reset_texts();
+    reset_events();
+    area_map_as_loaded();
+    stand_in::OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
+                                  reinterpret_cast<void*>(&assist_menu_fn));
+    g_current_menu = options.menu;
+    std::memset(g_section, 0, sizeof(g_section));
+    g_section[0x26C] = 0x2F;
+    g_rando_marker = 1;
+    g_save_loaded = 3;
+    zap::OfflineSeed seed = zap::offline_seed_of(g_section);
+    seed.intel = true;
+    seed.lock_assists = true;
+    seed.discs = true;
+    seed.count = 1;
+    seed.required = 4;
+    seed.scan_line = "COLLECT 4 OS INSTALL DISKS!";
+    game.set_offline({seed});
+    in_play_since(game, 3000);
+    for (int i = 0; i < 48; ++i) game.watch_all(&chosen);
+    check(record_name(49) == "INTEL CHIP" && options.callback() == nullptr && game.scan_written(),
+          "the offline look in its save: INTEL CHIP, ASSIST locked, the scanner's line");
+    g_rando_marker = 0;
+    for (int i = 0; i < 48; ++i) game.watch_all(&chosen);
+    check(record_name(49) == "AREA MAP" && options.callback() == &assist_menu_fn &&
+              !game.scan_written(),
+          "another save: the game's own");
+    g_current_menu = nullptr;
+    game.client_gone(&chosen);
+    leave_seed_save();
 }
 
 // An unload refused after ARCHIPELAGO's new game was queued: still started, so the plan is
@@ -4026,6 +4161,8 @@ int main() {
     test_received_stand_in_popup();
     test_received_disk_popup();
     test_received_intel_chip_popup();
+    test_the_seed_look_follows_the_save();
+    test_the_offline_look_applies_in_its_save();
     test_received_shield();
     test_own_scrap_metal_is_picked_up_as_the_games();
     test_received_scrap_drops();

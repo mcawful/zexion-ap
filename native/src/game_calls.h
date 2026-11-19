@@ -568,6 +568,11 @@ private:
     std::optional<OfflineSeed> labels_seed_;
     // That seed's save loaded, in play or in a menu (such as the map).
     bool labels_seed_loaded() const;
+    // A save the seed's look applies in: a known seed's save is loaded (ap_save_loaded), and
+    // while labels are held, the labels' seed's. The Intel Chip, the ASSIST lock and the disk
+    // count (the scanner's line, the equipment screen, the pause row) show only then.
+    bool seed_look_loaded() const;
+    bool discs_shown() const;
     MapCursorNames map_names_;
     SeenMarker seen_marker_;  // the on-screen square's write, in the labels' seed's save
     TextCut text_cut_;        // the text window's top cut, while configured
