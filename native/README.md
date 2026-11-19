@@ -2236,7 +2236,8 @@ received items too. The client's own lines also said other players' items' label
 lock were set for the seed (not looked at in the game). Not checked: the popups' sounds and the
 HUD after the grants.
 
-Run 2, the same day and setup, the helper of 4e0203f's sources, a two-slot seed (`lab/run2/`: RunA
+Run 2, the same day and setup, the helper of 4e0203f's sources (no hash recorded: which binary ran
+is known by its sources only), a two-slot seed (`lab/run2/`: RunA
 played, RunB a plain Archipelago client with DeathLink), both with the OS Install Disks goal (16,
 3 required), DeathLink and the Landing Pod as start. Seen by the owner: the pause screen's disk
 row from 0; received disks' popups with their count notices, the pause row and the file select's
@@ -2251,7 +2252,8 @@ completed their goal." `GameUnlocks.sav` as the ending wrote it was byte for byt
 before the run (`cmp`; the title's fold of a run's Feats comes later, and an unlock already set
 before could not show). Not run in the game yet: this world's own traps and disks counted with no
 client, the scanner's line and the equipment screen's disk (not reached), the Steam Runtime
-without Flatpak, a Steam Deck.
+without Flatpak, a Steam Deck. What both runs saw, with the build and what was not seen, is
+recorded in `docs/re/linux.md`, "Seen in the running game, 2026-11-19".
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
@@ -2448,9 +2450,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   number display's third argument, `true`, as the game passes it: `docs/re/linux.md`, "Mapped
   by disassembly: HUD, items, sound, popups, deaths"), Magnus Armor's suit color, then the
   popups one a frame call apart as there, each with its item's sound, waiting for their own save.
-  What differs: `menu_state` is the cursor mode on Linux, which the mouse can set to 1
-  (`docs/re/linux.md`, open): if it reads 1 in play, an `apply` is refused (`refused not in play`)
-  and popups wait. Not measured.
+  What differs: `menu_state` is the cursor mode on Linux, which the mouse can set to 1, but
+  in play it read 0 with the mouse used (2026-11-19: `docs/re/linux.md`, `menu_state`); if it
+  read 1 in play, an `apply` would be refused (`refused not in play`) and popups wait.
 
   A client that goes takes its plan with it, but its popups stay queued for their save, as on
   Windows. Tested on the stand-in game through the socket (`tests/test_native_linux.py`: an
