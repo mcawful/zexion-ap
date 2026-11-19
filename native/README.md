@@ -1313,7 +1313,7 @@ Working in game: 2026-10-23 ("Live item objects").
   server down a normal or plain randomizer save loaded after the seed's has the game's own Area
   Map, ASSIST and scanner line, and they are applied again when the seed's save is loaded. With no
   labels held, another seed the helper knows (a file from an earlier client run) counts as the
-  seed's save until the client says otherwise.
+  seed's save until the client says otherwise. Stand-in tests only, not run in game.
 - **Put back:** `intel off`, with the rest, and each frame call in a save that is not the seed's
   (above); an unload refuses while it cannot.
 - **Received:** a client's `popup 49` in an `apply` with `intel` (sent for a seed whose Area
@@ -1549,7 +1549,8 @@ unless that attach loaded it), stand-in tested only.
 The scanner's line, the equipment screen's disk, the pause row's count and the disk glyph show
 only while a save of a seed the helper knows is loaded (`Game::seed_look_loaded`, "Intel
 Chips"); in another save or none the game's own are back whatever the client last sent (stand-in
-tests only, not run in game).
+tests only, not run in game). `discs_status` describes the last equipment screen built in such a
+save, so it is not updated while another save's screen is up.
 
 Put back: `discs` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way
@@ -1664,8 +1665,8 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   a save it has not dressed is loaded: one loaded after a drop's save was left, or the one in play
   when the player disconnects. Such a save then gets this look and its notice too. The client
   keeps the helper for a save it dressed before a drop (its look stays, in that seed's save only:
-another save loaded during the drop has the game's own Intel Chip, ASSIST and scanner line, put
-back by the helper itself; stand-in tests only, not run in game), in the ending (its hold),
+  another save loaded during the drop has the game's own Intel Chip, ASSIST and scanner line, put
+  back by the helper itself; stand-in tests only, not run in game), in the ending (its hold),
   and at the title, where after a drop an armed new game stays armed until a save is loaded. It
   attaches again on connecting, before it gives any item; an attach that fails, for a helper that
   may still come ("Getting in"), holds the items back for up to 30 s (counted afresh at each
