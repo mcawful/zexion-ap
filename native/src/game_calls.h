@@ -196,6 +196,7 @@ public:
     // Game thread: the seed file the client has put is its own seed, the one its look is for;
     // ignored with no client (active), dropped when it goes away (client_gone).
     void note_client_seed(const OfflineSeed& seed);
+    void forget_client_seed() { client_seed_.reset(); }  // the client went away (client_gone)
     size_t known_seeds() const { return known_seeds_.size(); }  // tests
     void restore_feats();
     void release_steam() { feats_.release_steam(); }

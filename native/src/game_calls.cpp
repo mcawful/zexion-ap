@@ -1802,7 +1802,7 @@ void Game::client_gone(WidgetCallback callback) {
     put_back_game(callback);
     forget_client();
     drop_client_notices();
-    client_seed_.reset();
+    forget_client_seed();
     active_ = false;
 }
 
