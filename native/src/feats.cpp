@@ -2,6 +2,12 @@
 
 #include <cstring>
 
+#ifndef _WIN32
+#include <dlfcn.h>
+
+#include <atomic>
+#endif
+
 #include "game_layout.h"
 #include "game_mem.h"
 #ifdef _WIN32
@@ -322,13 +328,15 @@ std::string FeatsGuard::state() const {
     return why.empty() ? "on" : "on:" + why;
 }
 
+#ifdef _WIN32
 void* FeatsGuard::stand_in() const { return data_ == nullptr ? nullptr : data_ + kHolder; }
 
 bool FeatsGuard::load_test() const {
     return data_ != nullptr && at<BYTE*>(data_, kMarker) != nullptr;
 }
+#endif
 
-#ifdef _WIN32  // the Linux build's Feats are not ported: nothing patched or hooked
+#ifdef _WIN32  // the ending's patch: not on Linux yet (Steam there is the export below)
 void FeatsGuard::patch_ending(const GameAddresses& a) {
     BYTE* site = a.ending_unlocks;
     BYTE* join = a.ending_join;
@@ -552,10 +560,143 @@ void FeatsGuard::release_steam() {
 }
 
 #else
-std::string FeatsGuard::check_steam(const GameAddresses&) { return "not on the Linux build"; }
-bool FeatsGuard::make_pages() { return false; }
-void FeatsGuard::hook_steam(const GameAddresses&, bool, const std::set<int>&) {}
-void FeatsGuard::set_switch(const GameAddresses&, bool, const std::set<int>&) {}
-void FeatsGuard::release_steam() {}
+// The Linux build: no slot written and no code made. The helper exports SteamInternal_ContextInit
+// itself (the dynamic linker binds the game's call to it: docs/re/linux.md, "Mapped by
+// disassembly: the Feats guard's Steam and load test"), and feats_context_init decides each call
+// from these, which the game thread sets (set_switch) and any caller reads.
+namespace {
+
+using Init = void* (*)(void*);
+
+struct Steam {
+    std::atomic<const void*> stats{nullptr};  // SteamUserStats()'s context
+    std::atomic<const void*> ours{nullptr};   // the helper's export
+    std::atomic<Init> real{nullptr};          // libsteam_api's, once found
+    std::atomic<bool> blocked{false};         // the guard on: an AP save loaded
+    // The load test, on while `marker` is set: the save loaded, the randomizer marker word 1 and
+    // the current slot (0-based) one of `ap_slots`' bits.
+    std::atomic<const BYTE*> marker{nullptr};
+    std::atomic<const BYTE*> saved{nullptr};
+    std::atomic<const BYTE*> slot{nullptr};
+    std::atomic<uint32_t> ap_slots{0};
+};
+Steam g_steam;
+
+// The stand-in: the holder the game reads the interface from, the interface, its vtable. Every
+// method returns 0 (SetAchievement, ClearAchievement, StoreStats: their results are not read),
+// whatever its arguments.
+extern "C" uint64_t zap_feats_zero() { return 0; }
+constexpr size_t kMethods = 64;  // the library's ISteamUserStats has 44
+struct StandIn {
+    void* vtable[kMethods];
+    void* interface = vtable;  // an object is its vtable's address
+    void* holder = &interface;
+    StandIn() {
+        for (void*& m : vtable) m = reinterpret_cast<void*>(&zap_feats_zero);
+    }
+};
+StandIn g_stand_in;
+
+bool blocking() {
+    if (g_steam.blocked.load()) return true;
+    const BYTE* marker = g_steam.marker.load();
+    if (marker == nullptr) return false;
+    const BYTE* saved = g_steam.saved.load();
+    const BYTE* slot = g_steam.slot.load();
+    uint16_t word = 0;
+    int32_t current = -1;
+    std::memcpy(&word, marker, sizeof(word));
+    std::memcpy(&current, slot, sizeof(current));
+    return *saved != kNoSaveLoaded && word == 1 && current >= 0 && current < slot::kCount &&
+           (g_steam.ap_slots.load() >> current & 1u) != 0;
+}
+
+}  // namespace
+
+// libsteam_api's SteamInternal_ContextInit: the next definition after the helper's, else the
+// library's own if it is loaded but not in the global scope; never the helper's. Not kept while
+// not found (a later load may bring it).
+static Init real_init() {
+    Init real = g_steam.real.load();
+    if (real != nullptr) return real;
+    real = reinterpret_cast<Init>(dlsym(RTLD_NEXT, "SteamInternal_ContextInit"));
+    if (real == nullptr) {
+        if (void* steam = dlopen("libsteam_api.so", RTLD_LAZY | RTLD_NOLOAD)) {
+            real = reinterpret_cast<Init>(dlsym(steam, "SteamInternal_ContextInit"));
+            dlclose(steam);  // its count back: RTLD_NOLOAD took one
+        }
+    }
+    if (real == nullptr || reinterpret_cast<const void*>(real) == g_steam.ours.load()) {
+        return nullptr;
+    }
+    g_steam.real.store(real);
+    return real;
+}
+
+void set_feats_stats_context(const void* context) { g_steam.stats.store(context); }
+
+void set_feats_export(const void* export_fn) { g_steam.ours.store(export_fn); }
+
+void* feats_context_init(void* context) {
+    if (context != nullptr && context == g_steam.stats.load() && blocking()) {
+        return &g_stand_in.holder;
+    }
+    Init real = real_init();
+    return real != nullptr ? real(context) : nullptr;
+}
+
+
+void* FeatsGuard::stand_in() const { return &g_stand_in.holder; }
+
+bool FeatsGuard::load_test() const { return g_steam.marker.load() != nullptr; }
+
+std::string FeatsGuard::check_steam(const GameAddresses&) {
+    if (g_steam.stats.load() == nullptr) return "the stats context's symbol is not known";
+    // The game's call binds to the first definition in the global scope: the helper's, if it is
+    // (another preload ahead of it would take the game's calls), and libsteam_api's to forward to.
+    if (dlsym(RTLD_DEFAULT, "SteamInternal_ContextInit") != g_steam.ours.load()) {
+        return "the game's SteamInternal_ContextInit is not the helper's";
+    }
+    if (real_init() == nullptr) return "libsteam_api's SteamInternal_ContextInit is not found";
+    return "";
+}
+
+bool FeatsGuard::make_pages() { return true; }
+
+void FeatsGuard::hook_steam(const GameAddresses& a, bool on, const std::set<int>& loading) {
+    if (!steam_checked_) {
+        steam_error_ = check_steam(a);
+        steam_checked_ = true;
+    }
+    if (!steam_error_.empty()) return;
+    set_switch(a, on, loading);
+    // "Hooked": the export decides from here (no slot to write; any non-null marks it).
+    slot_ = reinterpret_cast<void**>(&g_stand_in.holder);
+    steam_slot_error_.clear();
+}
+
+void FeatsGuard::set_switch(const GameAddresses& a, bool on, const std::set<int>& loading) {
+    g_steam.blocked.store(on);
+    if (loading.empty() || a.rando_marker == nullptr) {
+        g_steam.marker.store(nullptr);  // the test off before its table is cleared
+        g_steam.ap_slots.store(0);
+        return;
+    }
+    uint32_t bits = 0;
+    for (int n : loading) {
+        if (n >= 1 && n <= slot::kCount) bits |= 1u << (n - 1);
+    }
+    // The table and the places before the marker's, which turns the test on.
+    g_steam.saved.store(a.save_loaded);
+    g_steam.slot.store(a.current_slot);
+    g_steam.ap_slots.store(bits);
+    g_steam.marker.store(a.rando_marker);
+}
+
+void FeatsGuard::release_steam() {
+    if (slot_ == nullptr) return;
+    set_switch({}, false, {});
+    slot_ = nullptr;
+}
 #endif
 }  // namespace zap

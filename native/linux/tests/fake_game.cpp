@@ -193,6 +193,27 @@ int zap_death_kind = -1;
 void* zap_draw_layer;
 __attribute__((noinline, used)) void* zap_text_new(const char*, int, int) { return nullptr; }
 __attribute__((noinline, used)) void zap_text_link(void*) { asm volatile(""); }
+// The Feats guard: the save slots (empty here), and Steam's stats as the game reaches them, its
+// SteamUserStats() context (init, cookie, interface) whose interface's SetAchievement (vtable
+// +0x30) counts; zap_achieve set makes the next frame set one, as setTheAchievement does.
+unsigned char zap_save_games[30 * 0x9408];
+unsigned char zap_saved_randos[30 * 0x908];
+extern "C" void* SteamInternal_ContextInit(void* context);  // the stub library's (or the helper's)
+int zap_achievements;
+unsigned char zap_achieve;
+bool zap_set_achievement(void*, const char*) {
+    ++zap_achievements;
+    return true;
+}
+void* zap_stats_vtable[16];
+void* zap_stats_object = zap_stats_vtable;
+void zap_stats_init(void** interface) { *interface = &zap_stats_object; }
+void* zap_stats_context[3] = {reinterpret_cast<void*>(&zap_stats_init), nullptr, nullptr};
+void zap_steam_achievement() {
+    void* interface = *static_cast<void**>(SteamInternal_ContextInit(zap_stats_context));
+    void** vtable = *static_cast<void***>(interface);
+    reinterpret_cast<bool (*)(void*, const char*)>(vtable[0x30 / 8])(interface, "14Victory");
+}
 // The ASSIST lock: ASSIST's callback (none called here: no options menu opens in the stand-in).
 __attribute__((noinline, used)) void zap_assist_menu() { asm volatile(""); }
 __attribute__((noinline, used)) void zap_death(void* player, char kind) {
@@ -336,6 +357,7 @@ int main() {
     zap_player[0x107A] = 2;
     zap_player[0x107B] = 3;
     zap_main_character = zap_player;
+    zap_stats_vtable[0x30 / 8] = reinterpret_cast<void*>(&zap_set_achievement);
     // The scraps' events: type 11, subtype 1, the object, F3 03 FF FF 01, then (5, 8) at +0x12,
     // sound -1 at +0x1A, 1.0f at +0x1C, the next event at +0x20 and the event's own at +0x24.
     const unsigned char spawn[0x28] = {
@@ -372,6 +394,10 @@ int main() {
     for (unsigned long frame = 0; !g_stop; ++frame) {
         draw_frame();
         if (frame % 4 == 0) draw_editor();
+        if (zap_achieve != 0) {  // the game thread, between frames, as the game's own
+            zap_achieve = 0;
+            zap_steam_achievement();
+        }
         nanosleep(&pause, nullptr);
     }
     std::printf("swaps %lu\n", zap_stub_swaps());

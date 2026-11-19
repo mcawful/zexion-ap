@@ -95,6 +95,7 @@ B1_HELPER_SYMBOLS = [
     ("gStatsSpriteLayerP", 0x12B46C0, 0x8, 1),
     ("_Z15newSpriteStringPKcii", 0x5588CD, 0x39D, 2),
     ("_Z15addSpriteStringP9SpriteRec", 0x569651, 0xBD, 2),
+    ("gSavedRandos", 0x16BF7C0, 0x10EF0, 1),
 ]
 
 

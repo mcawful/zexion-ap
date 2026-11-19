@@ -270,7 +270,7 @@ def test_a_request_too_big_drops_the_client(game: Game) -> None:
 
 
 @pytest.mark.parametrize("build", [HELPER, HOOKTEST], ids=["release", "hooktest"])
-def test_the_helper_exports_only_its_frame_call(build: Path) -> None:
+def test_the_helper_exports_only_the_calls_it_stands_in_for(build: Path) -> None:
     image = elf.parse(build.read_bytes())
     dynamic_only = elf.Image(
         image.type,
@@ -284,7 +284,8 @@ def test_the_helper_exports_only_its_frame_call(build: Path) -> None:
         for s in dynamic_only.symbols()
         if s.defined and s.type in (elf.STT_FUNC, elf.STT_OBJECT)
     }
-    assert exported == {"SDL_GL_SwapWindow"}  # its C++ runtime stays its own
+    # The calls it stands in for; its C++ runtime stays its own.
+    assert exported == {"SDL_GL_SwapWindow", "SteamInternal_ContextInit"}
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
@@ -408,6 +409,8 @@ CONFIG_SYMBOLS = {
     "draw_layer": "zap_draw_layer",
     "text_new_fn": "zap_text_new",
     "text_link_fn": "zap_text_link",
+    "slot_array": "zap_save_games",
+    "rando_slots": "zap_saved_randos",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -869,6 +872,77 @@ def test_a_seed_taken_but_not_kept_stays_the_helpers_when_its_client_goes(tmp_pa
         if started.proc.poll() is None:
             started.proc.kill()
             started.proc.wait()
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_no_achievement_is_set_while_an_ap_save_is_loaded(game: Game) -> None:
+    # The helper's SteamInternal_ContextInit (feats.h, feats_context_init): the stats context's
+    # calls reach the stand-in's interface, which sets nothing, while an AP save (a seed the
+    # helper knows) is loaded; before, and once it is not, they go on to Steam's.
+    from client import offline
+
+    at = config_addresses()
+    count, achieve = stand_in("zap_achievements"), stand_in("zap_achieve")
+    seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
+    put = offline.put_request("seed", seed, offline.seed_file_name("S", 0, 1))
+
+    def achievement(sock: socket.socket) -> int:
+        before = int.from_bytes(read_at(sock, count, 4), "little")
+        assert ask(sock, f"write {achieve:#x} 01") == "written 1"
+        wait_for(sock, f"read {achieve:#x} 1", lambda r: r == "data \x00")
+        return int.from_bytes(read_at(sock, count, 4), "little") - before
+
+    with game.connect() as sock:
+        assert achievement(sock) == 1  # not configured: Steam's
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, put) == "stored"
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the AP save
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+        assert achievement(sock) == 0  # the stand-in's: nothing set
+        assert ask(sock, "feats_status") == "on"  # the game's call binds to the helper's export
+        assert ask(sock, f"write {at['rando_marker']:#x} 0000") == "written 2"  # a normal save
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+        assert achievement(sock) == 1
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_after_an_ap_saves_ending_achievements_wait_for_the_next_load(game: Game) -> None:
+    # With no ending patch on Linux the Feats of Natu screen after an AP ending (no save loaded)
+    # would set its Feats' achievements: Steam stays blocked until a save is loaded again.
+    from client import offline
+
+    at = config_addresses()
+    count, achieve = stand_in("zap_achievements"), stand_in("zap_achieve")
+    seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
+    put = offline.put_request("seed", seed, offline.seed_file_name("S", 0, 1))
+
+    def settle(sock: socket.socket) -> None:
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+
+    def achievement(sock: socket.socket) -> int:
+        before = int.from_bytes(read_at(sock, count, 4), "little")
+        assert ask(sock, f"write {achieve:#x} 01") == "written 1"
+        wait_for(sock, f"read {achieve:#x} 1", lambda r: r == "data \x00")
+        return int.from_bytes(read_at(sock, count, 4), "little") - before
+
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, put) == "stored"
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the AP save
+        settle(sock)
+        assert ask(sock, f"write {at['flags'] + 250:#x} 01") == "written 1"  # its ending
+        assert ask(sock, f"write {at['save_loaded']:#x} ff") == "written 1"  # MISSION COMPLETE on
+        settle(sock)
+        assert achievement(sock) == 0  # the Feats of Natu screen's: held back
+        assert ask(sock, f"write {at['rando_marker']:#x} 0000") == "written 2"
+        assert ask(sock, f"write {at['save_loaded']:#x} 00") == "written 1"  # a normal save
+        settle(sock)
+        assert achievement(sock) == 1
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

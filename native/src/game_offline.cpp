@@ -205,8 +205,9 @@ void Game::watch_offline() {
     }
     // The file select: each known disk seed's save by its own section copy, with or without a
     // client (which keeps the seed's file, and so what every save of it shares, up to date). Not
-    // without the save slots' addresses: the Linux helper's has none (the file select is not
-    // ported there, and slot_section reads them directly).
+    // without the save slots' addresses (a config that leaves them out: slot_section reads them
+    // directly); the Linux helper has them for the Feats guard's load test, and takes the counts,
+    // though no file select there shows them.
     std::map<int, int> counts;
     const bool slots = at_.slot_array != nullptr && at_.rando_slots != nullptr;
     for (int n = 1; slots && n <= slot::kCount; ++n) {

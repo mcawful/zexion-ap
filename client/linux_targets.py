@@ -41,7 +41,7 @@ TARGETS = (
     LinuxTarget("inventory", "gGameState", 0x1CD50 + 0x108E, 0xA0561E),
     LinuxTarget("pickup_counter", "gGameState", 0xAC8, 0x9E8308),
     LinuxTarget("rando_blob", "gCurrentRando", 0, 0x12F6E00),
-    LinuxTarget("slot_array", "gSaveGames", 0, 0x14945C0, measured=False),
+    LinuxTarget("slot_array", "gSaveGames", 0, 0x14945C0),
     LinuxTarget("menu_state", "gCursorMode", 0, 0x12F9901),
     LinuxTarget("save_loaded", "gGameState", 0xACA, 0x9E830A),
     LinuxTarget("rando_marker", "gGameState", 0x13738, 0x9FAF78),
@@ -56,8 +56,8 @@ TARGETS = (
 # The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it
 # runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
 # and their popups, other players' items (the map's too), traps, the translations, the OS Install
-# Disks' count, RETURN HOME, DeathLink's deaths, the ASSIST lock and the title's lines. The rest
-# of CONFIG_KEYS is in TARGETS. Functions by their mangled names.
+# Disks' count, RETURN HOME, DeathLink's deaths, the ASSIST lock, the title's lines and the Feats
+# guard. The rest of CONFIG_KEYS is in TARGETS. Functions by their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -158,6 +158,8 @@ HELPER_TARGETS = (
     LinuxTarget("draw_layer", "gStatsSpriteLayerP", 0, 0x12B46C0),
     LinuxTarget("text_new_fn", "_Z15newSpriteStringPKcii", 0, 0x5588CD),
     LinuxTarget("text_link_fn", "_Z15addSpriteStringP9SpriteRec", 0, 0x569651),
+    # The Feats guard's load test (native/src/feats.h): the slots' randomizer sections.
+    LinuxTarget("rando_slots", "gSavedRandos", 0, 0x16BF7C0),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -174,7 +176,8 @@ CONFIG_KEYS = (
     "halt_flag", "seen_marker_code", "map_handler", "text_set_fn", "text_table", "equipment_fn",
     "equip_panel_fn", "widget_move_fn", "text_place_fn", "widget_new_fn", "sprite_sheet_fn",
     "panel_link_fn", "keys_branch", "options_back_fn", "fade", "fade_level", "routine_table",
-    "death_fn", "assist_menu_fn", "draw_layer", "text_new_fn", "text_link_fn",
+    "death_fn", "assist_menu_fn", "draw_layer", "text_new_fn", "text_link_fn", "slot_array",
+    "rando_slots",
 )  # fmt: skip
 
 

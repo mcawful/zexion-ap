@@ -210,7 +210,7 @@ public:
     // Game thread: Feats and achievements kept out of AP saves (feats.h; watch_feats).
     // ap_save_loaded: a randomizer save of a seed the helper knows is loaded. restore_feats puts
     // both changes back; release_steam, from the pipe thread once no frame call can watch, puts
-    // back Steam's slot alone.
+    // back Steam's slot alone (on Linux: the export's blocking off).
     bool ap_save_loaded() const;
     void watch_feats();
     void add_known_seeds(const std::vector<OfflineSeed>& seeds);
@@ -657,6 +657,8 @@ private:
     std::set<int> feats_slots_;  // the AP saves' slots, for the stub's load test
     int feats_slot_frames_ = 0;  // frames until the next look for them
     bool feats_ended_ = false;
+    // Linux: Steam held blocked from an AP save's ending until a save loads (watch_feats).
+    bool feats_ending_hold_ = false;
     bool note_seen_ = false;  // the Feats of Natu screen was up since the ending
     int note_frames_ = 0;  // frames until the next look for it
     // Every seed the helper has known since it loaded (table and start only), the oldest first.

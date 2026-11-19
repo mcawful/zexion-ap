@@ -2190,11 +2190,12 @@ players' items as Archipelago items (`ap_labels`: "Other players' items", "Other
 items, as themselves"), sets off traps ("Traps"), shows its text in a translation's font
 ("Translations"), runs the OS Install Disks goal, its count and RETURN HOME WITH THE DISKS? ("The
 OS Install Disks goal"), keeps AP saves' look without the client ("AP saves without the client"),
-and shows the title screen's lines ("The title screen's lines"). It holds the Windows helper's
-`Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the other parts above
-runs on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`),
-gives its items, labels, seed, shields, deaths, Intel Chips, the ASSIST lock, the disks' count,
-the finds' follow-ups and the Landing Pod's prompt through it and asks it the language
+shows the title screen's lines ("The title screen's lines"), and keeps Steam achievements out of
+AP saves ("Feats and achievements in AP saves"). It holds the Windows helper's `Game`
+(`src/game_calls.h`) and runs only those parts of it: below. None of the other parts above runs on
+Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`), gives its
+items, labels, seed, shields, deaths, Intel Chips, the ASSIST lock, the disks' count, the finds'
+follow-ups and the Landing Pod's prompt through it and asks it the language
 (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper; `tools/helper.py
 status` talks to it too. Tested against a stand-in game (`tests/test_native_linux.py`).
 
@@ -2216,9 +2217,10 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   build, `zexion-ap <version>: not a known build of Zexion (build id <hex>)`, the line a player
   sees after a game update; elsewhere nothing. A preloaded library can't be unloaded: there is
   no `unload`, and no load into a running game. A `zexion_ap.disabled` beside the `.so` turns
-  it off, as beside the proxy on Windows. It exports `SDL_GL_SwapWindow` alone
-  (`linux/exports.map`): the C++ runtime linked into it stays its own, never standing in for
-  the game's `libstdc++` (a test reads the build's `.dynsym`).
+  it off, as beside the proxy on Windows. It exports `SDL_GL_SwapWindow` and
+  `SteamInternal_ContextInit` alone, the calls it stands in for (`linux/exports.map`): the C++
+  runtime linked into it stays its own, never standing in for the game's `libstdc++` (a test
+  reads the build's `.dynsym`).
 - **The frame call.** It defines `SDL_GL_SwapWindow`, which the game calls through its PLT
   from two places (`docs/re/linux.md`, "The per-frame call": in the game the frame's swap was
   `SWHardwareEnd`'s, once a frame, and `UpdatePalette`'s swaps another window), so the preloaded one is the game's; it counts the call and passes it on to the next
@@ -2247,7 +2249,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 79 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 81 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
@@ -2258,6 +2260,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `shield` (frame) | as the Windows helper's ("The pipe", "Received Energy Shields") |
   | `die` (frame) | as the Windows helper's ("The pipe", "DeathLink") |
   | `other_save`, `client_back` (frame) | as the Windows helper's ("The pipe", "AP saves without the client") |
+  | `feats_status` (frame) | the Feats guard as the Windows helper's `hello` gives it (`feats=`): `off`, `on`, or `on:` and why a change could not be made |
   | `title_status` (frame) | the title's lines as the Windows helper's `hello` gives them (`title=`): `1` shown, `0` not, or what failed |
   | `intel on`, `intel off` (frame) | as the Windows helper's ("The pipe", "Intel Chips") |
   | `assists lock`, `assists free` (frame) | as the Windows helper's ("The pipe", "The assist menu") |
@@ -2285,35 +2288,33 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 79), which the client resolves from the game's symbols
-  (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of them, so a client and a
-  helper that disagree change nothing (the client also refuses a helper of another version, and
-  one of this version built before the traps, which answers no `trap_status`: it would refuse
-  every batch with a trap's popup).
-  "Frame" requests and the watch run on the game's thread through `src/mailbox.h`
-  (`src/mailbox_linux.cpp`), only at `SWHardwareEnd`'s swap, by its return address (not the
-  palette window's: `docs/re/linux.md`, "The per-frame call"), with nothing they throw reaching
-  the game. As on Windows, a client that goes takes its plan with it: the helper disarms at the
-  next frame. The ARCHIPELAGO choice on the game-mode panel is `src/choice.cpp`'s, shared too: the
-  same relabel, panel hook and callback (the game calls a menu callback with no arguments on Linux,
-  and the helper's reads none), at the frame call, in a translation too ("Translations", below).
-  The choice is tested on Windows' stand-in menu
+  addresses (with the rest of the 81), which the client resolves from the game's symbols
+  (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
+  them, so a client and a helper that disagree change nothing (the client also refuses a helper of
+  another version, and one of this version built before the traps, which answers no `trap_status`:
+  it would refuse every batch with a trap's popup). "Frame" requests and the watch run on the
+  game's thread through `src/mailbox.h` (`src/mailbox_linux.cpp`), only at `SWHardwareEnd`'s swap,
+  by its return address (not the palette window's: `docs/re/linux.md`, "The per-frame call"), with
+  nothing they throw reaching the game. As on Windows, a client that goes takes its plan with it:
+  the helper disarms at the next frame. The ARCHIPELAGO choice on the game-mode panel is
+  `src/choice.cpp`'s, shared too: the same relabel, panel hook and callback (the game calls a menu
+  callback with no arguments on Linux, and the helper's reads none), at the frame call, in a
+  translation too ("Translations", below). The choice is tested on Windows' stand-in menu
   (`tests/menu_tests.cpp`, `game_tests.cpp`); on Linux only built, and configured through the
   socket. The shared sources build on Linux through `src/platform.h` and the Linux parts of the
   memory layer, `src/game_mem_linux.cpp`: fault-safe reads through the kernel, writability from
   the process's memory map (kept 250 ms between reads, never for a range unmapped since), the
   game's code from its program headers, code patches with `mprotect`, the page's own protection
-  put back.
-  `Game` and every part it holds build there too, the Windows-only pieces of those left out:
-  `Game::configure` takes the helper's checked addresses instead of resolving a client's, the
+  put back. `Game` and every part it holds build there too, the Windows-only pieces of those left
+  out: `Game::configure` takes the helper's checked addresses instead of resolving a client's, the
   offline cache reads and writes the seeds' files alone, with no config file (`src/offline.cpp`;
-  "Seed files", below), and the Feats screen's Steam hook
-  and ending patch do nothing (`src/feats.cpp`); neither part runs.
-  Tested on stand-ins (`linux/tests/newgame_tests.cpp`, and through the socket in
+  "Seed files", below), and the Feats guard's ending patch and the Feats screen's note do nothing
+  (`src/feats.cpp`); its Steam stand-in runs as an export ("Steam achievements in AP saves",
+  below). Tested on stand-ins (`linux/tests/newgame_tests.cpp`, and through the socket in
   `tests/test_native_linux.py`); not run in the game. Not known: whether an exception the game's
   placement threw would be caught here (the helper's own C++ runtime is linked in, the game's is
-  its own: "refused the placement failed" is unverified); a fault there is the game's crash, as
-  on Windows.
+  its own: "refused the placement failed" is unverified); a fault there is the game's crash, as on
+  Windows.
 - **Grants and popups.** `Game::apply` and `Game::pump_popups` run here as on Windows
   ("Grants", "Popups"): the `cas` writes all or none, the counts and the HUD refreshed (the
   number display's third argument, `true`, as the game passes it: `docs/re/linux.md`, "Mapped
@@ -2611,8 +2612,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   the whole seed file, its labels included, once known (`offline_seed`, as on Windows), and what
   the slot data alone gives until then, never after the whole file went in that client run (a
   reconnect lists the items afresh: `ZexionContext.linux_full_seeds`). What differs on Linux:
-  - the file select's counts are not taken (the save slots' addresses are not configured: the
-    file select is not on Linux), and neither is its logo;
+  - the file select's counts are taken from the save slots (configured for the Feats guard's
+    load test), but nothing shows them: the file select is not on Linux, and neither is its logo;
   - a client that loses its server connection keeps the Linux helper, configured, so this look
     does not dress the save: the client takes its labels and disk count back (no connection, no
     seed), its INTEL CHIP and ASSIST lock stay, and no notice comes, until the server is back or
@@ -2647,11 +2648,37 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   set all the same, which `title_status` says as `no version` when it is not: the helper's globals
   are built before its constructor sets it, `init_priority`); the lines themselves are stand-in
   tested on Windows (`tests/title_tests.cpp`); not run in the game.
+- **Steam achievements in AP saves.** `Game::watch_feats` runs at each frame call, as on Windows
+  ("Feats and achievements in AP saves"): the guard on while an AP save is loaded, and the load
+  test over the slots holding AP saves, filled with no save loaded from the slots' own copies of
+  their sections (`slot_array`, `gSaveGames`; `rando_slots`, `gSavedRandos`). What differs on
+  Linux (`docs/re/linux.md`, "Mapped by disassembly: the Feats guard's Steam and load test"):
+  - no slot is written and no code made: the helper exports `SteamInternal_ContextInit` itself, so
+    the dynamic linker binds the game's call (from its two accessors, `SteamUserStats()` and
+    `SteamUtils()`, on the frame call's thread) to it, and `feats_context_init` (`src/feats.cpp`)
+    answers the stats context (`SteamUserStats()`'s, from the game's own symbols) with a stand-in
+    interface whose every method returns 0 while the guard blocks: on, or the load test's save
+    loaded, marker 1 and slot an AP save's, read at the call; every other call goes on to
+    `libsteam_api`'s own (`dlsym(RTLD_NEXT)`, else the library's own if it is loaded but not
+    global; looked for again while not found, never the helper's), the game's first, before any
+    config, too, and in any other program the preload reaches; the guard reports a fault
+    (`feats_status`) unless the game's call binds to the helper's export (the first definition in
+    the global scope: another preload ahead of it would take the calls) and the library's is
+    found; `watch_feats` runs before the frame's player-pointer gate, as it only reads;
+  - the ending's patch (no Feat earned at an AP ending) and the Feats of Natu screen's note are
+    not on Linux yet: an AP save's ending earns this run's Feats in the game there, so Steam stays
+    blocked from that ending until a save is loaded again (the Feats of Natu screen after it, with
+    no save loaded, sets the flashing Feats' achievements), the title's own achievements meanwhile
+    with it.
+
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`: its stand-in
+  Steam's achievement set before a config and with a normal save, not with an AP save loaded, and
+  not after an AP save's ending until a save loads); not run in the game.
 - **Not on Linux yet.** The parts above that the Linux helper does not run, with a client or
-  without: the Feats guard ("Feats and achievements in AP saves"), the file select's AP logo,
-  ITEMS row and disk counts ("AP saves on the file select", the major-item list in "Grants"), and
-  the repair of tall popups' text ("Grants and popups", below the Linux bullet's). The client says
-  so once (`native.LINUX_NOT_READY`).
+  without: the ending's patch and the Feats of Natu screen's note ("Feats and achievements in AP
+  saves"), the file select's AP logo, ITEMS row and disk counts ("AP saves on the file select",
+  the major-item list in "Grants"), and the repair of tall popups' text ("Grants and popups",
+  below the Linux bullet's). The client says so once (`native.LINUX_NOT_READY`).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own

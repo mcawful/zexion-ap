@@ -38,7 +38,8 @@ target_compile_options(zap_shared PRIVATE -Wno-missing-field-initializers)
 
 # The C++ runtime linked in: the game runs in Steam's runtime container, whose libstdc++ may be
 # older than the one it was built with. Only glibc and libdl are needed from the container.
-# Only SDL_GL_SwapWindow is exported (exports.map): the runtime's own symbols, operator new and
+# Only SDL_GL_SwapWindow and SteamInternal_ContextInit, the calls it stands in for, are exported
+# (exports.map): the runtime's own symbols, operator new and
 # __cxa_* among them, would otherwise stand in for the game's libstdc++ in every process the
 # preload reaches. tests/test_native_linux.py checks the build's exports.
 function(zap_helper target)

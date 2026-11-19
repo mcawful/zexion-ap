@@ -87,10 +87,18 @@ def test_play_is_not_reported_once_the_player_state_moves(linux) -> None:
         g.state()
 
 
-def test_nothing_is_written_through_a_target_only_assumed(linux) -> None:
+def test_nothing_is_written_through_a_target_only_assumed(linux, monkeypatch) -> None:
+    # Every target is measured now: one marked only assumed stands for any later one.
+    import dataclasses
+
+    targets = tuple(
+        dataclasses.replace(t, measured=False) if t.name == "slot_array" else t
+        for t in linux_targets.TARGETS
+    )
+    monkeypatch.setattr(linux_targets, "TARGETS", targets)
     g = game.Game.attach_linux()
     assert g.unwritable == {t.name for t in linux_targets.TARGETS if not t.measured}
-    assert "slot_array" in g.unwritable
+    assert g.unwritable == {"slot_array"}
     with pytest.raises(game.GameError, match="not yet measured"):
         g._write("slot_array", 0, b"\x00")
     assert 0x14945C0 not in g.pm.memory  # nothing written

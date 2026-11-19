@@ -1215,7 +1215,19 @@ void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
 void Game::watch_feats() {
     // A load writes the section and the marker in one game call, so a frame call sees both or
     // neither (docs/re/memory.md, "The loaded save's randomizer section is at +0xCDD6D0").
-    const bool on = ap_save_loaded();
+    bool on = ap_save_loaded();
+#ifndef _WIN32
+    // The Linux build has no ending patch yet, so an AP ending earns this run's Feats, and the
+    // Feats of Natu screen after it (no save loaded) sets the flashing ones' achievements: Steam
+    // stays blocked from an AP save's ending until a save is loaded again (the title's own
+    // achievements meanwhile with it).
+    if (*at_.save_loaded != kNoSaveLoaded) {
+        feats_ending_hold_ = false;
+    } else if (feats_.on() && !on && at_.flags[flag::kEnding] != 0) {
+        feats_ending_hold_ = true;  // left an AP save with its ending's flag set
+    }
+    on = on || feats_ending_hold_;
+#endif
     // The AP saves' slots for the stub's load test (feats.h): looked for with no save loaded,
     // kept while one loads, dropped once a frame call finds another save.
     if (*at_.save_loaded == kNoSaveLoaded) {
@@ -1239,6 +1251,9 @@ void Game::watch_feats() {
         feats_ended_ = true;
         note_seen_ = false;
     }
+#ifndef _WIN32
+    return;  // the Feats of Natu screen's note: not on Linux yet (its menus not mapped there)
+#endif
     if (note_frames_-- > 0) return;
     note_frames_ = kNoteFrames;
     const bool up = feats_screen_note(at_, feats_ended_);

@@ -131,6 +131,14 @@ constexpr char kPlayerPointer[] = "gMainCharacterSpriteP";
 #endif
 uint64_t g_player_pointer = 0;
 
+// SteamUserStats()'s context, the one the Feats guard's export answers for (feats.h,
+// feats_context_init). In the test build, the stand-in game's.
+#ifdef ZAP_HOOKTEST
+constexpr char kStatsContext[] = "zap_stats_context";
+#else
+constexpr char kStatsContext[] = "_ZZ14SteamUserStatsvE27s_CallbackCounterAndContext";
+#endif
+
 // The main program's GNU build id, and its writable segments: dl_iterate_phdr lists it first.
 int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
     auto* out = static_cast<std::optional<std::string>*>(data);
@@ -370,6 +378,9 @@ constexpr ConfigKey kConfigKeys[] = {
     {"draw_layer", &G::draw_layer, sizeof(void*), "gStatsSpriteLayerP", 0},
     {"text_new_fn", &G::text_new_fn, 0, "_Z15newSpriteStringPKcii", 0},
     {"text_link_fn", &G::text_link_fn, 0, "_Z15addSpriteStringP9SpriteRec", 0},
+    // The Feats guard's load test (feats.h): the slots' records and their randomizer sections.
+    {"slot_array", &G::slot_array, zap::slot::kCount * zap::slot::kStride, "gSaveGames", 0},
+    {"rando_slots", &G::rando_slots, zap::slot::kCount * zap::kSectionSize, "gSavedRandos", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -453,6 +464,8 @@ constexpr ConfigKey kConfigKeys[] = {
     {"draw_layer", &G::draw_layer, sizeof(void*), "zap_draw_layer", 0},
     {"text_new_fn", &G::text_new_fn, 0, "zap_text_new", 0},
     {"text_link_fn", &G::text_link_fn, 0, "zap_text_link", 0},
+    {"slot_array", &G::slot_array, zap::slot::kCount * zap::slot::kStride, "zap_save_games", 0},
+    {"rando_slots", &G::rando_slots, zap::slot::kCount * zap::kSectionSize, "zap_saved_randos", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -467,7 +480,7 @@ bool g_expected_known = false;
 bool read_own_symbols() {
     std::ifstream file("/proc/self/exe", std::ios::binary);
     std::string elf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    std::vector<std::string> names{kFrameFunction, kSpriteDefCount, kPlayerPointer};
+    std::vector<std::string> names{kFrameFunction, kSpriteDefCount, kPlayerPointer, kStatsContext};
     for (const ConfigKey& key : kConfigKeys) names.emplace_back(key.symbol);
     auto found = zap::linux_helper::find_symbols(elf, names);
     for (const std::string& name : names) {
@@ -476,6 +489,7 @@ bool read_own_symbols() {
     g_frame_function = found[kFrameFunction];
     g_sprite_def_count = found[kSpriteDefCount].value;
     g_player_pointer = found[kPlayerPointer].value;
+    zap::set_feats_stats_context(reinterpret_cast<const void*>(found[kStatsContext].value));
     for (size_t i = 0; i < kConfigKeyCount; ++i) {
         g_expected[i] = found[kConfigKeys[i].symbol].value + kConfigKeys[i].offset;
     }
@@ -878,6 +892,9 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "die") {  // a DeathLink death received (game_calls.h, kill)
         return on_game([] { return g_game.kill(zap::ticks_ms()); }, false);
     }
+    if (request == "feats_status") {  // the Feats guard (feats.h, state): checks
+        return on_game([] { return g_game.feats_state(); }, false);
+    }
     if (request == "title_status") {  // the title's lines (game_calls.h, title_state): checks
         return on_game([] { return g_game.title_state(); }, false);
     }
@@ -979,8 +996,11 @@ bool start_thread(int fd) {
     return true;
 }
 
+extern "C" void* SteamInternal_ContextInit(void* context);  // defined at the end, exported
+
 __attribute__((constructor)) void start() {
     // Every library the program needs is mapped before any constructor runs.
+    zap::set_feats_export(reinterpret_cast<const void*>(&SteamInternal_ContextInit));
     g_next_swap = reinterpret_cast<Swap>(dlsym(RTLD_NEXT, "SDL_GL_SwapWindow"));
     std::string folder = own_folder();
     if (!folder.empty() && access((folder + "/" + kDisabledName).c_str(), F_OK) == 0) return;
@@ -1074,6 +1094,11 @@ void game_frame(uintptr_t site) {
     guarded([] { take_offline(); });
     guarded([] { g_mailbox.serve(); });
     if (!g_game.configured()) return;
+    // Feats and Steam achievements kept out of AP saves: the guard on while one is loaded (and on
+    // Linux from its ending until a save loads), and the load test over the slots holding them
+    // (feats.h; the export below decides each call). Before the gate below: it only reads, so
+    // what the export blocks follows the game whatever the player pointer reads.
+    guarded([] { g_game.watch_feats(); });
     // Configured with no client: nothing touches the game while its player pointer reads
     // elsewhere, as the client's attach checks (it read the player state at the title screen
     // before any save, and in play: docs/re/linux.md, "Read from the running game").
@@ -1136,4 +1161,16 @@ extern "C" __attribute__((visibility("default"))) int SDL_GL_SwapWindow(void* wi
         if (next == nullptr) return 0;
     }
     return next(window);
+}
+
+// Steam's SteamInternal_ContextInit, in libsteam_api's place: the dynamic linker binds the game's
+// call (its two accessors', SteamUserStats() and SteamUtils(): docs/re/linux.md, "Mapped by
+// disassembly: the Feats guard's Steam and load test") to this definition, the preloaded
+// library's. The Feats guard answers the stats context while it blocks (feats.h,
+// feats_context_init); every other call goes on to libsteam_api's own, found after the helper
+// (never through the game's slot, which holds this one). In any other program, and before the
+// helper knows the stats context (the game's first call, SteamUtils(), comes before its config),
+// everything goes on.
+extern "C" __attribute__((visibility("default"))) void* SteamInternal_ContextInit(void* context) {
+    return zap::feats_context_init(context);
 }

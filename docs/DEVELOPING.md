@@ -295,38 +295,41 @@ Steam Deck"). What exists so far:
   Install Disks goal (its count, this world's own disks counted at their pickup with no client,
   and RETURN HOME); it keeps the seeds' files (under `$XDG_DATA_HOME`) and, with one and no
   client, configures itself from the game's symbols, so this world's own traps and disks work with
-  no client, gives AP saves their look without the client, and shows the title screen's lines.
-  Tested against a stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's
-  `native-linux` job). Working in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded,
-  counting the frame calls and serving reads (`native/README.md`, "The Linux helper"); new games,
-  grants, scrap's drops, Energy Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, labels,
-  traps, translations, the disks' goal, the look without the client and the title's lines are not
-  run in the game yet. `tools/helper.py status` finds the game, checks its build, makes sure the
-  socket is the game's, and reads its memory through it (`client/linux_helper.py`); `helper.py
-  load` and `unload` are Windows-only;
+  no client, gives AP saves their look without the client, shows the title screen's lines, and
+  keeps Steam achievements out of AP saves (its ending's Feats are not kept out yet, and nothing
+  notes it on the Feats screen: `native/README.md`, "Not on Linux yet"). Tested against a stand-in
+  game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job). Working
+  in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls and
+  serving reads (`native/README.md`, "The Linux helper"); new games, grants, scrap's drops, Energy
+  Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, labels, traps, translations, the
+  disks' goal, the look without the client, the title's lines and the Steam guard are not run in
+  the game yet. `tools/helper.py status` finds the game, checks its build, makes sure the socket
+  is the game's, and reads its memory through it (`client/linux_helper.py`); `helper.py load` and
+  `unload` are Windows-only;
 - the client: on Linux `game.Game.attach()` attaches to the Linux build (`attach_linux()`), its
   targets from the binary's symbol table (`client/linux_targets.py`, the ones `game.py` reads and
   writes), every read and write through the helper, one request at a time, connecting again once a
   connection drops (a request with no reply closes it, so a late reply is never read as the next
-  one's). It writes nothing through a target `re/linux.md` only assumes (`slot_array`), and
-  reports play only while the player state is where the layout puts it. The Linux helper is
-  configured once an attach, and again once the client's connection to it was made again
-  (`ticks.linux_newgame_tick`, `client/linux_targets.py`'s `helper_config`,
-  `client/linux_helper.py`'s `LinuxMod`). New games go through it, ARCHIPELAGO offered as on
-  Windows, and so do the step's items, with their popups, traps and scrap's drops (`apply`),
-  received Energy Shields (`ticks.shields_tick`) and DeathLink's deaths (`ticks.deathlink_tick`),
-  Intel Chips (`ticks.linux_intel_tick`), the ASSIST lock (`ticks.linux_assists_tick`), other
-  players' items' labels (`ticks.linux_labels_tick`), this seed's file (`ticks.linux_seed_tick`:
-  at first its own traps and disks, then the whole file, labels included, for the look without the
-  client), CLIENT CONNECTED and the other-seed notice (`linux_client_back_tick`,
-  `linux_other_save_tick`), the language (`linux_language_tick`), the OS Install Disks' count
-  (`linux_discs_tick`), the finds' follow-ups and RETURN HOME (`linux_finds_tick`,
-  `linux_replay_tick`). One lost after it was configured holds the step back for 30 s
-  (`ticks.linux_mod_lost`), then the items are written directly with no popup until it is back;
-  one that failed two steps running has the next step's written directly. The rest of the client
-  runs as without the mod: `native.attach` refuses the Linux build (`native.LinuxPartial`, said
-  once in the client's window); checks, the goal, DeathLink's deaths out and marking other
-  players' items collected go on. Tested against stand-ins only; not run in the game;
+  one's). It writes nothing through a target `re/linux.md` only assumes (every one is measured
+  now; `Game.unwritable` stays for any later one), and reports play only while the player state is
+  where the layout puts it. The Linux helper is configured once an attach, and again once the
+  client's connection to it was made again (`ticks.linux_newgame_tick`,
+  `client/linux_targets.py`'s `helper_config`, `client/linux_helper.py`'s `LinuxMod`). New games
+  go through it, ARCHIPELAGO offered as on Windows, and so do the step's items, with their popups,
+  traps and scrap's drops (`apply`), received Energy Shields (`ticks.shields_tick`) and
+  DeathLink's deaths (`ticks.deathlink_tick`), Intel Chips (`ticks.linux_intel_tick`), the ASSIST
+  lock (`ticks.linux_assists_tick`), other players' items' labels (`ticks.linux_labels_tick`),
+  this seed's file (`ticks.linux_seed_tick`: at first its own traps and disks, then the whole
+  file, labels included, for the look without the client), CLIENT CONNECTED and the other-seed
+  notice (`linux_client_back_tick`, `linux_other_save_tick`), the language
+  (`linux_language_tick`), the OS Install Disks' count (`linux_discs_tick`), the finds' follow-ups
+  and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). One lost after it was configured
+  holds the step back for 30 s (`ticks.linux_mod_lost`), then the items are written directly with
+  no popup until it is back; one that failed two steps running has the next step's written
+  directly. The rest of the client runs as without the mod: `native.attach` refuses the Linux
+  build (`native.LinuxPartial`, said once in the client's window); checks, the goal, DeathLink's
+  deaths out and marking other players' items collected go on. Tested against stand-ins only; not
+  run in the game;
 
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak
