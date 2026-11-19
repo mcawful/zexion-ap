@@ -194,7 +194,7 @@ public:
     void watch_feats();
     void add_known_seeds(const std::vector<OfflineSeed>& seeds);
     // Game thread: the seed file the client has put is its own seed, the one its look is for;
-    // dropped when it goes away (client_gone).
+    // ignored with no client (active), dropped when it goes away (client_gone).
     void note_client_seed(const OfflineSeed& seed);
     size_t known_seeds() const { return known_seeds_.size(); }  // tests
     void restore_feats();

@@ -1402,6 +1402,9 @@ bool Game::seed_look_loaded() const {
 }
 
 void Game::note_client_seed(const OfflineSeed& seed) {
+    // A put taken after its client went away (the game was in the background meanwhile) is no
+    // client's seed: the next client puts its own.
+    if (!active_) return;
     OfflineSeed key;
     key.locations = seed.locations;
     std::memcpy(key.table, seed.table, sizeof(key.table));

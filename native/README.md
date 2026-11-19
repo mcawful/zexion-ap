@@ -1309,11 +1309,15 @@ Working in game: 2026-10-23 ("Live item objects").
   Area Maps Intel Chips) and the loaded save is the look's own (`Game::seed_look_loaded`):
   - with a client, the save of the seed whose file it has put (`offline_put seed`, the helper
     keeps the last one a client put as the client's seed until it goes away); until it has put it,
-    the save of the seed the helper holds labels for. With neither, the game's own: the client
-    asks for the look from the toggle ticks, the seed's file follows once the server has listed
-    the items (`offline_seed`: the client looks again each poll until it has the text, then every
-    5 s), and labels sent with no randomizer save loaded are for no seed. In that window an Area
-    Map picked up in the seed's own save reveals as the game's does;
+    the save of the seed the helper holds labels for (taken from whichever randomizer save is
+    loaded when `ap_labels` lands, so before the file is put the look can follow another seed's
+    save). With neither, the game's own: the client asks for the look from the toggle ticks, the
+    seed's file follows once the server has listed the items and, for a seed with other players'
+    items, what each location holds (`offline_seed`: the client looks again each poll until it
+    has the text, then every 5 s; also every 5 s when the config cannot be built, and for a put
+    the helper refused), and labels sent with no randomizer save loaded are for no seed. A seed
+    file put after its client went away (the game was in the background) is nobody's seed. In
+    that window an Area Map picked up in the seed's own save reveals as the game's does;
   - with no client (or a client that said `other_save`), the save of the seed the offline look
     has dressed ("AP saves without the client").
 
@@ -1655,10 +1659,11 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   connected, and any seed file a client puts, are added to them from the next frame call
   (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
   is dressed), so another seed's save started earlier in the same client run is known as one
-  (`other_save`). With no client yet, the cached addresses configure it if the cache is for its
-  build and holds every required key ("The pipe"), and the game holds every checked function's
-  bytes. So the offline look, the map markers, the title lines and the text window's repair (with
-  `text_cut_code` in the cache) all run with no client once the cache checks out.
+  (`other_save`). The last seed a client puts is also its look's seed ("Intel Chips"). With no
+  client yet, the cached addresses configure it if the cache is for its build and holds every
+  required key ("The pipe"), and the game holds every checked function's bytes. So the offline
+  look, the map markers, the title lines and the text window's repair (with `text_cut_code` in
+  the cache) all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed as the client would,
   once it has been in play since it loaded (a menu or a death later keeps the same save, so it is

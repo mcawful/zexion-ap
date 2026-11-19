@@ -3266,8 +3266,8 @@ void test_a_refused_unload_keeps_what_the_client_asked() {
 // The Intel Chip, the ASSIST lock and the disk count (the scanner's line) apply only in the
 // seed's own save: with another save loaded, or none, while the client still asks for them (its
 // server dropped, nothing told it the save changed), the game's own records, menu and line are
-// back, and applied again in the seed's save. With labels held (a client's, or the offline
-// look's), another known seed's save is not the seed's either.
+// back, and applied again in the seed's save. Another known seed's save is not the client's
+// seed's, whether or not labels are held.
 void test_the_seed_look_follows_the_save() {
     for (const bool labeled : {false, true}) {
         const std::string where = labeled ? "with labels held" : "with no labels";
@@ -3341,8 +3341,9 @@ void test_the_seed_look_follows_the_save() {
     }
 }
 
-// Labels dropped (the client's, taken back) leave nothing of the seed they were for: the client's
-// next seed, with no labels of its own, gets its look in its own save.
+// The client's next seed, with no labels of its own, gets its look in its own save though the
+// last labels' seed is still remembered after they are taken back: the gate reads the client's
+// seed, not the labels.
 void test_the_look_after_a_labeled_seed_is_dropped() {
     zap::Game game;
     ready(game);
@@ -3402,8 +3403,12 @@ void test_what_opens_the_gate() {
     run();
     check(chip(), "the client's seed put: applied");
     game.client_gone(&chosen);
+    game.set_intel(true);  // asked for again, with no client and no new put
     run();
-    check(!chip(), "the client gone: the game's own");
+    check(!chip(), "the client gone, its seed forgotten: the game's own");
+    game.note_client_seed(zap::offline_seed_of(g_section));  // a put taken after it went
+    run();
+    check(!chip(), "a put taken with no client: not a client's seed");
 
     // A seed known only through the labels held for it.
     zap::Game labeled;
