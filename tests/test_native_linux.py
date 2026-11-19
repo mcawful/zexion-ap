@@ -670,6 +670,43 @@ def test_this_worlds_own_trap_goes_off_at_its_pickup(game: Game) -> None:
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_an_own_disk_picked_up_with_no_client_shows_its_count(game: Game) -> None:
+    # Game::watch_own_disks: the seed's own disks' cells watched with a client or none; a pickup
+    # with one queues nothing (the client's follow-up shows it), one after the client has gone
+    # queues the count, the file's plus each own disk the map shows collected.
+    from client import discs, offline
+
+    at = config_addresses()
+    own = (100, 101)
+    seed = offline.seed_text(
+        [0] * 154, (0, 0, 0), False, False, (1, 3, discs.scan_line(3), list(own)), None
+    )
+    put = offline.put_request("seed", seed, offline.seed_file_name("S", 0, 1))
+    shown = stand_in("zap_shown_count")
+
+    def settle(sock: socket.socket) -> None:
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, put) == "taken"
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the seed's save
+        settle(sock)
+        before = read_at(sock, shown, 4)
+        assert ask(sock, f"write {at['map_grid'] + own[0]:#x} 1b") == "written 1"  # with a client
+        time.sleep(1.0)
+        assert read_at(sock, shown, 4) == before
+    with game.connect() as sock:  # the client gone: the helper's to count
+        settle(sock)
+        assert ask(sock, f"write {at['map_grid'] + own[1]:#x} 1b") == "written 1"
+        wait_for(sock, f"read {shown:#x} 4", lambda r: r != "data " + before.decode("latin-1"))
+        text = read_at(sock, stand_in("zap_shown"), 64).split(b"\x00")[0].upper()
+        assert b"DISK 3" in text, text  # 1 shared + the two picked up
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_in_the_labels_seeds_save_the_map_marks_item_48_as_a_major(game: Game) -> None:
     # The item update's two tests of the ID patched (stand-in: the Linux build's bytes), "3 to 35"
     # made "48, or 3 to 35", while the labels' seed's save is loaded; put back when the client goes.

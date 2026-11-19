@@ -1375,7 +1375,7 @@ def test_on_linux_the_seeds_own_traps_are_handed_to_the_linux_helper(monkeypatch
     ctx = context(connection(), linux_game({"config": "ok", "offline_put": "taken"}))
     ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
     ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
-    monkeypatch.setattr(ticks, "linux_seed", lambda ctx: "zexion-ap offline 1\ntraps 100:103")
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps 100:103")
     asyncio.run(ticks.linux_seed_tick(ctx, None))
     sent = ctx.game_conn.pm.sent[-1]
     assert sent.startswith("offline_put seed ") and sent.endswith("traps 100:103")
@@ -1390,8 +1390,25 @@ def test_the_linux_seed_needs_only_the_connection() -> None:
     conn = connection()
     conn.items_listed = False
     ctx = context(conn, linux_game({}))
-    text = ticks.linux_seed(ctx)
+    text = ticks.linux_seed(ctx, None)
     assert text is not None and "\ntraps " in text and "\ndiscs -" in text
+
+
+def test_the_linux_seed_carries_the_disks_once_the_items_are_listed() -> None:
+    # The count every save shares and this world's own disks' cells, for the helper's count at
+    # their pickup with no client (Game::watch_own_disks).
+    hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
+    conn = connection(**hunt)
+    conn.items_listed = False
+    ctx = context(conn, linux_game({}))
+    received = types.SimpleNamespace(codes=[44, 44])  # two disks received
+    assert "\ndiscs -" in ticks.linux_seed(ctx, received)
+    conn.items_listed = True
+    lines = ticks.linux_seed(ctx, received).split("\n")
+    discs_line = next(line for line in lines if line.startswith("discs "))
+    assert discs_line.split()[1:3] == ["2", "3"]
+    unfound = next(line for line in lines if line.startswith("unfound "))
+    assert unfound != "unfound -"
 
 
 def test_a_linux_helper_from_before_the_traps_is_told_too_old(caplog) -> None:
@@ -1446,6 +1463,35 @@ def test_on_linux_the_assist_lock_goes_through_the_linux_helper() -> None:
     ctx.load.assists_want = False
     asyncio.run(ticks.linux_assists_tick(ctx))
     assert ctx.linux_mod is None, "configured again on a later poll"
+
+
+def test_on_linux_a_connection_made_again_takes_the_saves_disks_for_counted() -> None:
+    # The helper had no client between the two connections, so it counted an own disk picked
+    # up then itself: the client's next look takes the save's disks for counted (no second count
+    # popup), as attach_helper does on Windows. Not after a failure that kept the connection.
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    pm = ctx.game_conn.pm
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    ctx.load.disks_counted = {12}
+    ticks.linux_mod_lost(ctx, linux_helper.LinuxHelperError("the helper refused the addresses"))
+    asyncio.run(ticks.linux_newgame_tick(ctx))  # the same connection: the helper kept its client
+    assert ctx.load.disks_counted == {12}
+    pm.connection = 2  # a request with no reply closed it; the next read made another
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.load.disks_counted is None
+    assert ctx.linux_mod is not None and ctx.linux_mod.current()
+
+
+def test_on_linux_no_follow_up_goes_through_a_connection_made_again(monkeypatch) -> None:
+    ctx = context(connection(), linux_game({"config": "ok"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.game_conn.pm.connection = 2  # not configured on this one: the helper has no client
+
+    async def refused(*args) -> None:
+        raise AssertionError("no follow-up through it")
+
+    monkeypatch.setattr(ticks, "followups_tick", refused)
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
 
 
 def test_on_linux_a_failed_follow_up_drops_the_linux_helper_not_the_windows_one(

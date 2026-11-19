@@ -730,49 +730,69 @@ async def linux_newgame_tick(ctx: ZexionContext) -> None:
             linux_mod_lost(ctx, linux_helper.LinuxHelperError("connected to the helper again"))
             mod = None
         if mod is None or mod.pm is not g.pm:
-            ctx.linux_mod = await asyncio.to_thread(linux_helper.LinuxMod, g.pm)
+            ctx.linux_mod = mod = await asyncio.to_thread(linux_helper.LinuxMod, g.pm)
             ctx.linux_back_by = 0.0
+            here = (mod.pm, mod.connection)
+            if ctx.linux_configured_on is not None and ctx.linux_configured_on != here:
+                # The helper had no client between the two connections (it takes one closing for
+                # its client gone): a disk picked up meanwhile was its own to count (its own
+                # notice), so the next look takes the disks the save holds for counted, as
+                # attach_helper does on Windows. Not after a failure that kept the connection
+                # (a refused config, say): the helper kept its client then.
+                ctx.load.disks_counted = None
+            ctx.linux_configured_on = here
         await newgame_tick(ctx, ctx.linux_mod)
         ctx.said.clear("linux mod")
     except linux_helper.LinuxHelperError as exc:
         linux_mod_lost(ctx, exc)
 
 
-def linux_seed(ctx: ZexionContext) -> str | None:
+def linux_seed(ctx: ZexionContext, p: Poll) -> str | None:
     """This seed's file for the Linux helper, or None with no connection: what it reads of one,
-    the seed's identity (its table and start) and this world's own traps, with no labels or
-    disk count (the Linux helper keeps no offline look: the client gives it both itself), so it
-    is known from the connection's slot data alone, without waiting for the items or the
-    server's scouts as offline_seed does."""
+    the seed's identity (its table and start), this world's own traps and, with the OS Install
+    Disks goal once the items are listed, the disks (the count every save shares and this
+    world's own disks' cells, which the helper counts at their pickup with no client:
+    Game::watch_own_disks), with no labels (the Linux helper keeps no offline look: the client
+    gives them itself). Known from the connection's slot data, without waiting for the server's
+    scouts as offline_seed does; the disks join it once the items are listed."""
     conn = ctx.conn
     if conn is None:
         return None
+    hunt = conn.hunt
+    disc_info = None
+    if hunt is not None and conn.items_listed:
+        shared = discs.owned(hunt, p.codes, ())
+        own = offline.grid_cells(conn.plan.cells, hunt.locations)
+        disc_info = (shared, hunt.required, discs.scan_line(hunt.required), own)
     cells = conn.plan.cells
     traps = [(cells[i][1] * ids.MAP_SIZE + cells[i][0], code) for i, code in conn.traps.items()]
     return offline.seed_text(
-        conn.plan.table, conn.plan.start, conn.intel_chip, conn.lock_assists, None, None, traps
+        conn.plan.table, conn.plan.start, conn.intel_chip, conn.lock_assists, disc_info, None, traps
     )
 
 
 async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
     """With the game's Linux build: this seed's file (linux_seed) handed to the Linux helper for
-    this world's own traps, which it sets off at their pickup (native/README.md, "Traps"), from
-    the connection's first poll and again when it changes, looked at every
-    OFFLINE_WRITE_SECONDS. No file is kept on Linux: the helper takes the text ("taken") and
-    keeps it until the game closes. A helper that fails is linux_mod_lost."""
+    this world's own traps, which it sets off at their pickup (native/README.md, "Traps"), and
+    own disks, whose count it shows at their pickup with no client, from the connection's first
+    poll and again when it changes, looked at every OFFLINE_WRITE_SECONDS. No file is kept on
+    Linux: the helper takes the text ("taken") and keeps it until the game closes. A helper that
+    fails is linux_mod_lost."""
     mod = ctx.linux_mod
     if mod is None or time.monotonic() < mod.told.offline_at:
         return
     mod.told.offline_at = time.monotonic() + OFFLINE_WRITE_SECONDS
     seed_name = ctx.server_seed_name or ctx.seed_name
-    seed = linux_seed(ctx)
+    seed = linux_seed(ctx, p)
     if not seed_name or not ctx.slot or seed is None or mod.told.offline_sent.get("seed") == seed:
         return
     name = offline.seed_file_name(seed_name, ctx.team, ctx.slot)
     request = offline.put_request("seed", seed, name)
     if len(request.encode()) > offline.MAX_REQUEST:  # it would end the connection
         if ctx.said("linux seed", "too large"):
-            logger.warning("This seed's own traps are too many to hand to Zexion's mod on Linux.")
+            logger.warning(
+                "This seed's own traps and disks are too many to hand to Zexion's mod on Linux."
+            )
         return
     try:
         reply = await asyncio.to_thread(mod.request, request)
@@ -784,7 +804,8 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
         ctx.said.clear("linux seed")
     elif ctx.said("linux seed", reply):
         logger.warning(
-            "Zexion's mod on Linux didn't take this seed's own traps; they may do nothing."
+            "Zexion's mod on Linux didn't take this seed's own traps and disks; they may do "
+            "nothing."
         )
         log.warning(f"The Linux helper did not take the seed: {reply}")
 
@@ -857,7 +878,10 @@ async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> N
     showed, with the helper's last connection (its status ``not asked``), offered again. A
     helper that fails is linux_mod_lost."""
     mod = ctx.linux_mod
-    if mod is None:
+    if mod is None or not mod.current():
+        # Not through a connection made again since it was configured: the helper has no client
+        # on it until configured again (linux_newgame_tick, next poll), and counts own disks
+        # itself meanwhile.
         return
     try:
         home = ctx.load.return_home

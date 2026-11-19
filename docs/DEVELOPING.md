@@ -291,7 +291,8 @@ Steam Deck"). What exists so far:
   (`native/src/game_calls.h`, built for both through `native/src/platform.h` and the Linux parts
   of the memory layer; it runs only those parts), shows other players' items as Archipelago items
   (on the map too), sets off traps, shows its text in a translation's font, and runs the OS
-  Install Disks goal (its count and RETURN HOME). Tested against a stand-in game
+  Install Disks goal (its count, this world's own disks counted at their pickup with no client, in
+  a game run a client connected in, and RETURN HOME). Tested against a stand-in game
   (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job). Working in
   game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls and serving
   reads (`native/README.md`, "The Linux helper"); new games, grants, scrap's drops, Energy
@@ -312,8 +313,9 @@ Steam Deck"). What exists so far:
   (`apply`), received Energy Shields (`ticks.shields_tick`) and DeathLink's deaths
   (`ticks.deathlink_tick`), Intel Chips (`ticks.linux_intel_tick`), the ASSIST lock
   (`ticks.linux_assists_tick`), other players' items' labels (`ticks.linux_labels_tick`), this
-  seed's own traps (`ticks.linux_seed_tick`), the language (`linux_language_tick`), the OS Install
-  Disks' count (`linux_discs_tick`), the finds' follow-ups and RETURN HOME (`linux_finds_tick`,
+  seed's own traps and, with the disks goal, its own disks' cells and count
+  (`ticks.linux_seed_tick`), the language (`linux_language_tick`), the OS Install Disks' count
+  (`linux_discs_tick`), the finds' follow-ups and RETURN HOME (`linux_finds_tick`,
   `linux_replay_tick`). One lost after it was configured holds the step back for 30 s
   (`ticks.linux_mod_lost`), then the items are written directly with no popup until it is back;
   one that failed two steps running has the next step's written directly. The rest of the client

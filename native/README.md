@@ -2250,7 +2250,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
-  | `offline_put seed NAME` and the seed's file (frame) | `taken`, or `error <why>`: the seed parsed as the Windows helper's ("AP saves without the client"), kept in the helper, no file written, for this world's own traps ("Traps"); `offline_put config` is `error not on the Linux build` |
+  | `offline_put seed NAME` and the seed's file (frame) | `taken`, or `error <why>`: the seed parsed as the Windows helper's ("AP saves without the client"), kept in the helper, no file written, for this world's own traps ("Traps") and own disks ("This world's own disks, counted at their pickup", below); `offline_put config` is `error not on the Linux build` |
   | `trap_status` (frame) | as the Windows helper's ("Traps") |
   | `discs` and `discs_status` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
   | `drop_status` (frame) | as the Windows helper's ("The pipe", "Received scrap") |
@@ -2438,6 +2438,27 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   a `jmp`, both put back once the client goes. The equipment screen and the pause row: built
   only (the stand-in has no menus), and in a translation assumed ("Translations", above). Not
   run in the game.
+- **This world's own disks, counted at their pickup.** `Game::watch_own_disks` runs at each frame
+  call as on Windows ("The OS Install Disks goal", "The count follows the save"): in a known disk
+  seed's save, an own disk's cell turning collected after two frames in play queues "OS Install
+  Disk N" ("of M" once the scanner has told) with the disk's pickup sound, only with no client
+  attached; with one, its follow-up shows the count, and the cells are watched all the same, so a
+  disk picked up with a client is no pickup once it goes. The seed's own disks' cells and the
+  count every save shares come with the seed's text the client hands over (`offline_put seed`,
+  `ticks.linux_seed`, once the items are listed), which the helper keeps until the game closes: no
+  seed file is written on Linux yet, so this counts only in the game run a client connected in,
+  from its first put of the seed with the items listed; a disk picked up before then is not
+  counted, and nothing makes it up later. A client that goes leaves the helper with none attached
+  (`Game::client_left`, which `client_gone` does on Windows), and so does any connection that
+  closes (a request with no reply), until the next `config`: so a client configuring on another
+  connection than before takes the disks the save holds for counted at its next look
+  (`ticks.linux_newgame_tick`, as `attach_helper` does on Windows), and gives no follow-up through
+  a connection not configured yet (`linux_finds_tick`), so one pickup shows one count; one picked
+  up with the client attached just before its connection closed, its follow-up not run yet, shows
+  none, as on Windows. Tested on the stand-in game through the socket
+  (`tests/test_native_linux.py`: a pickup with a client queues nothing, one after it has gone
+  queues the count) and with stand-ins for the client (`tests/test_zexion_client.py`); not run in
+  the game.
 - **RETURN HOME WITH THE DISKS?** `Game::watch_mission` runs at each frame call and
   `mission_prompt` is taken as on Windows ("The OS Install Disks goal"): the prompt opened as the
   escape skip's after event 3667's fade, its YES keeping the screen black until the ending
@@ -2542,8 +2563,9 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   without: the Feats guard ("Feats and achievements in AP saves"), the title screen's lines ("The
   title screen's lines"), the file select's AP logo and ITEMS row ("AP saves on the file select",
   the major-item list in "Grants"), the repair of tall popups' text ("Grants and popups", below
-  the Linux bullet's), and AP saves without the client ("AP saves without the client", with this
-  world's own disks counted at their pickup). The client says so once (`native.LINUX_NOT_READY`).
+  the Linux bullet's), and AP saves without the client ("AP saves without the client"; this
+  world's own disks are counted at their pickup with no client, above, but only in a game run a
+  client connected in). The client says so once (`native.LINUX_NOT_READY`).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
@@ -2555,7 +2577,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     `ailments`, as on Windows;
   - this world's own traps come from the seed's text the client hands the helper
     (`offline_put seed`, `ticks.linux_seed_tick`) at its connection's first poll (its identity
-    and traps only, from the slot data: `ticks.linux_seed`), kept until the game closes: no file
+    and traps from the slot data, and the disks once the items are listed: `ticks.linux_seed`),
+    kept until the game closes: no file
     is written, so one picked up before a client first connected since the game started does
     nothing, and nothing makes it up later;
   - nothing differs for RETURN HOME WITH THE DISKS? or the game's own ending: traps are held

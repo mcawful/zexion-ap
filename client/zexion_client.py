@@ -145,6 +145,10 @@ class ZexionContext(CommonContext):
         # labels, the seed's own traps, the language, the disks' count, the finds' follow-ups
         # and RETURN HOME (ticks.linux_newgame_tick and the other linux_ ticks).
         self.linux_mod: linux_helper.LinuxMod | None = None
+        # The Linux helper connection the last LinuxMod was configured on (its process, its
+        # connection's number): one configured on another had a stretch with no client, in which
+        # the helper counted this world's own disks itself (ticks.linux_newgame_tick).
+        self.linux_configured_on: tuple | None = None
         self.helper_retry_at = 0.0
         # Let go while no connection stepped, for the helper's own look (leave_helper_tick).
         self.helper_left = False

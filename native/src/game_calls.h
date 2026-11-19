@@ -70,6 +70,10 @@ public:
     bool menu_open() const;
     // Whether a client is there: set by `config`, cleared when it goes away (client_gone).
     bool active() const { return active_; }
+    // The Linux helper's, when its client goes (client_gone's on Windows, which puts the rest
+    // back): no client attached, so an own disk's count is the helper's to show
+    // (watch_own_disks) until a client configures again.
+    void client_left() { active_ = false; }
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
     // After configure (which loads the OpenGL functions): the OpenGL functions to paint with (tests).

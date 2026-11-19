@@ -34,7 +34,7 @@
 #include "game_mem.h"    // in_image_code
 #include "mailbox.h"
 #include "requests.h"  // parse_newgame, parse_batch
-#include "offline.h"  // put_offline_file: a seed's own traps
+#include "offline.h"  // put_offline_file: a seed's own traps and disks
 
 namespace {
 
@@ -86,8 +86,8 @@ int g_writable_count = 0;
 // The game's thread's work (native/src/mailbox.h), and the Windows helper's Game, configured by
 // a client's `config` (native/src/game_calls.h). Of Game, only the parts ported run here: new
 // games and the ARCHIPELAGO choice, `apply` and its popups, other players' items, this world's
-// own traps and the received ones (native/README.md, "The Linux helper"); the rest's addresses
-// stay null and nothing calls them.
+// own traps and disks and the received ones, and the rest native/README.md's "The Linux helper"
+// lists; the rest's addresses stay null and nothing calls them.
 constexpr DWORD kFrameWaitMs = 1000;  // as the Windows helper's
 zap::Mailbox g_mailbox;
 zap::Game g_game;  // game thread only
@@ -732,7 +732,7 @@ std::optional<std::string> game_request(std::string_view request) {
     }
     if (request.starts_with("offline_put ")) {
         // No offline files here (offline.cpp): a seed's text is taken for the running helper's
-        // own traps, from the next frame, and kept until the game closes.
+        // own traps and own disks, from the next frame, and kept until the game closes.
         zap::OfflineSeed seed;
         std::string reply =
             zap::put_offline_file(std::wstring(), g_build, std::string(request), &seed);
@@ -895,6 +895,7 @@ void game_frame(uintptr_t site) {
     // Before the mailbox: the serving thread marks a client gone before it takes the next one,
     // so nothing that next client asks is dropped with the last one's.
     if (g_client_left.exchange(false)) {
+        guarded([] { g_game.client_left(); });  // an own disk's count the helper's again
         guarded([] { g_game.disarm_newgame(); });
         guarded([] { g_game.restore_ap_items(); });
         guarded([] { g_game.restore_intel(); });  // the Area Map's record the game's again
@@ -936,6 +937,9 @@ void game_frame(uintptr_t site) {
     // patches while a trap's timer runs, then one trap set off (a received one as its popup
     // shows), as the Windows helper's frame (trap.h; native/README.md, "Traps").
     guarded([] { g_game.watch_own_traps(); });
+    // This world's own disks: their cells watched with a client or none, a pickup's count shown
+    // with none, as the Windows helper's (game_offline.cpp).
+    guarded([] { g_game.watch_own_disks(); });
     guarded([] { g_game.watch_trap_patches(); });
     guarded([] { g_game.pump_traps(zap::ticks_ms()); });
     guarded([] { g_game.pump_popups(); });
