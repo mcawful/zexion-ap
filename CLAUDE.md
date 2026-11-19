@@ -76,11 +76,12 @@ folder on Windows; on Linux and macOS it is `.venv/bin/`, in every command in th
 the mod supports, the helper, `client/process.py` (the Windows API) and the live tools
 `memscan.py` and `helper.py load` and `unload` are Windows-only. The client also runs against the
 game's Linux build, which has a helper of its own that runs every part of the Windows helper's but
-unloading (run in the game, 2026-11-19: new games, grants with their popups, traps, Energy
-Shields, checks, Intel Chips, translations, the OS Install Disks goal with RETURN HOME, DeathLink,
-scrap's drops, the Feats guard at an ending, tall popups' text, the title screen's lines, the file
-select's AP logo, disk counts and ITEMS row and the look without the client; this world's own
-traps and disks with no client not yet), and so do `grant.py`, `check_patterns.py --live` and
+unloading (run in the game, on Flatpak Steam on one PC, 2026-11-19: new games, grants with their
+popups, received traps, Energy Shields, checks, Intel Chips, popups in English(HD) and Japanese,
+the OS Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending,
+tall popups' text, the title screen's lines, the file select's AP logo, disk counts and ITEMS row
+and the look without the client; this world's own traps, and its own disks with no client, not
+yet), and so do `grant.py`, `check_patterns.py --live` and
 `helper.py status` ([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
 
 uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
@@ -100,7 +101,7 @@ uv pip install --python .venv -r requirements-dev.txt
 ## Checks
 
 CI runs all four on every push to and pull request into `develop` or `main` (ruff and pytest
-on Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native build below. A pull
+on Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native builds below. A pull
 request into `main` also runs the release gate (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
@@ -159,17 +160,19 @@ Nothing in `tests/` needs the game, and CI never runs it.
   Chips, the ASSIST lock, other players' items, which it shows as Archipelago items, on the map
   too, translations, the OS Install Disks goal, AP saves' look without the client, the file
   select's AP logo, disk counts and ITEMS row, the title screen's lines, Feats and Steam
-  achievements kept out of AP saves and tall popups' text repaired (run in the game for new games,
-  grants with their popups, traps, Energy Shields, checks, Intel Chips, translations, the OS
-  Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending,
-  tall popups' text, the title screen's lines, the file select's AP logo, disk counts and ITEMS
-  row and the look without the client, 2026-11-19; this world's own traps and disks with no client
-  not yet): [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and
+  achievements kept out of AP saves and tall popups' text repaired (run in the game, on Flatpak
+  Steam on one PC, 2026-11-19, for new games, grants with their popups, received traps, Energy
+  Shields, checks, Intel Chips, popups in English(HD) and Japanese, the OS Install Disks goal with
+  RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending, tall popups' text, the title
+  screen's lines, the file select's AP logo, disk counts and ITEMS row and the look without the
+  client; this world's own traps, and its own disks with no client, not yet): [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and
   loads it again a few seconds later (for a misbehaving mod; popups still queued are lost); on
   Linux, where the Linux helper stays for the game's run, it says to restart Zexion instead.
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper, and the client says so (its own build, `native/build` or
-  `ZEXION_DLL`, still loads).
+  `ZEXION_DLL`, still loads). On Linux a `zexion_ap.disabled` beside `libzexion_ap.so` turns the
+  preloaded helper off, and the client then says only that it found no helper in Zexion and asks
+  whether `libzexion_ap.so` is in the game's launch options.
 
 ### Tools
 
