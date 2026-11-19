@@ -310,10 +310,12 @@ What there is:
   and serving reads; 2026-11-19: new games (ARCHIPELAGO), grants with their popups, both traps, an
   Energy Shield, location checks, an Intel Chip and its hint, popups in English(HD) and Japanese,
   the title's lines, the file select's AP logo and ITEMS row, the look without the client, and
-  `menu_state` read in play with the mouse used (`native/README.md`, "The Linux helper"); scrap's
-  drops, DeathLink's deaths, the disks' goal and the file select's counts, the Feats guard and the
-  tall text's repair are not run in the game yet (the client's lines said the ASSIST lock and the
-  labels were set; not looked at). How to run it in the game, and what to try first:
+  `menu_state` read in play with the mouse used; and in run 2, the OS Install Disks goal (received
+  and own disks counted, the pause row, the file select's counts, RETURN HOME and its ending),
+  DeathLink both ways, scrap's drops, the Feats guard at an AP ending (no Feats, no achievement,
+  its note) and tall popups' text (`native/README.md`, "The Linux helper"); this world's own traps
+  and disks with no client are not run in the game yet (the client's lines said the ASSIST lock
+  and the labels were set; not looked at). How to run it in the game, and what to try first:
   `native/README.md`, "Running it in the game". `menu_state` is the game's cursor mode on Linux
   (`gCursorMode`), which the mouse may set to 1, but only in menus: in play it stays 0 (read live,
   2026-11-19: `re/linux.md`, `menu_state`). `tools/helper.py status` finds the game, checks its

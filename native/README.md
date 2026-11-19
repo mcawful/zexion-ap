@@ -2234,10 +2234,24 @@ text is English there). Two items picked up in the world reached the server as f
 25,25 and Machinus 24,29), and after a save at a save point the file select's ITEMS row showed the
 received items too. The client's own lines also said other players' items' labels and the ASSIST
 lock were set for the seed (not looked at in the game). Not checked: the popups' sounds and the
-HUD after the grants. Not run in the game yet: scrap's drops, DeathLink, the OS Install Disks goal
-(its count, the file select's disk counts, RETURN HOME; this seed's goal was the core), the Feats
-guard and its note (an ending), tall popups' text (a four-line notice), this world's own traps and
-disks counted with no client, the Steam Runtime without Flatpak, a Steam Deck.
+HUD after the grants.
+
+Run 2, the same day and setup, the helper of 4e0203f's sources, a two-slot seed (`lab/run2/`: RunA
+played, RunB a plain Archipelago client with DeathLink), both with the OS Install Disks goal (16,
+3 required), DeathLink and the Landing Pod as start. Seen by the owner: the pause screen's disk
+row from 0; received disks' popups with their count notices, the pause row and the file select's
+DISK count following; this world's own two disks by the pod counted at their pickup (the client
+attached); a death RunB sent dealt in the game (the client: "the received death was dealt."), and
+the owner's own death reaching RunB ("RunA died in Zexion."), not dealt back; a received Scrap
+Energy's drop near the player once settled; tall popups' text fine; at 3 disks and a save at the
+pod, RETURN HOME WITH THE DISKS? offered, its YES starting the ending through the helper's
+wrapper, the credits, MISSION COMPLETE and the Feats of Natu screen with ARCHIPELAGO SAVE: NO
+FEATS EARNED, no Feat earned and no Steam achievement shown; the server: "RunA (Team #1) has
+completed their goal." `GameUnlocks.sav` as the ending wrote it was byte for byte the backup taken
+before the run (`cmp`; the title's fold of a run's Feats comes later, and an unlock already set
+before could not show). Not run in the game yet: this world's own traps and disks counted with no
+client, the scanner's line and the equipment screen's disk (not reached), the Steam Runtime
+without Flatpak, a Steam Deck.
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
@@ -2556,10 +2570,11 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     then sets its seed file's count again for a known seed's save.
 
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`): `discs` writes
-  the scanner's Text entry as the client's line in capitals and makes the stand-in's KEYS branch
-  a `jmp`, both put back once the client goes. The equipment screen and the pause row: built
-  only (the stand-in has no menus), and in a translation assumed ("Translations", above). Not
-  run in the game.
+  the scanner's Text entry as the client's line in capitals and makes the stand-in's KEYS branch a
+  `jmp`, both put back once the client goes. The equipment screen and the pause row: built only
+  (the stand-in has no menus), and in a translation assumed ("Translations", above). The pause row
+  and the count notices run in the game, 2026-11-19 ("The Linux helper", above: run 2); the
+  scanner's line and the equipment screen not reached.
 - **This world's own disks, counted at their pickup.** `Game::watch_own_disks` runs at each frame
   call as on Windows ("The OS Install Disks goal", "The count follows the save"): in a known disk
   seed's save, an own disk's cell turning collected after two frames in play queues "OS Install
@@ -2580,8 +2595,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   up with the client attached just before its connection closed, its follow-up not run yet, shows
   none, as on Windows. Tested on the stand-in game through the socket
   (`tests/test_native_linux.py`: a pickup with a client queues nothing, one after it has gone
-  queues the count) and with stand-ins for the client (`tests/test_zexion_client.py`); not run in
-  the game.
+  queues the count) and with stand-ins for the client (`tests/test_zexion_client.py`); with a
+  client attached run in the game, 2026-11-19 ("The Linux helper", above: run 2), with none not
+  yet.
 - **RETURN HOME WITH THE DISKS?** `Game::watch_mission` runs at each frame call and
   `mission_prompt` is taken as on Windows ("The OS Install Disks goal"): the prompt opened as the
   escape skip's after event 3667's fade, its YES keeping the screen black until the ending
@@ -2613,11 +2629,12 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     (`taken_over`, `fade_still_ours`); not measured.
 
   The client's side runs on Linux too: the finds' follow-ups (the found disks' counts, the Area
-  Maps' hints) and the Landing Pod's reminder and prompt (`ticks.linux_finds_tick`), and the ending again on a save past it
-  (`linux_replay_tick`). Tested on the stand-in game through the socket: `mission_prompt` taken
-  once configured, lapsing away from home's cell, waiting at home (the stand-in has no event 3667
-  or prompt to open), and dropped when `discs` turns off. The prompt itself: stand-in tested on
-  Windows only (`tests/mission_tests.cpp`); not run in the game on Linux.
+  Maps' hints) and the Landing Pod's reminder and prompt (`ticks.linux_finds_tick`), and the
+  ending again on a save past it (`linux_replay_tick`). Tested on the stand-in game through the
+  socket: `mission_prompt` taken once configured, lapsing away from home's cell, waiting at home
+  (the stand-in has no event 3667 or prompt to open), and dropped when `discs` turns off. The
+  prompt itself: stand-in tested on Windows only (`tests/mission_tests.cpp`); the prompt at the
+  pod and YES's ending run in the game, 2026-11-19 ("The Linux helper", above: run 2).
 - **Received scrap's drops.** `Game::pump_drops` runs at each frame call, after the popups, as on
   Windows ("Received scrap"): a received Scrap Metal's, Scrap Energy's or Scrap Chunk's drop is
   spawned once its popup has shown, the player in play in one cell for a second in the save the
@@ -2628,7 +2645,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   211 as the ending begins, which the wait through an ending rests on, is not traced there).
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`: Scrap Metal's,
   Scrap Energy's and Scrap Chunk's spawns called with the player's cell and their events, a notice
-  spawning nothing); not run in the game.
+  spawning nothing); a received Scrap Energy's drop run in the game, 2026-11-19 ("The Linux
+  helper", above: run 2).
 - **Received Energy Shields.** `shield` runs `Game::spawn_shield` as on Windows ("Received Energy
   Shields"): event 3553 through the game's type-11 handler, as the drops' (above), once the player
   has been in play in one cell for a second, not through RETURN HOME's ending. The client asks for
@@ -2656,7 +2674,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   for a newer one; the Linux helper is dropped (`linux_mod_lost`) either way. Tested on the
   stand-in game through the socket (`tests/test_native_linux.py`: `die` refused unconfigured and
   halted, then energy 0 and the death routine with the player and kind 0) and with stand-ins for
-  the client (`tests/test_ticks.py`); not run in the game.
+  the client (`tests/test_ticks.py`); both ways run in the game, 2026-11-19 ("The Linux helper",
+  above: run 2).
 - **Intel Chips.** `intel on` and `intel off` are taken as on Windows ("Intel Chips"), and
   `Game::watch_intel` runs at each frame call: the Area Map's record (49) named INTEL CHIP, its
   map reveal (3551) off, while on and only if the record reads as the game loads it or as the
@@ -2814,7 +2833,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`: its stand-in
   Steam's achievement set before a config and with a normal save, not with an AP save loaded, and
   not after an unpatched AP ending until a save loads; the stand-in's ending, the Linux site's
-  bytes, patched while an AP save is loaded and put back after); not run in the game.
+  bytes, patched while an AP save is loaded and put back after); an AP save's ending, its note and
+  no achievement run in the game, 2026-11-19 ("The Linux helper", above: run 2).
 - **Tall text.** `Game::watch_text_cut` runs in the Linux helper's frame as in `watch_all`
   ("Popups", "Tall text"), with or without a client: the text window's top cut patched once
   configured. The Linux build's cut is other code (`text_cut_code`, `setGameMessageStringClipping`
@@ -2826,8 +2846,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   Windows helper there, `native.NoWindowsHelper`, said nothing of, and the client goes on with the
   Linux helper). Tested beside the game's bytes (`linux/tests/patch_tests.cpp`: for rows 0 to 31
   and every edge the cut is taken at, the game's gives the edge mod 8 and ours the edge less the
-  row's top) and on the stand-in game through the socket (patched once configured); not run in the
-  game.
+  row's top) and on the stand-in game through the socket (patched once configured); tall popups
+  run in the game, 2026-11-19 ("The Linux helper", above: run 2).
 - **The major-item list.** `Game::watch_pickups` runs in the Linux helper's frame as in
   `watch_all` ("Grants", "The major-item list"), in play in an AP save, with or without a client:
   each owned item the game's pickup would list goes in the list (`pickup_list`, `gGameState` +
@@ -2852,7 +2872,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   (`docs/re/linux.md`, "Mapped by disassembly: the file select's AP logo and disk counts"; that
   the logo's style shows white and the painting itself are not measured there). The Linux stand-in
   game has no menus: the rewrite is stand-in tested on Windows only (`tests/files_tests.cpp`); the
-  logo run in the game, 2026-11-19 ("The Linux helper", above), the disk counts not.
+  logo run in the game, 2026-11-19 ("The Linux helper", above), the disk counts too (run 2).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
