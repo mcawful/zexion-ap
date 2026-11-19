@@ -270,6 +270,11 @@ public:
     // Game thread, each frame call (watch_all's; the Linux helper's frame): the AP logo and each
     // disk seed's save its count on the file select, COPY FILE and DELETE FILE (files.h).
     void watch_files();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): in play in an AP
+    // save, owned items the game lists (pickups::listed), but the new game's starting ones,
+    // appended to the major-item list as a pickup would: grants set the byte alone
+    // (docs/re/memory.md, "The pickup record holds the major-item list").
+    void watch_pickups();
     // Game thread: what the helper changed for a translation put back (its names in the tables,
     // entry 70's offset once the popup areas are free, its icons): put_back_game's part, and the
     // Linux helper's when a client goes.
@@ -432,11 +437,6 @@ public:
 private:
     // The game's last message and its sequence, as the game keeps them: whether both read.
     bool last_message(BYTE*& last, int32_t& sequence) const;
-    // The watches only watch_all calls (it checks the configuration).
-    // In play in an AP save: owned items the game lists (pickups::listed), but the new game's
-    // starting ones, appended to the major-item list as a pickup would: grants set the byte alone
-    // (docs/re/memory.md, "The pickup record holds the major-item list").
-    void watch_pickups();
     // The helper's names and scanner line in the translation's tables; popup areas freed.
     // A popup in the translation's font: the icon and translated name (a stand-in's own, not its
     // label), then the client's suffix on the next line; a notice's text alone (hd_case).

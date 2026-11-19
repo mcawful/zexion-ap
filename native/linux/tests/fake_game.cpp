@@ -38,6 +38,7 @@ void* zap_menu_top;
 // as the Linux build's), the label's the string it was handed (a std::wstring by reference).
 alignas(16) unsigned char zap_translation[0x40150];
 short zap_small_count;
+unsigned char zap_pickup_list[0x1B];  // the major-item list, its length at +0x1A
 short zap_large_count;  // LargeText's (none here: the Feats screen's title stays in pixels)
 short zap_sprite_def_count = 96;  // as the game's (gSpriteDefCount): the icon sheets 101, 104
 short zap_item_name_count;

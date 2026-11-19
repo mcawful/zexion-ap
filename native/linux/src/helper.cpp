@@ -394,6 +394,8 @@ constexpr ConfigKey kConfigKeys[] = {
     {"file_entry_fn", &G::file_entry_fn, 0, "_Z18SaveGameMenuActionP12GameMenuItemi", 0},
     {"copy_entry_fn", &G::copy_entry_fn, 0, "_Z18CopyGameMenuActionP12GameMenuItemi", 0},
     {"delete_entry_fn", &G::delete_entry_fn, 0, "_Z19ClearGameMenuActionP12GameMenuItemi", 0},
+    // The major-item list (the file select's ITEMS row), with its length (game_layout.h pickups).
+    {"pickup_list", &G::pickup_list, zap::pickups::kSize, "gGameState", 0xAE0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -486,6 +488,7 @@ constexpr ConfigKey kConfigKeys[] = {
     {"file_entry_fn", &G::file_entry_fn, 0, "zap_file_entry", 0},
     {"copy_entry_fn", &G::copy_entry_fn, 0, "zap_copy_entry", 0},
     {"delete_entry_fn", &G::delete_entry_fn, 0, "zap_delete_entry", 0},
+    {"pickup_list", &G::pickup_list, zap::pickups::kSize, "zap_pickup_list", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -1163,6 +1166,10 @@ void game_frame(uintptr_t site) {
     guarded([] { g_game.watch_assists(); });  // ASSIST locked in the options menu while asked
     guarded([] { g_game.watch_title(); });  // the title screen's lines, with no save loaded
     guarded([] { g_game.watch_map_marks(); });  // the squares raised, the on-screen write patched
+    // The major-item list: each owned item the game's pickup would list, in play in an AP save,
+    // for the file select's ITEMS row once the game saves or reaches a checkpoint (game_layout.h
+    // pickups; docs/re/linux.md, "Mapped by disassembly: the major-item list").
+    guarded([] { g_game.watch_pickups(); });
     // In a translation: the helper's names in its tables, its icons in its sheets, the popups'
     // borrowed entries emptied once their message has gone (translation.h).
     guarded([] { g_game.watch_translation(); });

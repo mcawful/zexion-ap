@@ -2192,7 +2192,8 @@ items, as themselves"), sets off traps ("Traps"), shows its text in a translatio
 ("Translations"), runs the OS Install Disks goal, its count and RETURN HOME WITH THE DISKS? ("The
 OS Install Disks goal"), keeps AP saves' look without the client ("AP saves without the client"),
 puts the AP logo and the disk counts on the file select ("The file select's AP logo and disk
-counts", below), shows the title screen's lines ("The title screen's lines"), and keeps Feats and
+counts", below), fills the major-item list the file select's ITEMS row draws ("The major-item
+list", below), shows the title screen's lines ("The title screen's lines"), and keeps Feats and
 Steam achievements out of AP saves ("Feats and achievements in AP saves"). It holds the Windows
 helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the other
 parts above runs on Linux yet: the client reads and writes the game through it
@@ -2252,7 +2253,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 88 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 89 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
@@ -2291,7 +2292,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 88), which the client resolves from the game's symbols
+  addresses (with the rest of the 89), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
   them, so a client and a helper that disagree change nothing (the client also refuses a helper of
   another version, and one of this version built before the traps, which answers no `trap_status`:
@@ -2697,10 +2698,19 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   Steam's achievement set before a config and with a normal save, not with an AP save loaded, and
   not after an unpatched AP ending until a save loads; the stand-in's ending, the Linux site's
   bytes, patched while an AP save is loaded and put back after); not run in the game.
-- **Not on Linux yet.** The parts above that the Linux helper does not run, with a client or
-  without: the file select's ITEMS row (the major-item list in "Grants"), and the repair of tall
-  popups' text ("Grants and popups", below the Linux bullet's). The client says so once
-  (`native.LINUX_NOT_READY`).
+- **Not on Linux yet.** The part above that the Linux helper does not run, with a client or
+  without: the repair of tall popups' text ("Grants and popups", below the Linux bullet's). The
+  client says so once (`native.LINUX_NOT_READY`).
+- **The major-item list.** `Game::watch_pickups` runs in the Linux helper's frame as in
+  `watch_all` ("Grants", "The major-item list"), in play in an AP save, with or without a client:
+  each owned item the game's pickup would list goes in the list (`pickup_list`, `gGameState` +
+  `0xAE0`, configured from the game's symbols), but what the new game started with, so the file
+  select's ITEMS row shows it once the game saves or reaches a checkpoint (the entry shows the
+  checkpoint's record while it is in use). The pickup's rule, the load, the save, the ITEMS row's
+  fill, the records' icons and the start-with array are as `watch_pickups` expects on Linux too
+  (`docs/re/linux.md`, "Mapped by disassembly: the major-item list"). Tested on the stand-in game
+  through the socket (`tests/test_native_linux.py`: an owned item listed once an AP save is
+  loaded, one started with and a key left out); not run in the game.
 - **The file select's AP logo and disk counts.** `Game::watch_files` runs in the Linux helper's
   frame as in `watch_all` ("AP saves on the file select"), after the look without the client has
   set the counts, with or without a client: each entry of the file select, COPY FILE and DELETE

@@ -56,8 +56,9 @@ TARGETS = (
 # The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it
 # runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
 # and their popups, other players' items (the map's too), traps, the translations, the OS Install
-# Disks' count, RETURN HOME, DeathLink's deaths, the ASSIST lock, the title's lines and the Feats
-# guard. The rest of CONFIG_KEYS is in TARGETS. Functions by their mangled names.
+# Disks' count, RETURN HOME, DeathLink's deaths, the ASSIST lock, the file select's logo, counts
+# and ITEMS row (the major-item list), the title's lines and the Feats guard. The rest of
+# CONFIG_KEYS is in TARGETS. Functions by their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -170,6 +171,8 @@ HELPER_TARGETS = (
     LinuxTarget("file_entry_fn", "_Z18SaveGameMenuActionP12GameMenuItemi", 0, 0x59B85E),
     LinuxTarget("copy_entry_fn", "_Z18CopyGameMenuActionP12GameMenuItemi", 0, 0x5B1B09),
     LinuxTarget("delete_entry_fn", "_Z19ClearGameMenuActionP12GameMenuItemi", 0, 0x5B0A65),
+    # And the major-item list, the file select's ITEMS row, with its length.
+    LinuxTarget("pickup_list", "gGameState", 0xAE0, 0x9E8320),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -188,7 +191,7 @@ CONFIG_KEYS = (
     "panel_link_fn", "keys_branch", "options_back_fn", "fade", "fade_level", "routine_table",
     "death_fn", "assist_menu_fn", "draw_layer", "text_new_fn", "text_link_fn", "slot_array",
     "rando_slots", "ending_unlocks", "ending_join", "large_count", "file_panel_fn",
-    "file_entry_fn", "copy_entry_fn", "delete_entry_fn",
+    "file_entry_fn", "copy_entry_fn", "delete_entry_fn", "pickup_list",
 )  # fmt: skip
 
 

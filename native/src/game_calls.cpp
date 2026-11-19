@@ -940,7 +940,7 @@ void Game::watch_all(WidgetCallback callback) {
 }
 
 void Game::watch_pickups() {
-    if (!in_play() || !ap_save_loaded()) return;
+    if (!configured_ || !in_play() || !ap_save_loaded()) return;
     BYTE* list = at_.pickup_list;
     BYTE* records = pointer_at(at_.item_records);
     if (records == nullptr) return;

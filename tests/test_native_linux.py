@@ -419,6 +419,7 @@ CONFIG_SYMBOLS = {
     "file_entry_fn": "zap_file_entry",
     "copy_entry_fn": "zap_copy_entry",
     "delete_entry_fn": "zap_delete_entry",
+    "pickup_list": "zap_pickup_list",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -1028,6 +1029,35 @@ def test_in_the_labels_seeds_save_the_map_marks_item_48_as_a_major(game: Game) -
     with game.connect() as sock:
         wait_for(sock, f"read {tests[0]:#x} 1", lambda r: r == "data \x02")
         assert [read_at(sock, t, 1) for t in tests] == [b"\x02", b"\x02"]
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_in_an_ap_save_owned_items_go_in_the_major_item_list(game: Game) -> None:
+    # Game::watch_pickups: in play in a known seed's save, each owned item the game's pickup would
+    # list (its record's icon) is appended once, but what the new game started with.
+    from client import aplabels
+
+    at = config_addresses()
+    records = stand_in("zap_record_table")
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        for item, icon in ((5, 0xC5), (6, 0xC6), (27, 0xC7)):  # 27, a key: never listed
+            assert ask(sock, f"write {records + item * 100 + 8:#x} {icon:02x}") == "written 1"
+        # Item 6 started with (the start-with array's eighth entry, section +0x689 + 7).
+        assert ask(sock, f"write {at['rando_blob'] + 0x689 + 7:#x} 01") == "written 1"
+        for item in (5, 6, 27):
+            assert ask(sock, f"write {at['inventory'] + item:#x} 01") == "written 1"
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+        assert read_at(sock, at["pickup_list"] + 0x1A, 1) == b"\x00"  # no AP save loaded yet
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a seed's save
+        assert ask(sock, aplabels.labels_request({(3, 2): "Hookshot\nfor Alice"})) == "labeled 1"
+        wait_for(sock, f"read {at['pickup_list'] + 0x1A:#x} 1", lambda r: r == "data \x01")
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+        assert read_at(sock, at["pickup_list"], 2) == b"\xc5\x00"
+        assert read_at(sock, at["pickup_list"] + 0x1A, 1) == b"\x01"
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

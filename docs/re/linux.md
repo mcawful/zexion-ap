@@ -25,7 +25,7 @@ address less `0x3CF6A0`, plus `gGameState`'s address ("`gGameState` has the Wind
 | Target | Windows (B1) | Linux (B1) | How | Status |
 |---|---|---|---|---|
 | `pickup_counter` | `+0x3D0168` | `0x9E8308` (`gGameState+0xAC8`) | `LoadGame` stores the save's `0x935A` there; equal to the save's, live | measured |
-| `pickup_list` | `+0x3D0180` | `0x9E8320` (`gGameState+0xAE0`) | `LoadGame` copies the save's `0x9333` list there | measured |
+| `pickup_list` | `+0x3D0180` | `0x9E8320` (`gGameState+0xAE0`) | `LoadGame` copies the save's `0x9333` list there; the pickup's append, the length at `+0xAFA`, the save and every other reader and writer: "Mapped by disassembly: the major-item list" | measured (the load, 2026-11-18; the rest by disassembly, 2026-11-19) |
 | `rando_marker` | `+0x3E2DD8` | `0x9FAF78` (`gGameState+0x13738`) | `LoadGame` stores the save's `0x9402` there; 1 with a randomizer save loaded, live | measured |
 | `map_grid` | `+0x3E469D` | `0x9FC83D` (`gGameState+0x14FFD`) | `LoadGame` copies the save's `0x877F` grid there | measured |
 | `save_loaded` | `+0x3D016A` | `0x9E830A` (`gGameState+0xACA`) | `LoadGame` stores the save's `0x9360` there; five stores of `0xFF`; `0xFF` at the title screen, live | measured |
@@ -40,7 +40,7 @@ address less `0x3CF6A0`, plus `gGameState`'s address ("`gGameState` has the Wind
 | `current_slot` | `+0xCDD080` | `gCurrentSaveGame` (`0x14945A0`, 4 bytes) | `LoadGame` indexes `gSavedRandos` by it; read 3 with slot 4 loaded, live: 0-based, as on Windows; its four writers (`init` and the file, delete and copy entries, each the entry's slot less 1): "Mapped by disassembly: the Feats guard's Steam and load test" | measured |
 | `slot_array` | `+0x230600` | `gSaveGames` (`0x14945C0`, 30 × `0x9408`) | by name and size, and `LoadGame` takes a `SaveGameRec` of `0x9408` bytes ("The save record is the file less its first two bytes"); `LoadSaveGames` reads `Save Game N.sav` into `gSaveGames[N − 1]`, and the empty mark (`+0x935E` `0xFF`) and marker word (`+0x9400`) are where the game writes and tests them: "Mapped by disassembly: the Feats guard's Steam and load test" | measured (the record's size, the slot's number and the layout `slot_section` reads, by disassembly, 2026-11-19; the current slot's number also in the game, 2026-11-18) |
 | `rando_slots` | `+0x347830` | `gSavedRandos` (`0x16BF7C0`, 30 × `0x908`) | by name and size; `LoadGame` copies one into `gCurrentRando`; `gSavedRandos[N − 1]` is slot N's own section, by every reader and writer: "Mapped by disassembly: the Feats guard's Steam and load test" | measured (by disassembly, 2026-11-19); not read in the game |
-| `rando_blob` | `+0xCDD6D0` | `gCurrentRando` (`0x12F6E00`, `0x908` bytes) | filled from `gSavedRandos` by `LoadGame`; the section's layout, by six fields the placement writes there at the section's offsets (`client/save_patch.py`'s file offsets less `0x12814`): `generateRando` the item table `+0x26C`, the seed hash `+0x308`, the seed text `+0x658`, the amounts `+0x6C0`; `determineStartingLocation` the start record `+0x310` and the second start `+0x6CC` ("Mapped by disassembly: new games, events, the map, feats", `placement_fn`) | measured (by disassembly) |
+| `rando_blob` | `+0xCDD6D0` | `gCurrentRando` (`0x12F6E00`, `0x908` bytes) | filled from `gSavedRandos` by `LoadGame`; the section's layout, by six fields the placement writes there at the section's offsets (`client/save_patch.py`'s file offsets less `0x12814`): `generateRando` the item table `+0x26C`, the seed hash `+0x308`, the seed text `+0x658`, the amounts `+0x6C0`; `determineStartingLocation` the start record `+0x310` and the second start `+0x6CC` ("Mapped by disassembly: new games, events, the map, feats", `placement_fn`); the start-with array `+0x689`, as `StartNewGameExit` reads it: "Mapped by disassembly: the major-item list" | measured (by disassembly) |
 | `message_fn` | `+0x182670` | `0x631C5B` `createGameMessage(char const*, int, int, int, int, int, int)` | "Mapped by disassembly: HUD, items, sound, popups, deaths" | measured (by disassembly) |
 | `sound_fn` | `+0x75E00` | `0x4D0398` `PlayGameSound(GameSoundManager*, short, float, float, float, float, short, short)` | "Mapped by disassembly: HUD, items, sound, popups, deaths" | measured (by disassembly) |
 | `sound_system` | `+0x22F370` | `0x9E6F60` `gGameSoundManager` (`0x8C8` bytes) | "Mapped by disassembly: HUD, items, sound, popups, deaths" | measured (by disassembly) |
@@ -50,7 +50,7 @@ address less `0x3CF6A0`, plus `gGameState`'s address ("`gGameState` has the Wind
 | `weapon_strip_fn` | `+0x1BC7A0` | `0x4F0231` `updateWeaponDisplay(PlayerStruct*)` | "Mapped by disassembly: HUD, items, sound, popups, deaths" | measured (by disassembly) |
 | `weapon_strip_gate` | `+0xCE02BD` | `0x12F5BDD` (`gPreferences+0x1DD`; `gPreferences` is at `0x12F5A00`, `0xE70` bytes) | "Mapped by disassembly: HUD, items, sound, popups, deaths" | measured (by disassembly) |
 | `suit_color_fn` | `+0x1EDC00` | `0x4953EE` `setSpritePalette(unsigned char, short)` | "Mapped by disassembly: HUD, items, sound, popups, deaths" | measured (by disassembly) |
-| `item_records` | `+0xCDD068` | `0x16DA0B8` `gPowerUpDefs` (a pointer; count `gPowerUpDefCount` `0x16DA0AA`) | "Mapped by disassembly: HUD, items, sound, popups, deaths"; the record's event `+0x40`, as the pickup runs it: "Mapped by disassembly: received scrap's drops" | measured (by disassembly) |
+| `item_records` | `+0xCDD068` | `0x16DA0B8` `gPowerUpDefs` (a pointer; count `gPowerUpDefCount` `0x16DA0AA`) | "Mapped by disassembly: HUD, items, sound, popups, deaths"; the record's event `+0x40`, as the pickup runs it: "Mapped by disassembly: received scrap's drops"; the icon `+0x08` the major-item list takes, and B1's icons in the installed `Objects`: "Mapped by disassembly: the major-item list" | measured (by disassembly; the icons, a read of the installed `Objects`, 2026-11-19) |
 | `sprite_texture` | `+0xCDD060` | `0x9E6F50` `gSpriteWorldP` | "Mapped by disassembly: HUD, items, sound, popups, deaths" | measured (by disassembly) |
 | `palette_table` | `+0xCDF5C0` | `0x12F7E40` `gSpriteDrawProcs` (`0x208` bytes = 65 entries, 0 to 64) | "Mapped by disassembly: HUD, items, sound, popups, deaths" | measured (by disassembly) |
 | `sprite_templates` | `+0xDF7110` | `0x14937E8` `gMasterSpritesP` | "Mapped by disassembly: HUD, items, sound, popups, deaths" | measured (by disassembly) |
@@ -124,25 +124,26 @@ address less `0x3CF6A0`, plus `gGameState`'s address ("`gGameState` has the Wind
 
 Every target in `client/patterns.py` now has a Linux counterpart: the first rows from `LoadGame`,
 the live reads and the shift (the sections below the Lookup), the rest by group (the first four
-"Mapped by disassembly" sections; the fifth maps the item looks' fields, not targets, the
-sixth what the traps write and patch, the seventh the map's layout the cursor's names read,
-the eighth what the helper's translated text relies on beyond the translations' targets, the
-ninth what the disks' count relies on beyond the menus' targets, the tenth what the RETURN
-HOME prompt relies on, where `fade` is measured, the eleventh what received scrap's drops
-rely on beyond the events' targets, the twelfth what a received Energy Shield relies on
-beyond the drops: the player's link to it, its pool and handle, which the client's check reads,
-the thirteenth Intel Chips' record, the fourteenth what the ASSIST lock relies on beyond the
-menus' targets, the fifteenth what the title screen's lines rely on beyond the menus'
-targets: the title's list, its line and its clearing, the sixteenth what the Feats guard's
-Steam stand-in and load test rely on: the Steam accessors and their threads, the load, and the
-save slots' arrays, where `slot_array` and `rando_slots` are measured, the seventeenth what
-the Feats of Natu screen's note relies on: MISSION COMPLETE and the way on, the screen's menu,
-title and hints, and the achievements it sets, and the eighteenth what the file select's AP logo
-and disk counts rely on: the entries' fill, the fills outside their handlers, the empty font
-cells, and a new game's and a load's fades). Functions and globals are named symbols; the code points
-the helper patches sit in GCC's unoptimized code,
-so their bytes and patch shapes differ from the Windows ones, and each section's "What differs"
-says how.
+"Mapped by disassembly" sections; the fifth maps the item looks' fields, not targets, the sixth
+what the traps write and patch, the seventh the map's layout the cursor's names read, the eighth
+what the helper's translated text relies on beyond the translations' targets, the ninth what the
+disks' count relies on beyond the menus' targets, the tenth what the RETURN HOME prompt relies on,
+where `fade` is measured, the eleventh what received scrap's drops rely on beyond the events'
+targets, the twelfth what a received Energy Shield relies on beyond the drops: the player's link
+to it, its pool and handle, which the client's check reads, the thirteenth Intel Chips' record,
+the fourteenth what the ASSIST lock relies on beyond the menus' targets, the fifteenth what the
+title screen's lines rely on beyond the menus' targets: the title's list, its line and its
+clearing, the sixteenth what the Feats guard's Steam stand-in and load test rely on: the Steam
+accessors and their threads, the load, and the save slots' arrays, where `slot_array` and
+`rando_slots` are measured, the seventeenth what the Feats of Natu screen's note relies on:
+MISSION COMPLETE and the way on, the screen's menu, title and hints, and the achievements it sets,
+the eighteenth what the file select's AP logo and disk counts rely on: the entries' fill, the
+fills outside their handlers, the empty font cells, and a new game's and a load's fades, and the
+nineteenth what the helper's fill of the major-item list relies on: the pickup's append, every
+reader and writer of the list, the ITEMS row, the records' icons and the new game's start-with
+array). Functions and globals are named symbols; the code points the helper patches sit in GCC's
+unoptimized code, so their bytes and patch shapes differ from the Windows ones, and each section's
+"What differs" says how.
 
 ## Mapped by disassembly: HUD, items, sound, popups, deaths
 
@@ -1157,6 +1158,62 @@ sections above. Glyph i of an entry is row i / 29, column i % 29; "the logo's ce
 | Method | `memory.md`'s "The file select" matched against `all.asm`: `refreshGameFile`, `displayNumberInSpriteString`, `setSpriteStringVisiblity`, `newSpriteString`, `moveSpriteString`, `SWMoveSprite`, `SaveFileMenu`, `CopyFileMenu`, `ClearFileMenu`, `SaveGameMenuAction`, `CopyGameMenuAction`, `ClearGameMenuAction`, the four select actions, `BackoutFromDifficulty`, `BackoutFromClear`, `BackoutFromCopy`, `syncSaveGameMenu`, `SaveFileReturn`, `SaveGamePlayerCursor` (no write to an entry's glyphs), `updateGame`'s exit action and `setFade`'s calls, read by hand (cut into scratch files, not kept); a census of `refreshGameFile`'s callers and of the `0xF` calls by `grep` and `awk` over `all.asm`; the strings read from the binary's `LOAD` segments, and `Files/Sprites.png`'s alpha read with Pillow from the install, found through `tools/protected.py`'s `game_dir()`, by scratch Python scripts, not kept |
 | Build | B1 (Linux: `lab/linux-b1/Zexion`, SHA-256 `cd64cd9ec469…`), against B1 (Windows) as `memory.md` records it, and `native/src/files.cpp`, `files.h` and `game_calls.cpp` as of 2026-11-19 |
 | Evidence | `lab/linux-b1/all.asm`, 2026-11-19, at the addresses the table cites, read in one pass with no second review. From the binary: the entry strings at `0x693850` (145 characters) and `0x69383E` (15), the label's text at `0x695298`, the titles at `0x6954A1`, `0x69528B` and `0x6952EC`. The installed `Files/Sprites.png` (1,051,762 bytes, SHA-256 beginning `91d1e9422e40`, the one "item looks" read): the six cells 0 opaque pixels |
+
+## Mapped by disassembly: the major-item list
+
+What the helper's fill of the major-item list (`Game::watch_pickups`, `src/game_calls.cpp`;
+`pickups` and `rando::started_with` in `src/game_layout.h`; `native/README.md`, "Grants", "The
+major-item list") relies on beyond the targets it reads (`pickup_list`, `item_records`,
+`rando_blob`, `inventory`: the Lookup), against the Linux code and the installed data that do what
+`memory.md` describes for Windows ("The pickup record holds the major-item list") and
+`save-format.md` for the save ("Major items are a list in pickup order at 0x9333"). Addresses are
+the Linux binary's; "measured" means by disassembly, as in the sections above. "The list" is
+`gGameState+0xAE0` (26 codes), "the length" `gGameState+0xAFA` (list `+0x1A`); in a
+`SaveGameRec` they are `+0x9331` and `+0x934B` (file `0x9333` and `0x934D`: "The save record is
+the file less its first two bytes").
+
+| What | Windows (B1, `memory.md`) | Linux (B1) | How found | Status |
+|---|---|---|---|---|
+| the pickup's append (`pickups::listed`, `kMax`, `kCount`, `record::kIcon`, `record::kSize`) | the pickup's item branch (`0x1F761` to `0x1F7AC`) appends the touched item's record's icon (`+0x08`; the record is the object's `+0x1E8`, the item ID) to the list and raises the length, when the icon is not 0, `0x6E` or `0xE8`, the item is 3 to 26 or 32 to 44, and the length is below 26 (`cmp al, 0x1A; jge`) | the same | In the pickup, `playerCollideProc(CollideRec*, CollideRec*, dPoint*, char)` `0x64086D`, after the inventory's update and `refreshPlayerColors` (`0x64279D`): the record `[gPowerUpDefs] + id × 100` with the id the item object's 16-bit `+0x1E8` (`[rbp-0x210]`, the object whose `+0x3AC` and `+0x3AD` give the cell the same branch then marks, `cell_state`); its icon `+0x08` 0 skips (`0x6427D7`–`0x6427DD`), the id at most 2 skips (`0x6427F1`), the icon `0x6E` (`0x642834`) or `0xE8` (`0x642875`) skips, the id above 26 and at most 31 skips (`0x64288B`–`0x6428A3`), above 44 skips (`0x6428B3`); the length, a byte compared signed, above 25 skips (`cmp al,0x19; jg`, `0x6428B9`–`0x6428C2`); then the icon is stored at the list + the length (sign-extended, `0x6428FA`–`0x642911`) and the length raised by 1 (`0x642914`–`0x64291E`). Every jump out goes to `0x642924`, the cell's mark | measured (by disassembly, 2026-11-19). **Matches**: `listed` (icon not 0, `0x6E` or `0xE8`; item 3 to 26 or 32 to 44), the append while the length is 0 to 25 (`kMax` 26), the length at list `+0x1A` (`kCount`) as a signed byte, the icon at the record's `+0x08` (`kIcon`) in records of 100 bytes (`kSize`) |
+| the load | `0x9DB8E` to `0x9DCE0`: the length, then the 26 codes, from the save block | the same | `LoadGame(SaveGameRec*)` `0x560EE5`: the length from the record's `+0x934B` (`0x561532`–`0x561539`), then for i 0 to 25 the code from `+0x9331 + i` (`0x56153F`–`0x561570`), with no test of either | measured (by disassembly, 2026-11-19; the list's copy first, 2026-11-18: "The save record is the file less its first two bytes"). **Matches** |
+| the save | `0x1FDA99` to `0x1FDBEB`: the 26 codes, then the length, into the slot's block | the same, into the record each caller passes | `SaveGameData(SaveGameRec*, bool)` `0x4AB890`: for i 0 to 25 the code to the record's `+0x9331 + i` (`0x4AC17D`–`0x4AC1AE`), then the length to `+0x934B` (`0x4AC1B0`–`0x4AC1BB`); the function has no early return before them (its jumps are its own loops). Its nine callers: `SaveGame()` (`0x4AB0A7`) and `SaveNoOpenMapGame()` (`0x4AA9BF`) with `gSaveGames[gCurrentSaveGame]`, `EndingCutscene()` (`0x55B175`) the same; `CheckPointAreaEvent` (`0x48D0A2`, the record from `0x48CE81`–`0x48CE9A`) and `fastSkipEscapeExit()` (`0x564CCB`) with `gCheckpointSaves[gCurrentSaveGame]`; `LoadTeleportSave()` and the three `teleportTo…` (`0x562EEC`, `0x564E76`, `0x56502A`, `0x5651DE`) with `gTeleportSave`. `SaveGame` marks the slot's checkpoint record empty (`+0x935E` `0xFF`, `0x4AB000`–`0x4AB007`), fills `gSaveGames[slot]`, then writes the file, opened `r+b` or, failing that, `w+b` (`0x4AB21D`–`0x4AB281`): the word `0x3E8`, `gSaveGames[slot]` and `gCheckpointSaves[slot]`, `0x9408` bytes each, then, with the save's randomizer marker 1, the word `0x3E8` again and more (the section, by `save-format.md`'s layout; not traced here), the same on both paths (`0x4AB28A`–`0x4AB2FF`; `0x4AB385`–`0x4AB3FA`) | measured (by disassembly, 2026-11-19). **Matches**: a code the helper appends is in the live list `SaveGameData` copies, so it reaches the save's block (file `0x9333`) at the next save, and the checkpoint record at the next checkpoint, as a code the pickup appends does |
+| MISSION COMPLETE (`memory.md`'s "a screen not identified") | `0x155DC7` and `0x155E13` in `0x154DA0` give 26 glyphs of a label the codes as frames, 13 to a row | the same function, MISSION COMPLETE; it reads the 26 codes and not the length | `PostGameStats()` `0x60924C` (routine entry 6, MISSION COMPLETE: "the Feats of Natu screen's note"): for i 0 to 12, `SWSetCurrentFrameIndex` of glyph 16 + i of panel 0's child 3 (the 45-glyph `   EQUIPMENT` line, `0x60968E`–`0x60969A`) to code i (`0x60A0E7`–`0x60A14F`) and glyph 31 + i to code 13 + i (`0x60A154`–`0x60A1A8`) | measured (by disassembly, 2026-11-19). **Matches** (26 codes, 13 to a row); `memory.md` does not say whether Windows reads the length. Reading all 26 shows what lies past the length; the helper writes only at the length, so it adds nothing there |
+| a new game | not recorded | the list cleared: the slot's record cleared, then loaded | `StartNewGameExit()` `0x563363`: `ClearSaveGame(&gSaveGames[slot])` (`0x56337E`–`0x5633A2`), which zeroes the record's 26 codes and length (`0x4C25A5`–`0x4C25CD`, among its other stores; the function has no early return, its one `ret` at `0x4C2797`), marks the slot's checkpoint record empty (`0x56346E`–`0x563484`), fills the record's starting state (below), and `LoadGame` of that record (`0x563861`–`0x563868`), which copies the zeroed list and length. No instruction between `ClearSaveGame` and `LoadGame` writes the record's `+0x9331` to `+0x934B` | measured (by disassembly, 2026-11-19). **Not in `memory.md`**. A new game's list starts empty, and only the pickup appends |
+| save states | not recorded here | the whole `gGameState`, list and length with it | `saveState()` deflates `gGameState`, `0x8CCCF8` bytes (`0x4AE4E5`–`0x4AE4F1`), and `loadState()` inflates it back (`0x4AF4EE`–`0x4AF4FD`): a state's load puts back the list and the length as they were, as it does the inventory (`gGameState+0x1DDDE`) | measured (by disassembly, 2026-11-19). **Not in `memory.md`'s list section**. A state's load takes back codes appended since, with the items behind them; the helper appends again for items still owned |
+| every other reader and writer | every reference to `+0x3D0180` to `+0x3D019A` in `.text`: the pickup, the load, the save, `0x154DA0` | the same four | `grep` over `all.asm` for operands `<gGameState+0xae0>` to `<gGameState+0xaff>`: 11 instructions name the list or the length (`+0xAE0`: `0x4AC18F`, `0x561562`, `0x60A106`, `0x60A15F`, `0x64290A`; `+0xAFA`: `0x4AC1B0`, `0x561539`, `0x6428B9`, `0x6428FA`, `0x642914`, `0x64291E`), all in the four functions above; the others in the range are `+0xAFC` and `+0xAFE` (the continue point). No instruction has a displacement of `0xAE0` to `0xAFA` on another base. In a record, `+0x9331` to `+0x934B` are named only by `SaveGameData`, `ClearSaveGame`, `LoadGame` and `refreshGameFile` | measured (by disassembly, 2026-11-19), for the direct references; whole-block copies (`saveState` and `loadState` above, a copy of a save record) move the list without naming it |
+| the file select's ITEMS row | `0xE0548` to `0xE05D2` in the entry fill `0xDF840`: glyph 100 + i (i below 13) or 116 + i set to code i, for i below the length, from the slot's block (`+0x9331`, `+0x934B`) | the same; the block is the entry's, the checkpoint record while that is in use | `refreshGameFile(GameMenuItem*)` `0x599854`, the block from the entry's `+0x1F8` (`0x599864`–`0x59986F`): for i below the block's `+0x934B` (sign-extended, `0x59A027`–`0x59A038`), `SWSetCurrentFrameIndex` of glyph 100 + i % 13, plus 29 for i above 12, to the block's `+0x9331 + i` (`0x59A03A`–`0x59A0AB`): glyphs 100 to 112, then 129 to 141 (116 + i). The block is `gCheckpointSaves[n − 1]` while that record's `+0x935E` is not `0xFF`, else `gSaveGames[n − 1]` ("the file select's AP logo and disk counts") | measured (by disassembly, 2026-11-19). **Matches** the glyphs and the length; the block, as that section says, is the checkpoint record while it is in use, which `SaveGame` marks empty and `CheckPointAreaEvent` fills with the live list, so the row shows the list as of the last save or checkpoint, the helper's codes with the game's |
+| the records and their icons (`record::kCount`, the 27 listed) | B1's `Objects`: 27 items list, each with its own icon: 3 to 26 and 32 to 34 (the Machine Gun `0x77`, the rest `0xC0` to `0xE3`); not 0 to 2, 27 to 31, 35 to 50 | the same, in the installed file | The installed `Files/Objects`: two 16-bit counts, 64 and 51 (`loadStuff`: "Intel Chips"), 64 general entries of 16 bytes, then 51 records of 100 bytes from byte 1,028, which `loadStuff` reads as they are into `[gPowerUpDefs]`. By `listed` over each record's `+0x08`: items 3 to 26 and 32 to 34 list, 27 distinct icons, the Machine Gun (3) `0x77`, the rest `0xC0` to `0xD5` and `0xE0` to `0xE3` (the Gravity Harness, 24, `0xC7`, as `save-format.md` saw). Not listed: 0 (icon `0xE7`, but item 0), 1 and 36 (`0xE8`), 2 and 37 (`0x6E`), the keys 27 to 30 and 45 (above 26, below 32), 31 and 35 (icon 0), the ?-Artifacts 38 to 43 and the Data Disc 44 (icon 0), 46 to 50 (above 44) | measured (a read of the installed `Objects`, 2026-11-19). **Matches**: `record::kCount` 51 is the file's count, so the helper's loop reads only records the game loaded |
+| the start-with array (`rando::kStartWith`, `kStartWithOrder`, `started_with`) | the section's `+0x689`: 1 for each item the new game starts with, in the menu's order (`client/newgame.py`, `START_WITH_ORDER`); the game never lists those, never picking them up | the same | `StartNewGameExit`, with the slot's record's marker word 1 (`0x5634BD`–`0x5634C8`): for i 0 to 26, the record's inventory byte of item `randoItemKey[i]` set to `gCurrentRando+0x689 + i` (`0x56360F`–`0x563652`), before `LoadGame` copies the inventory and the cleared list (above). `randoItemKey` (`0x692C00`, `.rodata`, 54 bytes by `nm -S`), read from the binary: 16, 19, 21, 32, 3, 4, 5, 6, 7, 11, 22, 20, 17, 9, 14, 15, 10, 12, 34, 24, 26, 25, 13, 33, 8, 23, 18. `0x563621` is the only instruction naming `gCurrentRando+0x689` to `+0x6A3` | measured (by disassembly and a read of the binary, 2026-11-19). **Matches**: the order is `kStartWithOrder` (and `START_WITH_ORDER`) entry for entry, the array at the section's `+0x689`, and an item whose byte is not 0 starts owned; since the only append is the pickup's, the game never lists a starting item |
+| the inventory the helper reads (`inventory[item]`) | the player state's `+0x108E + ID` | the same | the Lookup's `inventory` row | measured (the Lookup) |
+
+### What differs from Windows
+
+- **Nothing `watch_pickups` reads or writes.** The pickup's rule (icons 0, `0x6E` and `0xE8` and
+  items outside 3 to 26 and 32 to 44 left out, the append while the signed length is below 26),
+  the icon at the record's `+0x08` in records of 100 bytes, 51 records in the installed `Objects`
+  with the same icons, the list at `gGameState+0xAE0` and its length at `+0x1A`, the load and the
+  save of both, and the start-with array at the section's `+0x689` in `randoItemKey`'s order all
+  agree. No change to `pickups`, `record`, `rando::started_with` or `Game::watch_pickups` is
+  needed for Linux.
+- **Named on Linux:** the pickup is `playerCollideProc`, the save `SaveGameData`, the new game's
+  reset `ClearSaveGame` with `StartNewGameExit`, the starting items' order `randoItemKey`; the
+  screen `memory.md`'s list section calls "not identified" is MISSION COMPLETE, `PostGameStats`
+  (as "the Feats of Natu screen's note" found for Windows' `0x154DA0`).
+- **Not in `memory.md`:** a new game clears the list (the record cleared, then loaded); a save
+  state's load puts back the list as it was; MISSION COMPLETE reads the 26 codes without the length;
+  the file select's row is the checkpoint record's while that is in use, so a code appended after
+  the last checkpoint (by the pickup or the helper) shows there once the game saves or reaches the
+  next checkpoint (the Linux bullet in `native/README.md` says so; its Windows paragraph in "Grants"
+  says "once the game saves"). Whether Windows' new game, save
+  states and entry blocks do the same is not recorded.
+
+| Field | |
+|---|---|
+| Value | The table above. |
+| Status | measured (by disassembly and reads of the binary and the installed `Objects`, 2026-11-19), each row as its Status says; not run in the game |
+| Method | `memory.md`'s "The pickup record holds the major-item list" and `save-format.md`'s "Major items are a list in pickup order at 0x9333" matched against `all.asm`: `playerCollideProc`'s item branch, `LoadGame`, `SaveGameData` and its nine callers, `SaveGame`'s file writes, `PostGameStats`, `StartNewGameExit`, `ClearSaveGame`, `saveState`, `loadState` and `refreshGameFile`, read by hand at the addresses cited; a census by `grep` over `all.asm` of the operands `<gGameState+0xae0>` to `<gGameState+0xaff>`, of the displacements `0xae0` to `0xafa`, of the record offsets `+0x9331` to `+0x934b`, of `gCurrentRando+0x689` to `+0x6a3` and of `SaveGameData`'s calls, each instruction's function by the nearest symbol above it; `randoItemKey` read from the binary's `LOAD` segment and the installed `Files/Objects` read through `tools/protected.py`'s `game_dir()`, by scratch Python scripts (not kept) |
+| Build | B1 (Linux: `lab/linux-b1/Zexion`, SHA-256 `cd64cd9ec469…`), against B1 (Windows) as `memory.md` records it, and `native/src/game_layout.h` and `game_calls.cpp` as of 2026-11-19 |
+| Evidence | `lab/linux-b1/all.asm`, 2026-11-19, at the addresses the table cites, read in one pass with no second review. From the binary: `randoItemKey` at `0x692C00`, 27 16-bit IDs. The installed `Files/Objects` (6,128 bytes, SHA-256 beginning `72ea406ad4ff`, the one "Intel Chips" read): counts 64 and 51, the records' icons at byte 1,028 + item × 100 + 8 as the table gives them |
 
 ## The save record is the file less its first two bytes
 
