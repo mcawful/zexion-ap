@@ -984,14 +984,16 @@ async def linux_labels_tick(ctx: ZexionContext) -> None:
 
 def linux_mod_lost(ctx: ZexionContext, exc: Exception) -> None:
     """The Linux helper failed (in a tick, or giving the step's items) or was connected to again:
-    dropped, and
-    configured again on a later poll, its plan armed again then (a connection that closed lost
-    it: the helper drops a client's plan). One that was configured holds the step back for
-    LINUX_HOLD_SECONDS (zexion_client's poll), as most failures pass (no frame while the game is
-    in the background, a socket that closed); after that, items are written directly, without
-    popups, until it is back. Said once for each distinct failure."""
+    dropped, and configured again on a later poll, its plan armed again then (a connection that
+    closed lost it: the helper drops a client's plan). One that was configured holds the step
+    back for LINUX_HOLD_SECONDS (zexion_client's poll), as most failures pass (no frame while the
+    game is in the background, a socket that closed), as an attach does until the first one is
+    configured; after that, items are written directly, without popups, until it is back. One
+    too old holds nothing back. Said once for each distinct failure."""
     if ctx.linux_mod is not None:
         ctx.linux_back_by = time.monotonic() + LINUX_HOLD_SECONDS
+    if isinstance(exc, linux_helper.HelperTooOld):
+        ctx.linux_back_by = 0.0  # nothing to wait for: items written directly until it is replaced
     ctx.linux_mod = None
     conn = ctx.conn
     if conn is not None and conn.newgame is state.NewGame.ARMED:

@@ -2,7 +2,11 @@
 
 The client and the helper know game builds by name (B1 so far). A build they do not know is
 refused: the client will not attach (`client/game.py` checks `KNOWN_BUILDS`), `helper.py load`
-refuses it, and the helper hooks nothing (`native/src/build.cpp`). So after a patch nothing
+refuses it, and the helper hooks nothing (`native/src/build.cpp`). The Linux build has a registry
+of its own, by GNU build id: the client will not attach to a Linux binary missing from
+`KNOWN_LINUX_BUILDS` (`client/patterns.py`), and the Linux helper serves nothing in one missing
+from `kKnownBuilds` (`native/linux/src/core.cpp`), saying `zexion-ap <version>: not a known build
+of Zexion (build id <hex>)` on the game's stderr. So after a patch nothing
 works in the game until the steps below are done. Every fact recorded along the way follows
 [`README.md`](README.md): its method, the new build, and its evidence. A new value goes under
 the same heading with the new build, beside the old one, never in its place.
@@ -42,6 +46,9 @@ the same heading with the new build, beside the old one, never in its place.
    - the build in `KNOWN_BUILDS` (`client/patterns.py`: name, exe SHA-256, PE timestamp and
      SizeOfImage) and in `kKnownBuilds` (`native/src/build.cpp`: name, timestamp and
      SizeOfImage); `tests/test_cross_checks.py` checks the two agree;
+   - the Linux binary in `KNOWN_LINUX_BUILDS` (`client/patterns.py`: name, SHA-256 and GNU
+     build id) and in `kKnownBuilds` (`native/linux/src/core.cpp`: name and GNU build id), kept
+     in step by `tests/test_cross_checks.py` too;
    - the patterns' state on the new build in `docs/re/memory.md` ("Byte patterns"): which still
      match once, which moved, and which broke and were replaced, with each replacement's source
      instruction in "Pattern sources".

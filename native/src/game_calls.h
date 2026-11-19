@@ -76,6 +76,10 @@ public:
     // back): no client attached, so an own disk's count is the helper's to show
     // (watch_own_disks) until a client configures again.
     void client_left() { active_ = false; }
+    // Game thread (the Linux helper's, when its client goes): the hooks the client's parts hold
+    // in open menus put back, as put_back_game does on Windows: RETURN HOME's prompt and ending
+    // (its YES no longer the helper's), the map cursor's names, the ARCHIPELAGO choice.
+    void put_back_client_menus(WidgetCallback callback);
     // A client gone, or a client's config: its notices not shown yet withdrawn, other_save reset
     // (client_gone's and use's; the Linux helper's when its client goes).
     void drop_client_notices();

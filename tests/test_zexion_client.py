@@ -1484,6 +1484,46 @@ def test_a_linux_helper_from_before_the_traps_is_told_too_old(caplog) -> None:
     assert len(said) == 1
 
 
+def test_on_linux_an_attach_holds_the_step_until_the_linux_helper_is_configured(
+    monkeypatch,
+) -> None:
+    # The Linux helper is configured from the next poll (linux_newgame_tick): the attach's own
+    # step gives nothing, so no item goes without its popup and no waiting trap is dropped.
+    linux = linux_game({"config": "refused no frame"})
+    ctx = context(connection(), linux)
+    ctx.game_conn = None
+    monkeypatch.setattr(game.Game, "attach", classmethod(lambda cls: linux))
+    steps: list[dict] = []
+
+    def step(g, received, **kwargs):
+        steps.append(kwargs)
+        raise game.GameNotRunning("Zexion is not running")
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert steps and not steps[0]["give"]
+    # (The stand-in step said the game closed, which dropped it.) Attached again: held, until a
+    # configuration takes.
+    ctx.game_conn = linux
+    ctx.linux_back_by = time.monotonic() + ticks.LINUX_HOLD_SECONDS
+    asyncio.run(ticks.linux_newgame_tick(ctx))  # no frame yet: still held
+    assert ctx.linux_mod is None and ctx.linux_back_by > time.monotonic()
+    linux.pm.replies["config"] = "ok"
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is not None and ctx.linux_back_by == 0.0
+
+
+def test_a_linux_helper_with_no_frame_for_trap_status_is_not_told_too_old(caplog) -> None:
+    # A frame not come in time (the game in the background) is tried again, as any failed
+    # configuration; only an unknown request is a helper from before the traps.
+    ctx = context(connection(), linux_game({"config": "ok", "trap_status": "refused no frame"}))
+    with caplog.at_level("WARNING"):
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is None
+    said = [r.getMessage() for r in caplog.records if r.name == "Client"]
+    assert said and not [line for line in said if "older" in line]
+
+
 def test_on_linux_the_disks_count_goes_through_the_linux_helper() -> None:
     from client import discs
 

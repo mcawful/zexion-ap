@@ -1,7 +1,7 @@
 # The native helper
 
-`zexion_ap.dll`, **the helper**, runs inside Zexion (its Windows build; the Linux build has a
-first-stage helper of its own: "The Linux helper", below) and does what the client cannot from
+`zexion_ap.dll`, **the helper**, runs inside Zexion (its Windows build; the Linux build's helper
+runs every part of it but unloading: "The Linux helper", below) and does what the client cannot from
 outside: work on the game's own thread, between frames. It gets in two ways: **the proxy**
 `version.dll` in the game's folder loads it as the game starts, or the client loads it on
 attaching (`client/native.py`; `tools/helper.py` too, for tests). The client talks to it over a
@@ -2181,7 +2181,7 @@ lands, not only the place passed.
 
 ## The Linux helper
 
-`libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
+`libzexion_ap.so` (`linux/`) is the helper of the game's Linux build (`docs/re/linux.md`):
 it reads and writes the running game's memory for the client, counts its frames, starts new games,
 ARCHIPELAGO on the menu or RANDOMIZER ("New games"), gives the client's items with their popups,
 scrap's drops and Energy Shields (`apply`, `shield`: "Grants", "Popups", "Received scrap",
@@ -2203,12 +2203,80 @@ through it and asks it the language (`client/linux_helper.py`'s `LinuxMod`), and
 without a helper; `tools/helper.py status` talks to it too. Tested against a stand-in game
 (`tests/test_native_linux.py`).
 
-Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
-branch copied into the game's folder: loaded by the launch options, it served `hello`
-(`build=B1 hooked=1 folder=1`), counted the frame calls (165 in a second on a 165 Hz display,
-all from `SWHardwareEnd`, the game window's swap, at the title screen and in play: `callers`)
-and served reads that matched the binary (`docs/re/linux.md`, "Read from the running game"). Not
-run: the Steam Runtime without Flatpak, a Steam Deck.
+Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the branch's build of
+that day (the helper of 647b3a2, then with `callers`, as committed in 6dfc54a) copied into the
+game's folder: loaded by the launch options, it served `hello` (`build=B1 hooked=1 folder=1`),
+counted the frame calls (165 in a second on a 165 Hz display, all from `SWHardwareEnd`, the game
+window's swap, at the title screen and in play: `callers`) and served reads that matched the
+binary (`docs/re/linux.md`, "Read from the running game"). Not run in the game yet: every other
+part below, the Steam Runtime without Flatpak, a Steam Deck.
+
+**Running it in the game.** A build's first run, in this order. A step that changes the game,
+its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
+
+1. Build it on Linux with the Linux helper's CMake commands of `CLAUDE.md`, "Checks" ("The
+   Linux helper, on Linux", with `.venv/bin/cmake`): `native/build/libzexion_ap.so`. It loads
+   only under a glibc at least as new as the newest symbol version it asks for: `objdump -T
+   native/build/libzexion_ap.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1` prints that
+   version. Under Flatpak's Steam the game ran on the Flatpak runtime's glibc, 2.44 on the test
+   PC (`org.freedesktop.Platform` 26.08, 2026-11-18; not the host's), and a build asking for up
+   to `GLIBC_2.38` loaded; without Flatpak the Steam Runtime's is 2.31 ("Its own runtime",
+   below). A newer version than the game's: it does not load (step 4).
+2. The owner closes the game, then copies `libzexion_ap.so` into the game's folder (the guard
+   hook blocks Claude's writes into the install); under Flatpak's Steam on the test PC,
+   `~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Zexion`
+   (`docs/re/builds.md`, "B1 on Linux"). Never over a copy a running game has mapped: the helper
+   can't be unloaded, so each build takes a fresh launch. It must be of the client's version: a
+   client of another version refuses it (the client says it can't reach the running game, and its
+   log names both versions).
+3. The owner sets the game's launch options in Steam, the helper first in `LD_PRELOAD` ("Getting
+   in", below), at its path in that folder (the same inside Steam's container).
+4. Start the game and read its stderr (Steam passes it on as its own: start Steam from a
+   terminal; assumed, not tried here). Each of the helper's lines begins `zexion-ap <version>: `:
+   `serving build B1` once it is in; `not a known build of Zexion (build id <hex>)` for another
+   build; `socket zexion-ap-<pid> not opened: <why>`, `no SDL_GL_SwapWindow after the helper's`
+   or `the game's symbols were not found: no new games` for what failed. Later, with a seed's file
+   and no client: `configured from the game's symbols, no client`, or `not configured with no
+   client: <why>`, and `seed files: <why>` for files it could not read. No `serving build` and no
+   failure line: not loaded, turned off by a `zexion_ap.disabled` beside it, or its socket or its
+   thread failed before it could say so (two silent paths in `start`); glibc's loader says why it
+   did not load (`ERROR: ld.so: object … from LD_PRELOAD cannot be preloaded (…): ignored.`,
+   glibc's message, not seen here). Seen 2026-11-18 before the file was copied: no helper mapped
+   in the game (stderr not read; `docs/re/linux.md`, "Read from the running game").
+5. `.venv/bin/python tools/helper.py status`: the game found, its build checked, the socket the
+   game's, the frame calls by call site, and `.rodata` read through the helper.
+6. Asked first, the client from source, as the same user as the game (the helper serves only a
+   client of its own user, `SO_PEERCRED`; the abstract socket is in the game's network namespace,
+   which Flatpak's Steam shared with the host, 2026-11-18), against a seed with a Zexion slot
+   generated and hosted with `.ap/` (`samples/` holds a YAML per mode):
+   `.venv/bin/python -m client.zexion_client --nogui --verbose archipelago://NAME@localhost:38281`
+   (`CLAUDE.md`, "The client"). New games and grants go into an empty lab slot (`/save-lab`;
+   `save_lab.py install` is asked first too).
+7. Then check the seeds' files the client put: the game's `$XDG_DATA_HOME/ZexionAP/seeds/`, else
+   `~/.local/share/ZexionAP/seeds/`, which under Flatpak's Steam is its sandbox's home's:
+   `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP/seeds/` (inferred, not seen: "Seed
+   files", below), `<seed>-<team>-<slot>.txt` (`client/offline.py`, `seed_file_name`), and the
+   stderr line `configured from the game's symbols, no client` once the game runs with it and no
+   client. Only the helper writes them (`CLAUDE.md`, "Rules").
+
+What to try first, each before the next:
+
+1. `helper.py status` (step 5).
+2. The client's attach: `Attached to Zexion.` in its log, and no "Can't reach the running
+   game"; its step waits until the Linux helper is configured, or 30 s (`docs/DEVELOPING.md`,
+   "Platforms").
+3. A new game: ARCHIPELAGO on the game-mode panel, and the seed's placement (`newgame_status`;
+   "New games", below).
+4. A grant with its popup, in a lab slot: an item received in play, its popup, sound and HUD
+   ("Grants and popups", below).
+5. Then the rest, each part's bullet below saying what it does.
+
+The most likely first failure: on Linux `menu_state` is the game's cursor mode (`gCursorMode`),
+which the mouse may set to 1 in play (`docs/re/linux.md`, `menu_state`: open). Then `apply`
+answers `refused not in play` and popups wait. The first check, before any grant: load a save,
+and with no menu open move the mouse, reading the state through the helper: `tools/grant.py
+watch` prints `state: in play -> menu` if the mouse sets it. With no client connected: the helper
+serves one at a time, so `grant.py` (`set` too) waits while the client is.
 
 - **Getting in.** The game's launch options in Steam preload it:
   `LD_PRELOAD="/path/to/libzexion_ap.so:$LD_PRELOAD" %command%`. The game's folder is at the
@@ -2244,7 +2312,17 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   client of its own user (`SO_PEERCRED`) and drops the others; the client talks only to a server
   that is the game's own process, of its user (`SO_PEERCRED` again: the pid as the client sees
   it), whose `hello` names the game's build. A request over 64 KB drops the client. The helper
-  refuses to start, saying so on stderr, if the name is taken. Requests:
+  refuses to start, saying so on stderr, if the name is taken. The serving thread catches every
+  exception, so none reaches the game (`serve`,
+  `read_offline_guarded`): one thrown before a request's work went to the game thread is answered
+  `error exception` (nothing done, so the client tries again); one thrown after it, or while
+  serving a request of its own (a `write`, say), drops that client, which reads it as a lost
+  reply (maybe applied, never refused), and the next client is served (the Windows pipe thread,
+  catching one, stops serving instead). The mailbox never unwinds with its work still posted: it
+  takes it back, or waits for the frame running it. The globals that
+  thread uses (the mailbox, the `Game`, the seed files read and the seeds put, the offline folder)
+  are `Kept<T>`: built before the helper's constructor and never destroyed, so the game's exit
+  does not destroy them under it. Requests:
 
   | Request | Reply |
   |---|---|
@@ -2295,15 +2373,18 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   addresses (with the rest of the 90), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
   them, so a client and a helper that disagree change nothing (the client also refuses a helper of
-  another version, and one of this version built before the traps, which answers no `trap_status`:
-  it would refuse every batch with a trap's popup). "Frame" requests and the watch run on the
-  game's thread through `src/mailbox.h` (`src/mailbox_linux.cpp`), only at `SWHardwareEnd`'s swap,
-  by its return address (not the palette window's: `docs/re/linux.md`, "The per-frame call"), with
-  nothing they throw reaching the game. As on Windows, a client that goes takes its plan with it:
-  the helper disarms at the next frame. The ARCHIPELAGO choice on the game-mode panel is
-  `src/choice.cpp`'s, shared too: the same relabel, panel hook and callback (the game calls a menu
-  callback with no arguments on Linux, and the helper's reads none), at the frame call, in a
-  translation too ("Translations", below). The choice is tested on Windows' stand-in menu
+  another version, and one of this version built before the traps, which answers `trap_status`
+  with `error unknown request`: it would refuse every batch with a trap's popup; any other reply
+  but `queued …`, such as `refused no frame`, is a configuration tried again). "Frame" requests
+  and the watch run on the game's thread through `src/mailbox.h` (`src/mailbox_linux.cpp`), only
+  at `SWHardwareEnd`'s swap, by its return address (not the palette window's: `docs/re/linux.md`,
+  "The per-frame call"), with nothing they throw reaching the game. As on Windows, a client that
+  goes takes its plan with it: the helper disarms at the next frame, and puts back the choice's
+  hooks in an open game-mode panel (`Game::put_back_client_menus`, which `put_back_game` calls on
+  Windows). The ARCHIPELAGO choice on the game-mode panel is `src/choice.cpp`'s, shared too: the
+  same relabel, panel hook and callback (the game calls a menu callback with no arguments on
+  Linux, and the helper's reads none), at the frame call, in a translation too ("Translations",
+  below). The choice is tested on Windows' stand-in menu
   (`tests/menu_tests.cpp`, `game_tests.cpp`); on Linux only built, and configured through the
   socket. The shared sources build on Linux through `src/platform.h` and the Linux parts of the
   memory layer, `src/game_mem_linux.cpp`: fault-safe reads through the kernel, writability from
@@ -2366,7 +2447,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   Windows ("The map"): in the labels' seed's save the squares of item 48 raised to a major's,
   the item update's on-screen write patched to keep them so, and, while the map is open, the
   cursor's name written over SCRAP ENERGY or SCRAP CHUNK by a wrapper on the map's move
-  procedure. What differs on Linux:
+  procedure, put back in an open map when a client goes (`Game::put_back_client_menus`, as
+  `put_back_game` does on Windows). What differs on Linux:
   - the on-screen write's patch: the Linux build tests the item's ID twice in
     `PowerUpMoveProc`, once for each base of the square (`0x53DB6C` and `0x53DC7E`), so it is
     two patches (`src/mapmarks.h`, `SeenMarker`), each rewriting one 23-byte test as "48, or 3
@@ -2482,10 +2564,13 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     ending's wrapper take none on either build;
   - the prompt checks that event 3667's handler is in the game's code through a handle that
     stands for the main binary (`main_image`, `src/game_mem_linux.cpp`);
-  - a client that goes cancels a prompt on its way, with the disks' count it turns off (the screen
-    faded back in if it was kept black), where the Windows helper asks for it again as it puts its
-    parts back (`put_back_game`): the Linux helper does not, and the look without the client
-    (below) does not ask for it either. A Linux client's connection closes with any request that
+  - a client that goes puts back what the prompt holds, as `put_back_game` does on Windows
+    (`Game::put_back_client_menus`, before the disks' count goes off): a prompt on its way is
+    canceled (the screen faded back in if it was kept black), an ending its YES set going is left
+    to the game's own routine (it still comes, without the fade in), and an open prompt's YES is
+    no longer the helper's. The Windows helper then asks for a prompt on its way again; the Linux
+    helper does not, and the look without the client (below) does not ask for it either. A Linux
+    client's connection closes with any request that
     gets no reply, so the client follows a prompt it queued while it is on its way
     (`mission_status`, `ticks.linux_finds_tick`): one dropped before it showed (`not asked`) is
     offered again at once; one shown, answered, lapsed or ended is not, so a NO is never undone. A
@@ -2769,7 +2854,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   the glibc the container takes from outside it (`/run/parent/usr/lib/x86_64-linux-gnu/libc.so.6`
   in its `/proc/<pid>/maps`), and the build needing 2.38 loaded (2026-11-18). That the container
   takes the newer of the runtime's and the host's is assumed (pressure-vessel's documented rule);
-  without Flatpak it is not checked.
+  without Flatpak it is not checked. Checking a local build's versions before a run: "Running it
+  in the game", step 1, above.
 
 ## Building
 

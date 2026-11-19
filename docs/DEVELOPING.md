@@ -114,15 +114,19 @@ How the helper works: [`native/README.md`](../native/README.md).
 - **AP save**: a randomizer save holding a seed a client has played. The helper recognizes one
   by its item table and start room, matched against the seed files in the offline cache.
   **This seed's save** is an AP save of the seed the connected client plays.
-- **The helper**: `zexion_ap.dll`, built from `native/`. **The proxy**: `version.dll`, built
-  from `native/proxy/`. Players call the two together "the mod".
+- **The helper**: `zexion_ap.dll`, built from `native/`, for the game's Windows build. **The
+  proxy**: `version.dll`, built from `native/proxy/`. Players call the two together "the mod".
+- **The Linux helper**: `libzexion_ap.so`, built from `native/linux/` with the sources of
+  `native/src/` it shares, for the game's Linux build: preloaded by the game's launch options
+  (`LD_PRELOAD`), never loaded into a running game or unloaded.
 - **Stand-in**: the Scrap Energy (47) or Scrap Chunk (48) the game holds at a location whose
   item it cannot hand out itself: another player's item (48 if it is progression or a trap,
   except another Zexion player's supplies, 47 and minor as the game marks this player's own:
   `world.important_elsewhere`), or, with the OS Install Disks goal, one of this world's own disks
   (48), or one of this world's own traps (48). The helper restyles them.
 - **Frame call**: one call the game makes, once per frame, through the hooked import; the
-  helper runs its frame function in it.
+  helper runs its frame function in it. The Linux helper's is the game's `SDL_GL_SwapWindow`
+  call from `SWHardwareEnd`, which the preloaded library defines in SDL's place.
 - **B1**: the only game build supported so far (Steam build 23943567:
   [`docs/re/builds.md`](re/builds.md)).
 - **Working in game (date, B1)**: ran in the real game on that date and build and did the right
@@ -254,16 +258,18 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 
 ## Platforms
 
-The mod is for the game's Windows build, so whatever attaches to the game is Windows-only.
-Zexion also has a native Linux build (below), for which only a first stage exists. Everything else
-runs on Windows, Linux and macOS, and CI runs ruff and pytest on all three.
+The mod is for the game's Windows build. Zexion also has a native Linux build (below), with a
+helper of its own that runs every part of the Windows helper's but unloading, not yet run in the
+game beyond loading, counting frames and serving reads (2026-11-18); the client attaches to
+either build. Everything else runs on Windows, Linux and macOS, and CI runs ruff and pytest on
+all three.
 
 Windows only:
 
-- the client attached to the game (`client/process.py` is the Windows API; the rest of
-  `client/` is plain Python, tested anywhere);
-- the live tools: `memscan.py`, `grant.py`, `helper.py` (but its `status`, below),
-  `check_patterns.py --live`;
+- the client attached to the Windows build (`client/process.py` is the Windows API; the rest of
+  `client/` is plain Python, tested anywhere; on Linux it attaches to the Linux build: below);
+- the live tools `memscan.py` and `helper.py load` and `unload` (`grant.py`,
+  `check_patterns.py --live` and `helper.py status` run against the Linux build too: below);
 - the helper and the proxy (`native/`, but `native/linux/`): MSVC and CMake's Visual Studio
   generator, and so a
   release, whose builder packs their DLLs. `tools/build_apworld.py` itself, and its tests, run
@@ -274,14 +280,15 @@ On Linux the tools look for the install and the saves in the usual places instea
 macOS, set `ZEXION_GAME_DIR` and `ZEXION_SAVE_DIR`.
 
 **Zexion's Linux build.** Zexion also has a native Linux build on Steam (the store's platform
-list shows Linux, read 2026-11-16), which Steam runs by default on Linux and a Steam Deck (a
-Deck's Properties showed "Steam Linux Runtime 3.0", 2026-11-16). Its binary, a fixed-address
+list shows Linux, read 2026-11-16), which Steam runs by default on Linux and a Steam Deck
+unless Proton is forced (assumed, as `re/builds.md`'s Status has it: a Deck's Properties showed
+"Steam Linux Runtime 3.0", 2026-11-16). Its binary, a fixed-address
 ELF executable that keeps its symbol table, and its data files, B1's, are recorded in
 `re/builds.md` ("B1 on Linux"), and every target of `client/patterns.py` mapped onto it in
 `re/linux.md`.
-Support for it is being built, in stages. The client attaches to it (below), but no release
-carries the Linux helper yet, so it is not supported, and the setup guide says so ("Linux and
-Steam Deck"). What exists so far:
+Its support is in the repo: the client attaches to it (below), but no release carries the
+Linux helper yet, so it is not supported, and the setup guide says so ("Linux and Steam Deck").
+What there is:
 
 - the Linux helper, `libzexion_ap.so` (`native/linux/`, `native/README.md`, "The Linux helper"),
   preloaded by the game's launch options: it counts the game's frame calls, and on a socket reads
@@ -303,10 +310,17 @@ Steam Deck"). What exists so far:
   and serving reads (`native/README.md`, "The Linux helper"); new games, grants, scrap's drops,
   Energy Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, labels, traps, translations,
   the disks' goal, the look without the client, the file select's logo, counts and ITEMS row, the
-  title's lines, the Feats guard and the tall text's repair are not run in the game yet.
+  title's lines, the Feats guard and the tall text's repair are not run in the game yet. How to
+  run it in the game, and what to try first: `native/README.md`, "Running it in the game". The
+  most likely first failure: on Linux `menu_state` is the game's cursor mode (`gCursorMode`),
+  which the mouse may set to 1 in play, so that `apply` answers `refused not in play` and popups
+  wait (`re/linux.md`, `menu_state`: open).
   `tools/helper.py status` finds the game, checks its build, makes sure the socket is the game's,
   and reads its memory through it (`client/linux_helper.py`); `helper.py load` and `unload` are
-  Windows-only;
+  Windows-only. `tools/grant.py` and `check_patterns.py --live` attach as the client does
+  (`game.Game.attach`), so through the Linux helper, `grant.py set` writing through its `write`
+  (no such run recorded); `--live` prints each target's link address after `Zexion.exe+`, the
+  base being 0 on Linux;
 - the client: on Linux `game.Game.attach()` attaches to the Linux build (`attach_linux()`), its
   targets from the binary's symbol table (`client/linux_targets.py`, the ones `game.py` reads and
   writes), every read and write through the helper, one request at a time, connecting again once a
@@ -324,14 +338,19 @@ Steam Deck"). What exists so far:
   file, labels included, for the look without the client), CLIENT CONNECTED and the other-seed
   notice (`linux_client_back_tick`, `linux_other_save_tick`), the language
   (`linux_language_tick`), the OS Install Disks' count (`linux_discs_tick`), the finds' follow-ups
-  and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). One lost after it was configured
-  holds the step back for 30 s (`ticks.linux_mod_lost`), then the items are written directly with
-  no popup until it is back; one that failed two steps running has the next step's written
-  directly. The rest of the client runs as without the mod: `native.attach` refuses the Linux
-  build (`native.NoWindowsHelper`, nothing said: the Linux helper runs every part); checks, the
-  goal, DeathLink's deaths out and marking other players' items collected go on. Tested against
+  and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step back until
+  the Linux helper is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll), so no step
+  meanwhile writes the items owed with no popup or drops a waiting trap. One lost after it was
+  configured holds the step back for 30 s too (`ticks.linux_mod_lost`), then the items are
+  written directly with no popup until it is back; one that failed two steps running has the
+  next step's written directly. A Linux helper of this version built before traps, which answers
+  `trap_status` with `error unknown request` (`linux_helper.HelperTooOld`), holds nothing back:
+  items are written directly until it is replaced; any other reply but `queued …` (a frame not
+  come in time: `refused no frame`) is a failed configuration, tried again. The rest of the
+  client runs as without the mod: `native.attach` refuses the Linux build
+  (`native.NoWindowsHelper`, nothing said: the Linux helper runs every part); checks, the goal,
+  DeathLink's deaths out and marking other players' items collected go on. Tested against
   stand-ins only; not run in the game;
-
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak
   (`~/.var/app/com.valvesoftware.Steam/.local/share/Steam`) or Snap Steam, and for the saves in

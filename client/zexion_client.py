@@ -57,6 +57,7 @@ from .storage import (  # noqa: E402
 from .ticks import (  # noqa: E402
     ASSISTS,
     INTEL,
+    LINUX_HOLD_SECONDS,
     attach_helper,
     client_back_tick,
     deathlink_tick,
@@ -165,8 +166,9 @@ class ZexionContext(CommonContext):
         # the items owed get their popups.
         self.helper_lost = False
         self.helper_back_by = 0.0  # when a failing attach after it stops holding back the step
-        # The Linux helper's: when its loss stops holding back the step (ticks.linux_mod_lost),
-        # and the steps it failed in a row (two: the next one's items are written directly).
+        # The Linux helper's: when its loss, or its wait to be configured once attached, stops
+        # holding back the step (ticks.linux_mod_lost, poll), and the steps it failed in a row
+        # (two: the next one's items are written directly).
         self.linux_back_by = 0.0
         self.linux_failed = 0
         # A helper of another version refused to unload (native.NotUnloaded): not asked again
@@ -567,6 +569,11 @@ async def poll(ctx: ZexionContext) -> None:
             return
         ctx.said.clear("game")
         logger.info("Attached to Zexion.")
+        if getattr(ctx.game_conn, "platform", "windows") == "linux":
+            # The Linux helper is configured from the next poll (linux_newgame_tick, which ends
+            # the hold): held until then, or for as long as after a lost one if it can't be, so
+            # no step meanwhile writes the items owed with no popup or drops a waiting trap.
+            ctx.linux_back_by = time.monotonic() + LINUX_HOLD_SECONDS
         # One that failed but may attach on a later try (an old helper refusing to unload, no
         # frame yet): held for as after a lost helper, so this poll's step writes nothing with
         # no popup and drops no waiting trap.

@@ -1651,11 +1651,7 @@ void Game::put_back_game(WidgetCallback callback) {
     // A prompt asked for or opening, asked for again once put back (not a NO's closed one).
     const bool prompt = mission_.on_its_way();
     put_back_save_look();
-    if (configured_) {
-        mission_.restore(at_);
-        map_names_.restore(at_);
-        choice_.restore(at_, callback);
-    }
+    put_back_client_menus(callback);
     put_back_files();
     leave_offline();
     text_cut_.restore();
@@ -1666,6 +1662,13 @@ void Game::put_back_game(WidgetCallback callback) {
         restore_translation();
         if (prompt) mission_.request();
     }
+}
+
+void Game::put_back_client_menus(WidgetCallback callback) {
+    if (!configured_) return;
+    mission_.restore(at_);
+    map_names_.restore(at_);
+    choice_.restore(at_, callback);
 }
 
 void Game::forget_client() {

@@ -398,9 +398,13 @@ class LinuxMod:
             raise LinuxHelperError(f"the helper did not take the game's addresses: {reply}")
         # A helper of this version built before traps were ported refuses their popups, which
         # would hold every grant back for good (session.give_through_helper retries a refusal).
+        # Any other reply (a frame not come in time: `refused no frame`) is no such helper: tried
+        # again as any failed configuration is.
         reply = pm.request("trap_status")
-        if not reply.startswith("queued "):
+        if reply == "error unknown request":
             raise HelperTooOld(f"the helper does not know trap_status: {reply}")
+        if not reply.startswith("queued "):
+            raise LinuxHelperError(f"the helper's trap_status: {reply}")
         self.connection = pm.connection
 
     def current(self) -> bool:
