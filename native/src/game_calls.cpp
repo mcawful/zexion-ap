@@ -1217,14 +1217,15 @@ void Game::watch_feats() {
     // neither (docs/re/memory.md, "The loaded save's randomizer section is at +0xCDD6D0").
     bool on = ap_save_loaded();
 #ifndef _WIN32
-    // The Linux build has no ending patch yet, so an AP ending earns this run's Feats, and the
-    // Feats of Natu screen after it (no save loaded) sets the flashing ones' achievements: Steam
-    // stays blocked from an AP save's ending until a save is loaded again (the title's own
-    // achievements meanwhile with it).
+    // An AP ending the patch did not jump over (it could not be made: feats_state says why)
+    // earns this run's Feats, and the Feats of Natu screen after it (no save loaded) sets the
+    // flashing ones' achievements: then Steam stays blocked from that ending until a save is
+    // loaded again (the title's own achievements meanwhile with it).
     if (*at_.save_loaded != kNoSaveLoaded) {
         feats_ending_hold_ = false;
-    } else if (feats_.on() && !on && at_.flags[flag::kEnding] != 0) {
-        feats_ending_hold_ = true;  // left an AP save with its ending's flag set
+    } else if (feats_.on() && !on && at_.flags[flag::kEnding] != 0 &&
+               at_.flags[flag::kFeat] != 0) {
+        feats_ending_hold_ = true;  // left an AP save whose ending set its Feats (flag 251)
     }
     on = on || feats_ending_hold_;
 #endif

@@ -2190,12 +2190,12 @@ players' items as Archipelago items (`ap_labels`: "Other players' items", "Other
 items, as themselves"), sets off traps ("Traps"), shows its text in a translation's font
 ("Translations"), runs the OS Install Disks goal, its count and RETURN HOME WITH THE DISKS? ("The
 OS Install Disks goal"), keeps AP saves' look without the client ("AP saves without the client"),
-shows the title screen's lines ("The title screen's lines"), and keeps Steam achievements out of
-AP saves ("Feats and achievements in AP saves"). It holds the Windows helper's `Game`
-(`src/game_calls.h`) and runs only those parts of it: below. None of the other parts above runs on
-Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`), gives its
-items, labels, seed, shields, deaths, Intel Chips, the ASSIST lock, the disks' count, the finds'
-follow-ups and the Landing Pod's prompt through it and asks it the language
+shows the title screen's lines ("The title screen's lines"), and keeps Feats and Steam
+achievements out of AP saves ("Feats and achievements in AP saves"). It holds the Windows helper's
+`Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the other parts above
+runs on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`),
+gives its items, labels, seed, shields, deaths, Intel Chips, the ASSIST lock, the disks' count,
+the finds' follow-ups and the Landing Pod's prompt through it and asks it the language
 (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper; `tools/helper.py
 status` talks to it too. Tested against a stand-in game (`tests/test_native_linux.py`).
 
@@ -2249,7 +2249,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 81 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 83 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
@@ -2288,7 +2288,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 81), which the client resolves from the game's symbols
+  addresses (with the rest of the 83), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
   them, so a client and a helper that disagree change nothing (the client also refuses a helper of
   another version, and one of this version built before the traps, which answers no `trap_status`:
@@ -2308,13 +2308,13 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   put back. `Game` and every part it holds build there too, the Windows-only pieces of those left
   out: `Game::configure` takes the helper's checked addresses instead of resolving a client's, the
   offline cache reads and writes the seeds' files alone, with no config file (`src/offline.cpp`;
-  "Seed files", below), and the Feats guard's ending patch and the Feats screen's note do nothing
-  (`src/feats.cpp`); its Steam stand-in runs as an export ("Steam achievements in AP saves",
-  below). Tested on stand-ins (`linux/tests/newgame_tests.cpp`, and through the socket in
-  `tests/test_native_linux.py`); not run in the game. Not known: whether an exception the game's
-  placement threw would be caught here (the helper's own C++ runtime is linked in, the game's is
-  its own: "refused the placement failed" is unverified); a fault there is the game's crash, as on
-  Windows.
+  "Seed files", below), and the Feats screen's note does nothing (`src/feats.cpp`); the Feats
+  guard's Steam stand-in runs as an export and its ending's patch over the Linux ending's own call
+  ("Feats and Steam achievements in AP saves", below). Tested on stand-ins
+  (`linux/tests/newgame_tests.cpp`, and through the socket in `tests/test_native_linux.py`); not
+  run in the game. Not known: whether an exception the game's placement threw would be caught here
+  (the helper's own C++ runtime is linked in, the game's is its own: "refused the placement
+  failed" is unverified); a fault there is the game's crash, as on Windows.
 - **Grants and popups.** `Game::apply` and `Game::pump_popups` run here as on Windows
   ("Grants", "Popups"): the `cas` writes all or none, the counts and the HUD refreshed (the
   number display's third argument, `true`, as the game passes it: `docs/re/linux.md`, "Mapped
@@ -2648,10 +2648,10 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   set all the same, which `title_status` says as `no version` when it is not: the helper's globals
   are built before its constructor sets it, `init_priority`); the lines themselves are stand-in
   tested on Windows (`tests/title_tests.cpp`); not run in the game.
-- **Steam achievements in AP saves.** `Game::watch_feats` runs at each frame call, as on Windows
-  ("Feats and achievements in AP saves"): the guard on while an AP save is loaded, and the load
-  test over the slots holding AP saves, filled with no save loaded from the slots' own copies of
-  their sections (`slot_array`, `gSaveGames`; `rando_slots`, `gSavedRandos`). What differs on
+- **Feats and Steam achievements in AP saves.** `Game::watch_feats` runs at each frame call, as on
+  Windows ("Feats and achievements in AP saves"): the guard on while an AP save is loaded, and the
+  load test over the slots holding AP saves, filled with no save loaded from the slots' own copies
+  of their sections (`slot_array`, `gSaveGames`; `rando_slots`, `gSavedRandos`). What differs on
   Linux (`docs/re/linux.md`, "Mapped by disassembly: the Feats guard's Steam and load test"):
   - no slot is written and no code made: the helper exports `SteamInternal_ContextInit` itself, so
     the dynamic linker binds the game's call (from its two accessors, `SteamUserStats()` and
@@ -2665,18 +2665,31 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     (`feats_status`) unless the game's call binds to the helper's export (the first definition in
     the global scope: another preload ahead of it would take the calls) and the library's is
     found; `watch_feats` runs before the frame's player-pointer gate, as it only reads;
-  - the ending's patch (no Feat earned at an AP ending) and the Feats of Natu screen's note are
-    not on Linux yet: an AP save's ending earns this run's Feats in the game there, so Steam stays
-    blocked from that ending until a save is loaded again (the Feats of Natu screen after it, with
-    no save loaded, sets the flashing Feats' achievements), the title's own achievements meanwhile
-    with it.
+  - the ending's patch is made over the Linux ending's own first achievement call, not a call
+    through the import slot: `mov edi, 13` (14Victory) and `call setTheAchievement` (the game's
+    own function, from its symbols) at `ending_unlocks` (`EndingCutscene` + `0x3B`), the six-byte
+    `mov word [rbp-0x26], 0` after them, which the patch's last two bytes land in (nothing jumps
+    there); flag 251's store just before `ending_join` (`EndingCutscene` + `0x39C`), and flag
+    250's at it, not `0x11` bytes after (`docs/re/linux.md`, the `ending_unlocks` and `ending_join`
+    rows). The same 12 bytes, `mov byte [flag 251], 0` and `jmp ending_join`, put back as on
+    Windows;
+  - an AP ending the patch did not jump over (one refused: `feats_status` says why) earns that
+    run's Feats (flag 251 set), so Steam then stays blocked from that ending until a save is
+    loaded again (the Feats of Natu screen after it, with no save loaded, would set the flashing
+    Feats' achievements), the title's own achievements meanwhile with it. Flag 251 does not tell
+    this run's Feats from a saved one: an AP save that reached its ending with no patch (an
+    earlier helper, or none) holds it, so leaving that save for the title holds Steam there too,
+    until a save loads (a code typed at the title meanwhile earns no 13SecretCode);
+  - the Feats of Natu screen's note is not on Linux yet: after an AP ending the screen shows no
+    Feat earned, with nothing saying why.
 
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`: its stand-in
   Steam's achievement set before a config and with a normal save, not with an AP save loaded, and
-  not after an AP save's ending until a save loads); not run in the game.
+  not after an unpatched AP ending until a save loads; the stand-in's ending, the Linux site's
+  bytes, patched while an AP save is loaded and put back after); not run in the game.
 - **Not on Linux yet.** The parts above that the Linux helper does not run, with a client or
-  without: the ending's patch and the Feats of Natu screen's note ("Feats and achievements in AP
-  saves"), the file select's AP logo, ITEMS row and disk counts ("AP saves on the file select",
+  without: the Feats of Natu screen's note ("Feats and achievements in AP saves"), the file
+  select's AP logo, ITEMS row and disk counts ("AP saves on the file select",
   the major-item list in "Grants"), and the repair of tall popups' text ("Grants and popups",
   below the Linux bullet's). The client says so once (`native.LINUX_NOT_READY`).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after

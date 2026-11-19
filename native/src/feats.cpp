@@ -336,7 +336,7 @@ bool FeatsGuard::load_test() const {
 }
 #endif
 
-#ifdef _WIN32  // the ending's patch: not on Linux yet (Steam there is the export below)
+#ifdef _WIN32  // the ending's patch on Windows (the Linux build's below; Steam there: the export)
 void FeatsGuard::patch_ending(const GameAddresses& a) {
     BYTE* site = a.ending_unlocks;
     BYTE* join = a.ending_join;
@@ -392,7 +392,80 @@ void FeatsGuard::patch_ending(const GameAddresses& a) {
 }
 
 #else
-void FeatsGuard::patch_ending(const GameAddresses&) {}
+// The Linux build's ending, as traced (docs/re/linux.md, the `ending_unlocks` and `ending_join`
+// rows): `mov edi, 13` (14Victory) and `call setTheAchievement` at the site, the six-byte `mov
+// word [rbp-0x26], 0` after them (the patch's last two bytes land in it: nothing jumps there);
+// flag 251's store just before the join, flag 250's at it.
+namespace {
+constexpr BYTE kMovEdi13[] = {0xBF, 0x0D, 0x00, 0x00, 0x00};
+constexpr ptrdiff_t kCallAt = 5, kAfterCall = 10;
+constexpr BYTE kCallRel = 0xE8;
+constexpr BYTE kMovWord[] = {0x66, 0xC7};
+std::atomic<const BYTE*> g_set_achievement{nullptr};  // the game's setTheAchievement(int)
+
+// The rel32 at `code + at` that takes code ending at `next` to `to` (iat.h's, Windows-only).
+void put_rel32(BYTE* code, size_t at, const BYTE* next, const BYTE* to) {
+    const auto d = static_cast<int32_t>(to - next);
+    std::memcpy(code + at, &d, sizeof(d));
+}
+}  // namespace
+
+void set_feats_achievement_fn(const void* fn) {
+    g_set_achievement.store(static_cast<const BYTE*>(fn));
+}
+
+void FeatsGuard::patch_ending(const GameAddresses& a) {
+    BYTE* site = a.ending_unlocks;
+    BYTE* join = a.ending_join;
+    BYTE now[kEndingPatchSize];
+    if (site == nullptr || join == nullptr || !safe_read(site, now, sizeof(now))) {
+        ending_error_ = "the ending cannot be read";
+        return;
+    }
+    if (ending_patched_ && site == site_ && std::memcmp(now, written_, sizeof(now)) == 0) return;
+    // The call as traced: 14Victory to the game's own setTheAchievement, then the word store.
+    const BYTE* target = site + kAfterCall + field<int32_t>(now, kCallAt + 1);
+    if (std::memcmp(now, kMovEdi13, sizeof(kMovEdi13)) != 0 || now[kCallAt] != kCallRel ||
+        g_set_achievement.load() == nullptr || target != g_set_achievement.load() ||
+        std::memcmp(now + kAfterCall, kMovWord, sizeof(kMovWord)) != 0) {
+        ending_error_ = "the ending's call reads otherwise";
+        return;
+    }
+    // The join after it: flag 251's store just before it, flag 250's at it.
+    BYTE around[2 * kStoreSize];
+    if (join <= site || join - site > kMaxStretch ||
+        !safe_read(join - kStoreSize, around, sizeof(around))) {
+        ending_error_ = "the ending's join is not after its call";
+        return;
+    }
+    BYTE* flag250 = a.flags + flag::kEnding;
+    BYTE* flag251 = a.flags + flag::kFeat;
+    if (store_target(join - kStoreSize, around, 1) != flag251 ||
+        store_target(join, around + kStoreSize, 1) != flag250) {
+        ending_error_ = "the ending's join reads otherwise";
+        return;
+    }
+    // mov byte [rip+flag 251], 0; jmp join: as on Windows.
+    BYTE patch[kEndingPatchSize];
+    if (!fits_rel32(site + kStoreSize, flag251) || !fits_rel32(site + kEndingPatchSize, join)) {
+        ending_error_ = "the ending is out of reach";
+        return;
+    }
+    std::memcpy(patch, kStoreByte, sizeof(kStoreByte));
+    put_rel32(patch, 2, site + kStoreSize, flag251);
+    patch[6] = 0;
+    patch[7] = kJmp;
+    put_rel32(patch, 8, site + kEndingPatchSize, join);
+    if (!patch_code(site, patch, sizeof(patch))) {
+        ending_error_ = "the ending could not be written";
+        return;
+    }
+    std::memcpy(original_, now, sizeof(now));
+    std::memcpy(written_, patch, sizeof(patch));
+    site_ = site;
+    ending_patched_ = true;
+    ending_error_.clear();
+}
 #endif
 
 static_assert(kEndingPatchSize <= kMaxCodePatch, "put_back_code reads it whole");

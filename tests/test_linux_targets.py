@@ -96,6 +96,7 @@ B1_HELPER_SYMBOLS = [
     ("_Z15newSpriteStringPKcii", 0x5588CD, 0x39D, 2),
     ("_Z15addSpriteStringP9SpriteRec", 0x569651, 0xBD, 2),
     ("gSavedRandos", 0x16BF7C0, 0x10EF0, 1),
+    ("_Z14EndingCutscenev", 0x55AB11, 0x7D2, 2),
 ]
 
 

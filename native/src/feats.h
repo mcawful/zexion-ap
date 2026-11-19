@@ -7,9 +7,11 @@
 // through, while the load test is set. The stub, stand-in and vtable are in two pages never
 // freed: a call still in them after an unload lands in live memory and runs no helper code.
 // On Linux there is no slot and no stub: the helper exports SteamInternal_ContextInit and
-// feats_context_init decides each call (below; set_switch sets what it reads); the ending is not
-// patched there yet. docs/re/memory.md, "Feats and achievements"; native/README.md, "Feats and
+// feats_context_init decides each call (below; set_switch sets what it reads); the ending is
+// patched the same way over the Linux ending's own first achievement call (setTheAchievement,
+// feats.cpp). docs/re/memory.md, "Feats and achievements"; native/README.md, "Feats and
 // achievements in AP saves".
+
 #pragma once
 
 #include "platform.h"
@@ -44,6 +46,9 @@ void set_feats_stats_context(const void* context);
 // The helper's own exported SteamInternal_ContextInit: the guard holds only if the game's call
 // binds to it (check_steam), and it is never taken for libsteam_api's; at start.
 void set_feats_export(const void* export_fn);
+// The game's setTheAchievement(int), from its own symbols: the ending's call must reach it
+// (FeatsGuard's patch on Linux); at start.
+void set_feats_achievement_fn(const void* fn);
 #endif
 
 class FeatsGuard {

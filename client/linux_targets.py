@@ -160,6 +160,9 @@ HELPER_TARGETS = (
     LinuxTarget("text_link_fn", "_Z15addSpriteStringP9SpriteRec", 0, 0x569651),
     # The Feats guard's load test (native/src/feats.h): the slots' randomizer sections.
     LinuxTarget("rando_slots", "gSavedRandos", 0, 0x16BF7C0),
+    # And its ending's patch: the first achievement call in EndingCutscene, and its join.
+    LinuxTarget("ending_unlocks", "_Z14EndingCutscenev", 0x3B, 0x55AB4C),
+    LinuxTarget("ending_join", "_Z14EndingCutscenev", 0x39C, 0x55AEAD),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -177,7 +180,7 @@ CONFIG_KEYS = (
     "equip_panel_fn", "widget_move_fn", "text_place_fn", "widget_new_fn", "sprite_sheet_fn",
     "panel_link_fn", "keys_branch", "options_back_fn", "fade", "fade_level", "routine_table",
     "death_fn", "assist_menu_fn", "draw_layer", "text_new_fn", "text_link_fn", "slot_array",
-    "rando_slots",
+    "rando_slots", "ending_unlocks", "ending_join",
 )  # fmt: skip
 
 

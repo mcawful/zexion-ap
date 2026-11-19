@@ -268,6 +268,17 @@ asm(".text\n.globl zap_pickup\n.type zap_pickup, @function\nzap_pickup:\n"
 asm(".text\n.globl zap_pause_game\n.type zap_pause_game, @function\nzap_pause_game:\n"
     ".byte 0x75, 0x3C\n  ret\n.size zap_pause_game, .-zap_pause_game\n");
 
+// EndingCutscene's first achievement call and its join, as the Linux build has them (never run):
+// `mov edi, 13; call setTheAchievement; mov word [rbp-0x26], 0`, then, before the join, flag
+// 251's store, and at the join flag 250's (the helper's patch jumps from the one to the other).
+extern "C" void zap_set_the_achievement(int) {}
+asm(".text\n.globl zap_ending\n.type zap_ending, @function\nzap_ending:\n"
+    "  movl $13, %edi\n  call zap_set_the_achievement\n  movw $0, -0x26(%rbp)\n"
+    "  nop\n  nop\n  nop\n  nop\n"
+    "  movb $1, zap_flags+251(%rip)\n"
+    ".globl zap_ending_join\nzap_ending_join:\n"
+    "  movb $1, zap_flags+250(%rip)\n  ret\n.size zap_ending, .-zap_ending\n");
+
 // PowerUpMoveProc's two tests of the item's ID, byte for byte, 0x112 apart, never run.
 #define ZAP_ID_TEST(minor, past)                                                          \
     ".byte 0x66, 0x83, 0xF8, 0x02, 0x7E, " minor ", 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7\n" \

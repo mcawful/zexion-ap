@@ -1,7 +1,8 @@
 """The Linux helper (native/linux/) preloaded into the stand-in game the native build makes: it
 passes the frame call on, serves only while it is the known build (any program, in the hooktest
 build), serves reads of the game's memory itself, never opens that memory to other processes,
-and exports nothing but SDL_GL_SwapWindow. And client/linux_helper.py against it.
+and exports nothing but the calls it stands in for (SDL_GL_SwapWindow, SteamInternal_ContextInit).
+And client/linux_helper.py against it.
 
 Skips without a build of native/ on Linux; ``ZEXION_REQUIRE=helper`` makes that a failure.
 ``ZEXION_NATIVE_BUILD`` points at another build folder than native/build.
@@ -411,6 +412,8 @@ CONFIG_SYMBOLS = {
     "text_link_fn": "zap_text_link",
     "slot_array": "zap_save_games",
     "rando_slots": "zap_saved_randos",
+    "ending_unlocks": "zap_ending",
+    "ending_join": "zap_ending_join",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -909,9 +912,40 @@ def test_no_achievement_is_set_while_an_ap_save_is_loaded(game: Game) -> None:
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
-def test_after_an_ap_saves_ending_achievements_wait_for_the_next_load(game: Game) -> None:
-    # With no ending patch on Linux the Feats of Natu screen after an AP ending (no save loaded)
-    # would set its Feats' achievements: Steam stays blocked until a save is loaded again.
+def test_an_ap_saves_ending_is_patched_over_its_feats_and_put_back_after(game: Game) -> None:
+    # FeatsGuard's patch on Linux: over the ending's first achievement call (`mov edi, 13; call
+    # setTheAchievement`), `mov byte [flag 251], 0; jmp join` while an AP save is loaded; the
+    # game's bytes again once it is not.
+    from client import offline
+
+    at = config_addresses()
+    site = stand_in("zap_ending")
+    seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
+    put = offline.put_request("seed", seed, offline.seed_file_name("S", 0, 1))
+    with game.connect() as sock:
+        game_bytes = read_at(sock, site, 12)
+        assert game_bytes[:6] == bytes.fromhex("bf0d000000e8")
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, put) == "stored"
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the AP save
+        wait_for(sock, f"read {site:#x} 2", lambda r: r == "data \xc6\x05")
+        patch = read_at(sock, site, 12)
+        flag251 = site + 7 + int.from_bytes(patch[2:6], "little", signed=True)
+        join = site + 12 + int.from_bytes(patch[8:12], "little", signed=True)
+        assert (patch[6], patch[7]) == (0, 0xE9)
+        assert flag251 == at["flags"] + 251 and join == stand_in("zap_ending_join")
+        assert ask(sock, "feats_status") == "on"
+        assert ask(sock, f"write {at['rando_marker']:#x} 0000") == "written 2"  # a normal save
+        wait_for(sock, f"read {site:#x} 2", lambda r: r == "data \xbf\x0d")
+        assert read_at(sock, site, 12) == game_bytes
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_after_an_unpatched_ap_ending_achievements_wait_for_the_next_load(game: Game) -> None:
+    # An AP ending the patch did not jump over sets this run's Feats (flag 251), and the Feats of
+    # Natu screen after it (no save loaded) would set their achievements: Steam stays blocked
+    # until a save is loaded again.
     from client import offline
 
     at = config_addresses()
@@ -935,7 +969,8 @@ def test_after_an_ap_saves_ending_achievements_wait_for_the_next_load(game: Game
         assert ask(sock, put) == "stored"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the AP save
         settle(sock)
-        assert ask(sock, f"write {at['flags'] + 250:#x} 01") == "written 1"  # its ending
+        assert ask(sock, f"write {at['flags'] + 250:#x} 01") == "written 1"  # its ending,
+        assert ask(sock, f"write {at['flags'] + 251:#x} 01") == "written 1"  # its Feats earned
         assert ask(sock, f"write {at['save_loaded']:#x} ff") == "written 1"  # MISSION COMPLETE on
         settle(sock)
         assert achievement(sock) == 0  # the Feats of Natu screen's: held back
