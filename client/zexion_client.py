@@ -116,6 +116,10 @@ class ZexionCommandProcessor(ClientCommandProcessor):
             if self.ctx.helper_left:  # leave_helper_tick
                 self.output("Not connected: the client uses the Zexion mod again once it is.")
                 return False
+            if getattr(self.ctx.game_conn, "platform", "windows") == "linux":
+                # The Linux helper is preloaded with the game, for its whole run.
+                self.output("On Linux the Zexion mod can't be reloaded: restart Zexion instead.")
+                return False
             self.output("The Zexion mod isn't loaded; the client loads it as soon as it can.")
             return False
         self.ctx.reload_mod_pending = True

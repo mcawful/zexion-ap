@@ -286,6 +286,11 @@ asm(".text\n.globl zap_ending\n.type zap_ending, @function\nzap_ending:\n"
     ".globl zap_ending_join\nzap_ending_join:\n"
     "  movb $1, zap_flags+250(%rip)\n  ret\n.size zap_ending, .-zap_ending\n");
 
+// setGameMessageStringClipping's top cut, byte for byte, never run.
+asm(".text\n.globl zap_text_cut\n.type zap_text_cut, @function\nzap_text_cut:\n"
+    ".byte 0x8B, 0x45, 0xE4, 0x99, 0xC1, 0xEA, 0x1D, 0x01, 0xD0, 0x83, 0xE0, 0x07, 0x29, 0xD0\n"
+    "  ret\n.size zap_text_cut, .-zap_text_cut\n");
+
 // PowerUpMoveProc's two tests of the item's ID, byte for byte, 0x112 apart, never run.
 #define ZAP_ID_TEST(minor, past)                                                          \
     ".byte 0x66, 0x83, 0xF8, 0x02, 0x7E, " minor ", 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7\n" \

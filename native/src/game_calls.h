@@ -275,6 +275,11 @@ public:
     // appended to the major-item list as a pickup would: grants set the byte alone
     // (docs/re/memory.md, "The pickup record holds the major-item list").
     void watch_pickups();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the text window's
+    // top cut patched, so tall popups' lines are cut right (text.h, TextCut).
+    void watch_text_cut() {
+        if (configured_) text_cut_.watch(at_.text_cut_code);
+    }
     // Game thread: what the helper changed for a translation put back (its names in the tables,
     // entry 70's offset once the popup areas are free, its icons): put_back_game's part, and the
     // Linux helper's when a client goes.

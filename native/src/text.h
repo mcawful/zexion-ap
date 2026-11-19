@@ -112,11 +112,18 @@ void fit_notice_box(BYTE* message, const std::string& text, int per_line);
 // helper calls") cuts a glyph's top at the window's top edge mod 8, leaving out the row's own
 // offset: from three rows on a row past the first is cut wrong, and from five a line comes back
 // whole while the box opens and closes. The patch subtracts the row, so the window cuts every
-// row as it does the first.
+// row as it does the first. On Linux the same cut is 14 bytes of setGameMessageStringClipping,
+// the edge and the row's 10 x row on the stack (docs/re/linux.md, `text_cut_code`).
+#ifdef _WIN32
 constexpr size_t kTextCutSize = 24;
+#else
+constexpr size_t kTextCutSize = 14;
+#endif
 // The patch built from the game's bytes `game` at text_cut_code: false if they are not the cut
-// as traced on B1. It reads only registers the game's reads, leaves them as the game's does
-// (eax holds the cut either way), and calls nothing.
+// as traced on B1. It reads only registers the game's reads (on Linux, the edge's stack slot and
+// the row's, which the code before it writes once a glyph), leaves them as the game's does (eax
+// holds the cut either way, and nothing reads what else it leaves before it is written), and
+// calls nothing.
 bool text_cut_patch(const BYTE (&game)[kTextCutSize], BYTE (&out)[kTextCutSize]);
 
 // The cut patched while the helper is configured. It uses nothing of the helper's, so one left

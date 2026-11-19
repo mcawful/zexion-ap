@@ -520,30 +520,17 @@ def _hello(helper: Helper) -> dict[str, str]:
         return {"version": ""}
 
 
-# What of the helper the game's Linux build lacks yet: a clause for the player
-# (state.helper_failed). Its new games, ARCHIPELAGO on the menu included, its items with their
-# popups, traps and scrap's drops, received Energy Shields (ticks.shields_tick) and DeathLink
-# deaths (ticks.deathlink_tick), other players' items' labels, Intel Chips, the ASSIST lock, this
-# world's own traps, the OS Install Disks' count, the finds' follow-ups, RETURN HOME and AP saves'
-# look without the client go through the Linux helper instead (ticks.linux_newgame_tick and the
-# other linux_ ticks), and it shows the title screen's lines and the file select's AP logo, disk
-# counts and ITEMS row and keeps Feats and Steam achievements out of AP saves itself. Not yet on
-# Linux: the repair of tall popups' text (native/README.md, "The Linux helper", "Not on Linux
-# yet").
-LINUX_NOT_READY = "its repair of tall popups' text isn't ready for the game's Linux version yet"
-
-
-class LinuxPartial(ModFixable):
-    """The game's Linux build: the Windows helper's parts are not there (LINUX_NOT_READY)."""
+class NoWindowsHelper(HelperError):
+    """The game's Linux build: no Windows helper there. The Linux helper runs every part of it
+    (native/README.md, "The Linux helper"; the client drives it through linux_helper.LinuxMod and
+    the linux_ ticks), so the client has nothing to tell the player."""
 
 
 def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
     """``_attach``, its HelperErrors marked ``old_gone`` once the old helper has unloaded. With
-    the game's Linux build (``g.platform``), ModFixable: the Linux helper has only some of its
-    parts (native/README.md, "The Linux helper"; the client drives them through
-    linux_helper.LinuxMod), so the client goes on without the rest."""
+    the game's Linux build (``g.platform``), NoWindowsHelper: the Linux helper serves it instead."""
     if getattr(g, "platform", "windows") == "linux":
-        raise LinuxPartial(LINUX_NOT_READY)
+        raise NoWindowsHelper("the game's Linux build has the Linux helper, not this one")
     unloaded: list[bool] = []
     try:
         return _attach(g, dll, notes, unloaded)

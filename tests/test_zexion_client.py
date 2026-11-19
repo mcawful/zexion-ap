@@ -1198,9 +1198,9 @@ def test_the_popup_count_and_the_hints_are_asked_for_in_one_get(hints, monkeypat
 
 
 def test_with_the_linux_build_the_step_goes_on_without_the_helper(monkeypatch, caplog) -> None:
-    """native.attach refuses the game's Linux build (its helper serves memory only): the step
-    is not held for a helper that won't come, gives what is owed without popups, and the
-    player is told once."""
+    """The game's Linux build has no Windows helper: the step is not held for one that won't
+    come, gives what is owed (through the Linux helper, when it is there: the linux_ ticks), and
+    the player is told nothing about it."""
     ctx, _ = failing_reattach(monkeypatch)
     ctx.game_conn.platform = "linux"
     monkeypatch.setattr(zc, "attach_helper", ticks.attach_helper)
@@ -1215,12 +1215,8 @@ def test_with_the_linux_build_the_step_goes_on_without_the_helper(monkeypatch, c
         asyncio.run(zc.poll(ctx))
         asyncio.run(zc.poll(ctx))
     assert steps and steps[0]["helper"] is None and steps[0]["give"]
-    said = [  # the client's window; the log file has the detail as well
-        r.getMessage()
-        for r in caplog.records
-        if r.name == "Client" and native.LINUX_NOT_READY in r.getMessage()
-    ]
-    assert len(said) == 1 and said[0].startswith("On Linux the Zexion mod starts new games")
+    said = [r.getMessage() for r in caplog.records if r.name == "Client"]
+    assert not [line for line in said if "Zexion mod" in line]
 
 
 class LinuxHelperStandIn:
@@ -1635,6 +1631,16 @@ def test_on_windows_the_linux_tick_does_nothing() -> None:
     assert ctx.linux_mod is None
 
 
+def test_on_linux_reload_mod_says_it_cannot_reload() -> None:
+    # The Linux helper is preloaded with the game: /reload_mod says so, and asks for nothing.
+    ctx = context(connection(), linux_game({"config": "ok"}))
+    said: list[str] = []
+    processor = types.SimpleNamespace(ctx=ctx, output=said.append)  # AP's processor is stubbed here
+    assert not zc.ZexionCommandProcessor._cmd_reload_mod(processor)
+    assert said == ["On Linux the Zexion mod can't be reloaded: restart Zexion instead."]
+    assert not ctx.reload_mod_pending
+
+
 def test_on_linux_the_helper_retry_leaves_the_linux_helpers_plan_alone(caplog) -> None:
     ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
     asyncio.run(ticks.linux_newgame_tick(ctx))
@@ -1643,5 +1649,4 @@ def test_on_linux_the_helper_retry_leaves_the_linux_helpers_plan_alone(caplog) -
         assert not asyncio.run(ticks.attach_helper(ctx))
         assert not asyncio.run(ticks.attach_helper(ctx))
     assert ctx.conn.newgame is state.NewGame.ARMED  # not reset as drop_helper would
-    said = [r for r in caplog.records if r.name == "Client" and "On Linux" in r.getMessage()]
-    assert len(said) == 1
+    assert not [r for r in caplog.records if r.name == "Client"]  # nothing to say there

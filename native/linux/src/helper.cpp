@@ -396,6 +396,9 @@ constexpr ConfigKey kConfigKeys[] = {
     {"delete_entry_fn", &G::delete_entry_fn, 0, "_Z19ClearGameMenuActionP12GameMenuItemi", 0},
     // The major-item list (the file select's ITEMS row), with its length (game_layout.h pickups).
     {"pickup_list", &G::pickup_list, zap::pickups::kSize, "gGameState", 0xAE0},
+    // The text window's top cut, patched so tall popups' lines are cut right (text.h, TextCut).
+    {"text_cut_code", &G::text_cut_code, 0, "_Z28setGameMessageStringClippingP9SpriteRecii",
+     0x661},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -489,6 +492,7 @@ constexpr ConfigKey kConfigKeys[] = {
     {"copy_entry_fn", &G::copy_entry_fn, 0, "zap_copy_entry", 0},
     {"delete_entry_fn", &G::delete_entry_fn, 0, "zap_delete_entry", 0},
     {"pickup_list", &G::pickup_list, zap::pickups::kSize, "zap_pickup_list", 0},
+    {"text_cut_code", &G::text_cut_code, 0, "zap_text_cut", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -1186,6 +1190,8 @@ void game_frame(uintptr_t site) {
     // with none, as the Windows helper's (game_offline.cpp).
     guarded([] { g_game.watch_own_disks(); });
     guarded([] { g_game.watch_trap_patches(); });
+    // Tall popups' lines cut right: the text window's top cut takes off each glyph's row (text.h).
+    guarded([] { g_game.watch_text_cut(); });
     guarded([] { g_game.pump_traps(zap::ticks_ms()); });
     guarded([] { g_game.pump_popups(); });
     // A received scrap's drop once its popup has shown and the player has settled, as the

@@ -102,6 +102,7 @@ B1_HELPER_SYMBOLS = [
     ("_Z18SaveGameMenuActionP12GameMenuItemi", 0x59B85E, 0x146A, 2),
     ("_Z18CopyGameMenuActionP12GameMenuItemi", 0x5B1B09, 0x17EF, 2),
     ("_Z19ClearGameMenuActionP12GameMenuItemi", 0x5B0A65, 0x10A4, 2),
+    ("_Z28setGameMessageStringClippingP9SpriteRecii", 0x568FB6, 0x69B, 2),
 ]
 
 

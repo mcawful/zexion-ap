@@ -164,11 +164,9 @@ def test_the_windows_helper_is_not_tried_with_the_linux_build(linux, tmp_path) -
     from client import native
 
     g = game.Game.attach_linux()
-    with pytest.raises(native.LinuxPartial, match="Linux version") as caught:
+    with pytest.raises(native.NoWindowsHelper, match="Linux helper") as caught:
         native.attach(g, tmp_path / "zexion_ap.dll")
-    assert isinstance(caught.value, native.ModFixable) and not caught.value.old_gone
+    assert not isinstance(caught.value, native.ModFixable) and not caught.value.old_gone
     from client import state
 
-    line = state.helper_failed(caught.value)
-    assert line.startswith("On Linux the Zexion mod starts new games of this seed, shows your")
-    assert "popups" in line and "traps" in line and "without popups" not in line
+    assert state.helper_failed(caught.value) is None  # the Linux helper runs every part

@@ -420,6 +420,7 @@ CONFIG_SYMBOLS = {
     "copy_entry_fn": "zap_copy_entry",
     "delete_entry_fn": "zap_delete_entry",
     "pickup_list": "zap_pickup_list",
+    "text_cut_code": "zap_text_cut",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -1058,6 +1059,23 @@ def test_in_an_ap_save_owned_items_go_in_the_major_item_list(game: Game) -> None
         wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
         assert read_at(sock, at["pickup_list"], 2) == b"\xc5\x00"
         assert read_at(sock, at["pickup_list"] + 0x1A, 1) == b"\x01"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_the_text_windows_cut_is_patched_once_configured(game: Game) -> None:
+    # Game::watch_text_cut: the top cut takes off the glyph's row (native/src/text.h; the patch
+    # itself is run beside the game's bytes in native/linux/tests/patch_tests.cpp).
+    at = config_addresses()
+    cut = at["text_cut_code"]
+    game_bytes = bytes.fromhex("8B45E499C1EA1D01D083E00729D0")
+    ours = bytes.fromhex("8B45E42B45F483E0070F1F440000")
+    with game.connect() as sock:
+        assert read_at(sock, cut, 14) == game_bytes
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
+        assert read_at(sock, cut, 14) == ours
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

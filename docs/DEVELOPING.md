@@ -290,22 +290,23 @@ Steam Deck"). What exists so far:
   the client's items with their popups, scrap's drops and Energy Shields, deals DeathLink's
   deaths, names Intel Chips, locks ASSIST, with the Windows helper's own `Game`
   (`native/src/game_calls.h`, built for both through `native/src/platform.h` and the Linux parts
-  of the memory layer; it runs only those parts), shows other players' items as Archipelago items
-  (on the map too), sets off traps, shows its text in a translation's font, and runs the OS
-  Install Disks goal (its count, this world's own disks counted at their pickup with no client,
-  and RETURN HOME); it keeps the seeds' files (under `$XDG_DATA_HOME`) and, with one and no
-  client, configures itself from the game's symbols, so this world's own traps and disks work with
-  no client, gives AP saves their look without the client and the file select's AP logo, disk
-  counts and ITEMS row, shows the title screen's lines, and keeps Feats and Steam achievements out
-  of AP saves, with the Feats screen's note. Tested against a stand-in game
-  (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job). Working in
-  game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls and serving
-  reads (`native/README.md`, "The Linux helper"); new games, grants, scrap's drops, Energy
-  Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, labels, traps, translations, the
-  disks' goal, the look without the client, the file select's logo, counts and ITEMS row, the
-  title's lines and the Feats guard are not run in the game yet. `tools/helper.py status` finds
-  the game, checks its build, makes sure the socket is the game's, and reads its memory through it
-  (`client/linux_helper.py`); `helper.py load` and `unload` are Windows-only;
+  of the memory layer; it runs every part but unloading), shows other players' items as
+  Archipelago items (on the map too), sets off traps, shows its text in a translation's font, and
+  runs the OS Install Disks goal (its count, this world's own disks counted at their pickup with
+  no client, and RETURN HOME); it keeps the seeds' files (under `$XDG_DATA_HOME`) and, with one
+  and no client, configures itself from the game's symbols, so this world's own traps and disks
+  work with no client, gives AP saves their look without the client and the file select's AP logo,
+  disk counts and ITEMS row, shows the title screen's lines, keeps Feats and Steam achievements
+  out of AP saves, with the Feats screen's note, and repairs tall popups' text. Tested against a
+  stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job).
+  Working in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls
+  and serving reads (`native/README.md`, "The Linux helper"); new games, grants, scrap's drops,
+  Energy Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, labels, traps, translations,
+  the disks' goal, the look without the client, the file select's logo, counts and ITEMS row, the
+  title's lines, the Feats guard and the tall text's repair are not run in the game yet.
+  `tools/helper.py status` finds the game, checks its build, makes sure the socket is the game's,
+  and reads its memory through it (`client/linux_helper.py`); `helper.py load` and `unload` are
+  Windows-only;
 - the client: on Linux `game.Game.attach()` attaches to the Linux build (`attach_linux()`), its
   targets from the binary's symbol table (`client/linux_targets.py`, the ones `game.py` reads and
   writes), every read and write through the helper, one request at a time, connecting again once a
@@ -327,9 +328,9 @@ Steam Deck"). What exists so far:
   holds the step back for 30 s (`ticks.linux_mod_lost`), then the items are written directly with
   no popup until it is back; one that failed two steps running has the next step's written
   directly. The rest of the client runs as without the mod: `native.attach` refuses the Linux
-  build (`native.LinuxPartial`, said once in the client's window); checks, the goal, DeathLink's
-  deaths out and marking other players' items collected go on. Tested against stand-ins only; not
-  run in the game;
+  build (`native.NoWindowsHelper`, nothing said: the Linux helper runs every part); checks, the
+  goal, DeathLink's deaths out and marking other players' items collected go on. Tested against
+  stand-ins only; not run in the game;
 
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak
@@ -415,7 +416,8 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
   into the menu gets the seed: the helper places it again with the seed's settings, whatever
   else the menu holds (`client/newgame.py`; `native/README.md`, "New games"; working in game,
   2026-10-27). From the Launcher: `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
-- `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items meanwhile
+- `/reload_mod` (on Linux it only says to restart Zexion: the Linux helper is preloaded for the
+  game's run) unloads the helper and loads it again 3 seconds later, giving no items meanwhile
   (popups still queued are lost; items are not, nor traps waiting in the save loaded, or received
   with none loaded, for which it refuses; one waiting for a save not loaded is lost); with a menu or
   the map open, while the ending RETURN HOME WITH THE DISKS? started is on its way, or while a trap

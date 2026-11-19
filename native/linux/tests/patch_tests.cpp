@@ -1,7 +1,9 @@
 // The Linux build's code patches run side by side with the game's bytes they replace: the map's
 // on-screen write (native/src/mapmarks.h, seen_first_test_patch and seen_second_test_patch),
 // each of its two tests of the item's ID run in a harness that gives it the ID as the game's code
-// does and reports which of the game's two writes it reaches, for every ID.
+// does and reports which of the game's two writes it reaches, for every ID; and the text window's
+// top cut (native/src/text.h, text_cut_patch), run with the window's edge and the glyph's row on
+// the stack as the game keeps them, for every row and edge it is taken at.
 #include <sys/mman.h>
 
 #include <cstdio>
@@ -10,6 +12,7 @@
 #include <vector>
 
 #include "mapmarks.h"
+#include "text.h"
 
 namespace {
 
@@ -91,10 +94,67 @@ void test_the_seen_marker_patch_makes_item_48_a_major_and_nothing_else() {
     munmap(p, 4096);
 }
 
+using Cut = int (*)(int edge, int row_y);
+
+// A function running `cut` as setGameMessageStringClipping does: the window's top edge in
+// [rbp-0x1c], the glyph's row's 10 x row in [rbp-0xc], edx left as the call before leaves it;
+// the cut, eax, returned.
+Cut cut_harness(BYTE* page, const BYTE* cut) {
+    std::vector<BYTE> code = {
+        0x55,                          // push rbp
+        0x48, 0x89, 0xE5,              // mov rbp, rsp
+        0x48, 0x83, 0xEC, 0x40,        // sub rsp, 0x40
+        0x89, 0x7D, 0xE4,              // mov [rbp-0x1c], edi
+        0x89, 0x75, 0xF4,              // mov [rbp-0xc], esi
+        0xBA, 0x5A, 0x5A, 0x5A, 0x5A,  // mov edx, 0x5A5A5A5A
+    };
+    code.insert(code.end(), cut, cut + zap::kTextCutSize);
+    code.push_back(0xC9);  // leave
+    code.push_back(0xC3);  // ret
+    std::memcpy(page, code.data(), code.size());
+    return reinterpret_cast<Cut>(page);
+}
+
+void test_the_text_cut_patch_cuts_every_row_as_the_first() {
+    // B1's cut, as the game has it (setGameMessageStringClipping, 0x569617).
+    constexpr BYTE kGame[zap::kTextCutSize] = {0x8B, 0x45, 0xE4, 0x99, 0xC1, 0xEA, 0x1D,
+                                               0x01, 0xD0, 0x83, 0xE0, 0x07, 0x29, 0xD0};
+    BYTE ours[zap::kTextCutSize] = {};
+    BYTE other[zap::kTextCutSize];
+    std::memcpy(other, kGame, sizeof(other));
+    other[2] = 0xE8;  // another stack slot: not the code as traced
+    check(!zap::text_cut_patch(other, ours), "other bytes are refused");
+    check(zap::text_cut_patch(kGame, ours), "the game's cut is patched");
+
+    void* p = mmap(nullptr, 4096, PROT_READ | PROT_WRITE | PROT_EXEC,
+                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    check(p != MAP_FAILED, "an executable page");
+    if (p == MAP_FAILED) return;
+    auto* page = static_cast<BYTE*>(p);
+    const Cut as_game = cut_harness(page, kGame);
+    const Cut as_ours = cut_harness(page + 2048, ours);
+    // The cut is taken while the edge is past the row's top and within its 7 (0x56954D).
+    for (int row = 0; row < 32; ++row) {
+        const int y = 10 * row;
+        for (int edge = y + 1; edge <= y + 7; ++edge) {
+            if (as_game(edge, y) != edge % 8) check(false, "the game's cut: the edge mod 8");
+            if (as_ours(edge, y) != edge - y) {
+                std::printf("row %d edge %d: %d\n", row, edge, as_ours(edge, y));
+                check(false, "ours: the edge less the row's top");
+            }
+            if (row == 0 && as_ours(edge, y) != as_game(edge, y)) {
+                check(false, "the first row as the game cuts it");
+            }
+        }
+    }
+    munmap(p, 4096);
+}
+
 }  // namespace
 
 int main() {
     test_the_seen_marker_patch_makes_item_48_a_major_and_nothing_else();
+    test_the_text_cut_patch_cuts_every_row_as_the_first();
     if (g_failures == 0) std::printf("patch: all passed\n");
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

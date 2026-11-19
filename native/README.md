@@ -401,7 +401,7 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   popup) a line flashes back whole while the box opens and closes; the game's own popups never
   get there (`docs/re/memory.md`, "Game functions the helper calls"). While configured (with or
   without a client, in every save; not from a 1.0.0 cache, which lacks the key: "The pipe"), the
-  helper repairs that cut in the game's code (`text_cut_code`, 24 bytes; `TextCut` in
+  helper repairs that cut in the game's code (`text_cut_code`, 24 bytes on Windows; `TextCut` in
   `src/text.h`, built by `src/text.cpp`): each frame call it patches it if it still reads as the game's, and puts it
   back with the rest of the game ("Unloading"). Every line then opens and closes with the box
   as the game's short popups do. A translation draws its own text, never through this window;
@@ -2193,14 +2193,14 @@ items, as themselves"), sets off traps ("Traps"), shows its text in a translatio
 OS Install Disks goal"), keeps AP saves' look without the client ("AP saves without the client"),
 puts the AP logo and the disk counts on the file select ("The file select's AP logo and disk
 counts", below), fills the major-item list the file select's ITEMS row draws ("The major-item
-list", below), shows the title screen's lines ("The title screen's lines"), and keeps Feats and
-Steam achievements out of AP saves ("Feats and achievements in AP saves"). It holds the Windows
-helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the other
-parts above runs on Linux yet: the client reads and writes the game through it
-(`game.Game.attach_linux`), gives its items, labels, seed, shields, deaths, Intel Chips, the
-ASSIST lock, the disks' count, the finds' follow-ups and the Landing Pod's prompt through it and
-asks it the language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a
-helper; `tools/helper.py status` talks to it too. Tested against a stand-in game
+list", below), shows the title screen's lines ("The title screen's lines"), keeps Feats and Steam
+achievements out of AP saves ("Feats and achievements in AP saves"), and repairs tall popups' text
+("Popups", "Tall text"). It holds the Windows helper's `Game` (`src/game_calls.h`) and runs every
+part of it but unloading (it stays for the game's run): below. The client reads and writes the
+game through it (`game.Game.attach_linux`), gives its items, labels, seed, shields, deaths, Intel
+Chips, the ASSIST lock, the disks' count, the finds' follow-ups and the Landing Pod's prompt
+through it and asks it the language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as
+without a helper; `tools/helper.py status` talks to it too. Tested against a stand-in game
 (`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
@@ -2253,7 +2253,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 89 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 90 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
@@ -2292,7 +2292,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 89), which the client resolves from the game's symbols
+  addresses (with the rest of the 90), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
   them, so a client and a helper that disagree change nothing (the client also refuses a helper of
   another version, and one of this version built before the traps, which answers no `trap_status`:
@@ -2324,12 +2324,9 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   number display's third argument, `true`, as the game passes it: `docs/re/linux.md`, "Mapped
   by disassembly: HUD, items, sound, popups, deaths"), Magnus Armor's suit color, then the
   popups one a frame call apart as there, each with its item's sound, waiting for their own save.
-  What differs, as the parts behind it are not ported:
-  - the tall text's cut is not repaired (`text_cut_code` is not configured): a notice of four
-    lines may flash a line;
-  - `menu_state` is the cursor mode on Linux, which the mouse can set to 1 (`docs/re/linux.md`,
-    open): if it reads 1 in play, an `apply` is refused (`refused not in play`) and popups
-    wait. Not measured.
+  What differs: `menu_state` is the cursor mode on Linux, which the mouse can set to 1
+  (`docs/re/linux.md`, open): if it reads 1 in play, an `apply` is refused (`refused not in play`)
+  and popups wait. Not measured.
 
   A client that goes takes its plan with it, but its popups stay queued for their save, as on
   Windows. Tested on the stand-in game through the socket (`tests/test_native_linux.py`: an
@@ -2698,9 +2695,19 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   Steam's achievement set before a config and with a normal save, not with an AP save loaded, and
   not after an unpatched AP ending until a save loads; the stand-in's ending, the Linux site's
   bytes, patched while an AP save is loaded and put back after); not run in the game.
-- **Not on Linux yet.** The part above that the Linux helper does not run, with a client or
-  without: the repair of tall popups' text ("Grants and popups", below the Linux bullet's). The
-  client says so once (`native.LINUX_NOT_READY`).
+- **Tall text.** `Game::watch_text_cut` runs in the Linux helper's frame as in `watch_all`
+  ("Popups", "Tall text"), with or without a client: the text window's top cut patched once
+  configured. The Linux build's cut is other code (`text_cut_code`, `setGameMessageStringClipping`
+  + `0x661`, 14 bytes, the window's edge and the row's 10 x row on the stack: `docs/re/linux.md`),
+  so `src/text.cpp` builds its own patch there: the edge less the row's top, as the Windows
+  patch's. The cut's second branch, for a glyph whose `+0x38` reads `0x5A` (cut mod 9), is left
+  alone (what those glyphs are, and whether popups draw them: not traced). The client no longer
+  says a part is missing on Linux: the Linux helper runs every part (`native.attach` refuses the
+  Windows helper there, `native.NoWindowsHelper`, said nothing of, and the client goes on with the
+  Linux helper). Tested beside the game's bytes (`linux/tests/patch_tests.cpp`: for rows 0 to 31
+  and every edge the cut is taken at, the game's gives the edge mod 8 and ours the edge less the
+  row's top) and on the stand-in game through the socket (patched once configured); not run in the
+  game.
 - **The major-item list.** `Game::watch_pickups` runs in the Linux helper's frame as in
   `watch_all` ("Grants", "The major-item list"), in play in an AP save, with or without a client:
   each owned item the game's pickup would list goes in the list (`pickup_list`, `gGameState` +

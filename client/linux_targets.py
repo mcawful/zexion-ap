@@ -8,8 +8,8 @@ checking only (tests/test_linux_targets.py): code never uses it as an address.
 
 ``TARGETS`` are the ones ``game.Game`` reads and writes itself; ``HELPER_TARGETS`` the rest of
 those the Linux helper's ``config`` takes (CONFIG_KEYS, helper_config). The Windows helper's
-other targets have Linux counterparts too (docs/re/linux.md), for parts the Linux helper does
-not run yet.
+other targets that have Linux counterparts (docs/re/linux.md) but no key here are those the Linux
+helper reads from its own symbols, or needs none of on Linux.
 """
 
 from __future__ import annotations
@@ -57,7 +57,8 @@ TARGETS = (
 # runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
 # and their popups, other players' items (the map's too), traps, the translations, the OS Install
 # Disks' count, RETURN HOME, DeathLink's deaths, the ASSIST lock, the file select's logo, counts
-# and ITEMS row (the major-item list), the title's lines and the Feats guard. The rest of
+# and ITEMS row (the major-item list), the title's lines, the Feats guard and the text window's
+# top cut. The rest of
 # CONFIG_KEYS is in TARGETS. Functions by their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
@@ -173,6 +174,8 @@ HELPER_TARGETS = (
     LinuxTarget("delete_entry_fn", "_Z19ClearGameMenuActionP12GameMenuItemi", 0, 0x5B0A65),
     # And the major-item list, the file select's ITEMS row, with its length.
     LinuxTarget("pickup_list", "gGameState", 0xAE0, 0x9E8320),
+    # And the text window's top cut, patched so tall popups' lines are cut right.
+    LinuxTarget("text_cut_code", "_Z28setGameMessageStringClippingP9SpriteRecii", 0x661, 0x569617),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -191,7 +194,7 @@ CONFIG_KEYS = (
     "panel_link_fn", "keys_branch", "options_back_fn", "fade", "fade_level", "routine_table",
     "death_fn", "assist_menu_fn", "draw_layer", "text_new_fn", "text_link_fn", "slot_array",
     "rando_slots", "ending_unlocks", "ending_join", "large_count", "file_panel_fn",
-    "file_entry_fn", "copy_entry_fn", "delete_entry_fn", "pickup_list",
+    "file_entry_fn", "copy_entry_fn", "delete_entry_fn", "pickup_list", "text_cut_code",
 )  # fmt: skip
 
 

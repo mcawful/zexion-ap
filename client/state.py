@@ -511,22 +511,16 @@ def reload_reply(reply: str | None) -> tuple[bool, str]:
 
 def helper_failed(exc: native.HelperError) -> str | None:
     """The client's line when the mod could not be used (the details go to the log), or None
-    when the game has just closed (nothing for the player to do). A mod that doesn't match the
-    client (native.ModMismatch) is said to be so, and any other cause the player can fix
-    (native.ModFixable) as it is; any other gets one plain line."""
+    when the game has just closed or is the Linux build, whose Linux helper runs it all
+    (nothing for the player to do). A mod that doesn't match the client (native.ModMismatch) is
+    said to be so, and any other cause the player can fix (native.ModFixable) as it is; any
+    other gets one plain line."""
     if isinstance(exc, native.GameExited):
         return None
     if isinstance(exc, native.ModDisabled):
         return str(exc)
-    if isinstance(exc, native.LinuxPartial):
-        return (
-            "On Linux the Zexion mod starts new games of this seed, shows your items' popups and "
-            "other players' items, sets off traps, turns Area Maps into Intel Chips, locks the "
-            "assist menu, gives received Energy Shields and DeathLink deaths, gives AP saves "
-            "their look when the client isn't connected and their logo, disk counts and list of "
-            "items on the file select, keeps Feats and Steam achievements out of them, and adds "
-            f"its own lines to the title screen, but {exc}."
-        )
+    if isinstance(exc, native.NoWindowsHelper):
+        return None  # the Linux helper runs every part instead (ticks.attach_helper)
     meanwhile = "new games of this seed can't be started, and items arrive without popups."
     if isinstance(exc, native.ModMismatch):
         return f"The Zexion mod and this client don't match: {exc}. Until they do, {meanwhile}"
