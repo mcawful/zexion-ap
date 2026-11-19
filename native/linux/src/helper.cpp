@@ -386,6 +386,8 @@ constexpr ConfigKey kConfigKeys[] = {
     // The ending's patch (feats.h): its first achievement call, and the join it jumps to.
     {"ending_unlocks", &G::ending_unlocks, 0, "_Z14EndingCutscenev", 0x3B},
     {"ending_join", &G::ending_join, 0, "_Z14EndingCutscenev", 0x39C},
+    // The Feats of Natu screen's note in a translation: LargeText's count (its title's entry).
+    {"large_count", &G::large_count, sizeof(int16_t), "gLargeTextCount", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -473,6 +475,7 @@ constexpr ConfigKey kConfigKeys[] = {
     {"rando_slots", &G::rando_slots, zap::slot::kCount * zap::kSectionSize, "zap_saved_randos", 0},
     {"ending_unlocks", &G::ending_unlocks, 0, "zap_ending", 0},
     {"ending_join", &G::ending_join, 0, "zap_ending_join", 0},
+    {"large_count", &G::large_count, sizeof(int16_t), "zap_large_count", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -1107,8 +1110,11 @@ void game_frame(uintptr_t site) {
     // Linux, after an AP ending the patch did not jump over, until a save loads), and the load
     // test over the slots holding them
     // (feats.h; the export below decides each call). Before the gate below, so what the export
-    // blocks follows the game whatever the player pointer reads: it only reads, but for the
-    // ending's patch, which checks its own bytes and the call's target before it writes.
+    // blocks follows the game whatever the player pointer reads. Its writes come before the gate
+    // too: the ending's patch, which checks its own bytes and the call's target first, and the
+    // Feats of Natu screen's note, which writes only into a top menu of that screen's whole shape
+    // (MISSION COMPLETE's statistics under it, a live title widget, every glyph writable), and
+    // only after an ending the patch jumped over.
     guarded([] { g_game.watch_feats(); });
     // Configured with no client: nothing touches the game while its player pointer reads
     // elsewhere, as the client's attach checks (it read the player state at the title screen

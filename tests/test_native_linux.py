@@ -414,6 +414,7 @@ CONFIG_SYMBOLS = {
     "rando_slots": "zap_saved_randos",
     "ending_unlocks": "zap_ending",
     "ending_join": "zap_ending_join",
+    "large_count": "zap_large_count",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"

@@ -296,16 +296,15 @@ Steam Deck"). What exists so far:
   and RETURN HOME); it keeps the seeds' files (under `$XDG_DATA_HOME`) and, with one and no
   client, configures itself from the game's symbols, so this world's own traps and disks work with
   no client, gives AP saves their look without the client, shows the title screen's lines, and
-  keeps Feats and Steam achievements out of AP saves (nothing notes it on the Feats screen yet:
-  `native/README.md`, "Not on Linux yet"). Tested against a stand-in game
-  (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job). Working in
-  game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls and serving
-  reads (`native/README.md`, "The Linux helper"); new games, grants, scrap's drops, Energy
-  Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, labels, traps, translations, the
-  disks' goal, the look without the client, the title's lines and the Feats guard are not run in
-  the game yet. `tools/helper.py status` finds the game, checks its build, makes sure the socket
-  is the game's, and reads its memory through it (`client/linux_helper.py`); `helper.py load` and
-  `unload` are Windows-only;
+  keeps Feats and Steam achievements out of AP saves, with the Feats screen's note. Tested against
+  a stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux`
+  job). Working in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame
+  calls and serving reads (`native/README.md`, "The Linux helper"); new games, grants, scrap's
+  drops, Energy Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, labels, traps,
+  translations, the disks' goal, the look without the client, the title's lines and the Feats
+  guard are not run in the game yet. `tools/helper.py status` finds the game, checks its build,
+  makes sure the socket is the game's, and reads its memory through it (`client/linux_helper.py`);
+  `helper.py load` and `unload` are Windows-only;
 - the client: on Linux `game.Game.attach()` attaches to the Linux build (`attach_linux()`), its
   targets from the binary's symbol table (`client/linux_targets.py`, the ones `game.py` reads and
   writes), every read and write through the helper, one request at a time, connecting again once a

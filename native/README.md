@@ -1838,31 +1838,32 @@ closed, gone with it open.
     - the import table names it for that function;
     - it still holds steam_api64's own function (so another hook is never replaced);
     - the context's init function asks for `STEAMUSERSTATS_INTERFACE_VERSION`.
-  - **The Feats of Natu screen.** It still follows an AP ending, with nothing flashing:
-    MISSION COMPLETE's builder always leads on to it (by disassembly). The helper writes
-    ARCHIPELAGO SAVE: NO FEATS EARNED, centered, into the blank last line of its title label,
-    under FEATS OF NATU! (`feats_screen_note`). It writes only on that screen as it follows an
-    ending: the top menu with 4 panels (the title's 3 widgets, EXIT, and two rows of Feats: 7,
-    or 6 on top and 5 or 6 below when the game hides some: 6 and 5 seen), a live title widget
-    whose label is three equal lines (the middle one naming NATU), and MISSION COMPLETE's
-    statistics under it: a panel of 10 lines and, seen after an ending in a seed with Allow
-    Assists on, ASSISTS USED's 8 as a second (read live on B1, 2026-10-27; what makes the game
-    add it is not traced). With the secret row (a secret Feat earned, or the title screen's code
-    typed since the game started) the top menu has a fifth panel of 5 Feats and the game moves
-    the title up 8 and the rows up 16 (read live, 2026-10-28): the last line is still blank, and
-    the note goes there (working in game, 2026-10-28; 0.30.0 showed none there). It writes the
-    whole line or nothing, only over a line that is blank or already its note, and only if every
-    glyph of it is writable and has the font's frames. In a translation, while the note (or the
-    title written over the hint) is there, the title's translated text is built again as
-    LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" (in
-    capitals outside English(HD): "Translations", mixed case) under it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
-    and kept at the title's middle as the game lays out its title ("Translations"); the game's
-    own entry (220, or 219 for the hint) again when the note goes.
-    Without LargeText's count, or with too little room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
-    font. (Working in game in English(HD): the title and the note in the HD font, 2026-11-02, B1,
-    `zexion_ap.dll` `946b08a1…`; the shorter line centered, 2026-11-03, `fce9e73b…`, the 1.0.0
-    RC at develop 76df074, the owner's screenshot: `docs/re/memory.md`, "Where a rebuilt label
-    goes".)
+  - **The Feats of Natu screen.** It still follows an AP ending, with nothing flashing: MISSION
+    COMPLETE's builder always leads on to it (by disassembly). The helper writes ARCHIPELAGO SAVE:
+    NO FEATS EARNED, centered, into the blank last line of its title label, under FEATS OF NATU!
+    (`feats_screen_note`). It writes only on that screen as it follows an ending: the top menu
+    with 4 panels (the title's 3 widgets, EXIT, and two rows of Feats: 7, or 6 on top and 5 or 6
+    below when the game hides some: 6 and 5 seen), a live title widget whose label is three equal
+    lines (the middle one naming NATU), and MISSION COMPLETE's statistics under it: a panel of 10
+    lines and, seen after an ending in a seed with Allow Assists on, ASSISTS USED's 8 as a second
+    (read live on B1, 2026-10-27; what makes the game add it is not traced on Windows; on Linux it
+    is: `docs/re/linux.md`, "Mapped by disassembly: the Feats of Natu screen's note"). With the
+    secret row (a secret Feat earned, or the title screen's code typed since the game started) the
+    top menu has a fifth panel of 5 Feats and the game moves the title up 8 and the rows up 16
+    (read live, 2026-10-28): the last line is still blank, and the note goes there (working in
+    game, 2026-10-28; 0.30.0 showed none there). It writes the whole line or nothing, only over a
+    line that is blank or already its note, and only if every glyph of it is writable and has the
+    font's frames. In a translation, while the note (or the title written over the hint) is there,
+    the title's translated text is built again as LargeText 220's (the game's Feats of Natu!) with
+    "Archipelago save: no Feats earned" (in capitals outside English(HD): "Translations", mixed
+    case) under it, wrapped, the shorter line centered on the longer with leading spaces, the two
+    centered and kept at the title's middle as the game lays out its title ("Translations"); the
+    game's own entry (220, or 219 for the hint) again when the note goes. Without LargeText's
+    count, or with too little room, the title's pixel glyphs are shown in its place instead, the
+    whole title in the pixel font. (Working in game in English(HD): the title and the note in the
+    HD font, 2026-11-02, B1, `zexion_ap.dll` `946b08a1…`; the shorter line centered, 2026-11-03,
+    `fce9e73b…`, the 1.0.0 RC at develop 76df074, the owner's screenshot: `docs/re/memory.md`,
+    "Where a rebuilt label goes".)
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -2249,7 +2250,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 83 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 84 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
@@ -2288,7 +2289,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 83), which the client resolves from the game's symbols
+  addresses (with the rest of the 84), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
   them, so a client and a helper that disagree change nothing (the client also refuses a helper of
   another version, and one of this version built before the traps, which answers no `trap_status`:
@@ -2308,13 +2309,13 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   put back. `Game` and every part it holds build there too, the Windows-only pieces of those left
   out: `Game::configure` takes the helper's checked addresses instead of resolving a client's, the
   offline cache reads and writes the seeds' files alone, with no config file (`src/offline.cpp`;
-  "Seed files", below), and the Feats screen's note does nothing (`src/feats.cpp`); the Feats
-  guard's Steam stand-in runs as an export and its ending's patch over the Linux ending's own call
-  ("Feats and Steam achievements in AP saves", below). Tested on stand-ins
-  (`linux/tests/newgame_tests.cpp`, and through the socket in `tests/test_native_linux.py`); not
-  run in the game. Not known: whether an exception the game's placement threw would be caught here
-  (the helper's own C++ runtime is linked in, the game's is its own: "refused the placement
-  failed" is unverified); a fault there is the game's crash, as on Windows.
+  "Seed files", below); the Feats guard's Steam stand-in runs as an export and its ending's patch
+  over the Linux ending's own call ("Feats and Steam achievements in AP saves", below). Tested on
+  stand-ins (`linux/tests/newgame_tests.cpp`, and through the socket in
+  `tests/test_native_linux.py`); not run in the game. Not known: whether an exception the game's
+  placement threw would be caught here (the helper's own C++ runtime is linked in, the game's is
+  its own: "refused the placement failed" is unverified); a fault there is the game's crash, as on
+  Windows.
 - **Grants and popups.** `Game::apply` and `Game::pump_popups` run here as on Windows
   ("Grants", "Popups"): the `cas` writes all or none, the counts and the HUD refreshed (the
   number display's third argument, `true`, as the game passes it: `docs/re/linux.md`, "Mapped
@@ -2405,14 +2406,16 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   - a client that goes takes the helper's translation changes with it, as on Windows
     (`Game::restore_translation`: the names in the tables, entry 70's offset once the popup
     areas are free, the icons);
-  - the part not on Linux (the Feats screen) builds no text here; RETURN HOME's question is built
-    and centered in a translation through the shared code (`docs/re/linux.md`, "Mapped by
-    disassembly: the RETURN HOME prompt"), the locked ASSIST entry's text built again with the HD
-    padlock ("Mapped by disassembly: the ASSIST lock"), and the title lines' translated text
-    ("Mapped by disassembly: the title screen's lines"), none run in the game; the equipment
-    screen's disk name and description and the pause row's count, in a translation, go through the
-    same code as on Windows, the entries they read (SmallText 139, ItemNames 44, LargeText 87) and
-    the game's rebuilds of them assumed as `docs/re/memory.md` has them, not mapped on Linux;
+  - the Feats of Natu screen's title with the note builds its text through the shared code too
+    (`large_count` configured; `docs/re/linux.md`, "Mapped by disassembly: the Feats of Natu
+    screen's note"); RETURN HOME's question is built and centered in a translation through the
+    shared code (`docs/re/linux.md`, "Mapped by disassembly: the RETURN HOME prompt"), the locked
+    ASSIST entry's text built again with the HD padlock ("Mapped by disassembly: the ASSIST
+    lock"), and the title lines' translated text ("Mapped by disassembly: the title screen's
+    lines"), none run in the game; the equipment screen's disk name and description and the pause
+    row's count, in a translation, go through the same code as on Windows, the entries they read
+    (SmallText 139, ItemNames 44, LargeText 87) and the game's rebuilds of them assumed as
+    `docs/re/memory.md` has them, not mapped on Linux;
   - where a rebuilt label goes, the font's other fields and the icons' characters are as on
     Windows (measured by disassembly: the same section); that the game reads none of SmallText
     66 to 72 is assumed for its data-driven entries, as on Windows.
@@ -2680,16 +2683,20 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     this run's Feats from a saved one: an AP save that reached its ending with no patch (an
     earlier helper, or none) holds it, so leaving that save for the title holds Steam there too,
     until a save loads (a code typed at the title meanwhile earns no 13SecretCode);
-  - the Feats of Natu screen's note is not on Linux yet: after an AP ending the screen shows no
-    Feat earned, with nothing saying why.
+  - the Feats of Natu screen's note runs as on Windows (`feats_screen_note`, with LargeText's count
+    configured for a translation's title: `large_count`), the screen as `feats.cpp` checks it on
+    Linux too: MISSION COMPLETE's statistics always lead on to it, its panels, rows, title label
+    and the hint at the title, and the six achievement calls it makes, each behind this run's Feat
+    byte the ending's patch leaves unset (`docs/re/linux.md`, "Mapped by disassembly: the Feats of
+    Natu screen's note"). The Linux stand-in game has no menus: the note is stand-in tested on
+    Windows only (`tests/feats_tests.cpp`).
 
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`: its stand-in
   Steam's achievement set before a config and with a normal save, not with an AP save loaded, and
   not after an unpatched AP ending until a save loads; the stand-in's ending, the Linux site's
   bytes, patched while an AP save is loaded and put back after); not run in the game.
 - **Not on Linux yet.** The parts above that the Linux helper does not run, with a client or
-  without: the Feats of Natu screen's note ("Feats and achievements in AP saves"), the file
-  select's AP logo, ITEMS row and disk counts ("AP saves on the file select",
+  without: the file select's AP logo, ITEMS row and disk counts ("AP saves on the file select",
   the major-item list in "Grants"), and the repair of tall popups' text ("Grants and popups",
   below the Linux bullet's). The client says so once (`native.LINUX_NOT_READY`).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after

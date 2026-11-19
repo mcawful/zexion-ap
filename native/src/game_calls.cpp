@@ -1252,9 +1252,6 @@ void Game::watch_feats() {
         feats_ended_ = true;
         note_seen_ = false;
     }
-#ifndef _WIN32
-    return;  // the Feats of Natu screen's note: not on Linux yet (its menus not mapped there)
-#endif
     if (note_frames_-- > 0) return;
     note_frames_ = kNoteFrames;
     const bool up = feats_screen_note(at_, feats_ended_);

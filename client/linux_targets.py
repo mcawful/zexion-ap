@@ -163,6 +163,8 @@ HELPER_TARGETS = (
     # And its ending's patch: the first achievement call in EndingCutscene, and its join.
     LinuxTarget("ending_unlocks", "_Z14EndingCutscenev", 0x3B, 0x55AB4C),
     LinuxTarget("ending_join", "_Z14EndingCutscenev", 0x39C, 0x55AEAD),
+    # And the Feats of Natu screen's note in a translation: LargeText's count.
+    LinuxTarget("large_count", "gLargeTextCount", 0, 0x16DA0DA),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -180,7 +182,7 @@ CONFIG_KEYS = (
     "equip_panel_fn", "widget_move_fn", "text_place_fn", "widget_new_fn", "sprite_sheet_fn",
     "panel_link_fn", "keys_branch", "options_back_fn", "fade", "fade_level", "routine_table",
     "death_fn", "assist_menu_fn", "draw_layer", "text_new_fn", "text_link_fn", "slot_array",
-    "rando_slots", "ending_unlocks", "ending_join",
+    "rando_slots", "ending_unlocks", "ending_join", "large_count",
 )  # fmt: skip
 
 
