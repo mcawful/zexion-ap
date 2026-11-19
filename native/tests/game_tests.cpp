@@ -2925,7 +2925,7 @@ void test_assist_watch() {
 
 // Whether the stand-in game's on-screen marker write holds the game's bytes.
 bool seen_marker_games() {
-    return std::memcmp(g_seen_marker_code, kSeenMarkerGame, sizeof(kSeenMarkerGame)) == 0;
+    return code_is(g_seen_marker_code, kSeenMarkerGame);
 }
 
 // The game's rule for listing a pickup (0x1F761 to 0x1F7A2), on the B1 records' icons.
@@ -3979,10 +3979,10 @@ void test_text_cut() {
         zap::Game game_;
         ready(game_);
         game_.watch_all(&chosen);
-        check(std::memcmp(g_text_cut_code, ours, sizeof(ours)) == 0, "the helper patches it");
+        check(code_is(g_text_cut_code, ours), "the helper patches it");
         check(game_.unload_blocker() != nullptr, "an unload waits for it");
         game_.put_back_game(&chosen);
-        check(std::memcmp(g_text_cut_code, kTextCutGame, sizeof(kTextCutGame)) == 0 && game_.unload_blocker() == nullptr,
+        check(code_is(g_text_cut_code, kTextCutGame) && game_.unload_blocker() == nullptr,
               "put back with the game");
     }
 }

@@ -65,9 +65,6 @@ set(ZAP_TESTS parts game requests menu apitem equip mission pause files intel ti
 foreach(name IN LISTS ZAP_TESTS)
   add_executable(zap_${name}_tests tests/${name}_tests.cpp)
   target_link_libraries(zap_${name}_tests PRIVATE zap_core)
-  # No identical data folded: a stand-in's code (tests/stand_in.h, .zapcode) must never share
-  # memory with a constant of the same bytes it is compared with.
-  target_link_options(zap_${name}_tests PRIVATE /OPT:NOICF)
   add_test(NAME ${name} COMMAND zap_${name}_tests)
 endforeach()
 

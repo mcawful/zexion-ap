@@ -2965,10 +2965,11 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 page of its own, `check_code_patch`, that `game` and `mapmarks` run on theirs); `tests/fake_gl.h` is
 the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe client of `parts`,
 `apply_in_frames` and `unload_under_load`, and the last two's busy threads and wait for an unload.
-The single-program tests are linked with `/OPT:NOICF`, so the linker never lays the stand-in's
-code the helper patches (`.zapcode` in `tests/stand_in.h`, read and execute) over a test
-constant of the same bytes: taken to be why the text-cut and seen-marker tests failed now and
-then, a patched stand-in changing the constant it was compared with.
+A test reads the stand-in's code the helper patches (`.zapcode` in `tests/stand_in.h`, a section
+that is read and execute) only through volatile (`code_byte`, `code_is` in `tests/check.h`),
+never with a plain `memcmp`: the optimizer of MSVC 19.52 (the runner's, in some jobs) may take
+such an array, not writable, as holding its initializer, so a patch the helper made reads as not
+made (the text-cut and seen-marker tests failing in those jobs, 19.51's passing).
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), `game_mem.h`'s menu, panel and label readers, its handler-slot swap, its memory check
