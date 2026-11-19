@@ -1421,6 +1421,48 @@ def test_on_linux_the_disks_count_goes_through_the_linux_helper() -> None:
     assert ctx.linux_mod is None, "configured again on a later poll"
 
 
+def test_on_linux_a_failed_follow_up_drops_the_linux_helper_not_the_windows_one(
+    monkeypatch,
+) -> None:
+    # LinuxMod.apply raises native's errors: still the Linux helper's to drop (linux_mod_lost).
+    ctx = context(connection(), linux_game({"config": "ok"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+
+    async def lost(*args) -> None:
+        raise native.ReplyLost("the Linux helper: no reply")
+
+    monkeypatch.setattr(ticks, "followups_tick", lost)
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert ctx.linux_mod is None and not ctx.helper_lost
+
+
+@pytest.mark.parametrize(
+    ("status", "offered", "followed"),
+    [
+        ("not asked", True, False),  # dropped before it showed: offered again
+        ("asked", False, True),  # still on its way
+        ("opening after the fade", False, True),
+        ("shown", False, False),  # it reached the player: NO is not undone by a reconnect
+        ("lapsed: the player left the landing pod", False, False),
+    ],
+)
+def test_on_linux_a_prompt_dropped_before_it_showed_is_offered_again(
+    monkeypatch, status, offered, followed
+) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "mission_status": status}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+
+    async def nothing(*args) -> None:
+        return None
+
+    monkeypatch.setattr(ticks, "followups_tick", nothing)
+    monkeypatch.setattr(ticks, "mission_tick", nothing)
+    home = ctx.load.return_home
+    home.queued = True
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert home.offer is offered and home.queued is followed
+
+
 def test_on_windows_the_linux_tick_does_nothing() -> None:
     ctx = context(connection(), Running(game.NO_SAVE))
     asyncio.run(ticks.linux_newgame_tick(ctx))

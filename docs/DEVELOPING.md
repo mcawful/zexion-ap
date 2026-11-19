@@ -290,13 +290,13 @@ Steam Deck"). What exists so far:
   helper's own `Game` (`native/src/game_calls.h`, built for both through
   `native/src/platform.h` and the Linux parts of the memory layer; it runs only those parts),
   shows other players' items as Archipelago items (on the map too), sets off traps, shows its
-  text in a translation's font, and counts the OS Install Disks. Tested against a stand-in game
-  (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job). Working in
-  game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls and
-  serving reads (`native/README.md`, "The Linux helper"); new games, grants, labels, traps,
-  translations and the disks' count are not run in the game yet. `tools/helper.py status` finds
-  the game, checks its build, makes sure the socket is the game's, and reads its memory through it
-  (`client/linux_helper.py`); `helper.py load` and `unload` are Windows-only;
+  text in a translation's font, and runs the OS Install Disks goal (its count and RETURN HOME).
+  Tested against a stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's
+  `native-linux` job). Working in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded,
+  counting the frame calls and serving reads (`native/README.md`, "The Linux helper"); new games,
+  grants, labels, traps, translations and the disks' goal are not run in the game yet.
+  `tools/helper.py status` finds the game, checks its build, makes sure the socket is the game's,
+  and reads its memory through it (`client/linux_helper.py`); `helper.py load` and `unload` are Windows-only;
 - the client: on Linux `game.Game.attach()` attaches to the Linux build (`attach_linux()`), its
   targets from the binary's symbol table (`client/linux_targets.py`, the ones `game.py` reads
   and writes), every read and write through the helper, one request at a time, connecting
@@ -308,8 +308,9 @@ Steam Deck"). What exists so far:
   `client/linux_targets.py`'s `helper_config`, `client/linux_helper.py`'s `LinuxMod`). New games
   go through it, ARCHIPELAGO offered as on Windows, and so do the step's items, with their
   popups and traps (`apply`), other players' items' labels (`ticks.linux_labels_tick`), this
-  seed's own traps (`ticks.linux_seed_tick`), the language (`linux_language_tick`) and the OS
-  Install Disks' count (`linux_discs_tick`). One lost after it was configured holds the
+  seed's own traps (`ticks.linux_seed_tick`), the language (`linux_language_tick`), the OS
+  Install Disks' count (`linux_discs_tick`), the finds' follow-ups and RETURN HOME
+  (`linux_finds_tick`, `linux_replay_tick`). One lost after it was configured holds the
   step back for 30 s (`ticks.linux_mod_lost`), then the items are written directly with no popup
   until it is back; one that failed two steps running has the next step's written directly.
   The rest of the client runs as without the mod: `native.attach` refuses the Linux build

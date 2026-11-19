@@ -2185,12 +2185,13 @@ it reads and writes the running game's memory for the client, counts its frames,
 games, ARCHIPELAGO on the menu or RANDOMIZER ("New games"), gives the client's items with
 their popups (`apply`: "Grants", "Popups"), shows other players' items as Archipelago items
 (`ap_labels`: "Other players' items", "Other Zexion players' items, as themselves"), sets off
-traps ("Traps"), shows its text in a translation's font ("Translations"), and counts the OS
-Install Disks ("The OS Install Disks goal", but its prompt). It holds the
-Windows helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the
-other parts above runs on Linux yet: the client reads and writes the game through it
-(`game.Game.attach_linux`), gives its items, labels, seed and the disks' count through it and
-asks it the language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper;
+traps ("Traps"), shows its text in a translation's font ("Translations"), and runs the OS
+Install Disks goal, its count and RETURN HOME WITH THE DISKS? ("The OS Install Disks goal"). It
+holds the Windows helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below.
+None of the other parts above runs on Linux yet: the client reads and writes the game through it
+(`game.Game.attach_linux`), gives its items, labels, seed, the disks' count, the finds'
+follow-ups and the Landing Pod's prompt through it and asks it the language
+(`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper;
 `tools/helper.py status` talks to it too. Tested against a stand-in game
 (`tests/test_native_linux.py`).
 
@@ -2243,13 +2244,14 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 71 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 74 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
   | `offline_put seed NAME` and the seed's file (frame) | `taken`, or `error <why>`: the seed parsed as the Windows helper's ("AP saves without the client"), kept in the helper, no file written, for this world's own traps ("Traps"); `offline_put config` is `error not on the Linux build` |
   | `trap_status` (frame) | as the Windows helper's ("Traps") |
   | `discs` and `discs_status` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
+  | `mission_prompt COLUMN ROW`, `mission_status`, `mission_black` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
   | `lang` (frame) | `lang <name>`: the language the game shows, spaces as underscores (the Windows helper's `hello`'s `lang`); `lang ?` unconfigured or with no name readable |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
 
@@ -2273,7 +2275,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 71), which the client resolves from the game's symbols
+  addresses (with the rest of the 74), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of them, so a client and a
   helper that disagree change nothing (the client also refuses a helper of another version, and
   one of this version built before the traps, which answers no `trap_status`: it would refuse
@@ -2307,8 +2309,6 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   by disassembly: HUD, items, sound, popups, deaths"), Magnus Armor's suit color, then the
   popups one a frame call apart as there, each with its item's sound, waiting for their own save.
   What differs, as the parts behind it are not ported:
-  - RETURN HOME WITH THE DISKS? is not watched (`src/mission.h` is not run): an `apply` is not
-    refused in its ending, and popups are not held through it;
   - a received Scrap Energy's or Scrap Chunk's drop is not spawned (`pump_drops` is not run);
   - the tall text's cut is not repaired (`text_cut_code` is not configured): a notice of four
     lines may flash a line;
@@ -2393,8 +2393,9 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   - a client that goes takes the helper's translation changes with it, as on Windows
     (`Game::restore_translation`: the names in the tables, entry 70's offset once the popup
     areas are free, the icons);
-  - the parts not on Linux (the question, the Feats screen, the ASSIST lock, the title lines)
-    build no text here; the equipment screen's disk name and description and the pause row's
+  - the parts not on Linux (the Feats screen, the ASSIST lock, the title lines) build no text
+    here; RETURN HOME's question is built and centered in a translation through the shared code
+    (`docs/re/linux.md`, "Mapped by disassembly: the RETURN HOME prompt"), not run in the game; the equipment screen's disk name and description and the pause row's
     count, in a translation, go through the same code as on Windows, the entries they read
     (SmallText 139, ItemNames 44, LargeText 87) and the game's rebuilds of them assumed as
     `docs/re/memory.md` has them, not mapped on Linux;
@@ -2421,14 +2422,45 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     handler takes `(widget, event)` and the pause menu's way back its menu, as on Windows
     (`equipment_panel_hook`, `options_back_hook`, `linux/src/helper.cpp`);
   - a client that goes turns the count off and puts its changes back (`set_discs`, then
-    `restore_discs`), as `drop_save_look` does on Windows: no offline look keeps it;
-  - the RETURN HOME WITH THE DISKS? prompt (`mission_prompt`, `src/mission.h`) is not ported.
+    `restore_discs`), as `drop_save_look` does on Windows: no offline look keeps it.
 
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`): `discs` writes
   the scanner's Text entry as the client's line in capitals and makes the stand-in's KEYS branch
   a `jmp`, both put back once the client goes. The equipment screen and the pause row: built
   only (the stand-in has no menus), and in a translation assumed ("Translations", above). Not
   run in the game.
+- **RETURN HOME WITH THE DISKS?** `Game::watch_mission` runs at each frame call and
+  `mission_prompt` is taken as on Windows ("The OS Install Disks goal"): the prompt opened as the
+  escape skip's after event 3667's fade, its YES keeping the screen black until the ending
+  (through the helper's ending wrapper), its NO fading back in, a request lapsing away from home;
+  and while it is on its way or its ending runs, `apply` is refused and popups and traps wait, as
+  there. What differs on Linux (`docs/re/linux.md`, "Mapped by disassembly: the RETURN HOME
+  prompt": the fade block, event 3667, the prompt, the ending, the pause and the frame clock as
+  on Windows):
+  - YES is a menu callback, which the game calls with no arguments, so the helper's
+    (`mission_yes_hook`) takes none and calls the game's NO with none; the opener and the
+    ending's wrapper take none on either build;
+  - the prompt checks that event 3667's handler is in the game's code through a handle that
+    stands for the main binary (`main_image`, `src/game_mem_linux.cpp`);
+  - a client that goes cancels a prompt on its way, with the disks' count it turns off (the
+    screen faded back in if it was kept black), where on Windows the offline look asks for it
+    again: there is none here. A Linux client's connection closes with any request that gets no
+    reply, so the client follows a prompt it queued while it is on its way (`mission_status`,
+    `ticks.linux_finds_tick`): one dropped before it showed (`not asked`) is offered again at
+    once; one shown, answered, lapsed or ended is not, so a NO is never undone. A YES whose
+    ending had not started yet is lost with the cancel: the prompt comes after the next save at
+    the Landing Pod;
+  - the frame call also comes from a swap inside the game's `loadState()` (`docs/re/linux.md`,
+    "The per-frame call"), so `watch_mission` may run mid-load, as the grants, popups and traps
+    may: by the code the prompt gives up an opener or a fade another transition took
+    (`taken_over`, `fade_still_ours`); not measured.
+
+  The client's side runs on Linux too: the finds' follow-ups (the found disks' counts, the Area
+  Maps' hints) and the Landing Pod's reminder and prompt (`ticks.linux_finds_tick`), and the ending again on a save past it
+  (`linux_replay_tick`). Tested on the stand-in game through the socket: `mission_prompt` taken
+  once configured, lapsing away from home's cell, waiting at home (the stand-in has no event 3667
+  or prompt to open), and dropped when `discs` turns off. The prompt itself: stand-in tested on
+  Windows only (`tests/mission_tests.cpp`); not run in the game on Linux.
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
@@ -2443,9 +2475,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     and traps only, from the slot data: `ticks.linux_seed`), kept until the game closes: no file
     is written, so one picked up before a client first connected since the game started does
     nothing, and nothing makes it up later;
-  - RETURN HOME WITH THE DISKS? is not on Linux (its prompt, `mission_prompt`, is not ported;
-    the disks' count is: below), so nothing waits for it;
-    the game's own ending holds traps as on Windows;
+  - nothing differs for RETURN HOME WITH THE DISKS? or the game's own ending: traps are held
+    through them as on Windows;
   - there is no unload, so nothing waits for a running trap's patch: it is put back once its
     timer has run out.
 

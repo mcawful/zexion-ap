@@ -396,6 +396,9 @@ CONFIG_SYMBOLS = {
     "panel_link_fn": "zap_panel_link",
     "keys_branch": "zap_pause_game",
     "options_back_fn": "zap_options_back",
+    "fade": "zap_fade",
+    "fade_level": "zap_fade_level",
+    "routine_table": "zap_routines",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -731,3 +734,26 @@ def test_the_disks_count_writes_the_scanners_line_and_takes_the_keys_row(game: G
         assert read_at(sock, branch, 2) == b"\x75\x3c"
         wait_for(sock, f"read {scanner:#x} 4", lambda r: r == "data ENER")
         assert read_at(sock, scanner, 32).split(b"\x00")[0] == b"ENERGY KEYS DETECTED!"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_return_home_is_asked_for_and_dropped_with_the_disks(game: Game) -> None:
+    # Taken as the Windows helper takes it, and watched each frame call: away from home's cell it
+    # lapses; at home (the stand-in player's cell, row 2 and column 3: the request in tiles) it
+    # waits, as the stand-in has no event 3667 or prompt to open (stand-in tests of the prompt
+    # itself: native/tests/mission_tests.cpp), until the goal turns off, which drops it.
+    at = config_addresses()
+    with game.connect() as sock:
+        assert ask(sock, "mission_prompt 191 329") == "refused not configured"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, "mission_prompt 9999 1") == "error bad mission_prompt request"
+        line = b"4 OS Install Disks detected!".hex()
+        assert ask(sock, f"discs 4 4 {line} 1") == "discs on"
+        assert ask(sock, "mission_prompt 191 329") == "queued"  # the Landing Pod: not here
+        lapsed = wait_for(sock, "mission_status", lambda r: r.startswith("lapsed"))
+        assert lapsed == "lapsed: the player left the landing pod"
+        assert ask(sock, "mission_prompt 42 40") == "queued"  # home: this cell
+        assert not ask(sock, "mission_status").startswith("lapsed")
+        assert ask(sock, "discs") == "discs off"
+        assert wait_for(sock, "mission_status", lambda r: r == "not asked") == "not asked"

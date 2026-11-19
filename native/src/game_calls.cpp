@@ -265,6 +265,7 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
 std::string Game::configure(GameAddresses found) {
     found.hooks = at_.hooks;
     gl_ = load_gl();
+    mission_.set_image(main_image());  // its handlers checked to be in the game's code
     return use(found, true);
 }
 #endif

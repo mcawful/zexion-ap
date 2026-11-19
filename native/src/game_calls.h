@@ -248,6 +248,9 @@ public:
     // Game thread, each frame call (watch_all's; the Linux helper's frame): the disks' count on
     // the pause screen and the equipment screen, and the disk glyph (equip.h, pause.h).
     void watch_equipment();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): RETURN HOME WITH THE
+    // DISKS? opened when asked for and idle, its black and ending watched (mission.h).
+    void watch_mission();
     // Game thread: what the helper changed for a translation put back (its names in the tables,
     // entry 70's offset once the popup areas are free, its icons): put_back_game's part, and the
     // Linux helper's when a client goes.
@@ -409,7 +412,6 @@ private:
     // The game's last message and its sequence, as the game keeps them: whether both read.
     bool last_message(BYTE*& last, int32_t& sequence) const;
     // The watches only watch_all calls (it checks the configuration).
-    void watch_mission();
     void watch_files();
     void watch_intel();
     void watch_title();

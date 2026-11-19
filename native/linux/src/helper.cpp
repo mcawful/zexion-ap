@@ -340,6 +340,11 @@ constexpr ConfigKey kConfigKeys[] = {
     {"panel_link_fn", &G::panel_link_fn, 0, "_Z11addGameMenuP8GameMenu", 0},
     {"keys_branch", &G::keys_branch, 0, "_Z9PauseGamev", 0x9C},
     {"options_back_fn", &G::options_back_fn, 0, "_Z22refreshPauseFromOptionP14GameMenuScreen", 0},
+    // RETURN HOME WITH THE DISKS? (mission.h): the game's fade (its block and level) and its
+    // routines (the pause opener, the ending, the escape skip's prompt).
+    {"fade", &G::fade, zap::fade_state::kSize, "gGameState", 0x13448},
+    {"fade_level", &G::fade_level, 1, "gGameState", 0x138A3},
+    {"routine_table", &G::routine_table, 16 * sizeof(void*), "gExitActions", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -415,6 +420,9 @@ constexpr ConfigKey kConfigKeys[] = {
     {"panel_link_fn", &G::panel_link_fn, 0, "zap_panel_link", 0},
     {"keys_branch", &G::keys_branch, 0, "zap_pause_game", 0},
     {"options_back_fn", &G::options_back_fn, 0, "zap_options_back", 0},
+    {"fade", &G::fade, zap::fade_state::kSize, "zap_fade", 0},
+    {"fade_level", &G::fade_level, 1, "zap_fade_level", 0},
+    {"routine_table", &G::routine_table, 16 * sizeof(void*), "zap_routines", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -542,6 +550,37 @@ void options_back_hook(void* menu) {
     }
 }
 
+// RETURN HOME WITH THE DISKS? (mission.h): the opener and the ending run as the game's
+// transition; YES is the prompt's menu callback, which the game calls with no arguments on Linux,
+// and so is the game's NO it calls once the helper has taken YES.
+void mission_open_hook() {
+    try {
+        g_game.mission_open();
+    } catch (...) {
+    }
+}
+
+void mission_yes_hook() {
+    void* no = nullptr;
+    try {
+        no = g_game.mission_yes();
+    } catch (...) {
+    }
+    if (no == nullptr) return;
+    reinterpret_cast<void (*)()>(no)();
+    try {
+        g_game.mission_after_no();
+    } catch (...) {
+    }
+}
+
+void mission_end_hook() {
+    try {
+        g_game.mission_end();
+    } catch (...) {
+    }
+}
+
 // `work` run on the game's thread at its next frame call; "refused not configured" first when
 // `needs_config` and no config came; "refused no frame" if no frame took it in time (it then
 // never runs); "error <why>" at once for a request not parsed. As the Windows helper's on_game.
@@ -571,6 +610,9 @@ std::optional<std::string> game_request(std::string_view request) {
                 g_game.set_hooks({.panel = reinterpret_cast<void*>(&panel_hook),
                                   .equipment = reinterpret_cast<void*>(&equipment_hook),
                                   .equipment_panel = reinterpret_cast<void*>(&equipment_panel_hook),
+                                  .mission_open = reinterpret_cast<void*>(&mission_open_hook),
+                                  .mission_yes = reinterpret_cast<void*>(&mission_yes_hook),
+                                  .mission_end = reinterpret_cast<void*>(&mission_end_hook),
                                   .map = reinterpret_cast<void*>(&map_hook),
                                   .options_back = reinterpret_cast<void*>(&options_back_hook)});
                 g_game.configure(found);
@@ -633,6 +675,24 @@ std::optional<std::string> game_request(std::string_view request) {
                 return std::string(on ? "discs on" : "discs off");
             },
             true, error);
+    }
+    if (request.starts_with("mission_prompt")) {
+        // RETURN HOME WITH THE DISKS? offered once the game is idle in play at home (mission.h;
+        // requests.h's format), as the Windows helper takes it.
+        int column = -1, row = -1;
+        std::string error = zap::parse_mission(std::string(request), column, row);
+        return on_game(
+            [&] {
+                return std::string(g_game.request_mission(column, row) ? "queued"
+                                                                       : "refused not configured");
+            },
+            true, error);
+    }
+    if (request == "mission_status") {
+        return on_game([] { return g_game.mission_status(); }, true);
+    }
+    if (request == "mission_black") {
+        return on_game([] { return g_game.mission_black(); }, true);
     }
     if (request == "discs_status") {
         return on_game([] { return g_game.equipment_status(); }, false);
@@ -830,6 +890,7 @@ void game_frame(uintptr_t site) {
     // screen's disk row, the disk glyph (equip.h, pause.h, scan.h).
     guarded([] { g_game.watch_discs(); });
     guarded([] { g_game.watch_equipment(); });
+    guarded([] { g_game.watch_mission(); });  // RETURN HOME WITH THE DISKS? (mission.h)
     // Traps: this world's own at their pickup (from the seed a client put), the AILMENTS tests'
     // patches while a trap's timer runs, then one trap set off (a received one as its popup
     // shows), as the Windows helper's frame (trap.h; native/README.md, "Traps").

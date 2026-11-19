@@ -162,6 +162,8 @@ bool in_image_code(HMODULE image, const void* p);
 bool in_image_code(const void* p);
 // The Windows form's, for the shared sources: the image is always the main binary.
 inline bool in_image_code(HMODULE, const void* p) { return in_image_code(p); }
+// A handle that stands for the main binary, for parts that hold one (mission.h's set_image).
+HMODULE main_image();
 #endif
 // Writes `size` bytes over code at `at`, its page made writable for the write and then put back
 // as it was, and flushes them from the instruction cache: false, nothing written, if the page

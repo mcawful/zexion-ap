@@ -56,7 +56,8 @@ TARGETS = (
 # The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it
 # runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
 # and their popups, other players' items (the map's too), traps, the translations, the OS Install
-# Disks' count. The rest of CONFIG_KEYS is in TARGETS. Functions by their mangled names.
+# Disks' count and RETURN HOME. The rest of CONFIG_KEYS is in TARGETS. Functions by their
+# mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -145,6 +146,10 @@ HELPER_TARGETS = (
     LinuxTarget("panel_link_fn", "_Z11addGameMenuP8GameMenu", 0, 0x56CC09),
     LinuxTarget("keys_branch", "_Z9PauseGamev", 0x9C, 0x618A7E),
     LinuxTarget("options_back_fn", "_Z22refreshPauseFromOptionP14GameMenuScreen", 0, 0x618777),
+    # RETURN HOME WITH THE DISKS? (native/src/mission.h): the game's fade and its routines.
+    LinuxTarget("fade", "gGameState", 0x13448, 0x9FAC88),
+    LinuxTarget("fade_level", "gGameState", 0x138A3, 0x9FB0E3),
+    LinuxTarget("routine_table", "gExitActions", 0, 0x12F5720),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -160,7 +165,7 @@ CONFIG_KEYS = (
     "event_count", "event_handlers", "ailments", "ailments_hit_code", "ailments_wave_code",
     "halt_flag", "seen_marker_code", "map_handler", "text_set_fn", "text_table", "equipment_fn",
     "equip_panel_fn", "widget_move_fn", "text_place_fn", "widget_new_fn", "sprite_sheet_fn",
-    "panel_link_fn", "keys_branch", "options_back_fn",
+    "panel_link_fn", "keys_branch", "options_back_fn", "fade", "fade_level", "routine_table",
 )  # fmt: skip
 
 

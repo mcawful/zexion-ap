@@ -1,7 +1,8 @@
 """The Linux helper (native/linux/, native/README.md "The Linux helper") from outside the game:
 find the running game, check its build, talk to the helper's socket, read the game's memory
 through it, and drive the helper's own parts (``LinuxMod``: its ``config``, new games,
-``apply``, ``ap_labels`` and ``offline_put seed``).
+``apply``, ``ap_labels``, ``offline_put seed``, ``discs``, ``lang`` and RETURN HOME's
+``mission_*`` requests).
 
 The game is found in the host's ``/proc`` by its kernel name or its binary's (``procfs``; not
 by command line, which Steam's launch wrappers share) and its build checked by the binary it
@@ -381,6 +382,9 @@ class LinuxMod:
 
         self.pm = pm
         self.told = state.HelperState()
+        # No offline look on Linux, so no CLIENT CONNECTED to ask for first (client_back_tick):
+        # the finds' follow-ups and the Landing Pod's prompt need not wait for it.
+        self.told.client_back_sent = True
         reply = pm.request(linux_targets.helper_config(pm.game.image))
         if reply != "ok":
             raise LinuxHelperError(f"the helper did not take the game's addresses: {reply}")

@@ -68,10 +68,12 @@ from .ticks import (  # noqa: E402
     labels_tick,
     language_tick,
     linux_discs_tick,
+    linux_finds_tick,
     linux_labels_tick,
     linux_language_tick,
     linux_mod_lost,
     linux_newgame_tick,
+    linux_replay_tick,
     linux_seed_tick,
     log,
     mission_tick,
@@ -138,7 +140,8 @@ class ZexionContext(CommonContext):
         self.game_conn: game.Game | None = None
         self.helper: native.Helper | None = None
         # With the game's Linux build: its helper, for new games, grants (traps among them),
-        # labels and the seed's own traps (ticks.linux_newgame_tick and the other linux_ ticks).
+        # labels, the seed's own traps, the language, the disks' count, the finds' follow-ups
+        # and RETURN HOME (ticks.linux_newgame_tick and the other linux_ ticks).
         self.linux_mod: linux_helper.LinuxMod | None = None
         self.helper_retry_at = 0.0
         # Let go while no connection stepped, for the helper's own look (leave_helper_tick).
@@ -569,6 +572,8 @@ async def poll(ctx: ZexionContext) -> None:
     p = Poll(ctx)  # again: the items may have come while the above waited
     # A save past its ending playing it again: held before this poll's step gives anything.
     await side_tick(ctx, "the ending again", lambda: replay_tick(ctx))
+    if ctx.helper is None:  # the game's Linux build: its own helper
+        await side_tick(ctx, "the ending again", lambda: linux_replay_tick(ctx))
     await side_tick(ctx, "popup count", lambda: announced_tick(ctx, conn, current, p))
     if ctx.helper is not None:
         # CLIENT CONNECTED before the popups this poll's step hands over.
@@ -755,6 +760,8 @@ async def poll(ctx: ZexionContext) -> None:
         if ctx.helper is None:
             break  # none, or it failed in the tick before
         await side_tick(ctx, name, tick)
+    if ctx.helper is None:  # the game's Linux build: its own helper's follow-ups and prompt
+        await side_tick(ctx, "finds and RETURN HOME", lambda: linux_finds_tick(ctx, p, step))
     if ctx.conn is not conn:
         return  # the connection changed meanwhile: this ending is not its goal
     if step.goal and not ctx.finished_game:

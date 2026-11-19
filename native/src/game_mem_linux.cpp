@@ -16,6 +16,11 @@
 
 namespace zap {
 
+HMODULE main_image() {
+    static const char kMainImage = 0;  // any address: on Linux the handle only stands for it
+    return &kMainImage;
+}
+
 uint64_t ticks_ms() {
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);

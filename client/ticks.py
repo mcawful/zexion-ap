@@ -771,6 +771,48 @@ async def linux_discs_tick(ctx: ZexionContext, p: Poll) -> None:
         linux_mod_lost(ctx, exc)
 
 
+async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
+    """With the game's Linux build, after the step: the follow-up popups of this world's finds
+    (followups_tick) and the Landing Pod's RETURN HOME (mission_tick), through the Linux helper
+    with what it was told (LinuxMod.told); a prompt queued in this load and dropped before it
+    showed, with the helper's last connection (its status ``not asked``), offered again. A
+    helper that fails is linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None:
+        return
+    try:
+        home = ctx.load.return_home
+        if home.queued:
+            # A Linux helper's connection that closes cancels what was asked on it (the disks'
+            # goal off: native/README.md, "The Linux helper"). Followed while on its way: dropped
+            # before it showed ("not asked"), offered again; shown, answered, lapsed or ended,
+            # no longer followed, so a prompt answered NO is not offered again.
+            reply = await asyncio.to_thread(mod.request, discs.MISSION_STATUS)
+            if reply == "not asked":
+                home.again()
+            elif not reply.startswith(("asked", "opening")):
+                home.queued = False
+        await followups_tick(ctx, p, step, mod, mod.told)
+        if ctx.linux_mod is mod:
+            await mission_tick(ctx, p, step, mod, mod.told)
+    except (linux_helper.LinuxHelperError, native.HelperError) as exc:
+        # LinuxMod.apply raises native's (ReplyLost, HelperError): the Linux helper's, not the
+        # Windows helper's to drop (zexion_client's helper_error).
+        linux_mod_lost(ctx, exc)
+
+
+async def linux_replay_tick(ctx: ZexionContext) -> None:
+    """With the game's Linux build, before the step: replay_tick through the Linux helper. A
+    helper that fails is linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None:
+        return
+    try:
+        await replay_tick(ctx, mod)
+    except linux_helper.LinuxHelperError as exc:
+        linux_mod_lost(ctx, exc)
+
+
 async def linux_labels_tick(ctx: ZexionContext) -> None:
     """With the game's Linux build: other players' items labeled through the Linux helper
     (labels_tick, with what it told this helper: LinuxMod.told). A helper that fails is
@@ -901,14 +943,19 @@ async def client_back_tick(ctx: ZexionContext) -> None:
             detail("This save was played without the client: told the client is back.")
 
 
-async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
+async def followups_tick(
+    ctx: ZexionContext, p: Poll, step: session.Step, helper=None, told=None
+) -> None:
     """The follow-up popup for this world's finds in the loaded save. An Intel Chip's hint,
     found with or without a client: the server's popped_key keeps which were shown, so each
     shows once. An OS Install Disk's count, for each one picked up while this load is watched
     (LoadState.disks_counted): it follows the save, so one a death or a reload put back counts,
     and shows its count, again when picked up again. This world's own traps are the helper's:
-    it sets each off at its pickup (native/README.md, "Traps")."""
-    conn, helper, told, seed = ctx.conn, ctx.helper, ctx.told, ctx.seed_state
+    it sets each off at its pickup (native/README.md, "Traps"). Through ``helper`` (else
+    ctx.helper; what it was told: ``told``, else ctx.told)."""
+    helper = helper if helper is not None else ctx.helper
+    told = told if told is not None else ctx.told
+    conn, seed = ctx.conn, ctx.seed_state
     if conn is None or not conn.items_listed or not step.seed_matches:
         return
     if not told.client_back_sent:
@@ -952,13 +999,15 @@ async def followups_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> Non
         await store_popped(ctx, conn)
 
 
-async def replay_tick(ctx: ZexionContext) -> None:
+async def replay_tick(ctx: ZexionContext, helper=None) -> None:
     """A save past its ending (flag 250) offered RETURN HOME WITH THE DISKS? in this load: once
     the helper says its YES has started the ending (discs.ENDING_STARTED), what is received
     waits for the next load as in a first ending (Session.hold_ending), which flag 250, set
     already, does not show. Before the poll's step, so its step gives nothing then. Nothing is
-    sent: the goal went once already (this save's ending, with enough disks, is the goal)."""
-    conn, helper = ctx.conn, ctx.helper
+    sent: the goal went once already (this save's ending, with enough disks, is the goal).
+    Through ``helper``, else ctx.helper."""
+    conn = ctx.conn
+    helper = helper if helper is not None else ctx.helper
     if conn is None or helper is None or not ctx.load.replay:
         return
     current = ctx.seed_state.session
@@ -971,7 +1020,9 @@ async def replay_tick(ctx: ZexionContext) -> None:
     detail("The ending began again: what is received from now on waits for the next load.")
 
 
-async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
+async def mission_tick(
+    ctx: ZexionContext, p: Poll, step: session.Step, helper=None, told=None
+) -> None:
     """With the OS Install Disks goal, once the player has enough disks: the reminder to save at
     the Landing Pod (discs.POD_NOTE), once per load of this seed's save, after the disks'
     own popups; then, after each save at the Landing Pod's save point (discs.HOME, whichever
@@ -979,8 +1030,11 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     starts the game's ending. A save that has reached the ending (flag 250) is offered it too,
     and its YES plays the ending again (replay_tick). Not while an ending runs in this load
     (Session.holding): its cutscenes read as play, and the save it makes as it begins reads as
-    a save at the pod. Every look at the save counts, in play or not (discs.ReturnHome)."""
-    conn, helper, told = ctx.conn, ctx.helper, ctx.told
+    a save at the pod. Every look at the save counts, in play or not (discs.ReturnHome). Through
+    ``helper`` (else ctx.helper; what it was told: ``told``, else ctx.told)."""
+    helper = helper if helper is not None else ctx.helper
+    told = told if told is not None else ctx.told
+    conn = ctx.conn
     home = ctx.load.return_home
     if (
         conn is None
@@ -1021,7 +1075,7 @@ async def mission_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
     reply = await asyncio.to_thread(helper.request, discs.MISSION_REQUEST)
     if reply != "queued":
         return
-    home.offer = False
+    home.offer, home.queued = False, True
     ctx.load.replay = ctx.load.replay or step.ended
     detail(
         "Saved at the Landing Pod with enough OS Install Disks: RETURN HOME WITH THE DISKS? is "

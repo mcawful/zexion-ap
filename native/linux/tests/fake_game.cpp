@@ -156,6 +156,11 @@ __attribute__((noinline, used)) void zap_sprite_sheet(void*, void*) { asm volati
 __attribute__((noinline, used)) void zap_panel_link(void*) { asm volatile(""); }
 __attribute__((noinline, used)) void zap_options_back(void*) { asm volatile(""); }
 void zap_pause_game();
+// RETURN HOME WITH THE DISKS?: the fade's block and level, and the routines (none set: the
+// stand-in never opens the prompt, which needs event 3667 as the game loads it).
+unsigned char zap_fade[0xAC];
+unsigned char zap_fade_level;
+void* zap_routines[16];
 // Traps: AILMENTS (0: NORMAL), the halt byte, and zap_weapon_cool, the game's two AILMENTS tests
 // as the Linux build has them (trap.cpp's kHitGame then kWaveGame, each load reading
 // zap_ailments), patched in place while a trap's timer runs.
