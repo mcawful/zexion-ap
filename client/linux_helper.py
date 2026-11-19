@@ -1,8 +1,8 @@
 """The Linux helper (native/linux/, native/README.md "The Linux helper") from outside the game:
 find the running game, check its build, talk to the helper's socket, read the game's memory
 through it, and drive the helper's own parts (``LinuxMod``: its ``config``, new games,
-``apply``, ``ap_labels``, ``offline_put seed``, ``discs``, ``lang``, ``shield``, ``die`` and
-RETURN HOME's ``mission_*`` requests).
+``apply``, ``ap_labels``, ``offline_put seed``, ``discs``, ``lang``, ``shield``, ``die``,
+``intel on``/``intel off`` and RETURN HOME's ``mission_*`` requests).
 
 The game is found in the host's ``/proc`` by its kernel name or its binary's (``procfs``; not
 by command line, which Steam's launch wrappers share) and its build checked by the binary it
@@ -378,12 +378,12 @@ class LinuxMod:
     session.give_through_helper), other players' items' labels (``request``, for
     ticks.linux_labels_tick), the seed's own traps (``request``, for ticks.linux_seed_tick),
     received Energy Shields (``request``, for ticks.shields_tick) and DeathLink's deaths
-    (``request``, for ticks.deathlink_tick), among others.
-    LinuxHelperError when the helper refuses the addresses. ``told``: what the labels tick and
-    the seed's tick told it (ticks.labels_tick, linux_seed_tick), as the Windows helper's
-    ctx.told. It holds for one connection of ``pm`` only (``current``): the helper drops the plan
-    and the labels when it closes (it keeps the seed's text, which is told again all the same and
-    replaces its own record: Game::merge_offline)."""
+    (``request``, for ticks.deathlink_tick), among others. LinuxHelperError when the helper
+    refuses the addresses. ``told``: what the client's ticks told it (ticks.labels_tick,
+    linux_seed_tick, linux_discs_tick, linux_intel_tick and the finds' and RETURN HOME's), as
+    the Windows helper's ctx.told. It holds for one connection of ``pm`` only (``current``): the
+    helper drops the plan and the labels when it closes (it keeps the seed's text, which is told
+    again all the same and replaces its own record: Game::merge_offline)."""
 
     def __init__(self, pm: LinuxProcess) -> None:
         from . import linux_targets, state  # here: neither imports this module

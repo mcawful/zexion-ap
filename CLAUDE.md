@@ -143,15 +143,15 @@ Nothing in `tests/` needs the game, and CI never runs it.
   collected in the game's memory (the cell's item state and its map cell), with the helper or
   without: [`native/README.md`](native/README.md), "Other players' items", "Kept collected".
 - On attaching it uses or loads the helper (which one: [`native/README.md`](native/README.md),
-  "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written
-  directly with no popup and no seed can be started. On Linux it attaches to the game's Linux
-  build through the Linux helper (preloaded by the game's launch options) and runs that way, as
-  without a helper but for new games, which the Linux helper starts (ARCHIPELAGO or RANDOMIZER),
-  items, which it gives with their popups, traps, scrap's drops and Energy Shields, DeathLink's
-  deaths, other players' items, which it shows as Archipelago items, on the map too, and the OS
-  Install Disks goal (none of it run in the game yet):
-  [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and loads it
-  again a few seconds later (for a misbehaving mod; popups still queued are lost).
+  "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written directly
+  with no popup and no seed can be started. On Linux it attaches to the game's Linux build through
+  the Linux helper (preloaded by the game's launch options) and runs that way, as without a helper
+  but for new games, which the Linux helper starts (ARCHIPELAGO or RANDOMIZER), items, which it
+  gives with their popups, traps, scrap's drops and Energy Shields, DeathLink's deaths, Intel
+  Chips, other players' items, which it shows as Archipelago items, on the map too, and the OS
+  Install Disks goal (none of it run in the game yet): [`docs/DEVELOPING.md`](docs/DEVELOPING.md),
+  "Platforms". `/reload_mod` unloads it and loads it again a few seconds later (for a misbehaving
+  mod; popups still queued are lost).
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper, and the client says so (its own build, `native/build` or
   `ZEXION_DLL`, still loads).
@@ -271,12 +271,11 @@ release's.
   | `shields.py` | received Energy Shields (`shield`) |
   | `offline.py` | `offline_put`: files for AP saves without the client |
 
-- `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`; in
-  `linux/`, the Linux helper `libzexion_ap.so`, which also builds the sources of `src/` it shares
-  (`Game`, through `src/platform.h`; it runs new games, grants with their popups, scrap's drops
-  and Energy Shields, DeathLink's deaths, other players' items, traps, translations and the OS
-  Install Disks goal):
-  [`native/README.md`](native/README.md).
+- `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`; in `linux/`,
+  the Linux helper `libzexion_ap.so`, which also builds the sources of `src/` it shares (`Game`,
+  through `src/platform.h`; it runs new games, grants with their popups, scrap's drops and Energy
+  Shields, DeathLink's deaths, Intel Chips, other players' items, traps, translations and the OS
+  Install Disks goal): [`native/README.md`](native/README.md).
 - `samples/`: the release's sample YAMLs, one per mode: Archipelago's template of each of the
   world's presets (`web_world.py`, `options_presets`), Easy's, Standard's and OHKO's without
   Custom mode's own options, written by `tools/gen_sample_yamls.py`;

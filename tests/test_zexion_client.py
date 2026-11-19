@@ -1421,6 +1421,19 @@ def test_on_linux_the_disks_count_goes_through_the_linux_helper() -> None:
     assert ctx.linux_mod is None, "configured again on a later poll"
 
 
+def test_on_linux_intel_chips_go_through_the_linux_helper() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "intel": "intel on"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.load.intel_want = True  # this seed's save loaded, its Area Maps Intel Chips
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    assert ctx.game_conn.pm.sent.count("intel on") == 1 and ctx.linux_mod.told.intel.sent is True
+    ctx.game_conn.pm.replies["intel"] = linux_helper.NoReply("the helper closed its socket")
+    ctx.load.intel_want = False
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    assert ctx.linux_mod is None, "configured again on a later poll"
+
+
 def test_on_linux_a_failed_follow_up_drops_the_linux_helper_not_the_windows_one(
     monkeypatch,
 ) -> None:

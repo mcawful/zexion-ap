@@ -129,10 +129,10 @@ sixth what the traps write and patch, the seventh the map's layout the cursor's 
 the eighth what the helper's translated text relies on beyond the translations' targets, the
 ninth what the disks' count relies on beyond the menus' targets, the tenth what the RETURN
 HOME prompt relies on, where `fade` is measured, the eleventh what received scrap's drops
-rely on beyond the events' targets, and the twelfth what a received Energy Shield relies on
-beyond the drops: the player's link to it, its pool and handle, which the client's check reads).
-Functions
-and globals are named symbols; the code points the helper patches sit in GCC's unoptimized code,
+rely on beyond the events' targets, the twelfth what a received Energy Shield relies on
+beyond the drops: the player's link to it, its pool and handle, which the client's check reads,
+and the thirteenth Intel Chips' record). Functions and globals are named symbols; the code points
+the helper patches sit in GCC's unoptimized code,
 so their bytes and patch shapes differ from the Windows ones, and each section's "What differs"
 says how.
 
@@ -792,6 +792,33 @@ disassembly, as in the sections above, or by a read of the installed data where 
 | Method | `memory.md`'s description of each Windows step matched against `all.asm` (`ChangePlayerStateEnemyAction` op 32, `newMissileSprite`, `setIndexedSpritePtr`, `verifyIndexedSpritePtr`, `restoreIndexedSprite`, `AttachIndexedSprite`'s call, `ClearPlayer`, `ClearGameScene`, `setUpInterface`'s pool loop, `loadState`, `LoadGame`, `SaveGame`, `SaveNoOpenMapGame`, `SaveGameData`, `MissileRemoveProc`, `processBomb`, `playerFlash`, `executeEnemyAction`, `SetupEnemyProcs`, `loadStuff`), read on screen; `grep` and `awk` over `all.asm` for every operand with `0xFE8`, `0xFF0`, `0xFF4` or `0xFF8`, every `gGameState+0x1DD3x`/`+0x1DD4x` operand, every store to an operand `+0x1D8` to `+0x1E3`, and every call of `verifyIndexedSpritePtr`, `restoreIndexedSprite`, `ClearPlayer`, `processBomb`, `playerFlash`, `loadState` and `saveState`, each by its function; the installed `Files/Enemies` read through `tools/protected.py`'s `game_dir()` (read only) by a scratch script, not kept, with the layout `loadStuff` reads (four 16-bit counts, types of `0x170` bytes, then actions of `0x6C`): every action's type byte `+2` and `+0x2E`, and actions 13780 to 13799 in full; the string `0x6913D4` read from the binary (`objdump -s`) |
 | Build | B1 (Linux: `lab/linux-b1/Zexion`, SHA-256 `cd64cd9ec469…`), against B1 (Windows) as `memory.md` records it, and `client/game.py`, `client/linux_targets.py` and `native/src/game_calls.cpp` as of 2026-11-18 |
 | Evidence | `lab/linux-b1/all.asm` and `lab/linux-b1/Zexion`, 2026-11-18, at the addresses the table cites, read by hand in one pass with no second review. The installed `Files/Enemies` (2,686,584 bytes, SHA-256 beginning `8e41d2ef5665`): action 13791 `00 00 4A 00 DF 35 …`, `+0x2E` `20 00`, `+0x44` `00 00 A0 43` (320.0), `+0x48` `00 00 A0 42` (80.0); actions 13788 to 13790's `+0x40` `DD 35`, `DE 35`, `DF 35`; read only |
+
+## Mapped by disassembly: Intel Chips
+
+What the helper's Intel Chips (`native/src/intel.cpp`: `kAreaMap`, `kOwnName`, `kOwnEvent`;
+`IntelChip::watch`, `restore`) rely on beyond `item_records` (the Lookup), against the Linux code
+and the installed data that do what `memory.md` describes for Windows ("Intel Chips").
+
+| What | Windows (`memory.md`) | Linux | How | Status |
+|---|---|---|---|---|
+| the records, as loaded | the `Objects` file's power-up records, read as they are | `loadStuff` reads the file's power-up records with one `SDL_RWread` of count × 100 bytes into a `calloc`'d table (`0x4B62DC`–`0x4B6311`), its pointer stored once in `gPowerUpDefs` (`0x4B62E9`): the file's bytes, as they are | disassembly | measured (by disassembly, 2026-11-18) |
+| record 49, the Area Map | kind 34, frame 25, 6 ticks, 2 frames, icon 0, palette 3, inventory 46, redirect 0, pickup class 1, named AREA MAP, event 3551 (`kAreaMap`) | the same, read from the installed `Files/Objects` at byte 1,028 + 49 × 100 (`loadStuff` reads two 16-bit counts first, `gGeneralObjectCount` then `gPowerUpDefCount`, at `0x4B6243`–`0x4B626F`; the file's are 64 and 51; then the 64 general entries of 16 bytes and the 51 records: 4 + 1,024 + 5,100 = 6,128 bytes): every field as `kAreaMap`, AREA MAP, event 3551 | a read of the installed file (scratch Python, not kept) | measured (2026-11-18) |
+| the pickup with the event off | a record's event −1 runs nothing | the pickup skips a record whose `+0x40` is −1 ("Mapped by disassembly: received scrap's drops", the pickup's call) | that section | measured (by disassembly) |
+
+- **What differs from Windows:** nothing the helper relies on. The installed `Objects` is B1's
+  byte for byte (`builds.md`, "B1 on Linux": SHA-256 beginning `72ea406ad4ff`, 6,128 bytes), the
+  file `kAreaMap` was measured from.
+- **Not swept:** whether any code writes the records after the load (the area events' table had
+  that sweep: "Mapped by disassembly: received scrap's drops"). The helper's `matches(kAreaMap)`
+  check, before each write, leaves a record that reads otherwise alone.
+
+| Field | |
+|---|---|
+| Value | The table above. |
+| Status | measured (by disassembly and a read of the installed `Objects`, 2026-11-18); not run in the game |
+| Method | `loadStuff` in `all.asm` read by hand at the addresses cited; the installed `Files/Objects` read through `tools/protected.py`'s `game_dir()` by scratch Python (not kept) |
+| Build | B1 (Linux: `lab/linux-b1/Zexion`, SHA-256 `cd64cd9ec469…`), against B1 (Windows) as `memory.md` records it |
+| Evidence | `lab/linux-b1/all.asm`, 2026-11-18, `0x4B6243`–`0x4B6311`, read once with no second review; the installed `Files/Objects` (6,128 bytes, SHA-256 beginning `72ea406ad4ff`): counts 64 and 51; record 49 at byte 5,928 read `22 00 19 00 06 00 02 00 00 03`, `AREA MAP`, `+0x3C` `2E 00 2D 00 DF 0D` (inventory 46, event 3551), `+0x54` `00 00 00 00 01 00` (redirect 0, pickup class 1) |
 
 ## The save record is the file less its first two bytes
 

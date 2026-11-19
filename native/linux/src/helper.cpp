@@ -706,6 +706,11 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "shield") {  // a received Energy Shield (game_calls.h, spawn_shield)
         return on_game([] { return g_game.spawn_shield(zap::ticks_ms()); }, false);
     }
+    if (request == "intel on" || request == "intel off") {  // Intel Chips (intel.h)
+        const bool on = request == "intel on";
+        return on_game([on] { g_game.set_intel(on); return std::string(on ? "intel on" : "intel off"); },
+                       true);
+    }
     if (request == "die") {  // a DeathLink death received (game_calls.h, kill)
         return on_game([] { return g_game.kill(zap::ticks_ms()); }, false);
     }
@@ -871,13 +876,15 @@ void game_frame(uintptr_t site) {
     // (settled) is this frame's when the mailbox's requests run (note_play does nothing until
     // configured).
     guarded([] { g_game.note_play(zap::ticks_ms()); });
-    // A client's popups stay queued for its save, as on Windows; its plan and its labels go (the
-    // records, the popup's width and the pixels put back: no offline look keeps them here).
+    // A client's popups stay queued for its save, as on Windows; its plan, its labels and its
+    // Intel Chips go (the records, the popup's width and the pixels put back: no offline look
+    // keeps them here).
     // Before the mailbox: the serving thread marks a client gone before it takes the next one,
     // so nothing that next client asks is dropped with the last one's.
     if (g_client_left.exchange(false)) {
         guarded([] { g_game.disarm_newgame(); });
         guarded([] { g_game.restore_ap_items(); });
+        guarded([] { g_game.restore_intel(); });  // the Area Map's record the game's again
         guarded([] { g_game.restore_translation(); });  // the names, entry 70, the icons
         guarded([] {  // the disks' count off and put back, as drop_save_look on Windows
             g_game.set_discs(0, 0, "");
@@ -897,6 +904,7 @@ void game_frame(uintptr_t site) {
     // popup's width, other Zexion players' items dressed as themselves (apitem.h, looks.h).
     guarded([] { g_game.watch_map_names(); });  // the cursor's names while the map is open
     guarded([] { g_game.watch_ap_items(); });
+    guarded([] { g_game.watch_intel(); });  // the Area Map named INTEL CHIP while `intel on`
     guarded([] { g_game.watch_map_marks(); });  // the squares raised, the on-screen write patched
     // In a translation: the helper's names in its tables, its icons in its sheets, the popups'
     // borrowed entries emptied once their message has gone (translation.h).

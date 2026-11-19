@@ -300,6 +300,16 @@ int main() {
         r[0x09] = 8;
         std::strcpy(reinterpret_cast<char*>(r + 0x0A), names[i]);
     }
+    // Record 49, the Area Map, as the game loads it (native/src/intel.cpp, kAreaMap): Intel Chips.
+    {
+        unsigned char* r = zap_record_table + 49 * 100;
+        const short fields[][2] = {{0x00, 34}, {0x02, 25}, {0x04, 6},  {0x06, 2},
+                                   {0x3C, 46}, {0x40, 3551}, {0x54, 0}, {0x58, 1}};
+        for (const auto& f : fields) std::memcpy(r + f[0], &f[1], 2);
+        r[0x08] = 0;
+        r[0x09] = 3;
+        std::strcpy(reinterpret_cast<char*>(r + 0x0A), "AREA MAP");
+    }
     void* record = zap_texture_record;
     std::memcpy(zap_world + 0x40, &record, sizeof record);
     zap_sprite_world = zap_world;

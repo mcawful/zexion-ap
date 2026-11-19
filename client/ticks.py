@@ -8,7 +8,8 @@ Each tick asks the helper only when something changed or a retry is due, and kee
 told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs them (its
 ``poll``, through ``side_tick``, so a failing one never stops items or checks), only while a
 helper is attached, except offline_tick, shields_tick (run with the Windows helper or the Linux
-one: zexion_client.shields_due) and deathlink_tick (either helper), which check.
+one: zexion_client.shields_due) and deathlink_tick (either helper), which check, and the linux_
+ticks, which run while none is attached (through the Linux helper, with the game's Linux build).
 """
 
 from __future__ import annotations
@@ -162,12 +163,16 @@ async def tell(
     return True
 
 
-async def toggle_tick(ctx: ZexionContext, toggle: state.Toggle, want: bool, spec: tuple) -> None:
-    """Tell the helper to turn a setting on or off (ASSISTS: the options menu's ASSIST entry
-    locked, docs/re/memory.md "The assist menu"; INTEL: the game's Area Map named INTEL CHIP,
-    its map reveal off, "Intel Chips"). Sent when that changes, or to a new helper."""
+async def toggle_tick(
+    ctx: ZexionContext, toggle: state.Toggle, want: bool, spec: tuple, helper=None
+) -> None:
+    """Tell the helper (``helper``, else ctx.helper) to turn a setting on or off (ASSISTS: the
+    options menu's ASSIST entry locked, docs/re/memory.md "The assist menu"; INTEL: the game's
+    Area Map named INTEL CHIP, its map reveal off, "Intel Chips"). Sent when that changes, or to
+    a new helper."""
     requests, replies, notes = spec
-    if await tell(ctx.helper, toggle, want, requests[want], replies[want]) and notes[want]:
+    helper = helper if helper is not None else ctx.helper
+    if await tell(helper, toggle, want, requests[want], replies[want]) and notes[want]:
         detail(notes[want])
 
 
@@ -814,6 +819,19 @@ async def linux_discs_tick(ctx: ZexionContext, p: Poll) -> None:
         return
     try:
         await discs_helper_tick(ctx, p, mod, mod.told)
+    except linux_helper.LinuxHelperError as exc:
+        linux_mod_lost(ctx, exc)
+
+
+async def linux_intel_tick(ctx: ZexionContext) -> None:
+    """With the game's Linux build: the Area Map named INTEL CHIP, its map reveal off, while
+    this seed's save is loaded and its Area Maps are Intel Chips (toggle_tick, with what it told
+    this helper: LinuxMod.told). A helper that fails is linux_mod_lost."""
+    mod = ctx.linux_mod
+    if mod is None:
+        return
+    try:
+        await toggle_tick(ctx, mod.told.intel, ctx.load.intel_want, INTEL, mod)
     except linux_helper.LinuxHelperError as exc:
         linux_mod_lost(ctx, exc)
 

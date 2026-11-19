@@ -810,6 +810,30 @@ def test_a_deathlink_death_is_dealt_as_the_damage_code_deals_one(game: Game) -> 
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_intel_chips_name_the_area_map_until_the_client_goes(game: Game) -> None:
+    # `intel on` (Game::watch_intel): record 49 named INTEL CHIP with its map reveal (3551) off,
+    # while on; `intel off`, or the client going, puts the game's back.
+    at = config_addresses()
+    record = stand_in("zap_record_table") + 49 * 100
+    with game.connect() as sock:
+        assert ask(sock, "intel on") == "refused not configured"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, "intel on") == "intel on"
+        named = wait_for(sock, f"read {record + 0x0A:#x} 10", lambda r: "INTEL" in r)
+        assert named.startswith("data INTEL CHIP")
+        assert read_at(sock, record + 0x40, 2) == (-1).to_bytes(2, "little", signed=True)
+        assert ask(sock, "intel off") == "intel off"
+        wait_for(sock, f"read {record + 0x0A:#x} 8", lambda r: r == "data AREA MAP")
+        assert read_at(sock, record + 0x40, 2) == (3551).to_bytes(2, "little")
+        assert ask(sock, "intel on") == "intel on"
+        wait_for(sock, f"read {record + 0x0A:#x} 10", lambda r: "INTEL" in r)
+    with game.connect() as sock:  # the last client gone: the game's record again
+        reply = wait_for(sock, f"read {record + 0x0A:#x} 8", lambda r: r == "data AREA MAP")
+        assert reply == "data AREA MAP"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_return_home_is_asked_for_and_dropped_with_the_disks(game: Game) -> None:
     # Taken as the Windows helper takes it, and watched each frame call: away from home's cell it
     # lapses; at home (the stand-in player's cell, row 2 and column 3: the request in tiles) it

@@ -251,6 +251,9 @@ public:
     // Game thread, each frame call (watch_all's; the Linux helper's frame): RETURN HOME WITH THE
     // DISKS? opened when asked for and idle, its black and ending watched (mission.h).
     void watch_mission();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the Area Map named
+    // INTEL CHIP while on (intel.h).
+    void watch_intel();
     // Game thread: what the helper changed for a translation put back (its names in the tables,
     // entry 70's offset once the popup areas are free, its icons): put_back_game's part, and the
     // Linux helper's when a client goes.
@@ -261,6 +264,8 @@ public:
     void* map_original(void* child) const;
     void hide_title();
     std::string title_state() const;
+    // The Area Map's record the game's again, and Intel Chips off (the Linux helper's when a
+    // client goes; drop_save_look's on Windows).
     void restore_intel();
     void mission_open();
     void* mission_yes() { return mission_.yes(); }
@@ -413,7 +418,6 @@ private:
     bool last_message(BYTE*& last, int32_t& sequence) const;
     // The watches only watch_all calls (it checks the configuration).
     void watch_files();
-    void watch_intel();
     void watch_title();
     // In play in an AP save: owned items the game lists (pickups::listed), but the new game's
     // starting ones, appended to the major-item list as a pickup would: grants set the byte alone
