@@ -125,7 +125,7 @@ __attribute__((noinline, used)) void zap_suit_color(unsigned char, short) { asm 
 
 // Other players' items (Game::watch_ap_items): the sprite world (its texture, 7: the stand-in
 // OpenGL's below), the pools (empty), the palettes, the templates, the flags, the map, the area
-// events (none). The pickup's popup width is zap_pickup's `mov esi, 24`
+// events (the scraps' alone, below). The pickup's popup width is zap_pickup's `mov esi, 24`
 // (BE 18 00 00 00), as the game's (docs/re/linux.md, `popup_width_code`), patched in place.
 void* zap_sprite_world;
 unsigned char zap_item_pool[128 * 0x3B0];
@@ -138,6 +138,22 @@ unsigned char zap_map_grid[54 * 54];
 void* zap_events;
 short zap_event_count;
 void* zap_event_procs[48];
+// Received scrap's drops (Game::pump_drops): the table holds events 3548 to 3550 (Scrap Metal's,
+// Scrap Energy's, Scrap Chunk's spawns) and 3552 (Scrap Chunk's fade) as AreaEvents has them
+// (game_calls.cpp, kSpawnRecord, kChunkFadeRecord); RETURN HOME's 3667 is past its count. The
+// spawn handler (type 11) and the fade's (type 1) note each call: the cell and the event.
+unsigned char zap_event_records[3553 * 0x28];
+int zap_spawn_count;
+int zap_spawn_cell;  // row * 256 + column
+void* zap_spawn_event;
+__attribute__((noinline, used)) void zap_spawn(char row, char column, unsigned char* event) {
+    ++zap_spawn_count;
+    zap_spawn_cell = static_cast<unsigned char>(row) * 256 + static_cast<unsigned char>(column);
+    zap_spawn_event = event;
+}
+__attribute__((noinline, used)) void zap_fade_event(char, char, unsigned char*) {
+    asm volatile("");
+}
 void zap_pickup();
 // The OS Install Disks' count: the Text table (32-byte entries, the scanner's 12th as the game
 // has it), the menu functions (none called here: no menu opens in the stand-in), and the pause
@@ -291,6 +307,32 @@ int main() {
     zap_text_table = zap_texts;
     zap_player[0x107A] = 2;
     zap_player[0x107B] = 3;
+    // The scraps' events: type 11, subtype 1, the object, F3 03 FF FF 01, then (5, 8) at +0x12,
+    // sound -1 at +0x1A, 1.0f at +0x1C, the next event at +0x20 and the event's own at +0x24.
+    const unsigned char spawn[0x28] = {
+        0x0B, 0x00, 0x01, 0x00, 0x00, 0x00, 0xF3, 0x03, 0xFF, 0xFF, 0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x02, 0x00, 0x05, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF,
+        0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    const short scraps[3][3] = {{3548, 2010, -1}, {3549, 2016, -1}, {3550, 2017, 3552}};
+    for (const auto& s : scraps) {
+        unsigned char* ev = zap_event_records + s[0] * 0x28;
+        std::memcpy(ev, spawn, sizeof spawn);
+        std::memcpy(ev + 4, &s[1], 2);
+        std::memcpy(ev + 0x20, &s[2], 2);
+        std::memcpy(ev + 0x24, &s[0], 2);
+    }
+    const unsigned char fade[0x28] = {
+        0x01, 0x00, 0x07, 0x00, 0xF6, 0xFF, 0x08, 0x00, 0x03, 0x00, 0x07, 0x00, 0x00, 0x00,
+        0xE9, 0xFF, 0xFD, 0xFF, 0xFC, 0xFF, 0xFC, 0xFF, 0x04, 0x00, 0x04, 0x00, 0xFF, 0xFF,
+        0x00, 0x00, 0x80, 0x3F, 0xFF, 0xFF, 0x00, 0x00, 0xE0, 0x0D, 0x00, 0x00};
+    std::memcpy(zap_event_records + 3552 * 0x28, fade, sizeof fade);
+    // Scrap Metal's record names its event, as the game's (its other fields unread here).
+    const short scrap_metal_event = 3548;
+    std::memcpy(zap_record_table + 46 * 100 + 0x40, &scrap_metal_event, 2);
+    zap_events = zap_event_records;
+    zap_event_count = 3553;
+    zap_event_procs[1] = reinterpret_cast<void*>(&zap_fade_event);
+    zap_event_procs[11] = reinterpret_cast<void*>(&zap_spawn);
     std::printf("marker %p block %p\n", static_cast<void*>(const_cast<char*>(g_marker)),
                 static_cast<void*>(const_cast<unsigned char*>(g_block)));
     std::fflush(stdout);

@@ -2183,15 +2183,16 @@ lands, not only the place passed.
 `libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
 it reads and writes the running game's memory for the client, counts its frames, starts new
 games, ARCHIPELAGO on the menu or RANDOMIZER ("New games"), gives the client's items with
-their popups (`apply`: "Grants", "Popups"), shows other players' items as Archipelago items
-(`ap_labels`: "Other players' items", "Other Zexion players' items, as themselves"), sets off
-traps ("Traps"), shows its text in a translation's font ("Translations"), and runs the OS
-Install Disks goal, its count and RETURN HOME WITH THE DISKS? ("The OS Install Disks goal"). It
-holds the Windows helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below.
-None of the other parts above runs on Linux yet: the client reads and writes the game through it
-(`game.Game.attach_linux`), gives its items, labels, seed, the disks' count, the finds'
-follow-ups and the Landing Pod's prompt through it and asks it the language
-(`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper;
+their popups and scrap's drops (`apply`: "Grants", "Popups", "Received scrap"), shows other
+players' items as Archipelago items (`ap_labels`: "Other players' items", "Other Zexion
+players' items, as themselves"), sets off traps ("Traps"), shows its text in a translation's
+font ("Translations"), and runs the OS Install Disks goal, its count and RETURN HOME WITH THE
+DISKS? ("The OS Install Disks goal"). It holds the Windows helper's `Game` (`src/game_calls.h`)
+and runs only those parts of it: below. None of the other parts above runs on Linux yet: the
+client reads and writes the game through it (`game.Game.attach_linux`), gives its items,
+labels, seed, the disks' count, the finds' follow-ups and the Landing Pod's prompt through it
+and asks it the language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as
+without a helper;
 `tools/helper.py status` talks to it too. Tested against a stand-in game
 (`tests/test_native_linux.py`).
 
@@ -2251,6 +2252,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `offline_put seed NAME` and the seed's file (frame) | `taken`, or `error <why>`: the seed parsed as the Windows helper's ("AP saves without the client"), kept in the helper, no file written, for this world's own traps ("Traps"); `offline_put config` is `error not on the Linux build` |
   | `trap_status` (frame) | as the Windows helper's ("Traps") |
   | `discs` and `discs_status` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
+  | `drop_status` (frame) | as the Windows helper's ("The pipe", "Received scrap") |
   | `mission_prompt COLUMN ROW`, `mission_status`, `mission_black` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
   | `lang` (frame) | `lang <name>`: the language the game shows, spaces as underscores (the Windows helper's `hello`'s `lang`); `lang ?` unconfigured or with no name readable |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
@@ -2309,7 +2311,6 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   by disassembly: HUD, items, sound, popups, deaths"), Magnus Armor's suit color, then the
   popups one a frame call apart as there, each with its item's sound, waiting for their own save.
   What differs, as the parts behind it are not ported:
-  - a received Scrap Energy's or Scrap Chunk's drop is not spawned (`pump_drops` is not run);
   - the tall text's cut is not repaired (`text_cut_code` is not configured): a notice of four
     lines may flash a line;
   - `menu_state` is the cursor mode on Linux, which the mouse can set to 1 (`docs/re/linux.md`,
@@ -2451,8 +2452,8 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
     ending had not started yet is lost with the cancel: the prompt comes after the next save at
     the Landing Pod;
   - the frame call also comes from a swap inside the game's `loadState()` (`docs/re/linux.md`,
-    "The per-frame call"), so `watch_mission` may run mid-load, as the grants, popups and traps
-    may: by the code the prompt gives up an opener or a fade another transition took
+    "The per-frame call"), so `watch_mission` may run mid-load, as the grants, popups, drops and
+    traps may: by the code the prompt gives up an opener or a fade another transition took
     (`taken_over`, `fade_still_ours`); not measured.
 
   The client's side runs on Linux too: the finds' follow-ups (the found disks' counts, the Area
@@ -2461,6 +2462,20 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   once configured, lapsing away from home's cell, waiting at home (the stand-in has no event 3667
   or prompt to open), and dropped when `discs` turns off. The prompt itself: stand-in tested on
   Windows only (`tests/mission_tests.cpp`); not run in the game on Linux.
+- **Received scrap's drops.** `Game::pump_drops` runs at each frame call, after the popups, as
+  on Windows ("Received scrap"): a received Scrap Metal's, Scrap Energy's or Scrap Chunk's drop
+  is spawned once its popup has shown, the player in play in one cell for a second in the save
+  the popup was for, through the game's type-11 handler with the item's event, each checked
+  first, and not through an ending or RETURN HOME's. Nothing the drops rely on differs on Linux
+  but the handler's arguments, SysV's registers (`docs/re/linux.md`, "Mapped by disassembly:
+  received scrap's drops", which also records the spawn's and the runaway check's insides; what
+  clears flag 211 as the ending begins, which the wait through an ending rests on, is not traced
+  there). A
+  received Energy Shield (`shield`) and a received DeathLink death (`die`) are not here: the
+  client asks the Windows helper for them, so on Linux they wait. Tested on the stand-in game
+  through the socket (`tests/test_native_linux.py`: Scrap Metal's, Scrap Energy's and Scrap
+  Chunk's spawns called with the player's cell and their events, a notice spawning nothing); not
+  run in the game.
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own

@@ -98,7 +98,7 @@ const ItemEvent* item_event(uint8_t item) {
 }
 // A received item whose drop the helper spawns after its popup: the scraps (the shield is the
 // client's to ask for, `shield`).
-[[maybe_unused]] bool has_drop(const Popup& popup) {
+bool has_drop(const Popup& popup) {
     return popup.counted && !popup.bare &&
            (popup.item == kScrapMetal || popup.item == kScrapEnergy || popup.item == kScrapChunk);
 }
@@ -509,11 +509,8 @@ bool Game::show_popup(std::deque<Popup>::iterator next) {
             static_cast<float>(at<double>(p, kY)), at<float>(rec, record::kVolume), -1.0f, 0, 8);
     }
     own_disk_ = disk_popup(popup);
-    // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops,
-    // which the Linux helper does not run: not queued there, where it would only pile up).
-#ifdef _WIN32
+    // A received scrap's drop, as its pickup spawns it: once the player has settled (pump_drops).
     if (has_drop(popup)) drops_.push_back({popup.item, popup.origin});
-#endif
     // Its follow-ups (a disk's count, a chip's hint: the client's notices queued right after it
     // in its own `apply`) go ahead of the parked traps' popups it passed, so a trap whose kind
     // runs out meanwhile never comes between them. Any popup for this save ahead of it is a

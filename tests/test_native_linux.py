@@ -737,6 +737,35 @@ def test_the_disks_count_writes_the_scanners_line_and_takes_the_keys_row(game: G
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_received_scraps_drop_is_spawned_after_its_popup(game: Game) -> None:
+    # As its pickup does (Game::pump_drops): the type-11 handler called with the player's cell
+    # (row 2, column 3) and the item's event from the table, once the player has been in play in
+    # one cell for a second: Scrap Metal's, Scrap Energy's, then Scrap Chunk's, with its fade's
+    # event checked too.
+    at = config_addresses()
+    events = stand_in("zap_event_records")
+    calls = stand_in("zap_spawn_count")
+    with game.connect() as sock:
+        assert ask(sock, "drop_status") == "queued 0; last none"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        for item, event, count in ((46, 3548, 1), (47, 3549, 2), (48, 3550, 3)):
+            assert ask(sock, f"apply\npopup {item} from Tester") == "applied"
+            want = f"queued 0; last spawned {item}"
+            assert wait_for(sock, "drop_status", lambda r, want=want: r == want) == want
+            assert read_at(sock, calls, 4) == count.to_bytes(4, "little")
+            assert read_at(sock, stand_in("zap_spawn_cell"), 4) == (2 * 256 + 3).to_bytes(
+                4, "little"
+            )
+            spawned = int.from_bytes(read_at(sock, stand_in("zap_spawn_event"), 8), "little")
+            assert spawned == events + event * 0x28
+        # A notice (the client's own text, no item counted) spawns nothing.
+        assert ask(sock, "apply\nnotice 47 Tester's text") == "applied"
+        time.sleep(1.5)
+        assert read_at(sock, calls, 4) == (3).to_bytes(4, "little")
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_return_home_is_asked_for_and_dropped_with_the_disks(game: Game) -> None:
     # Taken as the Windows helper takes it, and watched each frame call: away from home's cell it
     # lapses; at home (the stand-in player's cell, row 2 and column 3: the request in tiles) it

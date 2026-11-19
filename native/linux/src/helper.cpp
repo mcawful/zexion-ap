@@ -700,6 +700,9 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "trap_status") {
         return on_game([] { return g_game.trap_status(); }, true);
     }
+    if (request == "drop_status") {  // the received scraps' drops (game_calls.h): live checks
+        return on_game([] { return g_game.drop_status(); }, false);
+    }
     if (request.starts_with("offline_put ")) {
         // No offline files here (offline.cpp): a seed's text is taken for the running helper's
         // own traps, from the next frame, and kept until the game closes.
@@ -898,6 +901,9 @@ void game_frame(uintptr_t site) {
     guarded([] { g_game.watch_trap_patches(); });
     guarded([] { g_game.pump_traps(zap::ticks_ms()); });
     guarded([] { g_game.pump_popups(); });
+    // A received scrap's drop once its popup has shown and the player has settled, as the
+    // Windows helper's frame (pump_drops; native/README.md, "The Linux helper").
+    guarded([] { g_game.pump_drops(zap::ticks_ms()); });
 }
 
 }  // namespace
