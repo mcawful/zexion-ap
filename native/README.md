@@ -2181,20 +2181,19 @@ lands, not only the place passed.
 ## The Linux helper
 
 `libzexion_ap.so` (`linux/`), for the game's Linux build (`docs/re/linux.md`), is a first stage:
-it reads and writes the running game's memory for the client, counts its frames, starts new
-games, ARCHIPELAGO on the menu or RANDOMIZER ("New games"), gives the client's items with
-their popups and scrap's drops (`apply`: "Grants", "Popups", "Received scrap"), shows other
-players' items as Archipelago items (`ap_labels`: "Other players' items", "Other Zexion
-players' items, as themselves"), sets off traps ("Traps"), shows its text in a translation's
-font ("Translations"), and runs the OS Install Disks goal, its count and RETURN HOME WITH THE
-DISKS? ("The OS Install Disks goal"). It holds the Windows helper's `Game` (`src/game_calls.h`)
-and runs only those parts of it: below. None of the other parts above runs on Linux yet: the
-client reads and writes the game through it (`game.Game.attach_linux`), gives its items,
-labels, seed, the disks' count, the finds' follow-ups and the Landing Pod's prompt through it
-and asks it the language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as
-without a helper;
-`tools/helper.py status` talks to it too. Tested against a stand-in game
-(`tests/test_native_linux.py`).
+it reads and writes the running game's memory for the client, counts its frames, starts new games,
+ARCHIPELAGO on the menu or RANDOMIZER ("New games"), gives the client's items with their popups,
+scrap's drops and Energy Shields (`apply`, `shield`: "Grants", "Popups", "Received scrap",
+"Received Energy Shields"), shows other players' items as Archipelago items (`ap_labels`: "Other
+players' items", "Other Zexion players' items, as themselves"), sets off traps ("Traps"), shows
+its text in a translation's font ("Translations"), and runs the OS Install Disks goal, its count
+and RETURN HOME WITH THE DISKS? ("The OS Install Disks goal"). It holds the Windows helper's
+`Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the other parts above
+runs on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`),
+gives its items, labels, seed, shields, the disks' count, the finds' follow-ups and the Landing
+Pod's prompt through it and asks it the language (`client/linux_helper.py`'s `LinuxMod`), and
+otherwise runs as without a helper; `tools/helper.py status` talks to it too. Tested against a
+stand-in game (`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
 branch copied into the game's folder: loaded by the launch options, it served `hello`
@@ -2253,6 +2252,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `trap_status` (frame) | as the Windows helper's ("Traps") |
   | `discs` and `discs_status` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
   | `drop_status` (frame) | as the Windows helper's ("The pipe", "Received scrap") |
+  | `shield` (frame) | as the Windows helper's ("The pipe", "Received Energy Shields") |
   | `mission_prompt COLUMN ROW`, `mission_status`, `mission_black` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
   | `lang` (frame) | `lang <name>`: the language the game shows, spaces as underscores (the Windows helper's `hello`'s `lang`); `lang ?` unconfigured or with no name readable |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
@@ -2471,11 +2471,24 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   received scrap's drops", which also records the spawn's and the runaway check's insides; what
   clears flag 211 as the ending begins, which the wait through an ending rests on, is not traced
   there). A
-  received Energy Shield (`shield`) and a received DeathLink death (`die`) are not here: the
-  client asks the Windows helper for them, so on Linux they wait. Tested on the stand-in game
+  received DeathLink death (`die`) is not here: the client asks the Windows helper for it, so on
+  Linux it waits. Tested on the stand-in game
   through the socket (`tests/test_native_linux.py`: Scrap Metal's, Scrap Energy's and Scrap
   Chunk's spawns called with the player's cell and their events, a notice spawning nothing); not
   run in the game.
+- **Received Energy Shields.** `shield` runs `Game::spawn_shield` as on Windows ("Received Energy
+  Shields"): event 3553 through the game's type-11 handler, as the drops' (above), once the player
+  has been in play in one cell for a second, not through RETURN HOME's ending. The client asks for
+  one (`ticks.shields_tick`, through `LinuxMod` when no Windows helper is there), then reads it up
+  through the helper's reads as on Windows: the player's link and the shield's own handle
+  (`docs/re/linux.md`, "Mapped by disassembly: received Energy Shields"). A request with no reply
+  leaves it looked for, as a reply lost on Windows (one that failed in making the connection again
+  never went out: not looked for); the Linux helper is dropped (`linux_mod_lost`) either way. A
+  Linux helper of this version built before shields answers `error unknown request`: said once,
+  and received shields wait for a newer one. Tested on the stand-in game through the socket
+  (`tests/test_native_linux.py`: `shield` refused unconfigured and until settled, then event 3553
+  run with the player's cell; a received one's popup spawning nothing) and with stand-ins for the
+  client (`tests/test_ticks.py`, the poll's gate in `test_zexion_client.py`); not run in the game.
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own

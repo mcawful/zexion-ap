@@ -1463,6 +1463,16 @@ def test_on_linux_a_prompt_dropped_before_it_showed_is_offered_again(
     assert home.offer is offered and home.queued is followed
 
 
+def test_on_linux_the_poll_asks_the_linux_helper_for_shields() -> None:
+    # The Linux build has no Windows helper: the Linux helper's is enough for shields_tick.
+    ctx = context(connection(), linux_game({"config": "ok"}))
+    seed = ctx.seed_state
+    ctx.helper = None
+    assert not zc.shields_due(ctx, seed)  # nothing to spawn with, nothing to look for
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    assert zc.shields_due(ctx, seed)
+
+
 def test_on_windows_the_linux_tick_does_nothing() -> None:
     ctx = context(connection(), Running(game.NO_SAVE))
     asyncio.run(ticks.linux_newgame_tick(ctx))

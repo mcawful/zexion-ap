@@ -7,7 +7,8 @@ language the mod's text is not made for).
 Each tick asks the helper only when something changed or a retry is due, and keeps what it
 told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs them (its
 ``poll``, through ``side_tick``, so a failing one never stops items or checks), only while a
-helper is attached, except offline_tick, shields_tick and deathlink_tick, which check.
+helper is attached, except offline_tick, shields_tick (run with the Windows helper or the Linux
+one: zexion_client.shields_due) and deathlink_tick, which check.
 """
 
 from __future__ import annotations
@@ -415,9 +416,9 @@ def stored_shields(ctx: ZexionContext, key: str) -> int | None:
 
 
 async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
-    """Spawn received Energy Shields not given yet, one at a time, through the helper, and
-    count each in the server's data storage once the game shows it up in play (client/
-    shields.py)."""
+    """Spawn received Energy Shields not given yet, one at a time, through the helper (with the
+    game's Linux build, the Linux helper), and count each in the server's data storage once the
+    game shows it up in play (client/shields.py)."""
     conn, game_conn, seed = ctx.conn, ctx.game_conn, ctx.seed_state
     if conn is None or conn.shield_key not in ctx.stored_data or game_conn is None:
         return  # no game, or the count not read from the server yet
@@ -431,7 +432,8 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
         await confirm_shield(ctx, game_conn, seed, key)
         return
     helper = ctx.helper
-    if helper is None or not sh.may_spawn(time.monotonic()):
+    mod = ctx.linux_mod if helper is None else None
+    if (helper is None and mod is None) or not sh.may_spawn(time.monotonic()):
         return
     if seed.session.holding:
         return  # the ending began in this load: on the next load, as other items (session.py)
@@ -446,9 +448,19 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
     # not counted there.
     sh.asking(time.monotonic())
     try:
-        reply = await asyncio.to_thread(helper.request, "shield")
+        if helper is not None:
+            reply = await asyncio.to_thread(helper.request, "shield")
+        else:
+            reply = await asyncio.to_thread(mod.request, "shield")
     except native.ReplyLost:
         raise  # it may have spawned: looked for (side_tick drops the helper)
+    except linux_helper.NoReply as exc:
+        linux_mod_lost(ctx, exc)  # it may have spawned: looked for, as a reply lost on Windows
+        return
+    except linux_helper.LinuxHelperError as exc:
+        sh.not_sent(time.monotonic())  # it never reached the Linux helper
+        linux_mod_lost(ctx, exc)
+        return
     except Exception:  # a cancellation, whose thread may still deliver it, stays pending
         sh.not_sent(time.monotonic())  # never reached the helper, or an error reply
         raise
@@ -456,6 +468,13 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
         sh.spawned(time.monotonic())
     elif sh.refused(reply, time.monotonic()):
         detail(f"A received Energy Shield is waiting: {reply}")
+    if mod is not None and reply == "error unknown request" and ctx.said("linux mod", "shield"):
+        # A Linux helper of this version built before shields were ported: they wait for it.
+        logger.warning(
+            "Zexion's mod in the game is older than this client and can't give Energy Shields: "
+            "copy this client's libzexion_ap.so into the game's folder and restart Zexion. "
+            "Received shields wait until then."
+        )
 
 
 async def confirm_shield(

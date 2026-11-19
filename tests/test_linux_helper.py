@@ -6,6 +6,8 @@ from __future__ import annotations
 import hashlib
 import socket
 import sys
+import threading
+import types
 from pathlib import Path
 
 import pytest
@@ -186,3 +188,21 @@ def test_a_request_with_no_reply_closes_the_connection() -> None:
     finally:
         silent.close()
         client.close()
+
+
+def test_a_connection_made_again_that_fails_says_the_request_never_went_out(monkeypatch) -> None:
+    # The helper closing during the new connection's own checks is a ConnectionLost of theirs:
+    # the caller's request was never sent, so it is no NoReply (a shield not looked for).
+    process = object.__new__(linux_helper.LinuxProcess)
+    process.game, process._timeout, process._closed = None, 0.2, False
+    process._lock, process.connection = threading.Lock(), 1
+    process._helper = types.SimpleNamespace(connected=False)
+
+    def dropped(self):
+        raise linux_helper.ConnectionLost("the helper closed its socket")
+
+    monkeypatch.setattr(linux_helper.LinuxHelper, "__enter__", dropped)
+    with pytest.raises(linux_helper.LinuxHelperError) as raised:
+        process.request("shield")
+    assert not isinstance(raised.value, linux_helper.NoReply)
+    assert process.connection == 1

@@ -700,6 +700,9 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "trap_status") {
         return on_game([] { return g_game.trap_status(); }, true);
     }
+    if (request == "shield") {  // a received Energy Shield (game_calls.h, spawn_shield)
+        return on_game([] { return g_game.spawn_shield(zap::ticks_ms()); }, false);
+    }
     if (request == "drop_status") {  // the received scraps' drops (game_calls.h): live checks
         return on_game([] { return g_game.drop_status(); }, false);
     }

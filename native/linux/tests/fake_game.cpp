@@ -138,11 +138,12 @@ unsigned char zap_map_grid[54 * 54];
 void* zap_events;
 short zap_event_count;
 void* zap_event_procs[48];
-// Received scrap's drops (Game::pump_drops): the table holds events 3548 to 3550 (Scrap Metal's,
-// Scrap Energy's, Scrap Chunk's spawns) and 3552 (Scrap Chunk's fade) as AreaEvents has them
+// Received scrap's drops (Game::pump_drops) and Energy Shields (spawn_shield): the table holds
+// events 3548 to 3550 (Scrap Metal's, Scrap Energy's, Scrap Chunk's spawns), 3552 (Scrap
+// Chunk's fade) and 3553 (the Energy Shield's spawn) as AreaEvents has them
 // (game_calls.cpp, kSpawnRecord, kChunkFadeRecord); RETURN HOME's 3667 is past its count. The
 // spawn handler (type 11) and the fade's (type 1) note each call: the cell and the event.
-unsigned char zap_event_records[3553 * 0x28];
+unsigned char zap_event_records[3554 * 0x28];
 int zap_spawn_count;
 int zap_spawn_cell;  // row * 256 + column
 void* zap_spawn_event;
@@ -313,7 +314,8 @@ int main() {
         0x0B, 0x00, 0x01, 0x00, 0x00, 0x00, 0xF3, 0x03, 0xFF, 0xFF, 0x01, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x02, 0x00, 0x05, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF,
         0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    const short scraps[3][3] = {{3548, 2010, -1}, {3549, 2016, -1}, {3550, 2017, 3552}};
+    const short scraps[4][3] = {
+        {3548, 2010, -1}, {3549, 2016, -1}, {3550, 2017, 3552}, {3553, 2018, -1}};
     for (const auto& s : scraps) {
         unsigned char* ev = zap_event_records + s[0] * 0x28;
         std::memcpy(ev, spawn, sizeof spawn);
@@ -326,11 +328,13 @@ int main() {
         0xE9, 0xFF, 0xFD, 0xFF, 0xFC, 0xFF, 0xFC, 0xFF, 0x04, 0x00, 0x04, 0x00, 0xFF, 0xFF,
         0x00, 0x00, 0x80, 0x3F, 0xFF, 0xFF, 0x00, 0x00, 0xE0, 0x0D, 0x00, 0x00};
     std::memcpy(zap_event_records + 3552 * 0x28, fade, sizeof fade);
-    // Scrap Metal's record names its event, as the game's (its other fields unread here).
-    const short scrap_metal_event = 3548;
+    // Scrap Metal's and the Energy Shield's records name their events, as the game's (their
+    // other fields unread here).
+    const short scrap_metal_event = 3548, shield_event = 3553;
     std::memcpy(zap_record_table + 46 * 100 + 0x40, &scrap_metal_event, 2);
+    std::memcpy(zap_record_table + 50 * 100 + 0x40, &shield_event, 2);
     zap_events = zap_event_records;
-    zap_event_count = 3553;
+    zap_event_count = 3554;
     zap_event_procs[1] = reinterpret_cast<void*>(&zap_fade_event);
     zap_event_procs[11] = reinterpret_cast<void*>(&zap_spawn);
     std::printf("marker %p block %p\n", static_cast<void*>(const_cast<char*>(g_marker)),

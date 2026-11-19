@@ -766,6 +766,26 @@ def test_a_received_scraps_drop_is_spawned_after_its_popup(game: Game) -> None:
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_received_energy_shield_is_spawned_once_the_player_has_settled(game: Game) -> None:
+    # `shield` (Game::spawn_shield): event 3553 through the type-11 handler with the player's
+    # cell, once in play in one cell for a second ("refused not settled" until then).
+    at = config_addresses()
+    calls = stand_in("zap_spawn_count")
+    with game.connect() as sock:
+        assert ask(sock, "shield") == "refused not configured"
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert wait_for(sock, "shield", lambda r: r != "refused not settled") == "spawned"
+        assert read_at(sock, calls, 4) == (1).to_bytes(4, "little")
+        spawned = int.from_bytes(read_at(sock, stand_in("zap_spawn_event"), 8), "little")
+        assert spawned == stand_in("zap_event_records") + 3553 * 0x28
+        # A received one's popup spawns nothing itself: the client asks for it (`shield`).
+        assert ask(sock, "apply\npopup 50 from Tester") == "applied"
+        time.sleep(1.5)
+        assert read_at(sock, calls, 4) == (1).to_bytes(4, "little")
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_return_home_is_asked_for_and_dropped_with_the_disks(game: Game) -> None:
     # Taken as the Windows helper takes it, and watched each frame call: away from home's cell it
     # lapses; at home (the stand-in player's cell, row 2 and column 3: the request in tiles) it

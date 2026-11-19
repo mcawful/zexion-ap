@@ -412,6 +412,15 @@ async def game_loop(ctx: ZexionContext) -> None:
             ctx.said.clear("loop")
 
 
+def shields_due(ctx: ZexionContext, seed: state.SeedState) -> bool:
+    """Whether the poll runs shields_tick: with a helper to spawn one (the Windows helper, or the
+    Linux helper with the game's Linux build), or with a shield to look for or a count to send
+    without one."""
+    if ctx.helper is not None or ctx.linux_mod is not None:
+        return True
+    return seed.shields.pending is not None or seed.shields.given is not None
+
+
 def game_alive(ctx: ZexionContext) -> bool:
     """Whether the attached game is still running (False if it can't be told)."""
     with contextlib.suppress(Exception):
@@ -731,8 +740,7 @@ async def poll(ctx: ZexionContext) -> None:
         if step.save_stamp[:4] != load.disks_slot:
             load.disks_counted, load.disks_slot = None, step.save_stamp[:4]
         load.disks_counted = discs.counted(load.disks_counted, step.checked, hunt.locations)
-    shield_work = seed.shields.pending is not None or seed.shields.given is not None
-    if ctx.helper is not None or shield_work:
+    if shields_due(ctx, seed):
         await side_tick(ctx, "Energy Shields", lambda: shields_tick(ctx, p.codes))
     if ctx.conn is not conn:
         return  # the connection changed meanwhile: these checks are not its
