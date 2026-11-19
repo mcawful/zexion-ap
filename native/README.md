@@ -2191,14 +2191,16 @@ players' items as Archipelago items (`ap_labels`: "Other players' items", "Other
 items, as themselves"), sets off traps ("Traps"), shows its text in a translation's font
 ("Translations"), runs the OS Install Disks goal, its count and RETURN HOME WITH THE DISKS? ("The
 OS Install Disks goal"), keeps AP saves' look without the client ("AP saves without the client"),
-shows the title screen's lines ("The title screen's lines"), and keeps Feats and Steam
-achievements out of AP saves ("Feats and achievements in AP saves"). It holds the Windows helper's
-`Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the other parts above
-runs on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`),
-gives its items, labels, seed, shields, deaths, Intel Chips, the ASSIST lock, the disks' count,
-the finds' follow-ups and the Landing Pod's prompt through it and asks it the language
-(`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper; `tools/helper.py
-status` talks to it too. Tested against a stand-in game (`tests/test_native_linux.py`).
+puts the AP logo and the disk counts on the file select ("The file select's AP logo and disk
+counts", below), shows the title screen's lines ("The title screen's lines"), and keeps Feats and
+Steam achievements out of AP saves ("Feats and achievements in AP saves"). It holds the Windows
+helper's `Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the other
+parts above runs on Linux yet: the client reads and writes the game through it
+(`game.Game.attach_linux`), gives its items, labels, seed, shields, deaths, Intel Chips, the
+ASSIST lock, the disks' count, the finds' follow-ups and the Landing Pod's prompt through it and
+asks it the language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a
+helper; `tools/helper.py status` talks to it too. Tested against a stand-in game
+(`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
 branch copied into the game's folder: loaded by the launch options, it served `hello`
@@ -2250,7 +2252,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 84 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 88 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
@@ -2289,7 +2291,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 84), which the client resolves from the game's symbols
+  addresses (with the rest of the 88), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
   them, so a client and a helper that disagree change nothing (the client also refuses a helper of
   another version, and one of this version built before the traps, which answers no `trap_status`:
@@ -2614,9 +2616,9 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   `other_save` for another seed's save in play (`linux_other_save_tick`). The client hands over
   the whole seed file, its labels included, once known (`offline_seed`, as on Windows), and what
   the slot data alone gives until then, never after the whole file went in that client run (a
-  reconnect lists the items afresh: `ZexionContext.linux_full_seeds`). What differs on Linux:
-  - the file select's counts are taken from the save slots (configured for the Feats guard's
-    load test), but nothing shows them: the file select is not on Linux, and neither is its logo;
+  reconnect lists the items afresh: `ZexionContext.linux_full_seeds`). The file select's counts,
+  from the save slots, and its logo show as on Windows ("The file select's AP logo and disk
+  counts", below). What differs on Linux:
   - a client that loses its server connection keeps the Linux helper, configured, so this look
     does not dress the save: the client takes its labels and disk count back (no connection, no
     seed), its INTEL CHIP and ASSIST lock stay, and no notice comes, until the server is back or
@@ -2696,9 +2698,23 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   not after an unpatched AP ending until a save loads; the stand-in's ending, the Linux site's
   bytes, patched while an AP save is loaded and put back after); not run in the game.
 - **Not on Linux yet.** The parts above that the Linux helper does not run, with a client or
-  without: the file select's AP logo, ITEMS row and disk counts ("AP saves on the file select",
-  the major-item list in "Grants"), and the repair of tall popups' text ("Grants and popups",
-  below the Linux bullet's). The client says so once (`native.LINUX_NOT_READY`).
+  without: the file select's ITEMS row (the major-item list in "Grants"), and the repair of tall
+  popups' text ("Grants and popups", below the Linux bullet's). The client says so once
+  (`native.LINUX_NOT_READY`).
+- **The file select's AP logo and disk counts.** `Game::watch_files` runs in the Linux helper's
+  frame as in `watch_all` ("AP saves on the file select"), after the look without the client has
+  set the counts, with or without a client: each entry of the file select, COPY FILE and DELETE
+  FILE gets the helper's handler (`linux/src/helper.cpp`, `file_entry_hook`: the game's, then the
+  entry rewritten after its fill, event `0xF`; handlers take (widget, event) on Linux), the logo
+  on AP saves and each disk seed's save its own count, the four handlers configured from the
+  game's symbols (`file_panel_fn`, `file_entry_fn`, `copy_entry_fn`, `delete_entry_fn`). The Linux
+  helper is never unloaded, so nothing puts the handlers back but the watch itself when both are
+  off. The entries, their fill and the fills that bypass the handler, the logo's blank cells, the
+  font's empty glyphs and the new game's fade are as `files.cpp` expects on Linux too
+  (`docs/re/linux.md`, "Mapped by disassembly: the file select's AP logo and disk counts"; that
+  the logo's style shows white and the painting itself are not measured there). The Linux stand-in
+  game has no menus: the rewrite is stand-in tested on Windows only (`tests/files_tests.cpp`); not
+  run in the game.
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own

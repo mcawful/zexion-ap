@@ -1131,6 +1131,7 @@ void Game::watch_mission() {
 }
 
 void Game::watch_files() {
+    if (!configured_) return;
     // The AP saves' slots every 16th frame call: a copy or a delete shows on the next look.
     if (file_slot_frames_-- <= 0) {
         file_slot_frames_ = kFileSlotFrames;

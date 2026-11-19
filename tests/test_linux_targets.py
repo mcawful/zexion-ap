@@ -98,6 +98,10 @@ B1_HELPER_SYMBOLS = [
     ("gSavedRandos", 0x16BF7C0, 0x10EF0, 1),
     ("_Z14EndingCutscenev", 0x55AB11, 0x7D2, 2),
     ("gLargeTextCount", 0x16DA0DA, 0x2, 1),
+    ("_Z20SaveGamePlayerCursorP12GameMenuItemi", 0x576BB1, 0xA6D, 2),
+    ("_Z18SaveGameMenuActionP12GameMenuItemi", 0x59B85E, 0x146A, 2),
+    ("_Z18CopyGameMenuActionP12GameMenuItemi", 0x5B1B09, 0x17EF, 2),
+    ("_Z19ClearGameMenuActionP12GameMenuItemi", 0x5B0A65, 0x10A4, 2),
 ]
 
 

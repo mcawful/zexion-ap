@@ -217,6 +217,11 @@ void zap_steam_achievement() {
 }
 // The ASSIST lock: ASSIST's callback (none called here: no options menu opens in the stand-in).
 __attribute__((noinline, used)) void zap_assist_menu() { asm volatile(""); }
+// The file select's handlers (never called: the stand-in has no menus).
+__attribute__((noinline, used)) void zap_file_panel(void*, int) { asm volatile(""); }
+__attribute__((noinline, used)) void zap_file_entry(void*, int) { asm volatile(""); }
+__attribute__((noinline, used)) void zap_copy_entry(void*, int) { asm volatile(""); }
+__attribute__((noinline, used)) void zap_delete_entry(void*, int) { asm volatile(""); }
 __attribute__((noinline, used)) void zap_death(void* player, char kind) {
     ++zap_death_count;
     zap_death_player = player;

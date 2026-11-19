@@ -388,6 +388,12 @@ constexpr ConfigKey kConfigKeys[] = {
     {"ending_join", &G::ending_join, 0, "_Z14EndingCutscenev", 0x39C},
     // The Feats of Natu screen's note in a translation: LargeText's count (its title's entry).
     {"large_count", &G::large_count, sizeof(int16_t), "gLargeTextCount", 0},
+    // The file select's AP logo and disk counts (files.h): the save panel's handler, and the
+    // entries' of the file select, COPY FILE and DELETE FILE, whose handlers the helper wraps.
+    {"file_panel_fn", &G::file_panel_fn, 0, "_Z20SaveGamePlayerCursorP12GameMenuItemi", 0},
+    {"file_entry_fn", &G::file_entry_fn, 0, "_Z18SaveGameMenuActionP12GameMenuItemi", 0},
+    {"copy_entry_fn", &G::copy_entry_fn, 0, "_Z18CopyGameMenuActionP12GameMenuItemi", 0},
+    {"delete_entry_fn", &G::delete_entry_fn, 0, "_Z19ClearGameMenuActionP12GameMenuItemi", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -476,6 +482,10 @@ constexpr ConfigKey kConfigKeys[] = {
     {"ending_unlocks", &G::ending_unlocks, 0, "zap_ending", 0},
     {"ending_join", &G::ending_join, 0, "zap_ending_join", 0},
     {"large_count", &G::large_count, sizeof(int16_t), "zap_large_count", 0},
+    {"file_panel_fn", &G::file_panel_fn, 0, "zap_file_panel", 0},
+    {"file_entry_fn", &G::file_entry_fn, 0, "zap_file_entry", 0},
+    {"copy_entry_fn", &G::copy_entry_fn, 0, "zap_copy_entry", 0},
+    {"delete_entry_fn", &G::delete_entry_fn, 0, "zap_delete_entry", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -596,6 +606,17 @@ void equipment_panel_hook(void* widget, int event) {
     }
 }
 
+// A save entry's handler on the file select, COPY FILE and DELETE FILE while the logo or the disk
+// counts are on (files.h): the game's, then the entry rewritten after its fill (event 0xF).
+void file_entry_hook(void* widget, int event) {
+    auto original = reinterpret_cast<void (*)(void*, int)>(g_game.file_entry_original(widget));
+    if (original != nullptr) original(widget, event);
+    try {
+        g_game.file_event(widget, event);
+    } catch (...) {
+    }
+}
+
 // The pause menu's way back from OPTION MENU (pause.h): the game's, then the disk row turned in
 // the same call (refreshPauseFromOption takes the menu's screen).
 void options_back_hook(void* menu) {
@@ -664,6 +685,7 @@ void install_config(const zap::GameAddresses& found, bool active) {
                       .mission_open = reinterpret_cast<void*>(&mission_open_hook),
                       .mission_yes = reinterpret_cast<void*>(&mission_yes_hook),
                       .mission_end = reinterpret_cast<void*>(&mission_end_hook),
+                      .file_entry = reinterpret_cast<void*>(&file_entry_hook),
                       .map = reinterpret_cast<void*>(&map_hook),
                       .options_back = reinterpret_cast<void*>(&options_back_hook)});
     g_game.configure(found, active);
@@ -1130,6 +1152,9 @@ void game_frame(uintptr_t site) {
     // An AP save's look with no client, or with one of another seed (labels, INTEL CHIP, ASSIST,
     // the disks), set before the watches below apply it, as watch_all orders it on Windows.
     guarded([] { g_game.watch_offline(); });
+    // The file select, COPY FILE and DELETE FILE: the AP logo on AP saves, each disk seed's save
+    // its own count (files.h), after the look above has set the counts.
+    guarded([] { g_game.watch_files(); });
     // Other players' items: the stand-ins' records named and restyled, the logo painted, the
     // popup's width, other Zexion players' items dressed as themselves (apitem.h, looks.h).
     guarded([] { g_game.watch_map_names(); });  // the cursor's names while the map is open

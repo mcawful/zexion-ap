@@ -165,6 +165,11 @@ HELPER_TARGETS = (
     LinuxTarget("ending_join", "_Z14EndingCutscenev", 0x39C, 0x55AEAD),
     # And the Feats of Natu screen's note in a translation: LargeText's count.
     LinuxTarget("large_count", "gLargeTextCount", 0, 0x16DA0DA),
+    # And the file select's AP logo and disk counts: the save panel's and the entries' handlers.
+    LinuxTarget("file_panel_fn", "_Z20SaveGamePlayerCursorP12GameMenuItemi", 0, 0x576BB1),
+    LinuxTarget("file_entry_fn", "_Z18SaveGameMenuActionP12GameMenuItemi", 0, 0x59B85E),
+    LinuxTarget("copy_entry_fn", "_Z18CopyGameMenuActionP12GameMenuItemi", 0, 0x5B1B09),
+    LinuxTarget("delete_entry_fn", "_Z19ClearGameMenuActionP12GameMenuItemi", 0, 0x5B0A65),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -182,7 +187,8 @@ CONFIG_KEYS = (
     "equip_panel_fn", "widget_move_fn", "text_place_fn", "widget_new_fn", "sprite_sheet_fn",
     "panel_link_fn", "keys_branch", "options_back_fn", "fade", "fade_level", "routine_table",
     "death_fn", "assist_menu_fn", "draw_layer", "text_new_fn", "text_link_fn", "slot_array",
-    "rando_slots", "ending_unlocks", "ending_join", "large_count",
+    "rando_slots", "ending_unlocks", "ending_join", "large_count", "file_panel_fn",
+    "file_entry_fn", "copy_entry_fn", "delete_entry_fn",
 )  # fmt: skip
 
 
