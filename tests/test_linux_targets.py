@@ -92,6 +92,9 @@ B1_HELPER_SYMBOLS = [
     ("gExitActions", 0x12F5720, 0x80, 1),
     ("_Z17PlayerDestructionP9SpriteRecc", 0x51C15C, 0x11BF, 2),
     ("_Z10AssistMenuv", 0x6081F1, 0xFBE, 2),
+    ("gStatsSpriteLayerP", 0x12B46C0, 0x8, 1),
+    ("_Z15newSpriteStringPKcii", 0x5588CD, 0x39D, 2),
+    ("_Z15addSpriteStringP9SpriteRec", 0x569651, 0xBD, 2),
 ]
 
 

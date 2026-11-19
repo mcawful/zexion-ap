@@ -1322,7 +1322,7 @@ void Game::watch_map_marks() {
 
 void Game::watch_title() {
     // Only with no save loaded (the title, the file select): in play the draw list is long.
-    if (*at_.save_loaded != kNoSaveLoaded) return;
+    if (!configured_ || *at_.save_loaded != kNoSaveLoaded) return;
     std::string why = title_.watch(at_, active_, mixed_case(at_));
     if (!why.empty()) title_error_ = why;
     if (title_.shown()) title_error_.clear();
@@ -1333,6 +1333,7 @@ void Game::hide_title() {
 }
 
 std::string Game::title_state() const {
+    if (!title_.has_version()) return "no version";  // set_title_version not called: no line
     if (!title_error_.empty()) return title_error_;
     return title_.shown() ? "1" : "0";
 }

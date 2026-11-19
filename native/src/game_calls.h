@@ -240,7 +240,8 @@ public:
     bool client_back();
     bool intel_on() const { return intel_.on(); }
     // Game thread: the title screen's mod lines (title.h), hidden before an unload. title_state,
-    // for `hello`: "1" up, "0" not, else why they could not be made.
+    // for `hello` (and the Linux helper's `title_status`): "1" up, "0" not, else why they could
+    // not be made.
     void set_title_version(const std::string& version) { title_.set_version(version); }
     // Game thread: the map cursor's names for the stand-ins' squares (mapmarks.h); map_after runs
     // from the map handler's wrapper, after the game's handler.
@@ -263,6 +264,9 @@ public:
     // Game thread, each frame call (watch_all's; the Linux helper's frame): the Area Map named
     // INTEL CHIP while on (intel.h).
     void watch_intel();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the title screen's
+    // lines, with no save loaded (title.h).
+    void watch_title();
     // Game thread: what the helper changed for a translation put back (its names in the tables,
     // entry 70's offset once the popup areas are free, its icons): put_back_game's part, and the
     // Linux helper's when a client goes.
@@ -427,7 +431,6 @@ private:
     bool last_message(BYTE*& last, int32_t& sequence) const;
     // The watches only watch_all calls (it checks the configuration).
     void watch_files();
-    void watch_title();
     // In play in an AP save: owned items the game lists (pickups::listed), but the new game's
     // starting ones, appended to the major-item list as a pickup would: grants set the byte alone
     // (docs/re/memory.md, "The pickup record holds the major-item list").

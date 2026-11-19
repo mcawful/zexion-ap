@@ -526,13 +526,13 @@ def _hello(helper: Helper) -> dict[str, str]:
 # deaths (ticks.deathlink_tick), other players' items' labels, Intel Chips, the ASSIST lock, this
 # world's own traps, the OS Install Disks' count, the finds' follow-ups, RETURN HOME and AP saves'
 # look without the client go through the Linux helper instead (ticks.linux_newgame_tick and the
-# other linux_ ticks). Not yet on Linux: the file select's AP logo, ITEMS row and disk counts, the
-# title screen's lines, the Feats guard and the repair of tall popups' text (native/README.md,
-# "The Linux helper", "Not on Linux yet").
+# other linux_ ticks), and it shows the title screen's lines itself. Not yet on Linux: the file
+# select's AP logo, ITEMS row and disk counts, the Feats guard and the repair of tall popups'
+# text (native/README.md, "The Linux helper", "Not on Linux yet").
 LINUX_NOT_READY = (
     "its other parts inside the game (the file select's AP logo, items row and disk counts, the "
-    "title screen's lines, the guard on Feats and achievements, the repair of tall popups' text) "
-    "aren't ready for the game's Linux version yet"
+    "guard on Feats and achievements, the repair of tall popups' text) aren't ready for the "
+    "game's Linux version yet"
 )
 
 

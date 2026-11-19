@@ -189,6 +189,10 @@ unsigned char zap_halt;
 int zap_death_count;
 void* zap_death_player;
 int zap_death_kind = -1;
+// The title's lines: the layer the title draws on (no title here: null) and the text functions.
+void* zap_draw_layer;
+__attribute__((noinline, used)) void* zap_text_new(const char*, int, int) { return nullptr; }
+__attribute__((noinline, used)) void zap_text_link(void*) { asm volatile(""); }
 // The ASSIST lock: ASSIST's callback (none called here: no options menu opens in the stand-in).
 __attribute__((noinline, used)) void zap_assist_menu() { asm volatile(""); }
 __attribute__((noinline, used)) void zap_death(void* player, char kind) {

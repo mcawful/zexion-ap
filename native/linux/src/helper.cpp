@@ -90,8 +90,12 @@ int g_writable_count = 0;
 // own traps and disks and the received ones, and the rest native/README.md's "The Linux helper"
 // lists; the rest's addresses stay null and nothing calls them.
 constexpr DWORD kFrameWaitMs = 1000;  // as the Windows helper's
-zap::Mailbox g_mailbox;
-zap::Game g_game;  // game thread only
+// Both constructed before the helper's own constructor (start) runs, which sets the game's title
+// version and starts the serving thread: a constructor function runs, in the library's
+// .init_array, before this file's ordinary dynamic initializers, which would otherwise build
+// these afresh over what start set (init_priority puts theirs first).
+__attribute__((init_priority(101))) zap::Mailbox g_mailbox;
+__attribute__((init_priority(101))) zap::Game g_game;  // game thread only
 std::atomic<bool> g_client_left{false};  // a client went: its plan is dropped at the next frame
 
 // The game's own function that swaps its window once a frame (docs/re/linux.md, "The per-frame
@@ -362,6 +366,10 @@ constexpr ConfigKey kConfigKeys[] = {
     {"death_fn", &G::death_fn, 0, "_Z17PlayerDestructionP9SpriteRecc", 0},
     // The ASSIST lock (menu.h): ASSIST's own callback, put back when it is unlocked.
     {"assist_menu_fn", &G::assist_menu_fn, 0, "_Z10AssistMenuv", 0},
+    // The title screen's lines (title.h): the layer the title draws on, the text functions.
+    {"draw_layer", &G::draw_layer, sizeof(void*), "gStatsSpriteLayerP", 0},
+    {"text_new_fn", &G::text_new_fn, 0, "_Z15newSpriteStringPKcii", 0},
+    {"text_link_fn", &G::text_link_fn, 0, "_Z15addSpriteStringP9SpriteRec", 0},
 };
 #else
 constexpr ConfigKey kConfigKeys[] = {
@@ -442,6 +450,9 @@ constexpr ConfigKey kConfigKeys[] = {
     {"routine_table", &G::routine_table, 16 * sizeof(void*), "zap_routines", 0},
     {"death_fn", &G::death_fn, 0, "zap_death", 0},
     {"assist_menu_fn", &G::assist_menu_fn, 0, "zap_assist_menu", 0},
+    {"draw_layer", &G::draw_layer, sizeof(void*), "zap_draw_layer", 0},
+    {"text_new_fn", &G::text_new_fn, 0, "zap_text_new", 0},
+    {"text_link_fn", &G::text_link_fn, 0, "zap_text_link", 0},
 };
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
@@ -867,6 +878,9 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "die") {  // a DeathLink death received (game_calls.h, kill)
         return on_game([] { return g_game.kill(zap::ticks_ms()); }, false);
     }
+    if (request == "title_status") {  // the title's lines (game_calls.h, title_state): checks
+        return on_game([] { return g_game.title_state(); }, false);
+    }
     if (request == "drop_status") {  // the received scraps' drops (game_calls.h): live checks
         return on_game([] { return g_game.drop_status(); }, false);
     }
@@ -990,6 +1004,7 @@ __attribute__((constructor)) void start() {
     }
     g_folder = !folder.empty() && folder == folder_of("/proc/self/exe");
     g_offline_folder = zap::offline_folder();  // here, before the game's threads (getenv)
+    g_game.set_title_version(kVersion);  // the title's version line (title.h), as on Windows
     if (!read_own_symbols()) {
         std::fprintf(stderr, "zexion-ap %s: the game's symbols were not found: no new games\n",
                      kVersion);
@@ -1060,7 +1075,8 @@ void game_frame(uintptr_t site) {
     guarded([] { g_mailbox.serve(); });
     if (!g_game.configured()) return;
     // Configured with no client: nothing touches the game while its player pointer reads
-    // elsewhere (a load, the title before the first play), as the client's attach checks.
+    // elsewhere, as the client's attach checks (it read the player state at the title screen
+    // before any save, and in play: docs/re/linux.md, "Read from the running game").
     if (!g_game.active() && !player_where_expected()) return;
     try {
         g_game.watch_newgame();
@@ -1078,6 +1094,7 @@ void game_frame(uintptr_t site) {
     guarded([] { g_game.watch_ap_items(); });
     guarded([] { g_game.watch_intel(); });  // the Area Map named INTEL CHIP while `intel on`
     guarded([] { g_game.watch_assists(); });  // ASSIST locked in the options menu while asked
+    guarded([] { g_game.watch_title(); });  // the title screen's lines, with no save loaded
     guarded([] { g_game.watch_map_marks(); });  // the squares raised, the on-screen write patched
     // In a translation: the helper's names in its tables, its icons in its sheets, the popups'
     // borrowed entries emptied once their message has gone (translation.h).

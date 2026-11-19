@@ -405,6 +405,9 @@ CONFIG_SYMBOLS = {
     "routine_table": "zap_routines",
     "death_fn": "zap_death",
     "assist_menu_fn": "zap_assist_menu",
+    "draw_layer": "zap_draw_layer",
+    "text_new_fn": "zap_text_new",
+    "text_link_fn": "zap_text_link",
 }
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
@@ -866,6 +869,21 @@ def test_a_seed_taken_but_not_kept_stays_the_helpers_when_its_client_goes(tmp_pa
         if started.proc.poll() is None:
             started.proc.kill()
             started.proc.wait()
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_the_title_lines_wait_for_the_title(game: Game) -> None:
+    # Game::watch_title runs with no save loaded: the stand-in's title layer is empty (null), so
+    # nothing is made and nothing is said wrong (the lines themselves: stand-in tests on Windows,
+    # native/tests/title_tests.cpp).
+    at = config_addresses()
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, f"write {at['save_loaded']:#x} ff") == "written 1"  # no save: the title
+        frames = int(ask(sock, "ping").split("frames=")[1])
+        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 20)
+        assert ask(sock, "title_status") == "0"
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

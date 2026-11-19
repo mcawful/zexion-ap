@@ -56,8 +56,8 @@ TARGETS = (
 # The Linux helper's own targets beyond those, for the parts of the Windows helper's Game it
 # runs (its ``config``: native/linux/src/helper.cpp): new games, the ARCHIPELAGO choice, grants
 # and their popups, other players' items (the map's too), traps, the translations, the OS Install
-# Disks' count, RETURN HOME, DeathLink's deaths and the ASSIST lock. The rest of CONFIG_KEYS is in
-# TARGETS. Functions by their mangled names.
+# Disks' count, RETURN HOME, DeathLink's deaths, the ASSIST lock and the title's lines. The rest
+# of CONFIG_KEYS is in TARGETS. Functions by their mangled names.
 HELPER_TARGETS = (
     LinuxTarget("randomizer_menu", "gRandoPreferences", 0, 0x12F6CE0),
     LinuxTarget("transition_fn", "gExitActionP", 0, 0x12F5710),
@@ -154,6 +154,10 @@ HELPER_TARGETS = (
     LinuxTarget("death_fn", "_Z17PlayerDestructionP9SpriteRecc", 0, 0x51C15C),
     # The ASSIST lock (native/src/menu.h): ASSIST's own callback.
     LinuxTarget("assist_menu_fn", "_Z10AssistMenuv", 0, 0x6081F1),
+    # The title screen's lines (native/src/title.h): the title's layer and the text functions.
+    LinuxTarget("draw_layer", "gStatsSpriteLayerP", 0, 0x12B46C0),
+    LinuxTarget("text_new_fn", "_Z15newSpriteStringPKcii", 0, 0x5588CD),
+    LinuxTarget("text_link_fn", "_Z15addSpriteStringP9SpriteRec", 0, 0x569651),
 )
 CONFIG_KEYS = (
     "rando_blob", "randomizer_menu", "transition_fn", "transition_timer", "newgame_fn",
@@ -170,7 +174,7 @@ CONFIG_KEYS = (
     "halt_flag", "seen_marker_code", "map_handler", "text_set_fn", "text_table", "equipment_fn",
     "equip_panel_fn", "widget_move_fn", "text_place_fn", "widget_new_fn", "sprite_sheet_fn",
     "panel_link_fn", "keys_branch", "options_back_fn", "fade", "fade_level", "routine_table",
-    "death_fn", "assist_menu_fn",
+    "death_fn", "assist_menu_fn", "draw_layer", "text_new_fn", "text_link_fn",
 )  # fmt: skip
 
 

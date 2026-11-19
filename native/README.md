@@ -2189,14 +2189,14 @@ scrap's drops and Energy Shields (`apply`, `shield`: "Grants", "Popups", "Receiv
 players' items as Archipelago items (`ap_labels`: "Other players' items", "Other Zexion players'
 items, as themselves"), sets off traps ("Traps"), shows its text in a translation's font
 ("Translations"), runs the OS Install Disks goal, its count and RETURN HOME WITH THE DISKS? ("The
-OS Install Disks goal"), and keeps AP saves' look without the client ("AP saves without the
-client"). It holds the Windows helper's `Game` (`src/game_calls.h`) and runs only those parts of
-it: below. None of the other parts above runs on Linux yet: the client reads and writes the game
-through it (`game.Game.attach_linux`), gives its items, labels, seed, shields, deaths, Intel
-Chips, the ASSIST lock, the disks' count, the finds' follow-ups and the Landing Pod's prompt
-through it and asks it the language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as
-without a helper; `tools/helper.py status` talks to it too. Tested against a stand-in game
-(`tests/test_native_linux.py`).
+OS Install Disks goal"), keeps AP saves' look without the client ("AP saves without the client"),
+and shows the title screen's lines ("The title screen's lines"). It holds the Windows helper's
+`Game` (`src/game_calls.h`) and runs only those parts of it: below. None of the other parts above
+runs on Linux yet: the client reads and writes the game through it (`game.Game.attach_linux`),
+gives its items, labels, seed, shields, deaths, Intel Chips, the ASSIST lock, the disks' count,
+the finds' follow-ups and the Landing Pod's prompt through it and asks it the language
+(`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as without a helper; `tools/helper.py
+status` talks to it too. Tested against a stand-in game (`tests/test_native_linux.py`).
 
 Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the build of this
 branch copied into the game's folder: loaded by the launch options, it served `hello`
@@ -2247,7 +2247,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 76 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 79 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
@@ -2258,6 +2258,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   | `shield` (frame) | as the Windows helper's ("The pipe", "Received Energy Shields") |
   | `die` (frame) | as the Windows helper's ("The pipe", "DeathLink") |
   | `other_save`, `client_back` (frame) | as the Windows helper's ("The pipe", "AP saves without the client") |
+  | `title_status` (frame) | the title's lines as the Windows helper's `hello` gives them (`title=`): `1` shown, `0` not, or what failed |
   | `intel on`, `intel off` (frame) | as the Windows helper's ("The pipe", "Intel Chips") |
   | `assists lock`, `assists free` (frame) | as the Windows helper's ("The pipe", "The assist menu") |
   | `mission_prompt COLUMN ROW`, `mission_status`, `mission_black` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
@@ -2284,7 +2285,7 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
   placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 76), which the client resolves from the game's symbols
+  addresses (with the rest of the 79), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of them, so a client and a
   helper that disagree change nothing (the client also refuses a helper of another version, and
   one of this version built before the traps, which answers no `trap_status`: it would refuse
@@ -2403,14 +2404,14 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   - a client that goes takes the helper's translation changes with it, as on Windows
     (`Game::restore_translation`: the names in the tables, entry 70's offset once the popup
     areas are free, the icons);
-  - the parts not on Linux (the Feats screen, the title lines) build no text here; RETURN HOME's
-    question is built and centered in a translation through the shared code (`docs/re/linux.md`,
-    "Mapped by disassembly: the RETURN HOME prompt"), and the locked ASSIST entry's text built
-    again with the HD padlock ("Mapped by disassembly: the ASSIST lock"), neither run in the game;
-    the equipment screen's disk name and description and the pause row's count, in a
-    translation, go through the same code as on Windows, the entries they read (SmallText 139,
-    ItemNames 44, LargeText 87) and the game's rebuilds of them assumed as `docs/re/memory.md`
-    has them, not mapped on Linux;
+  - the part not on Linux (the Feats screen) builds no text here; RETURN HOME's question is built
+    and centered in a translation through the shared code (`docs/re/linux.md`, "Mapped by
+    disassembly: the RETURN HOME prompt"), the locked ASSIST entry's text built again with the HD
+    padlock ("Mapped by disassembly: the ASSIST lock"), and the title lines' translated text
+    ("Mapped by disassembly: the title screen's lines"), none run in the game; the equipment
+    screen's disk name and description and the pause row's count, in a translation, go through the
+    same code as on Windows, the entries they read (SmallText 139, ItemNames 44, LargeText 87) and
+    the game's rebuilds of them assumed as `docs/re/memory.md` has them, not mapped on Linux;
   - where a rebuilt label goes, the font's other fields and the icons' characters are as on
     Windows (measured by disassembly: the same section); that the game reads none of SmallText
     66 to 72 is assumed for its data-driven entries, as on Windows.
@@ -2627,11 +2628,30 @@ run: the Steam Runtime without Flatpak, a Steam Deck.
   other-seed notice, and that client gone, dressed afresh with the not-connected notice again)
   and with stand-ins for the client (`tests/test_zexion_client.py`: the whole seed file not
   replaced by the slot data's after a reconnect); not run in the game.
+- **The title screen's lines.** `Game::watch_title` runs at each frame call with no save loaded,
+  as on Windows ("The title screen's lines"): ARCHIPELAGO MOD and the version (set in the helper's
+  constructor), ©2026 MCAWFUL, and with no client attached the hint to start it, made with the
+  game's own text functions under the title's copyright line (`draw_layer`, `gStatsSpriteLayerP`;
+  `text_new_fn`, `newSpriteString`; `text_place_fn`; `text_link_fn`, `addSpriteString`), only
+  while no menu is open, and in English(HD) in the translation's font through the shared label
+  builder (`docs/re/linux.md`, "Mapped by disassembly: the title screen's lines"). Configured from
+  the game's symbols with no client (a seed file read), the lines show with the hint as they do on
+  Windows with its cached config, while the game's player pointer reads the player state the
+  config's `inventory` lies in ("Seed files."): it did at the title screen before any save, and in
+  play (`docs/re/linux.md`, "Read from the running game"), so from the first title; with no seed
+  file and no client, the helper is not configured, so no line shows until a client configures. If
+  the mouse sets `menu_state` to 1 at the title (open: `docs/re/linux.md`), the lines wait unmade,
+  or the translated ones hidden, until a key is pressed. `title_status` says what the watch last
+  found (for checks). Tested through the socket only for the watch and the request
+  (`tests/test_native_linux.py`: the stand-in has no title, so nothing is made, its version line
+  set all the same, which `title_status` says as `no version` when it is not: the helper's globals
+  are built before its constructor sets it, `init_priority`); the lines themselves are stand-in
+  tested on Windows (`tests/title_tests.cpp`); not run in the game.
 - **Not on Linux yet.** The parts above that the Linux helper does not run, with a client or
-  without: the Feats guard ("Feats and achievements in AP saves"), the title screen's lines ("The
-  title screen's lines"), the file select's AP logo, ITEMS row and disk counts ("AP saves on the
-  file select", the major-item list in "Grants"), and the repair of tall popups' text ("Grants
-  and popups", below the Linux bullet's). The client says so once (`native.LINUX_NOT_READY`).
+  without: the Feats guard ("Feats and achievements in AP saves"), the file select's AP logo,
+  ITEMS row and disk counts ("AP saves on the file select", the major-item list in "Grants"), and
+  the repair of tall popups' text ("Grants and popups", below the Linux bullet's). The client says
+  so once (`native.LINUX_NOT_READY`).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
