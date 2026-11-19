@@ -810,8 +810,6 @@ void test_a_cache_needs_every_key() {
     }
 }
 
-// 1.0.0's cache, written before text_cut_code: it configures everything else, the text window's
-// cut left the game's, until a client's config, which holds the key, patches it.
 // The text cut's patch step by step on the stand-in's code, as TextCut makes it in watch_all:
 // read, built, written and put back.
 void test_the_text_cut_patches_the_stand_in() {
@@ -856,6 +854,8 @@ void test_the_text_cut_patches_the_stand_in() {
     idle.put_back_game(&no_callback);
 }
 
+// 1.0.0's cache, written before text_cut_code: it configures everything else, the text window's
+// cut left the game's, until a client's config, which holds the key, patches it.
 void test_a_cache_without_the_text_cut() {
     HMODULE self = GetModuleHandleW(nullptr);
     auto older = stand_in_config();

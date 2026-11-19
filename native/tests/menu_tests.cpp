@@ -345,6 +345,32 @@ void test_assist_lock_and_unlock() {
     check(!lock.installed() && !lock.restore(a), "unlocks once");
 }
 
+// The palette number a glyph had when ASSIST was locked is looked up again in the table when it is
+// unlocked, but only inside the table: kPaletteCount (65) entries, which is Linux B1's size and an
+// assumption for Windows B1's (game_layout.h). A number past it keeps the pointer saved at install.
+void test_assist_lock_bounds_the_palette_number() {
+    constexpr int kLast = zap::sprite::kPaletteCount - 1;
+    for (int number : {kLast, zap::sprite::kPaletteCount, 200, -1}) {
+        Options options;
+        options.palettes[kLast] = options.palette_objects[0];  // the table's last entry
+        for (BYTE* g : options.glyph_list) {
+            at<int16_t>(g, 0x1A0) = static_cast<int16_t>(number);  // the menu's own object stays
+        }
+        zap::AssistLock lock;
+        zap::GameAddresses a = options.addresses();
+        const std::string which = "number " + std::to_string(number);
+        check(lock.install(a), "locked", which);
+        check(lock.restore(a), "unlocked", which);
+        const bool in_table = number == kLast;
+        check(options.palette().second == number, "its number put back", which);
+        check(options.palette().first ==
+                  (in_table ? options.palette_objects[0] : options.palette_objects[1]),
+              in_table ? "the table's last entry is looked up"
+                       : "a number outside the table keeps the pointer saved at install",
+              which);
+    }
+}
+
 void test_assist_lock_moves_assist_past_the_selectable_entries() {
     Options options;
     zap::AssistLock lock;
@@ -601,6 +627,7 @@ int main() {
     test_the_panel_handler_goes_back_whatever_became_of_the_choice();
     test_the_border_under_the_mouse_fits_archipelago();
     test_assist_lock_and_unlock();
+    test_assist_lock_bounds_the_palette_number();
     test_assist_lock_follows_the_menu();
     test_assist_lock_leaves_anything_else_alone();
     test_a_relabeled_assist_is_forgotten_unwritten();

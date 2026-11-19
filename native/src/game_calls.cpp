@@ -1347,7 +1347,9 @@ void Game::hide_title() {
 }
 
 std::string Game::title_state() const {
-    if (!title_.has_version()) return "no version";  // set_title_version not called: no line
+    // Before set_title_version has run (it runs before the hook and the pipe, so a `hello` never
+    // sees this): no line.
+    if (!title_.has_version()) return "no version";
     if (!title_error_.empty()) return title_error_;
     return title_.shown() ? "1" : "0";
 }

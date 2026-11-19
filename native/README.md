@@ -2806,7 +2806,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     config, too, and in any other program the preload reaches; the guard reports a fault
     (`feats_status`) unless the game's call binds to the helper's export (the first definition in
     the global scope: another preload ahead of it would take the calls) and the library's is
-    found; `watch_feats` runs before the frame's player-pointer gate, as it only reads;
+    found (a check that fails is made again every `kSteamRetryFrames`, 60 frames, so a library loaded later still counts); `watch_feats` runs before the frame's player-pointer gate, as it only reads;
   - the ending's patch is made over the Linux ending's own first achievement call, not a call
     through the import slot: `mov edi, 13` (14Victory) and `call setTheAchievement` (the game's
     own function, from its symbols) at `ending_unlocks` (`EndingCutscene` + `0x3B`), the six-byte

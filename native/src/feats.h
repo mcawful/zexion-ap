@@ -25,6 +25,8 @@
 namespace zap {
 
 constexpr size_t kEndingPatchSize = 12;
+// Linux: the frames between tries of a failed check of Steam's library (hook_steam).
+constexpr int kSteamRetryFrames = 60;
 
 // Under FEATS OF NATU! after an AP save's ending (in capitals in pixel glyphs: text.h).
 inline constexpr char kFeatsNote[] = "Archipelago save: no Feats earned";
@@ -100,6 +102,7 @@ private:
     BYTE written_[kEndingPatchSize] = {};
     std::string ending_error_;
     bool steam_checked_ = false;
+    int steam_wait_ = 0;  // Linux: frames before a failed check_steam is tried again
     std::string steam_error_;       // check_steam's
     std::string steam_slot_error_;  // the last hook's
     void* real_ = nullptr;          // steam_api64's SteamInternal_ContextInit
