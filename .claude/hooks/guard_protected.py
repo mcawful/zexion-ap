@@ -105,8 +105,10 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     budget says, the command is blocked too: the lexer (per word), the heredoc pass (per
     heredoc and per saved file's later commands), the final pass (per command) and each read
     of a word or name pattern that ``protected`` has not already answered (``_Memo``) look at
-    the clock (``_tick``). One read is not interrupted, and the lexer and the scan for
-    heredocs, linear in the length, run to the end: the answer is "about" a second.
+    the clock (``_tick``). Not interrupted: one read (a word of 96 000 characters with a
+    wildcard is read in full, 0.8 s; a command with several such passes takes up to about two
+    seconds), the lexing of one word, and ``_heredocs``, which is linear in the length. So the
+    answer is within about a second, and a little over two at most.
     Nothing asks the file system about a UNC path on Windows (``protected.is_network_path``:
     ``//host/x`` is resolved over the network, seconds a host), so a link in one is not
     followed; ``//?/C:/x`` and ``//./C:/x`` are local paths and are.
@@ -129,7 +131,11 @@ scratch script written by a heredoc and run in the same command is code, like ``
 the run is tied to the heredoc only by the file's name, so ``sh *.sh`` or a variable holding
 the name is missed, as is a program variable that is not on the list, set with ``env``
 before a command that is otherwise allowed, or set in PowerShell (``$env:GIT_PAGER = …``).
-A ``tools/`` script is trusted in the session's own ``cwd`` without checking that it is a
+A backslash is a separator on every platform (``protected.normalize``), so on Linux and macOS
+a folder named with them is read as a separator, and ``../..`` after it goes one level too
+high: ``cd ~/.local/share/t && echo 1 > '<two backslashes>'/../../ZexionAP/s.json`` passes.
+A ``tools/``
+script is trusted in the session's own ``cwd`` without checking that it is a
 checkout of this repo. The joined reading may take prose such as ``print('Gallant Leaf,
 Zexion')`` for the folder; that blocks only in a command that is not read-only. It fails
 closed: if the guard itself breaks while looking at a call that mentions the saves, a Steam
@@ -999,7 +1005,7 @@ def _dir_is_suspect(text: str, protected) -> bool:
 
 
 def _is_absolute(path: str) -> bool:
-    return os.path.isabs(path) or re.match(r"[A-Za-z]:|\\\\", path) is not None
+    return os.path.isabs(path) or re.match(r"[A-Za-z]:", path) is not None
 
 
 def _cd_targets(segments: list[list[Word]], cwd: str, code: str, protected) -> list[str | None]:

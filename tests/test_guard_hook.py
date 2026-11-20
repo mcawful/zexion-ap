@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import subprocess
 import sys
 import time
@@ -1879,11 +1880,18 @@ LINKED_BLOCKED = [
     ("PowerShell", {"command": "Remove-Item -Recurse \\\\?\\X:\\lab\\lnk"}),
     ("Bash", {"command": "cd '//?/X:/Steam' && rm -rf steamapps"}),
     ("Bash", {"command": "cd '//?/X:/Steam' && rm -rf userdata"}),
-    ("PowerShell", {"command": "Set-Location \\\\?\\X:\\Steam; Remove-Item -Recurse steamapps"}),
+    pytest.param(
+        "PowerShell",
+        {"command": "Set-Location \\\\?\\X:\\Steam; Remove-Item -Recurse steamapps"},
+        marks=pytest.mark.skipif(os.name != "nt", reason="a backslash path is a Windows path"),
+    ),
 ]
 
 
-@pytest.mark.parametrize(("tool", "tool_input"), LINKED_BLOCKED)
+@pytest.mark.parametrize(
+    ("tool", "tool_input"),
+    [c if hasattr(c, "marks") else pytest.param(*c) for c in LINKED_BLOCKED],
+)
 @pytest.mark.parametrize("windows", [True, False])
 def test_a_link_behind_a_local_device_path_is_still_followed(
     tool: str, tool_input: dict, windows: bool, linked, monkeypatch
@@ -1891,6 +1899,49 @@ def test_a_link_behind_a_local_device_path_is_still_followed(
     # On Windows the prefixes are local paths; on Linux and macOS ``//`` is never the network.
     monkeypatch.setattr(protected, "_on_windows", lambda: windows)
     assert run(tool, **tool_input), (tool, tool_input)
+
+
+POSIX_HOME = "/home/u"
+POSIX_DATA = f"{POSIX_HOME}/.local/share"
+TWO_BACKSLASHES = "\\\\"  # a folder name on Linux and macOS, a separator on Windows
+
+
+@pytest.fixture
+def posix(monkeypatch):
+    """Linux's paths and environment, on any machine: ``os.path`` is ``posixpath``, nothing is
+    Windows, and the offline folder is under ``$XDG_DATA_HOME``."""
+    monkeypatch.setattr(os, "path", posixpath)
+    monkeypatch.setattr(protected, "_on_windows", lambda: False)
+    for name in ("LOCALAPPDATA", "APPDATA", "USERPROFILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HOME", POSIX_HOME)
+    monkeypatch.setenv("XDG_DATA_HOME", POSIX_DATA)
+
+
+POSIX_BLOCKED = [
+    # ``\\`` is an ordinary folder there, so ``'\\'/../..`` is two levels up from the working
+    # folder, not from the root (an absolute-looking path is read from ``/`` on Windows).
+    (f"rm -rf '{TWO_BACKSLASHES}'/../../ZexionAP", f"{POSIX_DATA}/t"),
+    (f"cp e.json '{TWO_BACKSLASHES}'/../../ZexionAP/s.json", f"{POSIX_DATA}/t"),
+    (f"cd {POSIX_DATA}/t && rm -rf '{TWO_BACKSLASHES}'/../../ZexionAP", POSIX_HOME),
+    (
+        f"mkdir -p {POSIX_DATA}/t/'{TWO_BACKSLASHES}' && cd {POSIX_DATA}/t"
+        f" && rm -rf '{TWO_BACKSLASHES}'/../../ZexionAP",
+        POSIX_HOME,
+    ),
+    (
+        f"cd ~/.steam/steam/steamapps/common/x && rm -rf '{TWO_BACKSLASHES}'/../../Zexion",
+        POSIX_HOME,
+    ),
+    (f"rm -rf '{TWO_BACKSLASHES}'/../../Zexion", f"{POSIX_HOME}/.steam/steam/steamapps/common/x"),
+    ("rm -rf ../ZexionAP", f"{POSIX_DATA}/t"),
+    ("rm -rf ../../share/ZexionAP", f"{POSIX_DATA}/t"),
+]
+
+
+@pytest.mark.parametrize(("command", "cwd"), POSIX_BLOCKED)
+def test_on_linux_a_backslash_folder_name_is_no_root(command: str, cwd: str, posix) -> None:
+    assert run("Bash", command=command, cwd=cwd), (command, cwd)
 
 
 def test_a_slow_command_is_blocked_at_the_deadline(monkeypatch) -> None:
@@ -1955,7 +2006,7 @@ def test_normal_long_commands_pass_under_the_real_deadline(monkeypatch) -> None:
         "git commit -F - <<'EOF'\n" + "Fix the save in Gallant Leaf/Zexion [a] * ?\n" * 500 + "EOF",
         'gh pr create --title t --body "' + "ZexionAP, Gallant Leaf/Zexion, [a] * ?. " * 500 + '"',
         "python - <<'EOF'\n" + script + "EOF",
-        "python -c '" + "{" + ", ".join(f"'k{i}': [{i}]" for i in range(1500)) + "}'",
+        "python -c '" + "{" + ", ".join(f'"k{i}": [{i}]' for i in range(1500)) + "}'",  # one word
     ):
         assert run("Bash", command=command) is None, command[:80]
 

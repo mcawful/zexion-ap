@@ -340,7 +340,8 @@ Committed under `.claude/`, so they apply to anyone working here:
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
   The hook has a 120 s timeout in `settings.json`, a backstop: a hook that times out lets the
   call through, so the guard's own protection is its deadline of about a second, which blocks
-  when it runs out. It answers within about a second: a command
+  when it runs out. It answers within about a second (two at most: one read, the lexing of one
+  word and the scan for heredocs are not interrupted): a command
   over 100,000 characters is blocked unread; one over a size budget (many different words,
   counting a word with a wildcard and each redirect target for more, many commands, or many
   different folders a `cd` goes to) counts as reaching a protected folder, so only a read-only
