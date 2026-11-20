@@ -2035,3 +2035,38 @@ def test_the_stored_seed_is_none_where_no_token_is_found(monkeypatch) -> None:
     monkeypatch.setattr(linux_helper, "find_tokens", none)
     mod = types.SimpleNamespace(pm=types.SimpleNamespace(game=object()))
     assert REAL_LINUX_STORED_SEED(mod, "S-0-1") is None
+
+
+def test_on_linux_a_merged_text_the_helper_refuses_is_put_again_as_the_slot_datas(
+    monkeypatch,
+) -> None:
+    replies = {"config": "ok", "offline_put": "error bad file"}
+    ctx = context(connection(), linux_game(replies))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    monkeypatch.setattr(ticks, "linux_stored_seed", lambda mod, name: WHOLE_FILE)
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: POORER_FILE)
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: None)
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    ctx.linux_mod.told.offline_at = 0.0
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
+    assert len(puts) == 2 and "ap_labels" in puts[0] and puts[1].endswith("\n" + POORER_FILE)
+
+
+def test_the_stored_seed_is_read_only_as_a_plain_file(tmp_path) -> None:
+    seeds = tmp_path / "seeds"
+    seeds.mkdir()
+    (seeds / "dir-0-1.txt").mkdir()
+    assert ticks.read_stored_seed(tmp_path, "dir-0-1") is None
+    if hasattr(os, "mkfifo"):
+        os.mkfifo(seeds / "pipe-0-1.txt")
+        assert ticks.read_stored_seed(tmp_path, "pipe-0-1") is None  # no block
+    try:
+        (seeds / "link-0-1.txt").symlink_to(seeds / "dir-0-1.txt")
+    except OSError:
+        return  # no symlinks here
+    (seeds / "real.txt").write_bytes(b"x")
+    (seeds / "link2-0-1.txt").symlink_to(seeds / "real.txt")
+    if hasattr(os, "O_NOFOLLOW"):
+        assert ticks.read_stored_seed(tmp_path, "link2-0-1") is None

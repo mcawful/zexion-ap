@@ -110,6 +110,10 @@ def keep_richer(text: str, stored: str | None) -> str:
     merged = [
         kept.get(line.split(" ", 1)[0], line) if line.endswith(" -") else line for line in new
     ]
+    # Assist Unlock is never taken back: the slot data's lock, before this connection's items are
+    # listed, does not undo the free menu the file already holds.
+    if "assists free" in old:
+        merged = ["assists free" if line == "assists lock" else line for line in merged]
     if "ap_labels" not in new and "ap_labels" in old:
         merged += old[old.index("ap_labels") :]
     return "\n".join(merged) + "\n"

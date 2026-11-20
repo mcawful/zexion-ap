@@ -18,6 +18,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
+import stat
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -793,9 +795,17 @@ def linux_seed(ctx: ZexionContext, p: Poll) -> str | None:
 def read_stored_seed(folder: Path, name: str) -> str | None:
     """The seed file ``seeds/NAME.txt`` in the helper's data folder ``folder``, read only (the
     helper alone writes it); None with no such file, or one too large, not text, or not readable."""
+    path = folder / "seeds" / f"{name}.txt"
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
-        with open(folder / "seeds" / f"{name}.txt", "rb") as f:
-            raw = f.read(offline.MAX_FILE + 1)
+        # As the helper reads it: never through a link, and only a plain file (a pipe would block).
+        fd = os.open(path, flags)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                return None
+            raw = os.read(fd, offline.MAX_FILE + 1)
+        finally:
+            os.close(fd)
         return None if len(raw) > offline.MAX_FILE else raw.decode("utf-8")
     except (OSError, ValueError):
         return None
@@ -877,12 +887,17 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
         if ctx.said("linux seed", "not kept"):
             logger.warning(LINUX_OFFLINE_FAILED)
             log.warning(f"The Linux helper did not keep the seed's file: {reply}")
-    elif ctx.said("linux seed", reply):
-        logger.warning(
-            "Zexion's mod on Linux didn't take this seed's own traps and disks; they may do "
-            "nothing."
-        )
-        log.warning(f"The Linux helper did not take the seed: {reply}")
+    else:
+        if full is None:
+            # Not taken: put again with what the file held, it would be refused each time; the
+            # slot data's text alone next.
+            ctx.linux_stored_seeds[name] = None
+        if ctx.said("linux seed", reply):
+            logger.warning(
+                "Zexion's mod on Linux didn't take this seed's own traps and disks; they may do "
+                "nothing."
+            )
+            log.warning(f"The Linux helper did not take the seed: {reply}")
 
 
 LINUX_KEEPALIVE_SECONDS = 10.0  # the Linux helper drops a client silent for 30 s

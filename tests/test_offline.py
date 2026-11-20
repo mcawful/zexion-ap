@@ -120,3 +120,12 @@ def test_nothing_is_taken_from_the_file_of_another_table() -> None:
 def test_a_stored_file_without_labels_adds_none() -> None:
     plain = seed(traps=[(40, 102)])
     assert offline.keep_richer(POOR, plain) == POOR
+
+
+def test_assist_unlock_is_never_taken_back_by_a_poorer_text() -> None:
+    # Before this connection's items are listed the slot data's lock stands, with no unlock seen.
+    free = WHOLE.replace("assists lock", "assists free")
+    assert "assists free" in free.splitlines()
+    merged = offline.keep_richer(POOR, free)
+    assert "assists free" in merged.splitlines() and "assists lock" not in merged.splitlines()
+    assert offline.keep_richer(POOR, WHOLE).count("assists lock") == 1  # locked in both
