@@ -92,32 +92,46 @@ std::string g_addresses = "-";  // "scan", "cache" or "client": where the config
 
 // Helper's thread: finds the game's addresses by byte pattern (the client's, findaddr.h) in a
 // known build. It never runs in DllMain: the thread starts after the loader lock is released.
+// Everything that allocates is inside the try, and the catch allocates nothing (an assignment of
+// a short literal to a string, `clear`), so a failed allocation cannot escape: it would skip the
+// files and the pipe, leaving the helper hooked, unreachable and unable to unload.
 void run_self_scan() {
-    g_scan = {};
     try {
-        g_scan.why = zap::find::find_in_image(GetModuleHandleW(nullptr), g_scan.found);
-    } catch (...) {
-        // An allocation of the scan's (the copy of .text) must not skip the files and the pipe
-        // below: the helper would be hooked and unreachable, and could not be unloaded.
         g_scan = {};
+        g_scan.why = zap::find::find_in_image(GetModuleHandleW(nullptr), g_scan.found);
+        if (!g_scan.why.empty()) {
+            g_scan_note = g_scan.why;
+        } else if (!g_scan.found.failed.empty()) {
+            g_scan_note = "failed " + g_scan.found.failed.front();  // taken or refused: below
+        } else {
+            g_scan_note = "ok";
+        }
+    } catch (...) {
+        g_scan.found.rvas.clear();
+        g_scan.found.failed.clear();
         g_scan.why = "scan_failed";
-    }
-    if (!g_scan.why.empty()) {
-        g_scan_note = g_scan.why;
-    } else if (!g_scan.found.failed.empty()) {
-        g_scan_note = "failed " + g_scan.found.failed.front();  // taken or refused: see below
-    } else {
-        g_scan_note = "ok";
+        g_scan_note = "scan_failed";
     }
 }
 
+// An exclusive hold of the offline lock, released however the scope ends.
+class OfflineLock {
+public:
+    OfflineLock() { AcquireSRWLockExclusive(&g_offline_lock); }
+    ~OfflineLock() { ReleaseSRWLockExclusive(&g_offline_lock); }
+    OfflineLock(const OfflineLock&) = delete;
+    OfflineLock& operator=(const OfflineLock&) = delete;
+};
+
 void read_offline() {
     zap::OfflineFiles files = zap::read_offline_files(zap::offline_folder(), g_build);
-    AcquireSRWLockExclusive(&g_offline_lock);
-    g_offline_error = files.error;
+    // Copied before the lock, and the lock released however this ends: a throw under it would
+    // leave the next `hello` waiting for it for good.
+    std::string error = files.error;
+    OfflineLock lock;
+    g_offline_error = std::move(error);
     g_offline_found.store(static_cast<int>(files.seeds.size()));
     g_offline_files = std::move(files);
-    ReleaseSRWLockExclusive(&g_offline_lock);
 }
 
 // Counts a call from the game into one of the helper's functions outside the frame call (the
@@ -130,7 +144,8 @@ public:
     InCallback& operator=(const InCallback&) = delete;
 };
 
-// Runs the helper's part of a call from the game: nothing may unwind into the game.
+// Runs the helper's part of a call from the game, or its thread's start-up reads (the files),
+// and nothing may unwind: into the game, or past the pipe's start.
 template <typename Work>
 void guarded(Work&& work) {
     try {
@@ -652,7 +667,7 @@ DWORD WINAPI helper_thread(void*) {
         hook();
         // Then the helper's own scan (never in DllMain: this thread starts after the loader lock
         // is released), before the first read of the files and the pipe: those come after it.
-        if (g_slot != nullptr) run_self_scan();
+        if (g_slot != nullptr) guarded(run_self_scan);
         // Guarded as the scan is: the pipe comes up whatever these throw (no files read then).
         if (g_slot != nullptr) guarded(read_offline);
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle, [] {

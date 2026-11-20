@@ -6,11 +6,12 @@ outside: work on the game's own thread, between frames. It gets in two ways: **t
 `version.dll` in the game's folder loads it as the game starts, or the client loads it on
 attaching (`client/native.py`; `tools/helper.py` too, for tests). The client talks to it over a
 named pipe. It finds the game's addresses itself ("Finding its own addresses"), so with no client,
-from the first start on a PC no client has ever run on, it changes the title screen, the look of AP
-saves (the file select's disk count too) and, in every save, how the game's text window cuts tall
-text ("Popups"); it sets this world's own traps off at their pickup ("Traps") and shows an own OS
-Install Disk's count popup at its pickup ("The OS Install Disks goal"); and it keeps Feats and
-Steam achievements out of AP saves (stand-in tests; not yet run in the game from a first start).
+from the first start on a PC no client has ever run on (stand-in tests; not yet run in the game from
+a first start), it is meant to change the title screen, the look of AP saves (the file select's
+disk count too) and, in every save, how the game's text window cuts tall text ("Popups"); to set
+this world's own traps off at their pickup ("Traps") and show an own OS Install Disk's count popup
+at its pickup ("The OS Install Disks goal"); and to keep Feats and Steam achievements out of AP
+saves.
 
 An **AP save** is a randomizer save whose item table and start match a seed a client has
 played (and its location list's size: 154, or 155 with Secret Shuffle, `src/game_layout.h`,
@@ -157,8 +158,8 @@ know where the game's state and functions are.
   (2026-11-20, the development PC, `tests/findaddr_tests.cpp`, 248 patterns): `find_all` 205 ms and
   `find_in_image` on the exe mapped as an image 197 ms in a Release build, 382 ms and 407 ms in a
   Debug build, whose checked containers slow `count_matches`. The client's wait for the pipe is
-  `CONNECT_SECONDS` (`client/native.py`), 5 s since this change (3 s before): about 10 times the
-  Release scan, 12 the Debug one. Not measured: the scan in the game under load.
+  `CONNECT_SECONDS` (`client/native.py`), 5 s since this change (3 s before the helper scanned at
+  start): about 24 times the Release scan, 13 the Debug one. Not measured: the scan in the game under load.
 
 Evidence, on build B1 only: the helper's scanner, run in `tests/findaddr_tests.cpp` on a copy of
 the exe's `.text`, and through `find_in_image` on that copy mapped as an image (`SEC_IMAGE`: the

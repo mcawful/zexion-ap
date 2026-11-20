@@ -177,6 +177,11 @@ def test_the_helper_says_when_its_addresses_differ_from_the_clients_as_the_clien
         assert f'"{field}' in dllmain, field
     for where in ("scan", "cache", "client"):
         assert f'g_addresses = "{where}";' in dllmain, where
+    # The scan's note for optional addresses not found, as hello sends it: spaces made underscores.
+    assert '"ok without " + lacking' in dllmain
+    one_word = dllmain.split("std::string one_word(std::string text) {", 1)[1].split("}", 1)[0]
+    assert "std::replace(text.begin(), text.end(), ' ', '_')" in one_word
+    assert "ok without ".replace(" ", "_") == native.SCAN_OK_WITHOUT
 
 
 def test_the_helper_takes_functions_as_code() -> None:

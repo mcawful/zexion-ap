@@ -41,6 +41,9 @@ CONFIG_KEYS = tuple(
 # from the client's, then the keys, comma-separated (native/src/dllmain.cpp, ``config``). The
 # helper took the client's all the same.
 DIFFERS = "ok differs "
+# What hello's ``scan`` starts with when only optional addresses were not found, then their names
+# (native/src/dllmain.cpp: "ok without " with its spaces made underscores, one_word).
+SCAN_OK_WITHOUT = "ok_without_"
 APPLY_SECONDS = 3.0  # longer than the 1 s the helper waits for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0
@@ -103,8 +106,8 @@ def scan_warning(hello: dict[str, str]) -> str | None:
     if scan in ("", "-", "ok"):  # "": a mod from before the scan
         return None
     report = "This is a bug: please report it, with the game's build (tools/build_id.py)."
-    if scan.startswith("ok_without_"):
-        names = scan.removeprefix("ok_without_")
+    if scan.startswith(SCAN_OK_WITHOUT):
+        names = scan.removeprefix(SCAN_OK_WITHOUT)
         return (
             f"The mod could not find these addresses by itself ({names}): what needs them "
             f"works only while this client runs. {report}"
