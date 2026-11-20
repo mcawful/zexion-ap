@@ -339,11 +339,15 @@ Committed under `.claude/`, so they apply to anyone working here:
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
   It answers within about a second, as a hook that times out lets the call through: a command
-  over 100,000 characters is blocked unread, and one over a size budget (many different words,
-  folders or heredocs) counts as reaching a protected folder, so only a read-only one passes;
-  a long commit message, PR body or script is fine, and long text goes to a file with the Write
-  tool. `deny` rules for Edit and Write back it up for the save folder, the game install and the cloud
-  cache (not the offline files); only the game-install one has been seen to fire.
+  over 100,000 characters is blocked unread; one over a size budget (many different words,
+  counting a word with a wildcard and each redirect target for more, many commands, or many
+  different folders a `cd` goes to) counts as reaching a protected folder, so only a read-only
+  one passes; and one that takes over a second to read is blocked. A long commit message or PR
+  body is one word to it, a script counts its different words against the budget, and long text
+  goes to a file with the Write tool. More than 32 heredocs are no longer cut out as data (each
+  body is judged as code). `deny` rules for Edit and Write back it up for the save folder, the
+  game install and the cloud cache (not the offline files); only the game-install one has been
+  seen to fire.
   `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist runs `git status`, `diff`,
   `log` and `show`, the read-only forms of `git branch` (bare, `-a`, `-r`, `-v`, `-vv`,
   `--show-current`, `--list`), `ruff check`, `ruff format --check`, pytest, `build_id.py` and

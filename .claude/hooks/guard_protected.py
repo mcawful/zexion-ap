@@ -82,21 +82,27 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     other than a few string and date ones (``_ps_calls_block``); output redirected to a path
     that still holds a variable, a substitution or a backtick after the hook's own environment
     is applied, or to PowerShell's ``> (expression)`` (the guard can't see where it leads:
-    ``_DYNAMIC_TARGET``); and in Bash an environment prefix or ``export`` of a variable that
-    names a program (``_PROGRAM_VAR``: ``GIT_PAGER``, ``LESSOPEN``, ``PATH``, …), even before a
-    read-only command.
+    ``_DYNAMIC_TARGET``; a parenthesis inside quotes is part of a name). That also blocks a
+    target that is no file, Bash's ``> >(cat)`` and PowerShell's ``> (Join-Path $env:TEMP x)``,
+    in a command that already names a protected folder; and in Bash an environment prefix or
+    ``export`` of a variable that names a program (``_PROGRAM_VAR``: ``GIT_PAGER``,
+    ``LESSOPEN``, ``PATH``, …), even before a read-only command.
   - Answers within about a second whatever the command, as a hook that times out lets the call
     through. Past a budget the words are not read one by one: the command counts as reaching a
-    protected folder, so only a read-only one passes (and a redirect, a substitution, a ``tools/``
-    script or a ``git`` command is blocked: ``Too long or too complex to check``). The budget:
-    ``MAX_WORK`` (6000 for the different words, 8 each with a wildcard, and 8 for each redirect
-    target), ``MAX_SEGMENTS``, ``MAX_FOLDERS`` (different folders a ``cd`` goes to) and
-    ``MAX_HEREDOCS`` (past it no heredoc is cut out as data). A command over ``MAX_COMMAND``
-    (100 000 characters) is blocked unread: write long text to a file with the Write tool. A
-    commit message or a PR body is one word to it, and a script's words count once each. Nothing
-    asks the file system about a path that starts with two separators
-    (``protected.is_network_path``): Windows resolves ``//host/x`` over the network, seconds a
-    host.
+    protected folder, so only a read-only one passes (a redirect, a substitution, and the
+    ``tools/`` scripts and ``git`` and ``gh`` commands that are trusted otherwise are blocked:
+    ``Too long or too complex to check``). The budget: ``MAX_WORK`` (the different words, 1
+    each, and for a word with a wildcard, which is read as a pattern, 8 or an eighth of its
+    length if more; 8 for each redirect target; message text is no word), ``MAX_SEGMENTS`` and
+    ``MAX_FOLDERS`` (different folders a ``cd`` goes to). ``MAX_HEREDOCS`` is no part of it:
+    past it no heredoc is cut out as data, so each body is judged as code. A command over
+    ``MAX_COMMAND`` (100 000 characters) is blocked unread: write long text to a file with the
+    Write tool. A commit message or a PR body is one word to it, and a script's words count
+    once each. Past ``DEADLINE`` (one second) of reading, whatever the budget says, the command
+    is blocked too (``_Memo``: every read of a word or a name pattern looks at the clock).
+    Nothing asks the file system about a UNC path on Windows (``protected.is_network_path``:
+    ``//host/x`` is resolved over the network, seconds a host), so a link in one is not
+    followed; ``//?/C:/x`` and ``//./C:/x`` are local paths and are.
 
 This is a tripwire against mistakes, not a sandbox. It can't see a path assembled entirely from
 variables or string arithmetic, a link to a parent folder made outside the command, the
@@ -131,6 +137,7 @@ import json
 import os
 import re
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -1029,11 +1036,12 @@ def _names_parent(word: str, folders: list[str | None], protected) -> bool:
     )
 
 
-def _repo_checkout(folder: str | None) -> bool:
-    """Whether a folder is a checkout of this repo, so its ``tools/`` are the repo's tools."""
+def _repo_checkout(folder: str | None, protected) -> bool:
+    """Whether a folder is a checkout of this repo, so its ``tools/`` are the repo's tools. Not
+    asked of a UNC path (``protected.is_network_path``): that asks the network."""
     return (
         folder is not None
-        and not re.match(r"[\\/]{2}", folder)  # nor over the network (``is_network_path``)
+        and not protected.is_network_path(folder)
         and os.path.isfile(os.path.join(folder, "tools", "protected.py"))
     )
 
@@ -1460,29 +1468,42 @@ def _blanked(code: str, words: list[Word]) -> str:
 # body is one word, and a heredoc that is only data is cut out before the words are counted.
 MAX_COMMAND = 100_000  # characters; a longer command is blocked unread
 MAX_SEGMENTS = 8000  # simple commands
-MAX_WORK = 6000  # over the different words (1 each, 8 with a wildcard) and redirect targets (8)
+MAX_WORK = 6000  # over the different words (``_work``) and redirect targets (8 each)
 MAX_FOLDERS = 16  # different folders the command's ``cd`` goes to
 MAX_HEREDOCS = 32  # Bash heredocs; with more, none is cut out as data
+DEADLINE = 1.0  # seconds; a command whose reading takes longer is blocked
 
 
 # A redirect's target that is worked out when the command runs: a variable still unexpanded, a
 # substitution (``$(…)``, a backtick), or PowerShell's ``> (expr)`` (the lexer's ``(``).
-_DYNAMIC_TARGET = re.compile(r"[$%(`]")
+_DYNAMIC_TARGET = re.compile(r"[$%`]")
 _WILDCARD = re.compile(r"[*?\[{~]")  # what makes a word cost much more to read as a path
+
+
+def _work(word: str) -> int:
+    """What reading a word costs the budget: 1; a word with a wildcard is read as a pattern, 8
+    and an eighth of its length if that is more (a name pattern is read in every reading)."""
+    return max(8, len(word) // 8) if _WILDCARD.search(word) else 1
+
+
+class _OutOfTime(Exception):
+    """Reading a command took longer than ``DEADLINE``."""
 
 
 class _Memo:
     """``protected`` with its functions of one string remembered for one command, so a word
-    that comes up again (``cd a; cd a``) is not read again. ``__getattr__`` hands out the
-    others as they are."""
+    that comes up again (``cd a; cd a``) is not read again. Each one that is not remembered
+    first looks at the clock: past ``due`` (a ``time.monotonic()``) it raises ``_OutOfTime``.
+    ``__getattr__`` hands out the others as they are."""
 
     PURE = frozenset({
         "normalize", "_expand", "mentions_protected", "word_may_name_protected",
         "may_be_above_protected", "pattern_may_name_protected", "is_protected_path",
     })  # fmt: skip
 
-    def __init__(self, module) -> None:
+    def __init__(self, module, due: float) -> None:
         self._module = module
+        self._due = due
         self._seen: dict[tuple, object] = {}
 
     def __getattr__(self, name: str):
@@ -1494,6 +1515,8 @@ class _Memo:
         def remembered(*args):
             key = (name, *args)
             if key not in seen:
+                if time.monotonic() > self._due:
+                    raise _OutOfTime
                 seen[key] = attr(*args)
             return seen[key]
 
@@ -1505,8 +1528,16 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     """Return a reason to block, or None to allow. ``protected`` is the tools/protected module.
 
     ``session_cwd`` is the payload's top-level ``cwd``: where a shell tool without its own
-    ``cwd`` runs.
+    ``cwd`` runs. A command that takes longer than ``DEADLINE`` to read is blocked.
     """
+    due = time.monotonic() + DEADLINE
+    try:
+        return _check(tool_name, tool_input, protected, session_cwd, due)
+    except _OutOfTime:
+        return f"{BLOCK_HINT}\nToo long or too complex to check: reading it took over {DEADLINE} s."
+
+
+def _check(tool_name: str, tool_input: dict, protected, session_cwd: str, due: float):
     if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"}:
         path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
         if path and protected.is_protected_path(path):
@@ -1519,15 +1550,15 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     command = str(tool_input.get("command") or "")
     if len(command) > MAX_COMMAND:
         return f"{BLOCK_HINT}\nA command of {len(command):,} characters is too long to check."
-    protected = _Memo(protected)
+    protected = _Memo(protected, due)
     cwd = str(tool_input.get("cwd") or session_cwd or "")
     code = _here_strings_to_quotes(command) if powershell else _cut_heredocs(command)
     segments, targets = lex(code, powershell)
     text_ids = _text_words(segments, powershell)
     words = [w for s in segments for w in s if id(w) not in text_ids]
     text = _blanked(code, [w for s in segments for w in s if id(w) in text_ids])
-    unique = {str(w) for s in segments for w in s}
-    work = sum(8 if _WILDCARD.search(w) else 1 for w in unique) + 8 * len({str(t) for t in targets})
+    unique = {str(w) for w in words}  # message text is read as no path
+    work = sum(_work(w) for w in unique) + 8 * len({str(t) for t in targets})
     over = len(segments) > MAX_SEGMENTS or work > MAX_WORK
     cds = [] if over else _cd_targets(segments, cwd, code, protected)
     distinct = list(dict.fromkeys(cds))  # the same folder again is not read again
@@ -1585,12 +1616,13 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
             protected.is_protected_path(expanded)  # also by its words: Gallant*, GALLAN~1
             or _reaches_protected(expanded, folders, protected)
             or _DYNAMIC_TARGET.search(expanded)
+            or "(" in target.bare  # PowerShell's ``> (expr)``; one in quotes is a name
         ):
             return block(f"Redirect target: {target}")
 
     suspect_dir = over or any(_folder_is_suspect(f, protected) for f in folders)
     # After a cd, tools/ is the repo's own only in a checkout of the repo.
-    repo_tools = all(_repo_checkout(f) for f in cds)
+    repo_tools = all(_repo_checkout(f, protected) for f in cds)
     for words in segments:
         if not powershell and (program := _sets_program(words)):
             return block(f"An environment prefix that names a program: {program}")

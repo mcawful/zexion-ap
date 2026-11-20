@@ -1619,16 +1619,76 @@ def test_a_redirect_target_built_by_a_substitution_elsewhere_allowed(
 def test_a_redirect_into_a_parenthesis_is_one_target() -> None:
     _, targets = guard_protected.lex('"x" > (Join-Path $PWD out.txt)', True)
     assert targets == ["("]
-    segments, targets = guard_protected.lex('"x" > out.txt (1)', True)
+    _, targets = guard_protected.lex('"x" > out.txt (1)', True)
     assert targets == ["out.txt"]
+    _, targets = guard_protected.lex('"x" > "out (1).txt"', True)
+    assert targets == ["out (1).txt"]
+    assert "(" not in targets[0].bare  # a name with a parenthesis in quotes is no expression
+
+
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [
+        # A command that reaches a protected folder by name only: its target is a name.
+        ("Bash", 'find ~ -name ZexionAP -print > "out (1).txt"'),
+        ("PowerShell", 'gci ~ -r -Filter ZexionAP > "out (1).txt"'),
+        ("Bash", "find ~ -name ZexionAP -print > 'out (1).txt'"),
+    ],
+)
+def test_a_parenthesis_in_a_quoted_redirect_target_is_a_name(tool: str, command: str) -> None:
+    assert run(tool, command=command) is None, command
+
+
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [
+        # Not into a protected folder, but the target is worked out when the command runs, in a
+        # command that names one: blocked all the same.
+        ("Bash", "ls ~/AppData/Local/ZexionAP > >(cat)"),
+        ("PowerShell", "gci $env:LOCALAPPDATA\\ZexionAP > (Join-Path $env:TEMP x.txt)"),
+    ],
+)
+def test_a_computed_redirect_target_beside_a_protected_name_is_blocked(
+    tool: str, command: str
+) -> None:
+    assert run(tool, command=command), command
 
 
 # A hook that times out lets the call through, so the guard answers in about a second whatever
 # the command: past a budget (``MAX_*``) it does not read word by word but takes the command to
 # reach a protected folder, and then only a read-only one passes.
 SLOW = 4  # seconds; the guard needs a fraction of one, a CI machine more
-Z_AP = "Zexion" + "AP"  # kept apart: the test file itself names no folder in one piece
+Z_AP = "Zexion" + "AP"  # the name the hostile commands below are built around
+CLASSES = "[" * 988  # a run of ``[``: every one is tried as the start of a bracket expression
+
+
+@pytest.fixture(autouse=True)
+def _generous_deadline(monkeypatch) -> None:
+    """The guard's own deadline (``DEADLINE``, one second) is the subject of its own tests; the
+    others must not fail on a slow machine."""
+    monkeypatch.setattr(guard_protected, "DEADLINE", 60.0)
+
+
 HOSTILE = {
+    "regex name patterns": (
+        "Bash",
+        "find ~ " + " -o ".join(f"-regex '{CLASSES}q{i}'" for i in range(96)) + " -delete",
+    ),
+    "regex name patterns, then a name": (
+        "Bash",
+        "find ~ "
+        + " -o ".join(f"-regex '{CLASSES}q{i}'" for i in range(96))
+        + f" -o -name {Z_AP} -delete",
+    ),
+    "name patterns in sh -c": (
+        "Bash",
+        "sh -c 'find ~ " + " -o ".join(f'-name "{CLASSES}q{i}"' for i in range(96)) + "'",
+    ),
+    "PowerShell filters": (
+        "PowerShell",
+        "".join(f"gci ~ -r -Filter '{CLASSES}q{i}' | Out-Null; " for i in range(90)) + "gci | ri",
+    ),
+    "name patterns": ("Bash", "find ~ " + " -o ".join(f"-name '{CLASSES}q{i}'" for i in range(98))),
     "dollar-paren run": ("Bash", "$(" * 25000),
     "dollar-paren and a name": ("Bash", "$(" * 25000 + f" -name {Z_AP}"),
     "doubled quotes and parentheses": ("Bash", '"$(' * 16000),
@@ -1734,8 +1794,28 @@ def test_normal_long_commands_still_pass(command: str) -> None:
     assert time.monotonic() - started < SLOW
 
 
+def test_what_is_a_network_path(monkeypatch) -> None:
+    monkeypatch.setattr(protected, "_on_windows", lambda: True)
+    for path in ("//host/share", "\\\\host\\share", "\\\\host\\share\\x", "//?/UNC/host/share"):
+        assert protected.is_network_path(path), path
+    assert protected.is_network_path("\\\\?\\UNC\\host\\share\\x")
+    # A local path with the extended-length or device prefix is not one, nor are the rest.
+    for path in (
+        "//?/C:/x",
+        "\\\\?\\C:\\x",
+        "//./C:/x",
+        "\\\\.\\C:\\x",
+        "/host/share",
+        "C:/host/x",
+    ):
+        assert not protected.is_network_path(path), path
+    monkeypatch.setattr(protected, "_on_windows", lambda: False)  # Linux and macOS: never
+    assert not protected.is_network_path("//host/share")
+
+
 def test_nothing_asks_the_network_about_a_network_path(monkeypatch) -> None:
     # Windows resolves ``//host/share`` over the network, seconds for each host.
+    monkeypatch.setattr(protected, "_on_windows", lambda: True)
     real = os.path.realpath
     asked: list[str] = []
 
@@ -1745,14 +1825,86 @@ def test_nothing_asks_the_network_about_a_network_path(monkeypatch) -> None:
         return real(path, *args, **kwargs)
 
     monkeypatch.setattr(os.path, "realpath", realpath)
-    assert protected.is_network_path("//host/share")
-    assert protected.is_network_path("\\\\host\\share")
-    assert not protected.is_network_path("/host/share")
-    assert not protected.is_network_path("C:/host/share")
     assert not protected.is_protected_path("//host/share/x")
     run("Bash", command="ls //host1/a > //host2/b; cd //host3/c && ls")
     run("PowerShell", command="gci \\\\host4\\a | Out-File \\\\host5\\b")
     assert not asked
+
+
+LINK = "X:/lab/lnk"  # a link to the offline folder, simulated: nothing is created
+LOCAL_PREFIXES = ["//?/", "\\\\?\\", "//./", "\\\\.\\"]
+
+
+@pytest.fixture
+def linked(monkeypatch, local_appdata):
+    """``X:/lab/lnk`` resolves to the offline folder, and ``X:/Steam/steamapps`` and
+    ``…/userdata`` exist, whichever way a path to them is written."""
+    real_path, real_isdir = os.path.realpath, os.path.isdir
+
+    def plain(path) -> str:
+        text = str(path).replace("\\", "/")
+        text = text[4:] if text.startswith(("//?/", "//./")) else text
+        return text.lower()  # the guard folds case before it asks
+
+    def realpath(path, *args, **kwargs):
+        text = plain(path)
+        if LINK.lower() in text:  # also where the guard has folded the prefix's slashes
+            return OFFLINE + text.split(LINK.lower(), 1)[1]
+        return real_path(path, *args, **kwargs)
+
+    def isdir(path):
+        return plain(path).startswith("x:/steam/") or real_isdir(path)
+
+    monkeypatch.setattr(os.path, "realpath", realpath)
+    monkeypatch.setattr(os.path, "isdir", isdir)
+
+
+LINKED_BLOCKED = [
+    ("Write", {"file_path": "\\\\?\\X:\\lab\\lnk\\seeds.json"}),
+    ("Write", {"file_path": "//?/X:/lab/lnk/seeds.json"}),
+    ("Write", {"file_path": "\\\\.\\X:\\lab\\lnk\\seeds.json"}),
+    ("Write", {"file_path": "X:/lab/lnk/seeds.json"}),
+    ("Bash", {"command": "echo x > '//?/X:/lab/lnk/seeds.json'"}),
+    ("Bash", {"command": "echo x > '//./X:/lab/lnk/seeds.json'"}),
+    ("Bash", {"command": "rm -r '//?/X:/lab/lnk'"}),
+    ("Bash", {"command": "cp a '//?/X:/lab/lnk/seeds.json'"}),
+    ("PowerShell", {"command": '"x" > \\\\?\\X:\\lab\\lnk\\seeds.json'}),
+    ("PowerShell", {"command": "Remove-Item -Recurse \\\\?\\X:\\lab\\lnk"}),
+    ("Bash", {"command": "cd '//?/X:/Steam' && rm -rf steamapps"}),
+    ("Bash", {"command": "cd '//?/X:/Steam' && rm -rf userdata"}),
+    ("PowerShell", {"command": "Set-Location \\\\?\\X:\\Steam; Remove-Item -Recurse steamapps"}),
+]
+
+
+@pytest.mark.parametrize(("tool", "tool_input"), LINKED_BLOCKED)
+@pytest.mark.parametrize("windows", [True, False])
+def test_a_link_behind_a_local_device_path_is_still_followed(
+    tool: str, tool_input: dict, windows: bool, linked, monkeypatch
+) -> None:
+    # On Windows the prefixes are local paths; on Linux and macOS ``//`` is never the network.
+    monkeypatch.setattr(protected, "_on_windows", lambda: windows)
+    assert run(tool, **tool_input), (tool, tool_input)
+
+
+def test_a_slow_command_is_blocked_at_the_deadline(monkeypatch) -> None:
+    command = "find ~ " + " -o ".join(f"-name 'q{i}'" for i in range(200)) + " -delete"
+    assert run("Bash", command=command) is None  # read in full: no protected name
+    monkeypatch.setattr(guard_protected, "DEADLINE", 0.0)
+    reason = run("Bash", command=command)
+    assert reason and "reading it took over" in reason
+    assert run("Bash", command="ls lab")  # even a read, when the time is gone
+    assert run("PowerShell", command="gci lab | ri")
+
+
+def test_the_clock_is_read_for_every_word_not_remembered(monkeypatch) -> None:
+    ticks = iter(range(10_000))
+    monkeypatch.setattr(guard_protected.time, "monotonic", lambda: next(ticks) / 1000)
+    monkeypatch.setattr(guard_protected, "DEADLINE", 0.5)  # 500 reads of the clock
+    words = " ".join(f"w{i}" for i in range(2000))  # each is read once: over the deadline
+    assert "reading it took over" in (run("Bash", command=f"ls {words}") or "")
+    ticks = iter(range(10_000))
+    again = " ".join("w" for _ in range(2000))  # the same word again is remembered
+    assert run("Bash", command=f"ls {again}") is None
 
 
 @pytest.mark.parametrize(

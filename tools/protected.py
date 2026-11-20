@@ -290,6 +290,22 @@ _CLASS = re.compile(
     r"\[[!^]?(?:\]|\[:\w{1,16}:\]|[^\]\[]|\[(?!:\w{1,16}:\]))"
     r"(?:\[:\w{1,16}:\]|[^\]\[]|\[(?!:\w{1,16}:\])){0,63}\]"
 )
+
+
+def _class_at(text: str, i: int) -> re.Match | None:
+    """The bracket expression that starts at ``text[i]``, if any. A ``[`` with no ``]`` within
+    reach (``_CLASS`` is at most 1283 characters long) starts none: a run of ``[`` is then read
+    in linear time."""
+    if text.find("]", i + 1, i + 1284) < 0:
+        return None
+    return _CLASS.match(text, i)
+
+
+def _sub_classes(repl, text: str) -> str:
+    """``text`` with ``repl`` applied to each bracket expression in it."""
+    return _CLASS.sub(repl, text) if "]" in text else text
+
+
 # A class of letters and digits only (``[Zz]``) stands for one fixed character.
 _PLAIN_CLASS = re.compile(r"\[[A-Za-z0-9]+\]")
 # The two protected names that are also the repo's own (``worlds/zexion``, ``zexion*.py``) as they
@@ -312,7 +328,7 @@ def _regex_as_glob(pattern: str, groups: bool = True) -> str:
     paren = "/" if groups else ""
     while i < len(pattern):
         c = pattern[i]
-        cls = _CLASS.match(pattern, i) if c == "[" else None
+        cls = _class_at(pattern, i) if c == "[" else None
         if cls:
             out.append("?" if cls.group()[1] in "^!" else cls.group())
             i = cls.end()
@@ -355,7 +371,7 @@ def _braces(pattern: str, limit: int = 32) -> list[str]:
 def _literal_len(part: str) -> int:
     """How many characters of a name pattern are fixed: not a wildcard, and not a class but a
     plain one of letters and digits (``[Zz]``), which counts as one."""
-    part = _CLASS.sub(lambda m: "x" if _PLAIN_CLASS.fullmatch(m.group()) else "", part)
+    part = _sub_classes(lambda m: "x" if _PLAIN_CLASS.fullmatch(m.group()) else "", part)
     return len(re.sub(r"[*?]", "", part))
 
 
@@ -394,7 +410,7 @@ def pattern_may_name_protected(pattern: str, kind: str = "name", ignore_case: bo
     )
     readings = []
     for text in texts:
-        text = _CLASS.sub(lambda m: "?" if "/" in m.group() else m.group(), text)
+        text = _sub_classes(lambda m: "?" if "/" in m.group() else m.group(), text)
         readings.append(text)
         if kind != "name":
             readings += [text.replace("*", "/"), text.replace("?", "/")]
@@ -437,17 +453,18 @@ _SHORT_NAME = re.compile(r"([^~*?\[]{1,6})~\d+")  # an 8.3 short name: ``GALLAN~
 _ANY = "?"  # one wildcard character; "*" is a run of them; anything else is itself
 
 
-def _wildcard_tokens(part: str) -> list[str]:
+@functools.lru_cache(maxsize=1024)  # a part is read against every name, in every reading
+def _wildcard_tokens(part: str) -> tuple[str, ...]:
     tokens, i = [], 0
     while i < len(part):
-        cls = _CLASS.match(part, i) if part[i] == "[" else None
+        cls = _class_at(part, i) if part[i] == "[" else None
         if cls:  # a character class: read as any one character
             tokens.append(_ANY)
             i = cls.end()
         else:
             tokens.append(part[i])
             i += 1
-    return tokens
+    return tuple(tokens)
 
 
 def _part_matches(part: str, name: object, first: bool, last: bool) -> bool:
@@ -492,15 +509,28 @@ def _part_matches(part: str, name: object, first: bool, last: bool) -> bool:
     return n in states or after in states
 
 
+# A UNC path: two separators and a server. Not the extended-length and device forms of a local
+# path (``//?/C:/x``, ``//./C:/x``), which ``//?/UNC/server/share`` makes a network path again.
+_UNC = re.compile(r"[\\/]{2}(?:(?![?.][\\/])|[?.][\\/]UNC[\\/])", re.IGNORECASE)
+
+
+def _on_windows() -> bool:
+    return sys.platform == "win32"
+
+
 def is_network_path(path: str) -> bool:
-    """True for a path that starts with two separators (``//host/share``, ``\\\\host\\share``,
-    ``//./pipe``): Windows resolves one over the network, seconds for each host, so nothing asks
-    the file system about it."""
-    return re.match(r"[\\/]{2}", path) is not None
+    """True, on Windows, for a UNC path (``//server/share``, written with backslashes as well,
+    or ``//?/UNC/server/share``). Windows resolves one over the network, seconds for each
+    server, so nothing asks the file system about it. A local path with the extended-length or
+    device prefix (``//?/C:/x``, ``//./C:/x``) is not one, and neither is ``//x`` on Linux and
+    macOS."""
+    return _on_windows() and _UNC.match(path) is not None
 
 
 def is_protected_path(path: str | os.PathLike[str]) -> bool:
-    """True when ``path`` is inside a protected folder, before or after resolving links."""
+    """True when ``path`` is inside a protected folder, before or after resolving links. Not
+    resolved (judged by its text alone) is a UNC path (``is_network_path``), where resolving
+    asks the network."""
     raw = os.fspath(path)
     candidates = [raw]
     expanded = _expand(raw)
