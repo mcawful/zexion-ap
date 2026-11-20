@@ -86,9 +86,11 @@ popups, received traps, Energy Shields, checks, Intel Chips, popups in English(H
 the OS Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an
 ending, tall popups' text, the title screen's lines, the file select's AP logo, disk counts and
 ITEMS row and the look without the client; this world's own traps, and its own disks with no
-client, not yet; these runs predate the socket's token, the client's keep-alive and let-go, and
-the review's later fixes to the helper and client (`native/README.md`, "The Linux helper", lists
-them), which have run on stand-ins only: the next in-game run re-checks the attach), and so do
+client, not yet; run 3 (2026-11-20) then checked, in the game, the attach with the socket's token,
+the look's gate on the client's seed (#162), the file select's fixes, DeathLink's death count and
+the client's seed file and labels, and a release's Steam Runtime build ran there too
+(`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the review's other later fixes
+(`native/README.md`, "The Linux helper", lists them) have run on stand-ins only), and so do
 `grant.py`, `check_patterns.py --live` and `helper.py status`
 ([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
 
@@ -177,10 +179,12 @@ Nothing in `tests/` needs the game, and CI never runs it.
   Shields, checks, Intel Chips, popups in English(HD) and Japanese, the OS Install Disks goal with
   RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending, tall popups' text, the
   title screen's lines, the file select's AP logo, disk counts and ITEMS row and the look without
-  the client; this world's own traps, and its own disks with no client, not yet; these runs
-  predate the socket's token, the client's keep-alive and let-go, and the review's later fixes to
-  the helper and client (`native/README.md`, "The Linux helper", lists them), which have run on
-  stand-ins only: the next in-game run re-checks the attach):
+  the client; this world's own traps, and its own disks with no client, not yet; run 3 (2026-11-20)
+  then checked, in the game, the attach with the socket's token, the look's gate on the client's
+  seed (#162), the file select's fixes, DeathLink's death count and the client's seed file and
+  labels, and a release's Steam Runtime build ran there too (`docs/re/linux.md`, "Seen in the
+  running game, 2026-11-20"); the review's other later fixes (`native/README.md`, "The Linux
+  helper", lists them) have run on stand-ins only):
   [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and loads it
   again a few seconds later (for a misbehaving mod; popups still queued are lost); on Linux, where
   the Linux helper stays for the game's run, it says to restart Zexion instead.

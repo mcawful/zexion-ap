@@ -265,10 +265,12 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 
 The mod is for both of the game's builds: Windows, and the native Linux build (below), with a
 helper of its own that runs every part of the Windows helper's but unloading, run in the game on
-2026-11-18 and 2026-11-19 (what ran, and what has not yet: below; these runs predate the socket's
-token, the client's keep-alive and let-go, and the review's later fixes to the helper and client
-(`native/README.md`, "The Linux helper", lists them, the look's gate on the client's seed
-among them), which have run on stand-ins only: the next in-game run re-checks the attach); the client attaches to either build. Everything else runs on
+2026-11-18 and 2026-11-19 (what ran, and what has not yet: below; run 3 (2026-11-20) then checked,
+in the game, the attach with the socket's token, the look's gate on the client's seed (#162), the
+file select's fixes, DeathLink's death count and the client's seed file and labels, and a release's
+Steam Runtime build ran there too (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the
+review's other later fixes (`native/README.md`, "The Linux helper", lists them) have run on
+stand-ins only); the client attaches to either build. Everything else runs on
 Windows, Linux and macOS, and CI runs ruff and pytest on all three.
 
 Windows only:
@@ -330,12 +332,14 @@ Deck and Snap's Steam are not tried: what is known of the Deck and the runtime i
   DeathLink both ways, scrap's drops, the Feats guard at an AP ending (no Feats, no achievement,
   its note) and tall popups' text (`native/README.md`, "The Linux helper"); this world's own traps
   (with or without a client) and its own disks with no client are not run in the game yet (the
-  client's lines said the ASSIST lock and the labels were set; not looked at); those runs predate
-  the socket's token, the client's keep-alive and let-go, and the review's later fixes to the
-  helper and client (the put-back of whatever a connection set, `write` taking only the ranges the
-  client writes, the auth deadline, the token candidates, the narrower map cache, the Steam
-  check's retry, the settings sent only on the configured connection, a RETURN HOME prompt put
-  back offered again, the look's gate on the seed the client put), which have run on stand-ins only (the next run re-checks the attach). How
+  client's lines said the ASSIST lock and the labels were set; not looked at); run 3, 2026-11-20,
+  checked the socket's token, the look's gate on the seed the client put, the file select's fixes,
+  DeathLink's death count and the client's seed file and labels in the game (`re/linux.md`, "Seen in
+  the running game, 2026-11-20"), and the release's Steam Runtime build ran there too; the review's
+  other later fixes (the put-back of whatever a connection set, `write` taking only the ranges the
+  client writes, the auth deadline, the token candidates, the narrower map cache, the Steam check's
+  retry, the settings sent only on the configured connection, a RETURN HOME prompt put back offered
+  again) have run on stand-ins only. How
   to run it in the game, and what to try first: `native/README.md`, "Running it in the game".
   `menu_state` is the game's cursor mode on Linux (`gCursorMode`), which the mouse may set to 1,
   but only in menus: in play it stays 0 (read live, 2026-11-19: `re/linux.md`, `menu_state`).
@@ -502,10 +506,9 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
 holds code ready for the next release. Work happens on short-lived topic branches cut from
 `develop`, merged into `develop` by pull request, then deleted. `develop` and `main` take changes
 only through pull requests with every CI check passing. Branch protection requires every check but
-`ruff and pytest (macos-latest)`, which a pull request must still pass. The `native helper
-(ubuntu-latest)`, `Linux helper (Steam Runtime)` and `Linux helper (Steam Runtime) loads` checks
-are not required until the owner adds them in GitHub's settings (the checks that are required are
-listed there).
+`ruff and pytest (macos-latest)`, which a pull request must still pass (the owner added `native
+helper (ubuntu-latest)`, `Linux helper (Steam Runtime)` and `Linux helper (Steam Runtime) loads` on
+both branches, 2026-11-20; the checks that are required are listed in GitHub's settings).
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate

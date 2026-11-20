@@ -2853,8 +2853,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `jmp`, both put back once the client goes. The equipment screen and the pause row: built only
   (the stand-in has no menus), and in a translation assumed ("Translations", above). The pause row
   and the count notices run in the game, 2026-11-19 ("The Linux helper", above: run 2), which
-  predates the gate on the client's seed: the count's gate has run on stand-ins only, not in
-  the game; the scanner's line and the equipment screen not reached.
+  predates the gate on the client's seed; the gate ran in run 3, 2026-11-20 (another save: no disk
+  row on the pause screen, `docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the
+  scanner's line and the equipment screen not reached.
 - **This world's own disks, counted at their pickup.** `Game::watch_own_disks` runs at each frame
   call as on Windows ("The OS Install Disks goal", "The count follows the save"): in a known disk
   seed's save, an own disk's cell turning collected after two frames in play queues "OS Install
