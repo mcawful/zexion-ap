@@ -90,6 +90,36 @@ def seed_text(
     return "\n".join(lines) + "\n"
 
 
+def keep_richer(text: str, stored: str | None) -> str:
+    """``text``, a seed file with less than the whole (the slot data's alone: no labels, and no
+    disk counts until the items are listed), with what ``stored``, the file the helper already
+    keeps under the seed's name, has that ``text`` lacks: its ``ap_labels`` block, its
+    ``discs`` and ``unfound`` lines, and ``assists free`` (Assist Unlock is never taken back, and
+    the slot data's lock stands before this connection's items are listed). So putting ``text``
+    never replaces a richer file with a poorer one (the helper keeps what it is put as it is),
+    while the helper still takes the seed's own traps from it. ``text`` as it is when ``stored``
+    is no seed file, or one of another seed (its table differs)."""
+    if not stored:
+        return text
+    old, new = stored.splitlines(), text.splitlines()
+    if not old or old[0] != "zexion-ap offline 1" or not new or new[0] != old[0]:
+        return text
+    table = [line for line in old if line.startswith("table ")]
+    if not table or table[:1] != [line for line in new if line.startswith("table ")][:1]:
+        return text
+    kept = {key: line for key in ("discs", "unfound") for line in old if line.startswith(key + " ")}
+    merged = [
+        kept.get(line.split(" ", 1)[0], line) if line.endswith(" -") else line for line in new
+    ]
+    # Assist Unlock is never taken back: the slot data's lock, before this connection's items are
+    # listed, does not undo the free menu the file already holds.
+    if "assists free" in old:
+        merged = ["assists free" if line == "assists lock" else line for line in merged]
+    if "ap_labels" not in new and "ap_labels" in old:
+        merged += old[old.index("ap_labels") :]
+    return "\n".join(merged) + "\n"
+
+
 def put_request(kind: str, text: str, name: str = "") -> str:
     """The helper's ``offline_put`` request: ``kind`` "config" or "seed" (with its file
     ``name``), then the file's text."""

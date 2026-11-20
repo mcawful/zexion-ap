@@ -2948,14 +2948,41 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   (`death_fn`, `docs/re/linux.md`: its kind-0 callers, the halt byte, and the death's popup
   written through unchecked when every message slot is busy, which the message check keeps from).
   The client deals the queued ones through `LinuxMod` when no Windows helper is there
-  (`ticks.deathlink_tick`): a request with no reply leaves it as being dealt (a death seen soon
-  after the reply was lost is it, as a reply lost on Windows); one that never went out stays
+  (`ticks.deathlink_tick`): a request with no reply leaves it as being dealt, and no other is
+  asked for until it is settled (`DeathLink.watching`): a death seen within `DEALT_SECONDS` of the
+  first in-play or dead state read after the reply was lost is it, as a reply lost on Windows,
+  but counted from that read, not from the loss (the next poll first configures the helper
+  again, which can take longer than the window, and the socket's timeout is itself longer), and
+  so is one the save's death count shows (`discs.deaths`: it went up since the ask, the player
+  having respawned before the read, at any delay; two or more, read while the player is dead:
+  their own death besides, which is sent, and so is a further rise while they stay dead). The
+  count is Windows B1's by disassembly (a death writes it into the slot's block at its end,
+  before the respawn: "A save at the Landing Pod" in `docs/re/memory.md`, not seen live).
+  **On the Linux build that the record's field is written so, and when, is assumed and
+  untraced** (`docs/re/linux.md` records the live counter `+0xAD4` only), and so is that one
+  death with its respawn adds exactly one (on Windows B1 `docs/re/memory.md` records that
+  `0xA2E50` adds one, at `0xA2EBB`, and not traced is whether it runs after the kind-0 death that
+  `die` deals; the respawn routine `0x9F3B0` is not traced for an add). **If either is wrong,
+  the lost reply's death can be echoed to the other players, or dealt twice**, as it could
+  before the count was used. On Windows B1 RELOAD FROM CHECKPOINT (not RELOAD FROM SAVE) and the
+  player's own death raise the count too, with these limits, all rare and with no cheap fix:
+  - one in the gap is taken for the dealt one, so a death the helper never got can go undealt;
+  - a rise of two read in play is not sent, whether it is a dealt death and a reload, or a dealt
+    death and a death of the player's own that they already respawned from (that death is not
+    sent);
+  - a dealt death, then a RELOAD FROM CHECKPOINT, then the player's own death read during its
+    animation, sends two deaths for one (the first rise is settled as the dealt death, the second
+    is taken for the player's own, though the reload caused it).
+
+  With no count to go by, a first read more than `LOST_SECONDS` after the loss leaves it
+  queued, as no death seen is told from the player's own by then. One that never went out stays
   queued, and a Linux helper of this version from before deaths is said once, the deaths waiting
   for a newer one; the Linux helper is dropped (`linux_mod_lost`) either way. Tested on the
   stand-in game through the socket (`tests/test_native_linux.py`: `die` refused unconfigured and
   halted, then energy 0 and the death routine with the player and kind 0) and with stand-ins for
   the client (`tests/test_ticks.py`); both ways run in the game, 2026-11-19 ("The Linux helper",
-  above: run 2).
+  above: run 2). The lost reply's handling is stand-in tests only
+  (`tests/test_deathlink.py`, `tests/test_ticks.py`), not run in the game.
 - **Intel Chips.** `intel on` and `intel off` are taken as on Windows ("Intel Chips"), and
   `Game::watch_intel` runs at each frame call: the Area Map's record (49) named INTEL CHIP, its
   map reveal (3551) off, while on and only if the record reads as the game loads it or as the
@@ -3045,9 +3072,17 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `other_save` for another seed's save in play (`linux_other_save_tick`). The client hands over
   the whole seed file, its labels included, once known (`offline_seed`, as on Windows), and what
   the slot data alone gives until then, never after the whole file went in that client run (a
-  reconnect lists the items afresh: `ZexionContext.linux_full_seeds`). The file select's counts,
-  from the save slots, and its logo show as on Windows ("The file select's AP logo and disk
-  counts", below). What differs on Linux:
+  reconnect lists the items afresh: `ZexionContext.linux_full_seeds`), and a new client run's first
+  put, before the scouts answer, carries the labels, the disk counts and the free ASSIST menu of
+  the file the helper already keeps under that name (`offline.keep_richer`: the client reads it
+  beside the token the helper took, `ticks.linux_stored_seed`, once a run; the helper has no
+  request that says what its file holds), so a client that closes before the whole text is known
+  leaves the later runs with no client the labels they had, where the client can read the
+  helper's token folder (where it can't, the poorer text replaces the file as before). A text
+  the helper cannot parse is put again as the slot data's alone. Those two (the stored file's
+  labels kept, and the merged text put again) are stand-in tests only, not run in the game. The
+  file select's counts, from the save slots, and its logo show as on Windows ("The file select's
+  AP logo and disk counts", below). What differs on Linux:
   - a client that loses its server connection lets the Linux helper's connection go, as the
     Windows client lets its helper go (`leave_helper_tick`: under the same conditions, with
     `LinuxProcess.disconnect`), so the helper takes it for a client that went (below) and this
@@ -3070,7 +3105,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   taking the look back, `client_back` shown once, `other_save` dressing it again with the
   other-seed notice, and that client gone, dressed afresh with the not-connected notice again) and
   with stand-ins for the client (`tests/test_zexion_client.py`: the whole seed file not replaced
-  by the slot data's after a reconnect); run in the game, 2026-11-19 ("The Linux helper", above).
+  by the slot data's after a reconnect); run in the game, 2026-11-19 ("The Linux helper",
+  above). The stored file's labels kept in a new run's first put are stand-in tests only
+  (`tests/test_zexion_client.py`, `tests/test_offline.py`).
 - **The title screen's lines.** `Game::watch_title` runs at each frame call with no save loaded,
   as on Windows ("The title screen's lines"): ARCHIPELAGO MOD and the version (set in the helper's
   constructor), ©2026 MCAWFUL, and with no client attached the hint to start it, made with the
