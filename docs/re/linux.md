@@ -9,8 +9,8 @@ the running game").
 
 Every target of `client/patterns.py` is mapped. Most facts here are from the binary on disk;
 "Read from the running game" records what has been read from the game itself on 2026-11-18 (through
-the Linux helper, `native/README.md`), "Seen in the running game, 2026-11-19" what the owner saw on
-the 19th, and "Reading the running game" is from the test PC and a stand-in
+the Linux helper, `native/README.md`), "Seen in the running game, 2026-11-19" and "…, 2026-11-20"
+what the owner saw on the 19th and the 20th, and "Reading the running game" is from the test PC and a stand-in
 game. The disassembly is GNU `objdump -d -C
 -M intel` of a copy in `lab/linux-b1/` (`all.asm`), which names each rip-relative operand as
 `symbol+offset`.
@@ -1267,6 +1267,22 @@ disassembly showed; this one is what ran in the game. A part not listed here has
 | Method | The owner played the game with the Linux helper preloaded and the client from source attached to a locally hosted seed, receiving items through the server's console (`/send`); `tools/grant.py watch` and `tools/helper.py status` for the reads; the client's log lines; `cmp` of `GameUnlocks.sav` against the backup taken before run 2 |
 | Build | B1 (Linux), Flatpak Steam on the test PC (CachyOS). Run 1: the helper of 207af39, `libzexion_ap.so` `d6e91080…`, then, for the popups' steps, `b98752ac…` (`native/README.md` says it was built from the commit that records the run, fb2ad57). Run 2: the helper of 4e0203f's sources; **its hash was not recorded** (the owner built it on Linux and has not given one), so which binary ran is known by its sources only. |
 | Evidence | The owner's report of each run and the client's lines it quotes, as `native/README.md` records them; the commit messages of fb2ad57, 4e0203f and dad0f1c. Nothing else is kept: not a screenshot, a log, or the helper binary of run 2. |
+
+## Seen in the running game, 2026-11-20 (run 3)
+
+The fixes merged after runs 1 and 2 (#162, #164, #165, #169 to #171, the socket's token), checked
+in the game on the same setup, as the owner saw them and the client's lines and files said.
+
+| Field | |
+|---|---|
+| Value | **The helper and the socket's token.** The helper of develop at 5611378, copied into the game's folder before the game started (the game mapped that file's inode); `tools/helper.py status` from the host reached the game under Flatpak's Steam with the token (`zexion-ap 1.2.0 build=B1 hooked=1`, 165 frame calls a second from `SWHardwareEnd`, memory readable), and so did the client. |
+| | **A new game in a slot that held a deleted AP save** (#165): slot 5, run 1's deleted AP save of a seed the helper knows; through the new game's fade the entry showed no AP logo and no DISK count. **The file select's DISK count from the entry's own block** (#164): a disk received, a checkpoint reached with no save at a save point, then the file select: slot 5's entry read DISK 1, the checkpoint's (its last full save had 0). **Another save** (#162): slot 1, not an AP save, loaded with the client attached: no disk row on the pause screen, ASSIST unlocked; back in slot 5, the seed's look again (the client's lines). |
+| | **DeathLink** (#169): the owner's own death to an enemy reached RunB once ("RunA died in Zexion."); a death RunB sent was dealt ("the received death was dealt."), not sent back. **Labels after a reconnect** (#171): the server stopped and started again, both clients reconnected, and an item of RunB's picked up after it read MISSILE CONTAINER FOR RUNB, the server: "RunA sent Missile Container to RunB (Kresezoa 13,18)". **The seed file kept** (#170): RunA's client stopped and started again; the seed's file stayed as it was (the same time, SHA-256 `bb333eca…`, its 85 `label` lines). |
+| | **The seeds' folder under Flatpak's Steam**, inferred until then: the files are in `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP/seeds/`, one `<seed>-<team>-<slot>.txt` a seed (listed, read-only). **Not seen:** a lost DeathLink reply settled by the death count (it can't be forced from play), the frame work with another `SDL_GL_SwapWindow` wrapper in front (#173), the Steam export with no `libsteam_api` (#174), the map cache's narrowing (#175), the start-up order (#176), the `write: N ranges` line (stderr not read). |
+| Status | measured (in the game, 2026-11-20, as the owner saw it, the client's lines said it, and the seed file and the server's log read) |
+| Method | As runs 1 and 2: the owner played with the helper preloaded; the client from source (RunA) and a plain Archipelago client with DeathLink (RunB, a script on `CommonClient`, not kept) attached to a locally hosted seed of two slots with the OS Install Disks goal (16, 3 required), DeathLink and the Landing Pod; items through the server's console (`/send`); `tools/helper.py status`; `sha256sum`, `ls` and `cut` on the seed file. |
+| Build | B1 (Linux), Flatpak Steam on the test PC (CachyOS), the helper of develop at 5611378 (`libzexion_ap.so` `b5c8f9c3…`). |
+| Evidence | The owner's report, the client's lines, the server's log and the seed file's listing as quoted above (`lab/run3/`, not in the repo). |
 
 ## The per-frame call: SDL_GL_SwapWindow through the PLT
 

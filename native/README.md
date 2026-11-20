@@ -1537,22 +1537,23 @@ the helper:
   turned back when the helper takes its opener back, another transition's fade left alone, a death's
   own fade left alone, and `discs` turned off after such a save.
 
-For every seed it has a file for, with a client or none, it shows
-each save's own count on the file select, COPY FILE and DELETE FILE in place of the keys
-(`src/files.cpp`, wrapping each entry's handler): DISK over KEYS, and the count. The count's two
-digits sit 5 px below their row (`kCountDrop`), centered on the items bracket beside them (`0xD9`
-over `0xDA`, rows 3 and 4: its middle 7.5 px below row 3's top, a digit's 3, so 4.5; 5 chosen in
-game). Nothing shows for a save with no disk. The count is the save's own: what the seed's
-file holds (the disks the slot starts with and those received, which the client keeps up to
-date while connected) plus each of this player's own disks the map of the record the entry
-shows reads collected (`FileEntries`, `DiskCount`, read from the entry's own block each frame:
-on the Linux build that block is the slot's checkpoint record while it is in use, which can
-hold a disk the full save does not, `docs/re/linux.md`, "Mapped by disassembly: the file
-select's AP logo and disk counts"; whether the Windows build's entry does the same is not
-recorded, `docs/re/memory.md`, "The file select", and the entry's block is read either way).
-This read is stand-in tested (`native/tests/files_tests.cpp`) and not run in the game: the
-in-game runs of the disk counts (2026-10-24 to 2026-11-19) were of the earlier read, the slot
-array's full save.
+For every seed it has a file for, with a client or none, it shows each save's own count on the
+file select, COPY FILE and DELETE FILE in place of the keys (`src/files.cpp`, wrapping each
+entry's handler): DISK over KEYS, and the count. The count's two digits sit 5 px below their row
+(`kCountDrop`), centered on the items bracket beside them (`0xD9` over `0xDA`, rows 3 and 4: its
+middle 7.5 px below row 3's top, a digit's 3, so 4.5; 5 chosen in game). Nothing shows for a save
+with no disk. The count is the save's own: what the seed's file holds (the disks the slot starts
+with and those received, which the client keeps up to date while connected) plus each of this
+player's own disks the map of the record the entry shows reads collected (`FileEntries`,
+`DiskCount`, read from the entry's own block each frame: on the Linux build that block is the
+slot's checkpoint record while it is in use, which can hold a disk the full save does not,
+`docs/re/linux.md`, "Mapped by disassembly: the file select's AP logo and disk counts"; whether
+the Windows build's entry does the same is not recorded, `docs/re/memory.md`, "The file select",
+and the entry's block is read either way). This read is stand-in tested
+(`native/tests/files_tests.cpp`) and ran in the game on the Linux build, 2026-11-20
+(`docs/re/linux.md`, "Seen in the running game, 2026-11-20": a checkpoint's disk shown that the
+full save did not hold); on Windows not run since: the in-game runs there (2026-10-24 to
+2026-11-04) were of the earlier read, the slot array's full save.
 
 **The count follows the save** (the owner's decision, 2026-11-14): the disks the slot starts
 with, those received from other players, and this world's own disk locations collected in the
@@ -2358,11 +2359,13 @@ recorded in `docs/re/linux.md`, "Seen in the running game, 2026-11-19".
 Both runs predate the socket's token, the client's keep-alive and let-go, and the review fixes
 that followed: the put-back of whatever a connection set when it goes, `write` taking only the
 ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map
-cache, the Steam check's retry, the client's settings sent only on the configured connection,
-a RETURN HOME prompt put back being offered again, and the look's gate on the seed the client
-put (`offline_put`: Intel Chips, the ASSIST lock and the disks' count only in that seed's
-save, #162). Those have run on stand-ins only; the next in-game run re-checks the attach as a
-whole.
+cache, the Steam check's retry, the client's settings sent only on the configured connection, a
+RETURN HOME prompt put back being offered again, and the look's gate on the seed the client put
+(`offline_put`: Intel Chips, the ASSIST lock and the disks' count only in that seed's save, #162).
+Run 3 (2026-11-20, develop at 5611378) checked the attach with the token, #162, the file select's
+fixes (#164, #165), DeathLink's death count (#169) and the client's seed and labels (#170, #171)
+in the game (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the rest of the list has
+run on stand-ins only.
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
@@ -2412,10 +2415,10 @@ its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
    `save_lab.py install` is asked first too).
 7. Then check the seeds' files the client put: the game's `$XDG_DATA_HOME/ZexionAP/seeds/`, else
    `~/.local/share/ZexionAP/seeds/`, which under Flatpak's Steam is its sandbox's home's:
-   `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP/seeds/` (inferred, not seen: "Seed
-   files", below), `<seed>-<team>-<slot>.txt` (`client/offline.py`, `seed_file_name`), and the
-   stderr line `configured from the game's symbols, no client` once the game runs with it and no
-   client. Only the helper writes them (`CLAUDE.md`, "Rules").
+   `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP/seeds/` (seen there, 2026-11-20:
+   "Seed files", below), `<seed>-<team>-<slot>.txt` (`client/offline.py`, `seed_file_name`), and
+   the stderr line `configured from the game's symbols, no client` once the game runs with it and
+   no client. Only the helper writes them (`CLAUDE.md`, "Rules").
 
 What to try first, each before the next:
 
@@ -2425,14 +2428,15 @@ What to try first, each before the next:
    "Platforms").
 3. A new game: ARCHIPELAGO on the game-mode panel, and the seed's placement (`newgame_status`;
    "New games", below).
-4. The socket's token, with native Steam and with Flatpak Steam (the first run since it was
-   added; stand-in tested only, `docs/re/linux.md`, "Reading the running game"): the stderr line
-   `serving build B1` and no `no token`; `helper.py status` printing the game, the helper and
-   `memory: readable`; the line `write: 5 ranges, 29222 bytes allowed` with no line saying a
-   range is outside `gGameState` (else the layout is not the one recorded, and the client's
-   writes there are refused); `ls -l` of the folder holding `token` showing the file `-rw-------`
-   and the folder `drwx------`; and another connection (`python3 -c` with a socket to
-   `\0zexion-ap-<inner pid>` sending `read 0x400000 16`) refused with `error auth required`.
+4. The socket's token, with native Steam and with Flatpak Steam (with Flatpak Steam run in the
+   game, 2026-11-20 (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); with native
+   Steam not yet): the stderr line `serving build B1` and no `no token`; `helper.py status`
+   printing the game, the helper and `memory: readable`; the line `write: 5 ranges, 29222 bytes
+   allowed` with no line saying a range is outside `gGameState` (else the layout is not the one
+   recorded, and the client's writes there are refused); `ls -l` of the folder holding `token`
+   showing the file `-rw-------` and the folder `drwx------`; and another connection (`python3 -c`
+   with a socket to `\0zexion-ap-<inner pid>` sending `read 0x400000 16`) refused with `error auth
+   required`.
 5. A grant with its popup, in a lab slot: an item received in play, its popup, sound and HUD
    ("Grants and popups", below).
 6. Then the rest, each part's bullet below saying what it does.
@@ -2635,9 +2639,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     one's clean-up. A connection that set nothing (`tools/helper.py status`, a probe: `hello`,
     `ping`, `callers`, `read`, the `*_status` requests, `lang`) leaves nothing to put back, and
     its closing changes nothing in the game or in the look of an AP save with no client.
-  - Not run in the game yet: the stand-in tests cover the handshake, the refusals, the file's
-    modes and a client reading it through `/proc/<pid>/root`, not Flatpak's Steam
-    (`docs/re/linux.md`, "Read from the running game": what the owner checks).
+  - The handshake through `/proc/<pid>/root` with Flatpak's Steam run in the game, 2026-11-20
+    (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"): `helper.py status` and the
+    client reached the game with it. The refusals and the file's modes are stand-in tested only.
 - **Reading and writing the game.** The helper reads the game's memory itself, for `read`, with
   `process_vm_readv` on its own pid: the kernel copies it, so an address not mapped is an
   error (`error Bad_address`), not a fault. It writes it for `write` with `process_vm_writev`,
@@ -2974,15 +2978,16 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     animation, sends two deaths for one (the first rise is settled as the dealt death, the second
     is taken for the player's own, though the reload caused it).
 
-  With no count to go by, a first read more than `LOST_SECONDS` after the loss leaves it
-  queued, as no death seen is told from the player's own by then. One that never went out stays
-  queued, and a Linux helper of this version from before deaths is said once, the deaths waiting
-  for a newer one; the Linux helper is dropped (`linux_mod_lost`) either way. Tested on the
-  stand-in game through the socket (`tests/test_native_linux.py`: `die` refused unconfigured and
-  halted, then energy 0 and the death routine with the player and kind 0) and with stand-ins for
-  the client (`tests/test_ticks.py`); both ways run in the game, 2026-11-19 ("The Linux helper",
-  above: run 2). The lost reply's handling is stand-in tests only
-  (`tests/test_deathlink.py`, `tests/test_ticks.py`), not run in the game.
+  With no count to go by, a first read more than `LOST_SECONDS` after the loss leaves it queued,
+  as no death seen is told from the player's own by then. One that never went out stays queued,
+  and a Linux helper of this version from before deaths is said once, the deaths waiting for a
+  newer one; the Linux helper is dropped (`linux_mod_lost`) either way. Tested on the stand-in
+  game through the socket (`tests/test_native_linux.py`: `die` refused unconfigured and halted,
+  then energy 0 and the death routine with the player and kind 0) and with stand-ins for the
+  client (`tests/test_ticks.py`); both ways run in the game, 2026-11-19 ("The Linux helper",
+  above: run 2). With the death count (#169) both ways ran again, 2026-11-20; the lost reply's
+  handling is stand-in tests only (`tests/test_deathlink.py`, `tests/test_ticks.py`), not run in
+  the game.
 - **Intel Chips.** `intel on` and `intel off` are taken as on Windows ("Intel Chips"), and
   `Game::watch_intel` runs at each frame call: the Area Map's record (49) named INTEL CHIP, its
   map reveal (3551) off, while on and only if the record reads as the game loads it or as the
@@ -3027,9 +3032,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   without the client", `src/offline.cpp`), into `$XDG_DATA_HOME/ZexionAP/seeds/NAME.txt`, else
   under `~/.local/share` (an absolute path only): the base the game's own saves use, as SDL finds
   it in the same process, so under Flatpak's Steam, whose home is
-  `~/.var/app/com.valvesoftware.Steam`, its `.local/share/ZexionAP` (inferred from the saves'
-  folder there: `docs/re/builds.md`, "B1 on Linux"; not seen; the folder is found once, in the
-  helper's constructor, before the game's threads run), whole, through a temporary file made
+  `~/.var/app/com.valvesoftware.Steam`, its `.local/share/ZexionAP` (seen there, the seeds'
+  files under `seeds/`, 2026-11-20: `docs/re/linux.md`, "Seen in the running game, 2026-11-20";
+  the folder is found once, in the helper's constructor, before the game's threads run), whole,
+  through a temporary file made
   afresh (not through a link) and synced, then renamed over it, the folders made for the user
   alone (mode 0700); a file is read only if it is a plain file, through no link. The serving
   thread reads them, at most 256, newest first, when the helper starts and each time a client
@@ -3062,27 +3068,28 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
 - **The look without the client.** `Game::watch_offline` runs at each frame call, before the
   watches that apply what it sets (on Windows `watch_all` runs INTEL CHIP's and the disks' watches
   before it, so they apply its changes a frame later there) ("AP saves without the client"): with
-  no client (configured from the game's symbols, or its client gone), or with one
-  that said `other_save`, a known seed's save is dressed once in play since it loaded, from its
-  seed file: the item labels, INTEL CHIP, the ASSIST lock and the disk count and scanner's line,
-  with the not-connected notice (or, for `other_save`, the other-seed notice) once a load; left,
-  it is put back. A client's `config` takes the look off first and withdraws the notices not
-  shown yet; the client then asks `client_back`, which pops up ARCHIPELAGO CLIENT CONNECTED. once
-  if that save was dressed (`ticks.linux_client_back_tick`, before the poll's step), and
-  `other_save` for another seed's save in play (`linux_other_save_tick`). The client hands over
-  the whole seed file, its labels included, once known (`offline_seed`, as on Windows), and what
-  the slot data alone gives until then, never after the whole file went in that client run (a
-  reconnect lists the items afresh: `ZexionContext.linux_full_seeds`), and a new client run's first
-  put, before the scouts answer, carries the labels, the disk counts and the free ASSIST menu of
-  the file the helper already keeps under that name (`offline.keep_richer`: the client reads it
-  beside the token the helper took, `ticks.linux_stored_seed`, once a run; the helper has no
-  request that says what its file holds), so a client that closes before the whole text is known
-  leaves the later runs with no client the labels they had, where the client can read the
-  helper's token folder (where it can't, the poorer text replaces the file as before). A text
-  the helper cannot parse is put again as the slot data's alone. Those two (the stored file's
-  labels kept, and the merged text put again) are stand-in tests only, not run in the game. The
-  file select's counts, from the save slots, and its logo show as on Windows ("The file select's
-  AP logo and disk counts", below). What differs on Linux:
+  no client (configured from the game's symbols, or its client gone), or with one that said
+  `other_save`, a known seed's save is dressed once in play since it loaded, from its seed file:
+  the item labels, INTEL CHIP, the ASSIST lock and the disk count and scanner's line, with the
+  not-connected notice (or, for `other_save`, the other-seed notice) once a load; left, it is put
+  back. A client's `config` takes the look off first and withdraws the notices not shown yet; the
+  client then asks `client_back`, which pops up ARCHIPELAGO CLIENT CONNECTED. once if that save
+  was dressed (`ticks.linux_client_back_tick`, before the poll's step), and `other_save` for
+  another seed's save in play (`linux_other_save_tick`). The client hands over the whole seed
+  file, its labels included, once known (`offline_seed`, as on Windows), and what the slot data
+  alone gives until then, never after the whole file went in that client run (a reconnect lists
+  the items afresh: `ZexionContext.linux_full_seeds`), and a new client run's first put, before
+  the scouts answer, carries the labels, the disk counts and the free ASSIST menu of the file the
+  helper already keeps under that name (`offline.keep_richer`: the client reads it beside the
+  token the helper took, `ticks.linux_stored_seed`, once a run; the helper has no request that
+  says what its file holds), so a client that closes before the whole text is known leaves the
+  later runs with no client the labels they had, where the client can read the helper's token
+  folder (where it can't, the poorer text replaces the file as before). A text the helper cannot
+  parse is put again as the slot data's alone. The stored file's labels kept run in the game,
+  2026-11-20 (`docs/re/linux.md`, "Seen in the running game, 2026-11-20") (a client restarted, the
+  file unchanged); the merged text put again is stand-in tests only. The file select's counts,
+  from the save slots, and its logo show as on Windows ("The file select's AP logo and disk
+  counts", below). What differs on Linux:
   - a client that loses its server connection lets the Linux helper's connection go, as the
     Windows client lets its helper go (`leave_helper_tick`: under the same conditions, with
     `LinuxProcess.disconnect`), so the helper takes it for a client that went (below) and this
@@ -3220,7 +3227,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   the logo's style shows white and the painting itself are not measured there). The Linux stand-in
   game has no menus: the rewrite is stand-in tested on Windows only (`tests/files_tests.cpp`); the
   logo run in the game, 2026-11-19 ("The Linux helper", above), the disk counts too (run 2: of the
-  earlier read, the slot array's map; the entry's own block's, since #164, stand-in only).
+  earlier read, the slot array's map; the entry's own block's, since #164, run in the game,
+  2026-11-20 (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"): a checkpoint's disk
+  shown).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
