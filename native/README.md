@@ -345,8 +345,9 @@ game saves. It runs without a client too, from the offline cache. The list is
 the game's own data, so a client going away or an unload leaves it (`docs/re/memory.md`, "The
 pickup record holds the major-item list").
 
-Two known limits of the ITEMS row, both cosmetic (no item is given, lost or doubled; the list
-grants nothing), found by review, not seen in game, and left as they are (issues #166 and #167):
+Two known limits of the ITEMS row, found by review, not seen in game, and left as they are
+(issues #166 and #167). The first is cosmetic (no item is given, lost or doubled; the list grants
+nothing); the second may reach further than the row, and is not traced:
 - **An own item can be listed twice.** The helper appends an owned item's icon only if it is
   not in the list, and the game's pickup appends without that check (Linux B1 `0x6428FA`;
   Windows `0x1F761`: `docs/re/linux.md`, "Mapped by disassembly: the major-item list";
@@ -357,14 +358,30 @@ grants nothing), found by review, not seen in game, and left as they are (issues
   lists the icon again. Avoiding it means knowing, in the helper, the cell of each own location
   (the seed's files carry none but the disks' and traps') and holding the listing while that cell
   is uncollected, or telling a legitimate repeated icon from this one (not traced); more
-  machinery than the row is worth.
-- **A save state from another AP save can list the wrong starting items.** `loadState` restores
-  the whole of `gGameState` (the inventory, the list, the randomizer marker, `save_loaded`) but
-  not `gCurrentRando`, which lies outside it (Linux B1 `0x4AF4EE`), so with another AP save's
-  state loaded the helper's start-with test reads the current save's array against the other's
-  inventory, and the list is saved into the current slot. Not traced: whether `loadState` can be
-  reached after a different save loaded (it is behind key tests and marks an assist used,
-  `gGameState+0x13726`), and the Windows build's.
+  machinery than the row is worth. The duplicate also takes one of the row's 26 places (the game's
+  append and the helper's both stop there, and B1 has 27 listable kinds), so a later item's icon
+  can miss the row.
+- **A save state taken in another save, loaded while an AP save is current.** What is known:
+  `loadState` restores the whole of `gGameState`, which holds the inventory, the major-item
+  list, the map grid, the flags, the randomizer marker and `save_loaded`, and not `gCurrentRando`
+  (the section), which lies outside it (Linux B1 `0x4AF4EE`; `docs/re/linux.md`, "Mapped by
+  disassembly: the major-item list" and the `gGameState` row). Save states are a player-facing
+  assist (`docs/re/memory.md`, "The assist menu": SAVE STATES, SAVE STATE SLOTS), loaded by a key.
+  So with a state from another save loaded, the helper's start-with test (`watch_pickups`) reads
+  the current save's section against the other save's inventory, and the list it fills is saved
+  into the current slot: the ITEMS row can list the wrong starting items. Beyond the row, read by
+  the code only: the client takes a save for its seed's by the marker (inside the state, so the
+  other save's) being 1 and the section (outside it, so the current save's) matching the seed
+  (`client/session.py`, `Session.step`), and then reads the map grid and the inventory, which
+  are the other save's; the slot number and the save stamp it reads (`current_slot`, the slot's
+  own block) are not in the state, so they do not change. I found no check in the client or the
+  helper that compares the grid or the inventory with the current slot's own save. So, if a
+  state of another randomizer save can be loaded in an AP save of the client's seed, the client
+  could send the checks of the cells that save collected and give items into its inventory, which
+  the game would then save into the current slot's file. Not traced: whether that can happen
+  (whether a state outlives a `LoadGame` of another slot, or comes from a file), what the game
+  does with a state from a non-randomizer save (its marker 0, so the client sees no seed's save
+  and sends nothing), and the Windows build's `loadState`. Not fixed; the issue stays open.
 
 Working in game: 2026-10-22, everything above but the major-item list ("Game functions the helper
 calls", "The client in a live game"); the major-item list, 2026-11-04 (B1, `zexion_ap.dll`
@@ -1527,6 +1544,9 @@ on the Linux build that block is the slot's checkpoint record while it is in use
 hold a disk the full save does not, `docs/re/linux.md`, "Mapped by disassembly: the file
 select's AP logo and disk counts"; whether the Windows build's entry does the same is not
 recorded, `docs/re/memory.md`, "The file select", and the entry's block is read either way).
+This read is stand-in tested (`native/tests/files_tests.cpp`) and not run in the game: the
+in-game runs of the disk counts (2026-10-24 to 2026-11-19) were of the earlier read, the slot
+array's full save.
 
 **The count follows the save** (the owner's decision, 2026-11-14): the disks the slot starts
 with, those received from other players, and this world's own disk locations collected in the
@@ -1736,7 +1756,7 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   Disconnect then Connect during an ending played again, the item received meanwhile popping up at
   the next load. Not seen in game: a failed attach on connecting, an ending that begins during a
   drop, and an armed new game kept at the title during a drop. The file select shows each such
-  save's count, from its map in the game's copy of the slot, and the AP logo ("AP saves on the
+  save's count, from the map of the record its entry shows, and the AP logo ("AP saves on the
   file select").
 - **Put back:** leaving the save undresses it: no save loaded, or in play reading as no known seed.
   With a menu up, a save in play since its load that reads as no known seed is held as it is until
@@ -1902,7 +1922,9 @@ closed, gone with it open.
     keeps the last save's marker and `current_slot`), the marker word (`rando_marker`) is 1 and
     the slot in `current_slot` holds an AP save, by a table
     of 30 bytes the frame call fills, with no save loaded, from the slots' own copies of their
-    sections (`Game::ap_file_slots`, as for the file select's logo, every 16th frame call). It
+    sections (`Game::ap_file_slots`, as for the file select's logo, every 16th frame call, which
+    leaves out the slot a new game is starting in: stand-in tested, Linux B1's marking of it by
+    disassembly, Windows' not checked). It
     keeps the table while a save loads, and clears it once a frame call finds a save loaded that
     is not an AP save. The slot is hooked whenever the stub can block: the guard on,
     or the table not empty. Since the table is filled only with no save loaded, a helper loaded
@@ -3103,7 +3125,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   (`docs/re/linux.md`, "Mapped by disassembly: the file select's AP logo and disk counts"; that
   the logo's style shows white and the painting itself are not measured there). The Linux stand-in
   game has no menus: the rewrite is stand-in tested on Windows only (`tests/files_tests.cpp`); the
-  logo run in the game, 2026-11-19 ("The Linux helper", above), the disk counts too (run 2).
+  logo run in the game, 2026-11-19 ("The Linux helper", above), the disk counts too (run 2: of the
+  earlier read, the slot array's map; the entry's own block's, since #164, stand-in only).
 - **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
   `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
   received trap goes off as its popup shows, in its turn among the popups, and this world's own
