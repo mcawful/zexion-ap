@@ -19,9 +19,10 @@ public:
     void set(bool on) { on_ = on; }
     bool on() const { return on_; }
 
-    // Game thread, each frame: renames the record while on, puts it back while off.
-    // `records_holder` holds the pointer to the item records.
-    void watch(BYTE* records_holder);
+    // Game thread, each frame: renames the record while on and `allowed` (the save loaded is the
+    // seed's: Game::seed_look_loaded), puts it back otherwise. `records_holder` holds the pointer
+    // to the item records.
+    void watch(BYTE* records_holder, bool allowed = true);
     // Game thread: the record back to the game's (off, before an unload).
     void restore(BYTE* records_holder);
     // Whether the record was the helper's when last looked at (an unload waits for a frame).

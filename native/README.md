@@ -194,8 +194,9 @@ with one atomic exchange, and only one thread at a time does the work.
 When the pipe's client disconnects (the client exited or crashed, let the helper go while it
 had no server connection, or `tools/helper.py` was done), the next frame call, before it serves
 any request, puts back everything the parts below set in the game's memory and drops what the
-client asked for (`Game::client_gone`: `put_back_game`, then `forget_client`, in
-`src/game_calls.cpp`). A change held by a menu no longer open is gone with it. A running trap's
+client asked for (`Game::client_gone`: `put_back_game`, then `forget_client`, and
+`forget_client_seed`, which closes the look's gate until the next client has put its
+seed, in `src/game_calls.cpp`). A change held by a menu no longer open is gone with it. A running trap's
 AILMENTS patch stays, as the trap does ("Traps"). It goes inactive
 until a client sends `config` again (the client resends every request after it attaches). The
 client's popups not shown yet stay queued and still show ("Popups"): their items are already
@@ -835,7 +836,10 @@ the restart doubles above.
   cursor skips it (only when each entry it moves is live and numbered by its place).
 - **When:** each frame call while the options menu is on top (`src/menu.cpp`). `locked` means
   armed: whether an entry was found shows only in the game. The client locks it while a seed
-  that disallows assists has its save loaded, until the slot receives Assist Unlock.
+  that disallows assists has its save loaded, until the slot receives Assist Unlock. The helper
+  locks it only while the loaded save is the look's own (`Game::seed_look_loaded`, "Intel
+  Chips"), and puts it back, the padlock too, in another save or none, whatever the client last
+  said: its server dropping leaves the ask as it was. Stand-in tests only, not run in game.
 - **Found again each frame:** never taken on the pointer kept from the frame it was locked. Leaving
   Video, GENERAL (which holds the language) or the assist menu closes the options menu and builds
   another (`0x124D30`), whose widgets may take the freed ones' places: its VERSION 1.20, 12 glyphs
@@ -1306,8 +1310,28 @@ Working in game: 2026-10-23 ("Live item objects").
   (3551, the map reveal) (`src/intel.cpp`), only if the record reads as the game loads it or as
   the helper left it.
 - **When:** each frame call while the client has sent `intel on` (this seed's save loaded, its
-  Area Maps Intel Chips).
-- **Put back:** `intel off`, with the rest; an unload refuses while it cannot.
+  Area Maps Intel Chips) and the loaded save is the look's own (`Game::seed_look_loaded`):
+  - with a client, the save of the seed whose file it has put (`offline_put seed`, the helper
+    keeps the last one a client put as the client's seed until it goes away); until it has put it,
+    the save of the seed the helper holds labels for (taken from whichever randomizer save is
+    loaded when `ap_labels` lands, so before the file is put the look can follow another seed's
+    save). With neither, the game's own: the client asks for the look from the toggle ticks, the
+    seed's file follows once the server has listed the items and, for a seed with other players'
+    items, what each location holds (`offline_seed`: the client looks again each poll until it
+    has the text, then every 5 s; also every 5 s when the config cannot be built, and for a put
+    the helper refused), and labels sent with no randomizer save loaded are for no seed. A seed
+    file put after its client went away (the game was in the background) is nobody's seed. In
+    that window an Area Map picked up in the seed's own save reveals as the game's does;
+  - with no client (or a client that said `other_save`), the save of the seed the offline look
+    has dressed ("AP saves without the client").
+
+  It does the same for the ASSIST lock and the disk count ("The assist menu", "The OS Install
+  Disks goal"): the helper does not wait for the client to say the save left, so with the server
+  down another save, whether a normal one, a plain randomizer one or another known seed's, has
+  the game's own Area Map, ASSIST and scanner line, and they come back when the seed's save is
+  loaded. Stand-in tests only, not run in game.
+- **Put back:** `intel off`, with the rest, and each frame call in a save that is not the seed's
+  (above); an unload refuses while it cannot.
 - **Received:** a client's `popup 49` in an `apply` with `intel` (sent for a seed whose Area
   Maps are Intel Chips) reads INTEL CHIP (Intel Chip in a translation), with `intel on` or not
   when it shows, as after a load before the client sends it again ("Popups"). Working in game
@@ -1538,6 +1562,15 @@ screen's count after a reload, a death, and a disk received right after a reload
 second review round's fix (the counted set started over when the helper is attached again,
 unless that attach loaded it), stand-in tested only.
 
+The scanner's line, the equipment screen's disk, the pause row's count and the disk glyph show
+only while the loaded save is the look's own (`Game::seed_look_loaded`, "Intel Chips"); in
+another save or none the game's own are back whatever the client last sent (stand-in tests only,
+not run in game). The scanner's text is looked at every 30th frame call (`kScanFrames`), so its
+line follows the save up to 30 frame calls late; the rest follow it in the same frame call.
+`discs_status` describes the last equipment screen built in such a save, so it is not updated
+while another save's screen is up. Another slot of the same seed loaded during a drop shows the
+last slot's count (the client's, for the slot it set it in).
+
 Put back: `discs` with no arguments, and with the rest. An unload refuses while
 the scanner's text or the pause screen's branch is still the helper's, or the pause menu's way
 back from OPTION MENU is still its wrapper.
@@ -1630,10 +1663,11 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   connected, and any seed file a client puts, are added to them from the next frame call
   (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
   is dressed), so another seed's save started earlier in the same client run is known as one
-  (`other_save`). With no client yet, the cached addresses configure it if the cache is for its
-  build and holds every required key ("The pipe"), and the game holds every checked function's
-  bytes. So the offline look, the map markers, the title lines and the text window's repair (with
-  `text_cut_code` in the cache) all run with no client once the cache checks out.
+  (`other_save`). The last seed a client puts is also its look's seed ("Intel Chips"). With no
+  client yet, the cached addresses configure it if the cache is for its build and holds every
+  required key ("The pipe"), and the game holds every checked function's bytes. So the offline
+  look, the map markers, the title lines and the text window's repair (with `text_cut_code` in
+  the cache) all run with no client once the cache checks out.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed as the client would,
   once it has been in play since it loaded (a menu or a death later keeps the same save, so it is
@@ -1652,7 +1686,10 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   that poll's step: the step waits for it as after an attach), while
   a save it has not dressed is loaded: one loaded after a drop's save was left, or the one in play
   when the player disconnects. Such a save then gets this look and its notice too. The client
-  keeps the helper for a save it dressed before a drop (its look stays), in the ending (its hold),
+  keeps the helper for a save it dressed before a drop (its look stays, in that seed's save only:
+  another save loaded during the drop, a normal one or another seed's, has the game's own Intel
+  Chip, ASSIST and scanner line, put back by the helper itself; stand-in tests only, not run in
+  game), in the ending (its hold),
   and at the title, where after a drop an armed new game stays armed until a save is loaded. It
   attaches again on connecting, before it gives any item; an attach that fails, for a helper that
   may still come ("Getting in"), holds the items back for up to 30 s (counted afresh at each
@@ -2261,8 +2298,10 @@ Both runs predate the socket's token, the client's keep-alive and let-go, and th
 that followed: the put-back of whatever a connection set when it goes, `write` taking only the
 ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map
 cache, the Steam check's retry, the client's settings sent only on the configured connection,
-and a RETURN HOME prompt put back being offered again. Those have run on stand-ins only; the next
-in-game run re-checks the attach as a whole.
+a RETURN HOME prompt put back being offered again, and the look's gate on the seed the client
+put (`offline_put`: Intel Chips, the ASSIST lock and the disks' count only in that seed's
+save, #162). Those have run on stand-ins only; the next in-game run re-checks the attach as a
+whole.
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
@@ -2484,7 +2523,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     `ap_newgame`, `ap_labels`, `discs`, `mission_prompt`, `other_save`, `client_back`, `assists`,
     `intel` and `offline_put`, which a client sends after its `config`, but a connection made again
     in the middle of a poll may send before it): the helper's plan, labels, Intel Chips, ASSIST
-    lock and disk count, and the seed files read again.
+    lock and disk count, the client's seed (`forget_client_seed`), and the seed files read
+    again.
     It is put back at the next frame call or before the next request's work on the game thread
     (`client_gone_if_left`), whichever comes first, and the serving thread marks the client gone
     before it takes the next one: so a client that comes back at once (a request with no reply
@@ -2689,14 +2729,23 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     (`equipment_panel_hook`, `options_back_hook`, `linux/src/helper.cpp`);
   - a client that goes turns the count off and puts its changes back (`set_discs`, then
     `restore_discs`), as `drop_save_look` does on Windows; the look without the client (below)
-    then sets its seed file's count again for a known seed's save.
+    then sets its seed file's count again for a known seed's save;
+  - the count shows only in the loaded save of the look's own seed (`Game::seed_look_loaded`, as
+    on Windows: "Intel Chips"), which on Linux is the seed the client put with `offline_put`
+    (`take_offline` notes the last one put, on the game thread, as `note_client_seed`; the
+    client-gone work forgets it, `forget_client_seed`, for any connection that set something,
+    `sets_client_state`, offline_put among them; one that only looks leaves it alone). Until
+    the client has put its seed, which on Linux is from the connection's first poll
+    (`ticks.linux_seed_tick`), the count is hidden in the seed's own save too.
 
-  Tested on the stand-in game through the socket (`tests/test_native_linux.py`): `discs` writes
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`, in the client's
+  seed's save: `put_clients_seed`): `discs` writes
   the scanner's Text entry as the client's line in capitals and makes the stand-in's KEYS branch a
   `jmp`, both put back once the client goes. The equipment screen and the pause row: built only
   (the stand-in has no menus), and in a translation assumed ("Translations", above). The pause row
-  and the count notices run in the game, 2026-11-19 ("The Linux helper", above: run 2); the
-  scanner's line and the equipment screen not reached.
+  and the count notices run in the game, 2026-11-19 ("The Linux helper", above: run 2), which
+  predates the gate on the client's seed: the count's gate has run on stand-ins only, not in
+  the game; the scanner's line and the equipment screen not reached.
 - **This world's own disks, counted at their pickup.** `Game::watch_own_disks` runs at each frame
   call as on Windows ("The OS Install Disks goal", "The count follows the save"): in a known disk
   seed's save, an own disk's cell turning collected after two frames in play queues "OS Install
@@ -2808,16 +2857,20 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `Game::watch_intel` runs at each frame call: the Area Map's record (49) named INTEL CHIP, its
   map reveal (3551) off, while on and only if the record reads as the game loads it or as the
   helper left it; a client that goes puts the game's back (`restore_intel`), and the look without
-  the client (below) then names it again for a known seed's save. Nothing differs on Linux: the
-  game loads the `Objects` records as they are, and the installed file's record 49 reads as
-  `kAreaMap` (whether anything writes the records after the load is not swept: the check before
-  each write leaves one that reads otherwise alone) (`docs/re/linux.md`, "Mapped by disassembly:
-  Intel Chips"). A received one's popup and its name in a translation were shared already ("Grants
+  the client (below) then names it again for a known seed's save. Only in the look's own save
+  (`Game::seed_look_loaded`, "Intel Chips", above): on Linux the seed a client put (`offline_put`,
+  noted by `take_offline`, forgotten by the client-gone work, as for the disks' count). Nothing
+  else differs on Linux: the game loads the `Objects` records as they are, and the installed
+  file's record 49 reads as `kAreaMap` (whether anything writes the records after the load is
+  not swept: the check before each write leaves one that reads otherwise alone)
+  (`docs/re/linux.md`, "Mapped by disassembly: Intel Chips"). A received one's popup and its name in a translation were shared already ("Grants
   and popups", "Translations"). The client sends it through `LinuxMod` (`ticks.linux_intel_tick`);
   a Linux helper of this version built before Intel Chips refuses it, which the client asks again
   every few seconds, saying nothing. Tested on the stand-in game through the socket
-  (`tests/test_native_linux.py`: refused unconfigured, named with its event off, put back by
-  `intel off` and by the client going) and with stand-ins for the client
+  (`tests/test_native_linux.py`: refused unconfigured, named with its event off in the client's
+  seed's save only, not before the helper has the seed, in a normal save or another seed's, put
+  back by `intel off` and by the client going, and not named for the next client until it has put
+  its seed; stand-in tests only, not run in game on Linux) and with stand-ins for the client
   (`tests/test_zexion_client.py`); a received chip and its hint run in the game, 2026-11-19 ("The
   Linux helper", above).
 - **The ASSIST lock.** `assists lock` and `assists free` are taken as on Windows ("The assist
@@ -2827,7 +2880,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   its callback cleared and moved past the panel's selectable entries, and all of it put back when
   freed or when a client goes (the look without the client, below, then locks it again for a
   known seed's save that disallows assists); in a translation, the entry's text
-  built again with the HD padlock. Nothing the lock reads or writes differs on Linux but the
+  built again with the HD padlock; the lock and the padlock apply only in the look's own save
+  (`Game::seed_look_loaded`, "The assist menu", "Intel Chips"), on Linux the seed the client put
+  with `offline_put` (stand-in tested on Windows only, not run in game). Nothing the lock
+  reads or writes differs on Linux but the
   callback's arguments, none, which the lock only clears and puts back; the options menu has one
   more way to be built again (the translation-mod screens' way back), which finding the entry
   afresh each frame call covers (`assist_menu_fn`, `AssistMenu`; `docs/re/linux.md`, "Mapped by
@@ -2851,7 +2907,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   saying on stderr a
   file it could not read; the same folder holds the client's `token` ("Who may connect"), which
   the seed reader ignores (it reads `seeds/` alone); the next frame call takes them, in place of the
-  last ones with no client and added to them with one (`Game::set_offline`, `merge_offline`). A
+  last ones with no client and added to them with one (`Game::set_offline`, `merge_offline`); with a
+  client, the last one put is also its seed for the look (`note_client_seed`, as on Windows: "AP
+  saves without the client"). A
   seed taken but not kept (`error too large`, a write that failed: the client takes each for
   taken, and puts it again only when it changes; `error no folder` is not reached on Linux, where
   a helper with no data folder has nowhere for its token and serves no one) stays the helper's
@@ -3140,7 +3198,10 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
   again, a client gone drops), the received shield, scraps' drops, traps and death, this world's own
   traps and disks watched by their map cells (a pickup, a load that is none, a pickup a load undid,
   made again before play settled, or carried to another slot's save, and a TELEPORT TO's countdown
-  and load; an own disk's count with no client), the ASSIST watch and the scanner's text, and RETURN
+  and load; an own disk's count with no client), the ASSIST watch and the scanner's text, the Intel
+  Chip, ASSIST lock, scanner line, equipment screen and pause row applied only in the look's own
+  save (a client's seed put or its labels, another known seed's save, a normal save, none, the
+  client gone, the offline look in its save), and RETURN
   HOME WITH THE DISKS? through the frame call (its fade and popups, a save or a door in its place, a
   request lapsing outside home's cell, at a start that is not home too, the `mission_prompt` parser,
   a death's own fade left alone, the helper's own popup holding the fade while it is the game's last

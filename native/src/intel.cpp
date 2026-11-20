@@ -25,8 +25,8 @@ bool reads(const BYTE* r, const char* name, int16_t event) {
 
 }  // namespace
 
-void IntelChip::watch(BYTE* holder) {
-    if (!on_) {
+void IntelChip::watch(BYTE* holder, bool allowed) {
+    if (!on_ || !allowed) {
         if (restyled_) restore(holder);
         return;
     }

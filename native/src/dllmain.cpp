@@ -224,22 +224,22 @@ void take_offline() {
     std::vector<zap::OfflineSeed> put = std::exchange(g_put_seeds, {});
     ReleaseSRWLockExclusive(&g_offline_lock);
     if (files) take_files(std::move(*files));
-    // After the files, which may have been read before these were put.
-    if (!put.empty()) g_game.merge_offline(std::move(put));
+    // After the files, which may have been read before these were put. The client puts its own
+    // seed alone: the one its look applies in (Game::seed_look_loaded).
+    if (!put.empty()) {
+        g_game.note_client_seed(put.back());
+        g_game.merge_offline(std::move(put));
+    }
 }
 
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
 void note_put_seed(zap::OfflineSeed seed) {
     AcquireSRWLockExclusive(&g_offline_lock);
     // One of the same name still waiting (no frame since: the game in the background) is
-    // replaced, so the queue holds one a seed however often a client puts it.
-    auto same = std::find_if(g_put_seeds.begin(), g_put_seeds.end(),
-                             [&](const zap::OfflineSeed& s) { return s.name == seed.name; });
-    if (same != g_put_seeds.end()) {
-        *same = std::move(seed);
-    } else {
-        g_put_seeds.push_back(std::move(seed));
-    }
+    // replaced, so the queue holds one a seed however often a client puts it. The newest is
+    // always last (take_offline: the client's seed is the last put).
+    std::erase_if(g_put_seeds, [&](const zap::OfflineSeed& s) { return s.name == seed.name; });
+    g_put_seeds.push_back(std::move(seed));
     ReleaseSRWLockExclusive(&g_offline_lock);
 }
 

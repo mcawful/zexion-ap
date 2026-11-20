@@ -355,6 +355,9 @@ void test_the_names_written_and_put_back() {
 void test_the_scanner_line() {
     zap::Game game;
     start(game);
+    g_rando_marker = 1;  // in a known seed's save only (Game::seed_look_loaded)
+    game.add_known_seeds({zap::offline_seed_of(g_section)});
+    game.note_client_seed(zap::offline_seed_of(g_section));
     game.set_discs(3, 12, "COLLECT 12 OS INSTALL DISKS!", true);
     frames(game, 1);
     check(entry_text(g_small, 12) == L"COLLECT 12 OS INSTALL DISKS!", "the scanner's line");
@@ -367,6 +370,7 @@ void test_the_scanner_line() {
     game.put_back_game(&no_callback);
     check(entry_text(g_small, 12) == L"Energy Keys detected!" && game.unload_blocker() == nullptr,
           "put back with the rest");
+    g_rando_marker = 0;
 }
 
 void test_the_default_english_untouched() {
@@ -1085,6 +1089,10 @@ void test_the_mixed_case() {
                   "@47: the game's own name, written once, not grown from the helper's",
                   std::string(entry_text(g_items, 47).size(), '.'));
         }
+        // The scanner's line only in a known seed's save (Game::seed_look_loaded).
+        g_rando_marker = 1;
+        game.add_known_seeds({zap::offline_seed_of(g_section)});
+        game.note_client_seed(zap::offline_seed_of(g_section));
         game.set_discs(3, 12, "Collect 12 OS Install Disks!", true);
         frames(game, 1);
         if (language.on) {
@@ -1095,6 +1103,7 @@ void test_the_mixed_case() {
         check(std::string(reinterpret_cast<const char*>(g_text_table + 12 * 32)) ==
                   "COLLECT 12 OS INSTALL DISKS!",
               "the scanner's pixel line in capitals", where);
+        g_rando_marker = 0;
         game.put_back_game(&no_callback);
     }
     reset_translation();

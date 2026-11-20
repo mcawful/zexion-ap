@@ -320,15 +320,20 @@ def offline_seed(ctx: ZexionContext, p: Poll) -> str | None:
 async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
     """Every few seconds, send the helper what it needs without the client (client/offline.py)
     when it has changed: the addresses for this build, and this seed's file. The helper writes
-    them (``offline_put``), from inside the game, so they land where the game reads them."""
+    them (``offline_put``), from inside the game, so they land where the game reads them. The
+    seed's file is also the helper's way to know this client's seed (its look applies in that
+    seed's save), so with the config built and no seed text yet, the next poll looks again."""
     helper, told = ctx.helper, ctx.told
     if helper is None or time.monotonic() < told.offline_at:
         return
-    told.offline_at = time.monotonic() + OFFLINE_WRITE_SECONDS
     seed_name = ctx.server_seed_name or ctx.seed_name  # the server's (RoomInfo)
     if not seed_name or not ctx.slot:
         return
     config, seed = await offline_config(ctx), offline_seed(ctx, p)
+    # With the config built and no seed text yet (the server has not listed the items), the next
+    # poll looks again: the helper's look for this seed waits for its file.
+    if seed is not None or config is None:
+        told.offline_at = time.monotonic() + OFFLINE_WRITE_SECONDS
     name = offline.seed_file_name(seed_name, ctx.team, ctx.slot)
     for kind, text, file in (("config", config, ""), ("seed", seed, name)):
         if text is None or told.offline_sent.get(kind) == text:

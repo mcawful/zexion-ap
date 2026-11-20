@@ -766,6 +766,10 @@ void guarded(Work&& work) {
 // dress the save again.
 void client_gone() {
     guarded([] { g_game->client_left(); });  // an own disk's count the helper's again
+    // Its seed (put by offline_put) no longer the one a look applies in: client_gone's
+    // forget_client_seed on Windows. Run for any connection that set state (sets_client_state,
+    // offline_put among them), as its seed was noted.
+    guarded([] { g_game->forget_client_seed(); });
     // RETURN HOME's prompt and ending, the map's names and the choice put back in open menus,
     // before the disks go below (which drop the prompt asked for), as on Windows.
     guarded([] { g_game->put_back_client_menus(&archipelago_chosen); });
@@ -888,13 +892,10 @@ void read_offline() {
 // replaced, as on Windows).
 void note_put_seed(zap::OfflineSeed seed, bool kept) {
     std::lock_guard<std::mutex> lock(g_offline_mutex);
-    auto same = std::find_if(g_put_seeds->begin(), g_put_seeds->end(),
-                             [&](const PutSeed& s) { return s.seed.name == seed.name; });
-    if (same != g_put_seeds->end()) {
-        *same = {std::move(seed), kept};
-    } else {
-        g_put_seeds->push_back({std::move(seed), kept});
-    }
+    // One of the same name still waiting is replaced, and the newest put is always last
+    // (take_offline: the client's seed is the last put), as on Windows.
+    std::erase_if(*g_put_seeds, [&](const PutSeed& s) { return s.seed.name == seed.name; });
+    g_put_seeds->push_back({std::move(seed), kept});
 }
 
 // Game thread: with no client yet, the helper configured from the game's own symbols (the
@@ -957,7 +958,13 @@ void take_offline() {
         }
         seeds.push_back(std::move(p.seed));
     }
-    if (!seeds.empty()) g_game->merge_offline(std::move(seeds));  // after the files, read earlier
+    if (!seeds.empty()) {
+        // The client puts its own seed alone: the one its look applies in (Game::seed_look_loaded).
+        // Noted here, on the game thread, after the client-gone work of this frame (client_gone:
+        // a put from a client that has gone is ignored, note_client_seed).
+        guarded([&] { g_game->note_client_seed(seeds.back()); });
+        g_game->merge_offline(std::move(seeds));  // after the files, read earlier
+    }
     configure_self();  // each frame until it has configured, a seed file once read
 }
 

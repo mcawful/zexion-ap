@@ -1024,8 +1024,11 @@ void Game::show_glyph(FontGlyph& glyph, bool wanted) {
 
 void Game::watch_assists() {
     if (!configured_) return;
-    show_glyph(lock_glyph_, assists_locked_);
-    if (assists_locked_) {
+    // Locked only in the seed's own save: another save, or none, loaded while the lock is asked
+    // for (a client dropped from its server, say) has the menu as the game builds it.
+    const bool locked = assists_locked_ && seed_look_loaded();
+    show_glyph(lock_glyph_, locked);
+    if (locked) {
         assists_.install(at_);
     } else if (assists_.installed()) {
         assists_.restore(at_);
@@ -1054,11 +1057,13 @@ void Game::set_discs(int count, int required, std::string scan_line, bool told) 
     scan_frames_ = 0;  // checked in the next frame
 }
 
+bool Game::discs_shown() const { return !scan_line_.empty() && seed_look_loaded(); }
+
 void Game::watch_discs() {
     if (!configured_) return;
     if (scan_frames_-- > 0) return;
     scan_frames_ = kScanFrames;
-    if (!scan_line_.empty()) {
+    if (discs_shown()) {
         scan_.apply(at_.text_table, in_capitals(scan_line_));
     } else if (scan_.written()) {
         scan_.restore(at_.text_table);
@@ -1077,6 +1082,11 @@ void Game::restore_discs() {
 
 void Game::watch_equipment() {
     equip_screen_.tidy(at_);
+    // The disk count shown only in the seed's own save (discs_shown), the pause row's text the
+    // client's while it is.
+    const bool discs = discs_shown();
+    pause_row_.set(discs ? pause_row_text(disc_count_, discs_told_ ? discs_required_ : 0)
+                         : std::string());
     // Every frame, before the row: a pause screen opened on a load's first frame still has it.
     pause_row_.prepare(known_disk_row());
     show_glyph(pause_disc_, pause_row_.on());
@@ -1084,8 +1094,8 @@ void Game::watch_equipment() {
     // Also while a received disk's popup waits or shows: after a load the goal may not be on yet.
     const bool disk_popup_due = (own_disk_ && own_popup_up()) ||
                                 std::any_of(popups_.begin(), popups_.end(), disk_popup);
-    show_glyph(disk_glyph_, !scan_line_.empty() || disk_popup_due);
-    if (!scan_line_.empty()) {
+    show_glyph(disk_glyph_, discs || disk_popup_due);
+    if (discs) {
         equip_.install(at_);
     } else {
         if (equip_.installed()) equip_.restore(at_);
@@ -1098,7 +1108,7 @@ void Game::options_returned(void* menu) {
 }
 
 void Game::equipment_built() {
-    if (!configured_ || scan_line_.empty()) return;
+    if (!configured_ || !discs_shown()) return;
     std::string why = equip_screen_.add(at_, disc_count_);
     equip_status_ = why.empty() ? "shown " + std::to_string(disc_count_) : "not shown: " + why;
 }
@@ -1276,6 +1286,29 @@ bool Game::labels_seed_loaded() const {
     return labels_seed_ && rando_save_loaded() && section_is(*labels_seed_, at_.rando_blob);
 }
 
+bool Game::seed_look_loaded() const {
+    if (!configured_ || !rando_save_loaded()) return false;
+    // The offline look (no client, or a client's other_save): the dressed seed's own save.
+    if (offline_index_ >= 0) {
+        return static_cast<size_t>(offline_index_) < offline_seeds_.size() &&
+               section_is(offline_seeds_[static_cast<size_t>(offline_index_)], at_.rando_blob);
+    }
+    // A client's look: its own seed, as it put it. Until it has, the labels' seed (held for it).
+    if (client_seed_) return section_is(*client_seed_, at_.rando_blob);
+    return labels_seed_loaded();
+}
+
+void Game::note_client_seed(const OfflineSeed& seed) {
+    // A put taken after its client went away (the game was in the background meanwhile) is no
+    // client's seed: the next client puts its own.
+    if (!active_) return;
+    OfflineSeed key;
+    key.locations = seed.locations;
+    std::memcpy(key.table, seed.table, sizeof(key.table));
+    std::memcpy(key.start, seed.start, sizeof(key.start));
+    client_seed_ = std::move(key);
+}
+
 void Game::watch_map_names() {
     // The map is a menu: the save loaded, in play or not.
     map_names_.watch(at_, ap_items_.active() && labels_seed_loaded());
@@ -1354,7 +1387,7 @@ std::string Game::title_state() const {
     return title_.shown() ? "1" : "0";
 }
 
-void Game::watch_intel() { intel_.watch(at_.item_records); }
+void Game::watch_intel() { intel_.watch(at_.item_records, seed_look_loaded()); }
 
 void Game::restore_intel() {
     if (!configured_) return;
@@ -1691,6 +1724,7 @@ void Game::client_gone(WidgetCallback callback) {
     put_back_game(callback);
     forget_client();
     drop_client_notices();
+    forget_client_seed();
     active_ = false;
 }
 
