@@ -2725,9 +2725,15 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     (`equipment_panel_hook`, `options_back_hook`, `linux/src/helper.cpp`);
   - a client that goes turns the count off and puts its changes back (`set_discs`, then
     `restore_discs`), as `drop_save_look` does on Windows; the look without the client (below)
-    then sets its seed file's count again for a known seed's save.
+    then sets its seed file's count again for a known seed's save;
+  - the count shows only in the loaded save of the look's own seed (`Game::seed_look_loaded`, as
+    on Windows: "Intel Chips"), which on Linux is the seed the client put with `offline_put`
+    (`take_offline` notes the last one put, on the game thread, as `note_client_seed`; the
+    client-gone work forgets it, `forget_client_seed`, for any connection that set something,
+    `sets_client_state`, offline_put among them; one that only looks leaves it alone).
 
-  Tested on the stand-in game through the socket (`tests/test_native_linux.py`): `discs` writes
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`, in the client's
+  seed's save: `put_clients_seed`): `discs` writes
   the scanner's Text entry as the client's line in capitals and makes the stand-in's KEYS branch a
   `jmp`, both put back once the client goes. The equipment screen and the pause row: built only
   (the stand-in has no menus), and in a translation assumed ("Translations", above). The pause row
@@ -2844,16 +2850,21 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `Game::watch_intel` runs at each frame call: the Area Map's record (49) named INTEL CHIP, its
   map reveal (3551) off, while on and only if the record reads as the game loads it or as the
   helper left it; a client that goes puts the game's back (`restore_intel`), and the look without
-  the client (below) then names it again for a known seed's save. Nothing differs on Linux: the
-  game loads the `Objects` records as they are, and the installed file's record 49 reads as
+  the client (below) then names it again for a known seed's save. Only in the look's own save
+  (`Game::seed_look_loaded`, "Intel Chips", above): on Linux the seed a client put (`offline_put`,
+  noted by `take_offline`, forgotten by the client-gone work, as for the disks' count). Nothing
+  else differs on Linux: the game loads the `Objects` records as they are, and the installed
+  file's record 49 reads as
   `kAreaMap` (whether anything writes the records after the load is not swept: the check before
   each write leaves one that reads otherwise alone) (`docs/re/linux.md`, "Mapped by disassembly:
   Intel Chips"). A received one's popup and its name in a translation were shared already ("Grants
   and popups", "Translations"). The client sends it through `LinuxMod` (`ticks.linux_intel_tick`);
   a Linux helper of this version built before Intel Chips refuses it, which the client asks again
   every few seconds, saying nothing. Tested on the stand-in game through the socket
-  (`tests/test_native_linux.py`: refused unconfigured, named with its event off, put back by
-  `intel off` and by the client going) and with stand-ins for the client
+  (`tests/test_native_linux.py`: refused unconfigured, named with its event off in the client's
+  seed's save only, not before the helper has the seed, in a normal save or another seed's, put
+  back by `intel off` and by the client going, and not named for the next client until it has put
+  its seed; stand-in tests only, not run in game on Linux) and with stand-ins for the client
   (`tests/test_zexion_client.py`); a received chip and its hint run in the game, 2026-11-19 ("The
   Linux helper", above).
 - **The ASSIST lock.** `assists lock` and `assists free` are taken as on Windows ("The assist
@@ -2863,7 +2874,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   its callback cleared and moved past the panel's selectable entries, and all of it put back when
   freed or when a client goes (the look without the client, below, then locks it again for a
   known seed's save that disallows assists); in a translation, the entry's text
-  built again with the HD padlock. Nothing the lock reads or writes differs on Linux but the
+  built again with the HD padlock; the lock and the padlock apply only in the look's own save
+  (`Game::seed_look_loaded`, "The assist menu", "Intel Chips"), on Linux the seed the client put
+  with `offline_put` (stand-in tested on Windows only, not run in game). Nothing the lock
+  reads or writes differs on Linux but the
   callback's arguments, none, which the lock only clears and puts back; the options menu has one
   more way to be built again (the translation-mod screens' way back), which finding the entry
   afresh each frame call covers (`assist_menu_fn`, `AssistMenu`; `docs/re/linux.md`, "Mapped by

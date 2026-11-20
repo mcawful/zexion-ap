@@ -359,11 +359,17 @@ def test_a_connection_that_sets_something_has_it_put_back_when_it_goes(game: Gam
     # A connection made again in the middle of a poll has not sent `config` yet: what it sets
     # (here the disks' count) is put back when it goes all the same (the Linux helper's
     # sets_client_state); one that only looks (hello, ping, read, the statuses) changes nothing.
+    # The first connection has labels set in a seed's save, so that save is the labels' seed's for
+    # the connections after it (no client's seed put: Game::seed_look_loaded) and the count shows.
+    from client import aplabels
+
     at = config_addresses()
     scanner = stand_in("zap_texts") + 12 * 32
     with game.connect() as sock:
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a seed's save
+        assert ask(sock, aplabels.labels_request({(3, 2): "Hookshot\nfor Alice"})) == "labeled 1"
     with game.connect() as sock:  # the game stays configured; this one never sent `config`
         line = b"4 OS Install Disks detected!".hex()
         assert ask(sock, f"discs 1 4 {line} 1") == "discs on"
@@ -623,6 +629,24 @@ def wait_for(sock: socket.socket, request: str, wanted, seconds: float = 3.0) ->
         if wanted(reply) or time.monotonic() > deadline:
             return reply
         time.sleep(0.02)
+
+
+def put_clients_seed(sock: socket.socket, at: dict[str, int]) -> None:
+    """The client's own seed put (`offline_put`, as it does on each connect) and its save loaded:
+    the stand-in's section is all zeros, which is this seed's table and start, so the look the
+    client asks for (Game::seed_look_loaded) applies. No Intel Chip or disks in the file itself,
+    so the helper's own look with no client leaves the game's alone."""
+    from client import offline
+
+    text = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
+    name = offline.seed_file_name("S", 0, 1)
+    assert ask(sock, offline.put_request("seed", text, name)) in ("stored", "unchanged")
+    assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a randomizer save
+
+
+def frames_pass(sock: socket.socket, count: int = 6) -> None:
+    frames = int(ask(sock, "ping").split("frames=")[1])
+    wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + count)
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
@@ -1290,6 +1314,7 @@ def test_the_disks_count_writes_the_scanners_line_and_takes_the_keys_row(game: G
     with game.connect() as sock:
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
+        put_clients_seed(sock, at)  # the disks' look is its seed's save's (seed_look_loaded)
         line = b"4 OS Install Disks detected!".hex()
         assert ask(sock, f"discs 1 4 {line} 1") == "discs on"
         wait_for(sock, f"read {scanner:#x} 4", lambda r: r != "data ENER")
@@ -1385,6 +1410,7 @@ def test_intel_chips_name_the_area_map_until_the_client_goes(game: Game) -> None
         assert ask(sock, "intel on") == "refused not configured"
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
+        put_clients_seed(sock, at)  # the look is its seed's save's (seed_look_loaded)
         assert ask(sock, "intel on") == "intel on"
         named = wait_for(sock, f"read {record + 0x0A:#x} 10", lambda r: "INTEL" in r)
         assert named.startswith("data INTEL CHIP")
@@ -1397,6 +1423,70 @@ def test_intel_chips_name_the_area_map_until_the_client_goes(game: Game) -> None
     with game.connect() as sock:  # the last client gone: the game's record again
         reply = wait_for(sock, f"read {record + 0x0A:#x} 8", lambda r: r == "data AREA MAP")
         assert reply == "data AREA MAP"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_the_look_applies_only_in_the_clients_seeds_save(game: Game) -> None:
+    # Game::seed_look_loaded: with a client, the Intel Chip (and the ASSIST lock and the disks'
+    # count) the client asks for applies in the save of the seed it put (`offline_put`) and
+    # nowhere else: not before the helper has the seed, not in a normal save, not in another
+    # seed's. Stand-in test only: not run in the game on Linux.
+    from client import offline
+
+    at = config_addresses()
+    record = stand_in("zap_record_table") + 49 * 100
+    named = f"read {record + 0x0A:#x} 10"
+    games = f"read {record + 0x0A:#x} 8"
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a seed's save
+        assert ask(sock, "intel on") == "intel on"
+        frames_pass(sock)
+        assert read_at(sock, record + 0x0A, 8) == b"AREA MAP"  # the seed not put yet
+        text = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
+        name = offline.seed_file_name("S", 0, 1)
+        assert ask(sock, offline.put_request("seed", text, name)) in ("stored", "unchanged")
+        wait_for(sock, named, lambda r: "INTEL" in r)
+        assert ask(sock, f"write {at['rando_marker']:#x} 0000") == "written 2"  # a normal save
+        wait_for(sock, games, lambda r: r == "data AREA MAP")
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the seed's again
+        wait_for(sock, named, lambda r: "INTEL" in r)
+        assert ask(sock, f"write {at['rando_blob'] + 0x26C:#x} 01") == "written 1"  # another seed
+        wait_for(sock, games, lambda r: r == "data AREA MAP")
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_the_clients_seed_goes_with_the_client_and_a_status_connection_changes_nothing(
+    game: Game,
+) -> None:
+    # Game::forget_client_seed, from the client-gone work: the next client (here one that has not
+    # put its seed yet) gets no look in the last client's seed's save, and a connection that only
+    # looks (ping, the statuses: sets_client_state) neither brings the seed back nor takes
+    # anything. Stand-in test only: not run in the game on Linux.
+    from client import offline
+
+    at = config_addresses()
+    record = stand_in("zap_record_table") + 49 * 100
+    config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+    with game.connect() as sock:
+        assert ask(sock, config) == "ok"
+        put_clients_seed(sock, at)
+        assert ask(sock, "intel on") == "intel on"
+        wait_for(sock, f"read {record + 0x0A:#x} 10", lambda r: "INTEL" in r)
+    with game.connect() as sock:  # the client gone: the game's record
+        wait_for(sock, f"read {record + 0x0A:#x} 8", lambda r: r == "data AREA MAP")
+        assert ask(sock, "ping").startswith("pong")
+        assert ask(sock, "discs_status") is not None  # sets nothing
+    with game.connect() as sock:  # a status connection that went changes nothing
+        assert ask(sock, config) == "ok"  # the next client, its seed not put yet
+        assert ask(sock, "intel on") == "intel on"
+        frames_pass(sock)
+        assert read_at(sock, record + 0x0A, 8) == b"AREA MAP"  # not the last client's seed
+        text = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
+        name = offline.seed_file_name("S", 0, 1)
+        assert ask(sock, offline.put_request("seed", text, name)) in ("unchanged", "stored")
+        wait_for(sock, f"read {record + 0x0A:#x} 10", lambda r: "INTEL" in r)  # its own now
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
