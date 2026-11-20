@@ -108,8 +108,24 @@ target_link_libraries(zap_linux_offline_tests PRIVATE zap_shared)
 target_compile_options(zap_linux_offline_tests PRIVATE -Wno-missing-field-initializers)
 add_test(NAME linux_offline COMMAND zap_linux_offline_tests)
 
+# The canary (tests/canary.cpp, native/tests): the real save folder's seed copies and the
+# helper's real seed folder as they were before the first test, checked after the last. Every
+# test requires the fixture, so the snapshot runs first and the check last.
+add_executable(zap_canary ../tests/canary.cpp)
+target_link_libraries(zap_canary PRIVATE zap_shared)
+target_compile_options(zap_canary PRIVATE -Wno-missing-field-initializers)
+add_test(NAME canary_before COMMAND zap_canary snapshot ${CMAKE_BINARY_DIR}/canary.snapshot)
+add_test(NAME canary_after COMMAND zap_canary verify ${CMAKE_BINARY_DIR}/canary.snapshot)
+set_tests_properties(canary_before PROPERTIES FIXTURES_SETUP real_folders)
+set_tests_properties(canary_after PROPERTIES FIXTURES_CLEANUP real_folders)
+
 # The Linux build's calls in a translation: the label builder given the helper's own std::wstring.
 add_executable(zap_translation_tests tests/translation_tests.cpp)
 target_link_libraries(zap_translation_tests PRIVATE zap_shared)
 target_compile_options(zap_translation_tests PRIVATE -Wno-missing-field-initializers)
 add_test(NAME translation COMMAND zap_translation_tests)
+
+# Every test but the canary's own requires the canary's fixture.
+get_property(ZAP_ALL_TESTS DIRECTORY PROPERTY TESTS)
+list(REMOVE_ITEM ZAP_ALL_TESTS canary_before canary_after)
+set_tests_properties(${ZAP_ALL_TESTS} PROPERTIES FIXTURES_REQUIRED real_folders)

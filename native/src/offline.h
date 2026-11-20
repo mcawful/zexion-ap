@@ -120,22 +120,45 @@ struct OfflineFiles {
 // take the folder, so tests give their own.
 std::wstring offline_folder();
 // The game's own save folder, where the saves are and Steam Cloud syncs: what the game's
-// SDL_GetPrefPath("Gallant Leaf", "Zexion") returns (on Windows asked of the game's SDL2.dll, else
-// %APPDATA%\Gallant Leaf\Zexion; on Linux $XDG_DATA_HOME, else ~/.local/share, then the same
-// two names: Flatpak Steam's home is the sandbox's), without a trailing separator, or "" if that
-// is not an absolute path. Never made by the helper itself (SDL's own call makes it, as the
-// game's does at start): a game that has no folder has no saves.
+// SDL_GetPrefPath("Gallant Leaf", "Zexion") returns, found without calling SDL (which makes the
+// folder): on Windows the Roaming AppData known folder (SDL's: CSIDL_APPDATA) and those two names,
+// else %APPDATA%; on Linux $XDG_DATA_HOME, else ~/.local/share, then the same two names (Flatpak
+// Steam's home is the sandbox's). Without a trailing separator, or "" if that is not an absolute
+// path. On Windows found once, the first time asked (the helper asks at start); on Linux read
+// from the environment at each call, which the Linux helper makes once, in its constructor
+// before the game's threads run. Never made by the helper: a game that has no folder has no saves.
 std::wstring save_folder();
+#ifdef _WIN32
+// The save folder under the Roaming AppData folder `roaming` (a test gives its own), or "" if
+// `roaming` is not an absolute path.
+std::wstring save_folder_under(const std::wstring& roaming);
+#endif
+// The real save folder and the helper's real per-user folder, as the operating system itself
+// names them for this user (Windows' known folders; on Linux the home the passwd entry names,
+// under .local/share), whatever the environment holds ($HOME, $XDG_DATA_HOME, %LOCALAPPDATA% and
+// %APPDATA% are what a test sets to its own). "" if not found. restrict_to_test_folder refuses
+// them and what is inside, and the tests' canary watches them (native/tests/canary.cpp).
+std::wstring os_save_folder();
+std::wstring os_offline_folder();
+// A test build's folder: `folder` itself if it is an absolute path, normalized, strictly inside
+// the system's temporary folder (GetTempPathW; on Linux $TMPDIR, else /tmp) and neither the real
+// save folder or per-user folder (the ones the OS names, not an environment variable a test set)
+// nor inside them, else "". The test builds of the helpers (ZAP_HOOKTEST) take every folder they
+// write through this, so a test run can never write the real one.
+std::wstring restrict_to_test_folder(const std::wstring& folder);
 // Pipe thread (file I/O; never the frame call): reads the folder's config for `build` (the
 // client's `config` request, parse_config, then its check lines) and its seeds, the newest
 // first; a file that does not parse is skipped. With `save` (save_folder(), or a test's), the
 // seeds' copies in the save folder are read too and made one with the local ones
 // (merge_offline_seeds); each copy that then differs from the result is rewritten, whole or not at
 // all, the save folder's only under a kSyncedPrefix name: a seed with no copy there (or a
-// poorer one) gets it, a seed only there gets its local file. `error` is then also the last
-// copy that could not be written.
+// poorer one) gets it, a seed only there gets its local file. A copy is written only for a seed
+// that one of the 30 saves in the save folder uses (the match the file select makes), so a seed no
+// save has keeps the copy it has, not refreshed, and gets none. `write` false writes nothing,
+// anywhere: the seeds are only made one (a client going away that set nothing, such as `helper.py
+// status`, reads so). `error` is then also the last copy that could not be written.
 OfflineFiles read_offline_files(const std::wstring& folder, const char* build,
-                                const std::wstring& save = L"");
+                                const std::wstring& save = L"", bool write = true);
 
 // Pipe thread: an `offline_put` request, "offline_put config" or "offline_put seed NAME" then
 // the file's text, checked as the reader checks it and written in place of the old one, whole
@@ -144,8 +167,9 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build,
 // be written: the running helper works from it with a client too. With `save`, the seed is first
 // made one with the copy already in the save folder (merge_offline_seeds, the put one the
 // newer), that is what is handed over and written to the local file, and the copy there is
-// rewritten as well; `save_error` (if not null) then says why that last write failed, else is empty. The
-// reply is about the local file alone.
+// rewritten as well if a save in the save folder uses the seed (else it waits for a read);
+// `save_error` (if not null) then says why that last write failed, else is empty. The reply is
+// about the local file alone.
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request, OfflineSeed* seed = nullptr,
                              const std::wstring& save = L"", std::string* save_error = nullptr);

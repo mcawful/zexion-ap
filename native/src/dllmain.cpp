@@ -114,17 +114,41 @@ void run_self_scan() {
     }
 }
 
-// The game's save folder, where the seeds' copies go (offline.h). The test build is a host
-// program's, never the game's: it uses the folder a test names in ZEXION_SAVE_DIR and none
-// otherwise, so a test run never writes the real one.
+// The helper's own folder for the seeds, and the game's save folder, where each seed's copy goes
+// (offline.h). The test build is a host program's, never the game's, and takes every folder it
+// writes through restrict_to_test_folder: inside the temporary folder, and never the real ones.
+// Its save folder is only what a test names in ZAP_TEST_SAVE_DIR (not ZEXION_SAVE_DIR, which the
+// repo's tools define as the real one), its own folder only what LOCALAPPDATA names if that is
+// such a folder: else none, and then nothing is read or written. The production build uses none
+// of this outside the game: with no known build (a program that is not Zexion) it has no save
+// folder, and it takes no seed (handle).
+std::wstring offline_dir() {
+#ifdef ZAP_HOOKTEST
+    return zap::restrict_to_test_folder(zap::offline_folder());
+#else
+    return zap::offline_folder();
+#endif
+}
+
 std::wstring save_dir() {
 #ifdef ZAP_HOOKTEST
     wchar_t folder[MAX_PATH];
-    DWORD n = GetEnvironmentVariableW(L"ZEXION_SAVE_DIR", folder, MAX_PATH);
-    return n != 0 && n < MAX_PATH ? std::wstring(folder, n) : std::wstring();
+    DWORD n = GetEnvironmentVariableW(L"ZAP_TEST_SAVE_DIR", folder, MAX_PATH);
+    return n != 0 && n < MAX_PATH ? zap::restrict_to_test_folder(std::wstring(folder, n))
+                                  : std::wstring();
 #else
-    return zap::save_folder();
+    return g_build == nullptr ? std::wstring() : zap::save_folder();
 #endif
+}
+
+// Set by any request that is no probe (a client's: `config`, `offline_put`, `apply`, ...), taken
+// when the connection goes: a client that set nothing, `helper.py status` or a hello, leaves
+// the files as they are (no copy is written for it).
+std::atomic<bool> g_client_set{false};
+
+bool is_probe(const std::string& request) {
+    return request == "hello" || request == "ping" ||
+           (request.size() > 7 && request.compare(request.size() - 7, 7, "_status") == 0);
 }
 
 // An exclusive hold of the offline lock, released however the scope ends.
@@ -136,9 +160,9 @@ public:
     OfflineLock& operator=(const OfflineLock&) = delete;
 };
 
-void read_offline() {
-    zap::OfflineFiles files =
-        zap::read_offline_files(zap::offline_folder(), g_build, save_dir());
+// `write` false only makes the seeds one, writing nothing (a client that set nothing went).
+void read_offline_with(bool write) {
+    zap::OfflineFiles files = zap::read_offline_files(offline_dir(), g_build, save_dir(), write);
     // Copied before the lock, and the lock released however this ends: a throw under it would
     // leave the next `hello` waiting for it for good.
     std::string error = files.error;
@@ -147,6 +171,8 @@ void read_offline() {
     g_offline_found.store(static_cast<int>(files.seeds.size()));
     g_offline_files = std::move(files);
 }
+
+void read_offline() { read_offline_with(true); }
 
 // Counts a call from the game into one of the helper's functions outside the frame call (the
 // trampoline counts those inside): helper_thread waits for none before it unloads.
@@ -595,12 +621,18 @@ bool matches(const Request& r, const std::string& request) {
 std::string handle(const std::string& request, bool& stop) {
     if (request == "hello") return hello();
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
+    if (!is_probe(request)) g_client_set.store(true);
     if (request.rfind("offline_put ", 0) == 0) {
+        // Only in the game (a known build): a program that merely loads this DLL, a test host
+        // say, writes none of the real folders.
+#if ZAP_CHECK_BUILD
+        if (g_build == nullptr) return "error not the game";
+#endif
         // Written by the helper: a packaged client's AppData writes are redirected (offline.h).
         // The seed's copy in the game's save folder too (offline.h): Steam Cloud carries it.
         zap::OfflineSeed seed;
         std::string save_error;
-        std::string reply = zap::put_offline_file(zap::offline_folder(), g_build, request, &seed,
+        std::string reply = zap::put_offline_file(offline_dir(), g_build, request, &seed,
                                                   save_dir(), &save_error);
         if (!save_error.empty()) {
             OfflineLock lock;
@@ -693,7 +725,10 @@ DWORD WINAPI helper_thread(void*) {
         if (g_slot != nullptr) guarded(read_offline);
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle, [] {
                 g_client_gone.store(true);
-                if (g_slot != nullptr) guarded(read_offline);  // the client may have written them
+                // The client may have written them; the copies in the save folder only if it
+                // set something (a probe, `helper.py status`, writes none).
+                const bool write = g_client_set.exchange(false);
+                if (g_slot != nullptr) guarded([write] { read_offline_with(write); });
             })) {
             // No pipe: nothing could ever unload us, so put the game back as unload does and
             // leave, retrying until a frame comes; if the hook was replaced, stay.

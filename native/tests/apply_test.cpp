@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 
@@ -63,11 +64,13 @@ int wmain(int argc, wchar_t** argv) {
         std::filesystem::remove_all(base);
         return EXIT_FAILURE;
     }
-    // The helper in the test build uses no save folder but the one named here: never the real one.
+    // The helper in the test build uses no save folder but the one named in ZAP_TEST_SAVE_DIR
+    // (never ZEXION_SAVE_DIR, which the repo's tools define as the real one), and only if it is
+    // inside the temporary folder: never the real one.
     const std::filesystem::path save = base / L"save";
     std::filesystem::create_directories(save);
-    if (SetEnvironmentVariableW(L"ZEXION_SAVE_DIR", save.wstring().c_str()) == 0) {
-        std::printf("FAIL: ZEXION_SAVE_DIR not set to the test's folder\n");
+    if (SetEnvironmentVariableW(L"ZAP_TEST_SAVE_DIR", save.wstring().c_str()) == 0) {
+        std::printf("FAIL: ZAP_TEST_SAVE_DIR not set to the test's folder\n");
         std::filesystem::remove_all(base);
         return EXIT_FAILURE;
     }
@@ -156,8 +159,21 @@ int wmain(int argc, wchar_t** argv) {
     check(reply == "stored", "seed B put", reply);
     check(std::filesystem::is_regular_file(base / L"ZexionAP" / L"seeds" / L"12345-0-1.txt"),
           "written into the test's folder");
-    check(std::filesystem::is_regular_file(save / L"ZexionAP-seed-12345-0-1.sav"),
-          "its copy in the test's save folder, under its own name");
+    // No save of the seed in the test's save folder yet: no copy. Then one, and the next put
+    // writes it, under its own name.
+    check(!std::filesystem::exists(save / L"ZexionAP-seed-12345-0-1.sav"),
+          "no save of the seed: no copy in the test's save folder");
+    {
+        std::string file_bytes(0x13100, '\0');
+        file_bytes[0x9402] = 1;
+        std::memcpy(&file_bytes[0x12A80], g_table, sizeof(g_table));
+        std::memcpy(&file_bytes[0x12B24], g_start, sizeof(g_start));
+        std::ofstream(save / L"Save Game 1.sav", std::ios::binary) << file_bytes;
+    }
+    reply = zap_test::ask(pipe, "offline_put seed 12345-0-1\n" + file);
+    check(reply == "unchanged" &&
+              std::filesystem::is_regular_file(save / L"ZexionAP-seed-12345-0-1.sav"),
+          "a save of the seed now: its copy in the test's save folder, under its own name");
     for (int i = 0; i < 200 && reply != "told"; ++i) {  // asked again until a frame has taken it
         reply = zap_test::ask(pipe, "other_save");
         if (reply != "told") Sleep(5);

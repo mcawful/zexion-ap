@@ -1395,8 +1395,21 @@ void start_inside() {
         return;
     }
     g_folder = !folder.empty() && folder == folder_of("/proc/self/exe");
+#ifdef ZAP_HOOKTEST
+    // The test build serves any program, never the game: every folder it writes goes through
+    // restrict_to_test_folder (inside the temporary folder, never the real ones). Its save
+    // folder is only what a test names in ZAP_TEST_SAVE_DIR, not $HOME or $XDG_DATA_HOME.
+    *g_offline_folder = zap::restrict_to_test_folder(zap::offline_folder());
+    const char* test_save = std::getenv("ZAP_TEST_SAVE_DIR");
+    std::wstring named;  // the folder's bytes, as offline.cpp holds a path in a wstring
+    for (const char* c = test_save; c != nullptr && *c != '\0'; ++c) {
+        named += static_cast<wchar_t>(static_cast<unsigned char>(*c));
+    }
+    *g_save_folder = zap::restrict_to_test_folder(named);
+#else
     *g_offline_folder = zap::offline_folder();  // here, before the game's threads (getenv)
     *g_save_folder = zap::save_folder();
+#endif
     g_game->set_title_version(kVersion);  // the title's version line (title.h), as on Windows
     if (!read_own_symbols()) {
         std::fprintf(stderr, "zexion-ap %s: the game's symbols were not found: no new games\n",

@@ -372,6 +372,42 @@ def test_the_seed_copy_in_the_save_folder_has_the_name_steam_cloud_syncs() -> No
     assert f"`{prefix[0]}<NAME>{suffix[0]}`" in claude
 
 
+def test_the_helper_reads_the_saves_where_the_client_and_the_tools_do() -> None:
+    # The helper decides which seeds a save uses (offline.cpp, saved_seeds) from the first bytes
+    # of each Save Game N.sav: the randomizer section, the slot's randomizer marker and empty
+    # mark, at the file offsets save_patch and save_lab name.
+    import save_lab
+
+    code = source("offline.cpp")
+    section = re.findall(r"constexpr size_t kSaveSection = (0x[0-9A-Fa-f]+);", code)
+    assert [int(n, 16) for n in section] == [sp.SECTION]
+    slot = layout("slot")
+    rando = layout("rando")
+    assert slot["kRandoMarker"] + 2 == sp.RANDO_MARKER  # the block holds the file from offset 2
+    assert slot["kEmpty"] + 2 == save_lab.EMPTY_MARKER
+    assert slot["kEmptyMark"] == 0xFF and slot["kCount"] == 30
+    assert sp.SECTION + rando["kItemTable"] == sp.ITEM_TABLE
+    assert sp.SECTION + rando["kStart"] == sp.START_RECORD
+    assert sp.SECTION + rando["kSettings"] == sp.OPTIONS
+    prefix = sp.SECTION + rando["kSettings"] + rando["kSecretShuffle"] + 1
+    assert "kSavePrefix = kSaveSection + rando::kSettings + rando::kSecretShuffle + 1" in code
+    assert prefix == 0x130B5  # what native/README.md says is read of each save
+
+
+def test_the_test_builds_read_their_folders_only_through_the_guard() -> None:
+    # A test run must never write the real save folder or per-user folder (CLAUDE.md, "Rules"):
+    # the test builds take them through restrict_to_test_folder and name their save folder only in
+    # ZAP_TEST_SAVE_DIR, never ZEXION_SAVE_DIR (which the repo's tools define as the real one).
+    windows = source("dllmain.cpp")
+    assert "zap::restrict_to_test_folder(zap::offline_folder())" in windows
+    assert 'L"ZAP_TEST_SAVE_DIR"' in windows and 'L"ZEXION_SAVE_DIR"' not in windows
+    linux = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text(encoding="utf-8")
+    assert "zap::restrict_to_test_folder(zap::offline_folder())" in linux
+    assert '"ZAP_TEST_SAVE_DIR"' in linux and 'getenv("ZEXION_SAVE_DIR")' not in linux
+    # And the production build in no known build takes no seed.
+    assert 'return "error not the game";' in windows
+
+
 def test_no_name_the_client_puts_in_a_label_has_the_helpers_separator() -> None:
     # "@N NAME/PICKUP": the helper ends NAME at the first "/" (native/src/requests.cpp,
     # parse_labels), which the client never sends in one.

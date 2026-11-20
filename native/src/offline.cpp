@@ -10,10 +10,12 @@
 #ifndef _WIN32
 #include <dirent.h>
 #include <fcntl.h>
+#include <pwd.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <cerrno>
+#include <climits>
 #include <cstdlib>
 #endif
 
@@ -57,6 +59,20 @@ bool read_file(const std::wstring& path, std::string& out) {
     CloseHandle(f);
     return ok;
 }
+
+// The first `size` bytes of the file at `path` (a save is larger than kMaxFile): false if it is
+// shorter or cannot be read.
+bool read_prefix(const std::wstring& path, size_t size, std::string& out) {
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE |
+                                                           FILE_SHARE_DELETE,
+                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    out.resize(size);
+    DWORD got = 0;
+    bool ok = ReadFile(f, out.data(), static_cast<DWORD>(size), &got, nullptr) && got == size;
+    CloseHandle(f);
+    return ok;
+}
 #else
 // A path is held as its bytes, one a character (getenv's as they are, and the ASCII names the
 // helper adds), so it goes back to the same bytes whatever the user's folder is named.
@@ -84,6 +100,27 @@ bool read_file(const std::wstring& path, std::string& out) {
         size_t got = 0;
         while (ok && got < out.size()) {
             ssize_t n = ::read(fd, out.data() + got, out.size() - got);
+            if (n < 0 && errno == EINTR) continue;
+            ok = n > 0;
+            if (ok) got += static_cast<size_t>(n);
+        }
+    }
+    close(fd);
+    return ok;
+}
+
+// The first `size` bytes of the file at `path` (a save is larger than kMaxFile): false if it is
+// shorter or cannot be read. Not through a link, as read_file.
+bool read_prefix(const std::wstring& path, size_t size, std::string& out) {
+    int fd = open(path_bytes(path).c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) return false;
+    struct stat st {};
+    bool ok = fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && static_cast<uint64_t>(st.st_size) >= size;
+    if (ok) {
+        out.resize(size);
+        size_t got = 0;
+        while (ok && got < size) {
+            ssize_t n = ::read(fd, out.data() + got, size - got);
             if (n < 0 && errno == EINTR) continue;
             ok = n > 0;
             if (ok) got += static_cast<size_t>(n);
@@ -387,9 +424,10 @@ std::string write_whole(const std::wstring& path, const std::string& text, bool&
     if (f == INVALID_HANDLE_VALUE) return "cannot create, error " + std::to_string(GetLastError());
     DWORD written = 0;
     bool ok = WriteFile(f, text.data(), static_cast<DWORD>(text.size()), &written, nullptr) &&
-              written == text.size();
+              written == text.size() && FlushFileBuffers(f);  // on disk before it replaces the old
     CloseHandle(f);
-    if (!ok || !MoveFileExW(temp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+    if (!ok || !MoveFileExW(temp.c_str(), path.c_str(),
+                            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         DWORD e = GetLastError();
         DeleteFileW(temp.c_str());
         return "cannot write, error " + std::to_string(e);
@@ -404,6 +442,11 @@ std::wstring join(const std::wstring& folder, const std::string& name) {
 bool folder_exists(const std::wstring& path) {
     DWORD attributes = GetFileAttributesW(path.c_str());
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
+
+// Whether anything is at `path`, whatever it holds.
+bool exists(const std::wstring& path) {
+    return GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES;
 }
 
 // The files in `folder` that begin with kSyncedPrefix and end with kSyncedSuffix, as (last
@@ -491,6 +534,12 @@ bool folder_exists(const std::wstring& path) {
     return stat(path_bytes(path).c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+// Whether anything is at `path` (a link itself too), whatever it holds.
+bool exists(const std::wstring& path) {
+    struct stat st {};
+    return lstat(path_bytes(path).c_str(), &st) == 0;
+}
+
 // The files in `folder` that begin with kSyncedPrefix and end with kSyncedSuffix, as (last
 // written, name), unordered.
 std::vector<std::pair<uint64_t, std::string>> list_synced(const std::wstring& folder) {
@@ -550,9 +599,41 @@ std::string read_synced_copy(const std::wstring& save, const std::string& base,
     return parse_synced_file(text, out);
 }
 
+// The save file's offsets (docs/re/save-format.md; client/save_patch.py): the randomizer section
+// starts at 0x12814 (so rando::kItemTable at 0x12A80, rando::kStart at 0x12B24), and the slot
+// block, which the file holds from its offset 2, has the empty mark and the randomizer marker
+// (slot::kEmpty, slot::kRandoMarker).
+constexpr size_t kSaveSection = 0x12814;
+constexpr size_t kSavePrefix = kSaveSection + rando::kSettings + rando::kSecretShuffle + 1;
+
+// The seeds of the randomizer saves among the 30 slots in the save folder `save`, read only (the
+// first bytes of each `Save Game N.sav`, and none of an empty slot, a normal game or a file that
+// is not there): the match the file select makes (offline_seed_of, offline_matches).
+std::vector<OfflineSeed> saved_seeds(const std::wstring& save) {
+    std::vector<OfflineSeed> seeds;
+    std::string data;
+    for (int n = 1; n <= slot::kCount; ++n) {
+        if (!read_prefix(join(save, "Save Game " + std::to_string(n) + ".sav"), kSavePrefix,
+                         data)) {
+            continue;
+        }
+        const auto* bytes = reinterpret_cast<const uint8_t*>(data.data());
+        const bool marked = bytes[slot::kRandoMarker + 2] == 1 && bytes[slot::kRandoMarker + 3] == 0;
+        if (!marked || bytes[slot::kEmpty + 2] == slot::kEmptyMark) continue;
+        seeds.push_back(offline_seed_of(bytes + kSaveSection));
+    }
+    return seeds;
+}
+
+// Whether a save of `seed` is among `saved` (saved_seeds).
+bool in_use(const std::vector<OfflineSeed>& saved, const OfflineSeed& seed) {
+    return std::any_of(saved.begin(), saved.end(),
+                       [&](const OfflineSeed& s) { return offline_matches(s, seed); });
+}
+
 // `seed`'s copy written into the save folder, under its own name only, whole or not at all: ""
 // or what failed. Nothing, and no error, where there is no save folder (a game with no saves yet:
-// the helper never makes the game's folder).
+// the helper never makes the game's folder). Only the caller decides whether a save uses it.
 std::string write_synced_copy(const std::wstring& save, const std::string& base,
                               const OfflineSeed& seed) {
     if (save.empty() || !folder_exists(save)) return "";
@@ -560,6 +641,14 @@ std::string write_synced_copy(const std::wstring& save, const std::string& base,
     if (text.size() > kMaxFile) return "too large";
     bool changed = false;
     return write_whole(join(save, synced_file_name(base)), text, changed);
+}
+
+// A put seed's copy: written only while a save of the seed is in the save folder; else it waits
+// for a read (join_saves), once the game has saved it. "" or what failed.
+std::string put_synced_copy(const std::wstring& save, const std::string& base,
+                            const OfflineSeed& seed) {
+    if (save.empty() || !folder_exists(save) || !in_use(saved_seeds(save), seed)) return "";
+    return write_synced_copy(save, base, seed);
 }
 
 // A seed put by a client, made one with the copy already in the save folder if that is the
@@ -582,10 +671,27 @@ void join_synced(const std::wstring& save, OfflineSeed& seed, std::string& body)
 // The seeds read from the helper's own folder (`files.seeds`, each named NAME.txt), made one with
 // those in the save folder: the newer copy's fields, with merge_offline_seeds' exceptions; each
 // copy that then differs from the result is written again, and a seed with no copy in one of the
-// folders gets it. A copy in the save folder that does not read is not trusted, and is replaced
-// by a good local one (a half-synced file), else left alone.
-void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstring& save) {
+// folders gets it. Copies in the save folder are written only for a seed a save in that folder
+// uses (saved_seeds): a seed none uses keeps the copy it has, not refreshed, and gets none. A copy
+// that does not read is not trusted, and is replaced by a good local one (a half-synced file), else
+// left alone. With `write` false nothing is written anywhere: the seeds are only made one.
+void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstring& save,
+                bool write) {
     if (save.empty() || !folder_exists(save)) return;
+    std::vector<OfflineSeed> saved;
+    bool saved_read = false;
+    auto used = [&](const OfflineSeed& seed) {
+        if (!saved_read) saved = saved_seeds(save);
+        saved_read = true;
+        return in_use(saved, seed);
+    };
+    // The local file, written whole, but never over one that is there and was not read (a file
+    // past the 256 read, or one that does not parse: a copy must not replace what it has not seen).
+    auto write_local = [&](const std::string& base, const std::string& text, bool was_read) {
+        if (!write || folder.empty()) return std::string();
+        if (!was_read && exists(join(join(folder, "seeds"), base + ".txt"))) return std::string();
+        return write_local_seed(folder, base, text);
+    };
     std::vector<std::pair<uint64_t, std::string>> names = list_synced(save);
     std::sort(names.begin(), names.end(), [](const auto& a, const auto& b) {
         return a.first != b.first ? a.first > b.first : a.second < b.second;
@@ -625,7 +731,7 @@ void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstr
         there.insert(base);
         const auto at = local.find(base);
         if (at == local.end()) {
-            note(file, write_local_seed(folder, base, format_offline_seed(copy)));
+            note(file, write_local(base, format_offline_seed(copy), false));
             added.push_back(std::move(copy));
             continue;
         }
@@ -638,13 +744,15 @@ void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstr
                                                          : merge_offline_seeds(copy, mine);
         merged.name = mine.name;
         const std::string result = format_offline_seed(merged);
-        if (result != format_offline_seed(mine)) note(file, write_local_seed(folder, base, result));
-        if (result != format_offline_seed(copy)) note(file, write_synced_copy(save, base, merged));
+        if (result != format_offline_seed(mine)) note(file, write_local(base, result, true));
+        if (write && result != format_offline_seed(copy) && used(merged)) {
+            note(file, write_synced_copy(save, base, merged));
+        }
         mine = std::move(merged);
     }
     for (size_t i = 0; i < local_count; ++i) {
         const std::string base = base_name(files.seeds[i].name);
-        if (there.count(base) == 0 && good_seed_name(base)) {
+        if (write && there.count(base) == 0 && good_seed_name(base) && used(files.seeds[i])) {
             note(synced_file_name(base), write_synced_copy(save, base, files.seeds[i]));
         }
     }
@@ -693,7 +801,7 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     }
     // The save folder's copy, written whether the local file can be kept or not.
     if (parsed && !save.empty() && body.size() <= kMaxFile) {
-        std::string why = write_synced_copy(save, name, *parsed);
+        std::string why = put_synced_copy(save, name, *parsed);
         if (save_error != nullptr) *save_error = std::move(why);
     }
     // The seed is the running helper's whether the file can be kept or not (no folder, a
@@ -739,38 +847,136 @@ std::wstring offline_folder() {
     return std::wstring(base, n) + L"\\ZexionAP";
 }
 
-std::wstring save_folder() {
-    // What the game's own SDL gives (its folder for the saves, with a trailing backslash), else
-    // %APPDATA%'s, which SDL reads the same.
-    std::wstring folder;
-    if (HMODULE sdl = GetModuleHandleW(L"SDL2.dll"); sdl != nullptr) {
-        using GetPrefPath = char*(__cdecl*)(const char*, const char*);
-        using Free = void(__cdecl*)(void*);
-        auto get = reinterpret_cast<GetPrefPath>(GetProcAddress(sdl, "SDL_GetPrefPath"));
-        auto release = reinterpret_cast<Free>(GetProcAddress(sdl, "SDL_free"));
-        if (get != nullptr && release != nullptr) {
-            if (char* path = get("Gallant Leaf", "Zexion"); path != nullptr) {
-                int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, nullptr, 0);
-                if (n > 1) {
-                    folder.assign(static_cast<size_t>(n), L'\0');
-                    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, folder.data(), n);
-                    folder.resize(static_cast<size_t>(n) - 1);
-                }
-                release(path);
-            }
+namespace {
+
+// An absolute path: a drive's root or a share (a relative one would resolve against the game's
+// own folder).
+bool absolute_path(const std::wstring& path) {
+    bool drive = path.size() >= 3 && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/');
+    bool share = path.size() >= 2 && path[0] == L'\\' && path[1] == L'\\';
+    return drive || share;
+}
+
+void trim_separators(std::wstring& path) {
+    while (path.size() > 3 && (path.back() == L'\\' || path.back() == L'/')) path.pop_back();
+}
+
+// A known folder's path (Windows' own answer, not an environment variable a program may have
+// changed), or "". Asked of shell32 at run time: the helper imports no more than it did.
+std::wstring known_folder(const GUID& id) {
+    using Get = HRESULT(WINAPI*)(const GUID&, DWORD, HANDLE, PWSTR*);
+    using Free = void(WINAPI*)(void*);
+    std::wstring path;
+    HMODULE shell = LoadLibraryW(L"shell32.dll"), ole = LoadLibraryW(L"ole32.dll");
+    if (shell != nullptr && ole != nullptr) {
+        auto get = reinterpret_cast<Get>(GetProcAddress(shell, "SHGetKnownFolderPath"));
+        auto release = reinterpret_cast<Free>(GetProcAddress(ole, "CoTaskMemFree"));
+        PWSTR text = nullptr;
+        if (get != nullptr && release != nullptr && SUCCEEDED(get(id, 0, nullptr, &text)) &&
+            text != nullptr) {
+            path = text;
         }
+        if (release != nullptr && text != nullptr) release(text);
     }
-    if (folder.empty()) {
-        wchar_t base[MAX_PATH];
-        DWORD n = GetEnvironmentVariableW(L"APPDATA", base, MAX_PATH);
-        if (n == 0 || n >= MAX_PATH) return L"";
-        folder = std::wstring(base, n) + L"\\Gallant Leaf\\Zexion";
+    if (shell != nullptr) FreeLibrary(shell);
+    if (ole != nullptr) FreeLibrary(ole);
+    return path;
+}
+
+// {3EB685DB-65F9-4CF6-A03A-E3EF65729F3D}, {F1B32785-6FBA-4FCF-9D55-7B8E7F157091}
+constexpr GUID kRoamingAppData = {0x3EB685DB, 0x65F9, 0x4CF6, {0xA0, 0x3A, 0xE3, 0xEF, 0x65, 0x72, 0x9F, 0x3D}};
+constexpr GUID kLocalAppData = {0xF1B32785, 0x6FBA, 0x4FCF, {0x9D, 0x55, 0x7B, 0x8E, 0x7F, 0x15, 0x70, 0x91}};
+
+// The save folder under the Roaming AppData folder `roaming`, or "" for a path that is not
+// absolute.
+std::wstring save_folder_of(std::wstring roaming) {
+    trim_separators(roaming);
+    return absolute_path(roaming) ? roaming + L"\\Gallant Leaf\\Zexion" : L"";
+}
+
+// `path` made absolute, with its . and .. folded and its short (8.3) names long, as far as the
+// path exists, and no trailing separator.
+std::wstring canonical_path(const std::wstring& path) {
+    wchar_t full[32768];
+    DWORD n = GetFullPathNameW(path.c_str(), 32768, full, nullptr);
+    if (n == 0 || n >= 32768) return L"";
+    std::wstring rest(full, n), tail;
+    trim_separators(rest);
+    // The longest part that exists, in its long form; what does not exist yet, as it is.
+    for (;;) {
+        wchar_t lng[32768];
+        DWORD m = GetLongPathNameW(rest.c_str(), lng, 32768);
+        if (m > 0 && m < 32768) {
+            rest.assign(lng, m);
+            break;
+        }
+        size_t cut = rest.find_last_of(L'\\');
+        if (cut == std::wstring::npos || cut < 3) break;
+        tail = rest.substr(cut) + tail;
+        rest.resize(cut);
     }
-    while (!folder.empty() && (folder.back() == L'\\' || folder.back() == L'/')) folder.pop_back();
-    // An absolute path only (a drive's root or a share), as offline_folder.
-    bool drive = folder.size() >= 3 && folder[1] == L':' && (folder[2] == L'\\' || folder[2] == L'/');
-    bool share = folder.size() >= 2 && folder[0] == L'\\' && folder[1] == L'\\';
-    return drive || share ? folder : L"";
+    trim_separators(rest);
+    return rest + tail;
+}
+
+bool equal_nocase(const std::wstring& a, const std::wstring& b) {
+    return a.size() == b.size() &&
+           CompareStringOrdinal(a.c_str(), static_cast<int>(a.size()), b.c_str(),
+                                static_cast<int>(b.size()), TRUE) == CSTR_EQUAL;
+}
+
+// Whether `path` is `base` or inside it (both canonical_path's), case apart.
+bool at_or_under(const std::wstring& path, const std::wstring& base) {
+    if (base.empty()) return false;
+    if (equal_nocase(path, base)) return true;
+    return path.size() > base.size() && path[base.size()] == L'\\' &&
+           equal_nocase(path.substr(0, base.size()), base);
+}
+
+}  // namespace
+
+std::wstring save_folder_under(const std::wstring& roaming) { return save_folder_of(roaming); }
+
+std::wstring save_folder() {
+    // Found once, at start (the helper asks then): SDL's own answer for the game (it makes the
+    // folder, as the game's call does at start; here nothing is made) is the Roaming AppData
+    // known folder, else %APPDATA%.
+    static const std::wstring folder = [] {
+        std::wstring roaming = known_folder(kRoamingAppData);
+        if (roaming.empty()) {
+            wchar_t base[MAX_PATH];
+            DWORD n = GetEnvironmentVariableW(L"APPDATA", base, MAX_PATH);
+            if (n != 0 && n < MAX_PATH) roaming.assign(base, n);
+        }
+        return save_folder_of(roaming);
+    }();
+    return folder;
+}
+
+std::wstring os_save_folder() { return save_folder_of(known_folder(kRoamingAppData)); }
+
+std::wstring os_offline_folder() {
+    const std::wstring local = known_folder(kLocalAppData);
+    return absolute_path(local) ? local + L"\\ZexionAP" : L"";
+}
+
+std::wstring restrict_to_test_folder(const std::wstring& folder) {
+    if (!absolute_path(folder)) return L"";
+    wchar_t temp[MAX_PATH + 1];
+    DWORD n = GetTempPathW(MAX_PATH + 1, temp);
+    if (n == 0 || n > MAX_PATH) return L"";
+    const std::wstring base = canonical_path(std::wstring(temp, n)), path = canonical_path(folder);
+    if (base.empty() || path.empty() || !at_or_under(path, base) || equal_nocase(path, base)) {
+        return L"";
+    }
+    // Never the real ones: the folders Windows itself names for this user, not an environment
+    // variable (a test sets LOCALAPPDATA to its own folder, which is what it is allowed to use).
+    const std::wstring reals[] = {canonical_path(os_offline_folder()),
+                                  canonical_path(os_save_folder())};
+    for (const std::wstring& real : reals) {
+        if (at_or_under(path, real)) return L"";
+    }
+    return folder;
 }
 
 // The helper's own folder alone (read_offline_files adds the save folder's copies).
@@ -855,7 +1061,7 @@ std::string put_offline_file(const std::wstring& folder, const char*, const std:
     join_synced(save, seed, body);  // the copy in the save folder, if any, made one with it
     // The save folder's copy, written whether the local file can be kept or not.
     if (!save.empty() && body.size() <= kMaxFile) {
-        std::string synced = write_synced_copy(save, name, seed);
+        std::string synced = put_synced_copy(save, name, seed);
         if (save_error != nullptr) *save_error = std::move(synced);
     }
     // The running helper's whether the file can be kept or not, as on Windows.
@@ -942,12 +1148,86 @@ std::wstring save_folder() {
     }
     return base + L"/Gallant Leaf/Zexion";
 }
+
+namespace {
+
+// `path` (absolute) with its . and .. folded and its links resolved as far as the path exists,
+// no trailing slash; "" for a path that is not absolute.
+std::string canonical_path(const std::string& path) {
+    if (path.empty() || path[0] != '/') return "";
+    std::vector<std::string> parts;
+    std::istringstream in(path);
+    for (std::string part; std::getline(in, part, '/');) {
+        if (part.empty() || part == ".") continue;
+        if (part == "..") {
+            if (!parts.empty()) parts.pop_back();
+            continue;
+        }
+        parts.push_back(part);
+    }
+    std::string tail;
+    while (true) {
+        std::string head;
+        for (const std::string& part : parts) head += "/" + part;
+        if (head.empty()) head = "/";
+        char resolved[PATH_MAX];
+        if (realpath(head.c_str(), resolved) != nullptr) {
+            std::string out = resolved;
+            if (out == "/") out.clear();
+            return out + tail;
+        }
+        if (parts.empty()) return tail;
+        tail = "/" + parts.back() + tail;
+        parts.pop_back();
+    }
+}
+
+bool at_or_under(const std::string& path, const std::string& base) {
+    return !base.empty() && path.compare(0, base.size(), base) == 0 &&
+           (path.size() == base.size() || path[base.size()] == '/');
+}
+
+// The home the passwd entry names for this user (not $HOME), or "".
+std::string passwd_home() {
+    const passwd* user = getpwuid(getuid());
+    return user != nullptr && user->pw_dir != nullptr && user->pw_dir[0] == '/' ? user->pw_dir : "";
+}
+
+}  // namespace
+
+std::wstring os_save_folder() {
+    const std::string home = passwd_home();
+    return home.empty() ? L"" : bytes_path((home + "/.local/share/Gallant Leaf/Zexion").c_str());
+}
+
+std::wstring os_offline_folder() {
+    const std::string home = passwd_home();
+    return home.empty() ? L"" : bytes_path((home + "/.local/share/ZexionAP").c_str());
+}
+
+std::wstring restrict_to_test_folder(const std::wstring& folder) {
+    const std::string path = canonical_path(path_bytes(folder));
+    const char* tmp = std::getenv("TMPDIR");
+    const std::string base = canonical_path(tmp != nullptr && tmp[0] == '/' ? tmp : "/tmp");
+    if (path.empty() || base.empty() || !at_or_under(path, base) || path == base) return L"";
+    // Never the real ones: under the home the system names for this user, not $HOME or
+    // $XDG_DATA_HOME, which a test sets to its own.
+    const std::string home = passwd_home();
+    if (!home.empty()) {
+        for (const char* real : {"/.local/share/ZexionAP", "/.local/share/Gallant Leaf",
+                                 "/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP",
+                                 "/.var/app/com.valvesoftware.Steam/.local/share/Gallant Leaf"}) {
+            if (at_or_under(path, canonical_path(home + real))) return L"";
+        }
+    }
+    return folder;
+}
 #endif
 
 OfflineFiles read_offline_files(const std::wstring& folder, const char* build,
-                                const std::wstring& save) {
+                                const std::wstring& save, bool write) {
     OfflineFiles files = read_local_files(folder, build);
-    join_saves(files, folder, save);
+    join_saves(files, folder, save, write);
     return files;
 }
 

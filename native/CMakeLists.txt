@@ -97,3 +97,16 @@ target_compile_definitions(zap_proxy_test PRIVATE
                            ZAP_PROXY_PATH="$<TARGET_FILE:version_proxy>")
 add_dependencies(zap_proxy_test version_proxy)
 add_test(NAME proxy COMMAND zap_proxy_test)
+
+# The canary (tests/canary.cpp): the real save folder's seed copies and the helper's real seed
+# folder as they were before the first test, checked after the last, whatever failed between. Every
+# test requires the fixture, so the snapshot runs first and the check last.
+add_executable(zap_canary tests/canary.cpp)
+target_link_libraries(zap_canary PRIVATE zap_core)
+add_test(NAME canary_before COMMAND zap_canary snapshot ${CMAKE_BINARY_DIR}/canary.snapshot)
+add_test(NAME canary_after COMMAND zap_canary verify ${CMAKE_BINARY_DIR}/canary.snapshot)
+set_tests_properties(canary_before PROPERTIES FIXTURES_SETUP real_folders)
+set_tests_properties(canary_after PROPERTIES FIXTURES_CLEANUP real_folders)
+get_property(ZAP_ALL_TESTS DIRECTORY PROPERTY TESTS)
+list(REMOVE_ITEM ZAP_ALL_TESTS canary_before canary_after)
+set_tests_properties(${ZAP_ALL_TESTS} PROPERTIES FIXTURES_REQUIRED real_folders)
