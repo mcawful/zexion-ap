@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from fakes import ELF_BUILD_ID, elf_image
+from fakes import ELF_BUILD_ID, elf_image, verneed_image
 
 from client import elf
 
@@ -120,3 +120,30 @@ def test_the_python_running_the_tests_parses() -> None:
     image = elf.parse(Path(sys.executable).resolve().read_bytes())
     assert image.type in (elf.ET_EXEC, elf.ET_DYN)
     assert image.section(".text").size > 0
+
+
+def test_the_versions_needed_are_read_by_library() -> None:
+    image = elf.parse(
+        verneed_image([("libm.so.6", ["GLIBC_2.2.5"]), ("libc.so.6", ["GLIBC_2.4", "GLIBC_2.31"])])
+    )
+    assert image.version_needs() == {
+        "libm.so.6": {"GLIBC_2.2.5"},
+        "libc.so.6": {"GLIBC_2.4", "GLIBC_2.31"},
+    }
+
+
+def test_a_file_needing_no_versions_reads_as_none() -> None:
+    assert elf.parse(elf_image()).version_needs() == {}
+
+
+def test_versions_cut_short_by_their_section_are_refused() -> None:
+    image = elf.parse(verneed_image([("libc.so.6", ["GLIBC_2.4", "GLIBC_2.31"])], cut=8))
+    with pytest.raises(elf.ELFError, match="runs past its end"):
+        image.version_needs()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="the running Python, on Linux")
+def test_the_running_pythons_glibc_needs_are_read() -> None:
+    image = elf.parse(Path(sys.executable).resolve().read_bytes())
+    needs = image.version_needs()
+    assert any(v.startswith("GLIBC_") for vs in needs.values() for v in vs)

@@ -133,6 +133,49 @@ def elf_image(
     return bytes(body)
 
 
+def verneed_image(needs: list[tuple[str, list[str]]], cut: int = 0) -> bytes:
+    """A 64-bit ELF file with only ``.dynstr`` and ``.gnu.version_r``, which needs ``needs``'
+    versions of each library in turn; ``cut`` bytes taken off the end of ``.gnu.version_r``."""
+    dynstr = bytearray(b"\0")
+
+    def string(text: str) -> int:
+        at = len(dynstr)
+        dynstr.extend(text.encode() + b"\0")
+        return at
+
+    verneed = bytearray()
+    for i, (library, versions) in enumerate(needs):
+        last = i == len(needs) - 1
+        size = 16 + 16 * len(versions)
+        verneed += struct.pack("<HHIII", 1, len(versions), string(library), 16, 0 if last else size)
+        for j, version in enumerate(versions):
+            after = 0 if j == len(versions) - 1 else 16
+            verneed += struct.pack("<IHHII", 0, 0, j + 2, string(version), after)
+    verneed = verneed[: len(verneed) - cut] if cut else verneed
+    shstr = b"\0.dynstr\0.gnu.version_r\0.shstrtab\0"
+    body = bytearray(64)
+    at_dynstr = len(body)
+    body += dynstr
+    at_verneed = len(body)
+    body += verneed
+    at_shstr = len(body)
+    body += shstr
+    body += b"\0" * (-len(body) % 8)
+    shoff = len(body)
+    sections = [
+        (0, 0, 0, 0, 0),
+        (1, 3, at_dynstr, len(dynstr), 0),  # .dynstr
+        (9, 0x6FFFFFFE, at_verneed, len(verneed), 1),  # .gnu.version_r
+        (24, 3, at_shstr, len(shstr), 0),  # .shstrtab
+    ]
+    for name, kind, offset, size, link in sections:
+        body += struct.pack("<IIQQQQIIQQ", name, kind, 0, 0, offset, size, link, 0, 8, 0)
+    body[0:16] = b"\x7fELF\x02\x01\x01" + b"\0" * 9
+    struct.pack_into("<HHIQQQ", body, 16, 3, 62, 1, 0, 0, shoff)
+    struct.pack_into("<IHHHHHH", body, 48, 0, 64, 56, 0, 64, len(sections), 3)
+    return bytes(body)
+
+
 # --- a seed's plan, and a fresh save of its mode ---------------------------------------------
 
 AMOUNTS = (3, 17, 3, 122, 0, 12)  # Standard's, in save order

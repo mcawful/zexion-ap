@@ -105,9 +105,10 @@ uv pip install --python .venv -r requirements-dev.txt
 
 ## Checks
 
-CI runs all four on every push to and pull request into `develop` or `main` (ruff and pytest
-on Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native builds below. A pull
-request into `main` also runs the release gate (`.github/workflows/release-gate.yml`).
+CI runs all four on every push to and pull request into `develop` or `main` (ruff and pytest on
+Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native builds below, the Linux
+helper also in the Steam Runtime's SDK (`native-linux-runtime`: it must load on glibc 2.31). A
+pull request into `main` also runs the release gate (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
 ```sh
@@ -223,31 +224,32 @@ those folders.
 
 ## Releases and versions
 
-`tools/build_apworld.py` writes into `dist/`: `zexion.apworld` (the world without its tests,
-with `client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, and the player
-guides `zexion-setup-guide.md` and `zexion-game-page.md` (copies of
-`worlds/zexion/docs/setup_en.md` and `en_Zexion.md`, which name each other by those names), and
-the sample YAMLs from `samples/`, one per mode. It packs only git-tracked files and refuses
-missing, stale or mismatched DLLs, a mismatched `world_version`, and samples that are missing,
-untracked or for another version (its docstring): rebuild `native/` first. The packaged client has no build of
-its own, so it uses the helper in the game's folder. On GitHub,
-`.github/workflows/release.yml` builds the release and publishes it once the owner approves
-(`docs/DEVELOPING.md`, "Branches and releases"). The release's message is written for
-players: the version's notes, `docs/releases/<version>.md`, then the install guide in
-`.github/release-footer.md`, then the compare link from the previous release, put together by
-`tools/release_notes.py`. `tests/test_release_notes.py` checks the notes here rebuild the
-published messages; `tests/test_release_footer.py` that the files the guide names are the
-release's.
+`tools/build_apworld.py` writes into `dist/`: `zexion.apworld` (the world without its tests, with
+`client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, `libzexion_ap.so` (the Linux
+helper, as the release workflow builds it in the Steam Runtime's SDK), and the player guides
+`zexion-setup-guide.md` and `zexion-game-page.md` (copies of `worlds/zexion/docs/setup_en.md` and
+`en_Zexion.md`, which name each other by those names), and the sample YAMLs from `samples/`, one
+per mode. It packs only git-tracked files and refuses missing, stale or mismatched DLLs or Linux
+helper, a Linux helper that needs a glibc newer than the Steam Runtime's 2.31 or any libstdc++ (so
+a local build on a newer distribution is refused: the release builds it in the runtime's SDK), a
+mismatched `world_version`, and samples that are missing, untracked or for another version (its
+docstring): rebuild `native/` first. The packaged client has no build of its own, so it uses the
+helper in the game's folder. On GitHub, `.github/workflows/release.yml` builds the release and
+publishes it once the owner approves (`docs/DEVELOPING.md`, "Branches and releases"). The
+release's message is written for players: the version's notes, `docs/releases/<version>.md`, then
+the install guide in `.github/release-footer.md`, then the compare link from the previous release,
+put together by `tools/release_notes.py`. `tests/test_release_notes.py` checks the notes here
+rebuild the published messages; `tests/test_release_footer.py` that the files the guide names are
+the release's.
 
 - **The release version** is one number in four places: `VERSION` in `client/native.py`,
-  `kVersion` in `native/src/dllmain.cpp` and in `native/linux/src/core.h`, and `world_version`
-  in `worlds/zexion/archipelago.json`. Raise all four together before a release:
-  `tests/test_cross_checks.py` checks they match (`build_apworld.py` checks all but the Linux
-  helper's, which a release does not yet carry), and the release gate
-  (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last
-  release and the version on `main`. The helper shows it on the title screen. The sample YAMLs name
-  it too: run `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py`
-  check).
+  `kVersion` in `native/src/dllmain.cpp` and in `native/linux/src/core.h`, and `world_version` in
+  `worlds/zexion/archipelago.json`. Raise all four together before a release:
+  `tests/test_cross_checks.py` checks they match (`build_apworld.py` checks the helpers' builds
+  name it too), and the release gate (`tools/release_check.py`, in
+  `.github/workflows/release-gate.yml`) that it is above the last release and the version on
+  `main`. The helper shows it on the title screen. The sample YAMLs name it too: run
+  `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py` check).
 - **The release notes** are written in the pull request that raises the version, drafted from
   the pull requests merged since the last release; the owner approves the wording there. Copy
   `docs/releases/TEMPLATE.md` to `docs/releases/<version>.md`; how they read, with 1.1.0's as

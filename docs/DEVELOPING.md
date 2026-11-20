@@ -286,16 +286,16 @@ Windows only:
 On Linux the tools look for the install and the saves in the usual places instead (below); on
 macOS, set `ZEXION_GAME_DIR` and `ZEXION_SAVE_DIR`.
 
-**Zexion's Linux build.** Zexion also has a native Linux build on Steam (the store's platform
-list shows Linux, read 2026-11-16), which Steam runs by default on Linux and a Steam Deck
-unless Proton is forced (assumed, as `re/builds.md`'s Status has it: a Deck's Properties showed
-"Steam Linux Runtime 3.0", 2026-11-16). Its binary, a fixed-address
-ELF executable that keeps its symbol table, and its data files, B1's, are recorded in
-`re/builds.md` ("B1 on Linux"), and every target of `client/patterns.py` mapped onto it in
-`re/linux.md`.
-Its support is in the repo: the client attaches to it (below), but no release carries the
-Linux helper yet, so it is not supported, and the setup guide says so ("Linux and Steam Deck").
-What there is:
+**Zexion's Linux build.** Zexion also has a native Linux build on Steam (the store's platform list
+shows Linux, read 2026-11-16), which Steam runs by default on Linux and a Steam Deck unless Proton
+is forced (assumed, as `re/builds.md`'s Status has it: a Deck's Properties showed "Steam Linux
+Runtime 3.0", 2026-11-16). Its binary, a fixed-address ELF executable that keeps its symbol table,
+and its data files, B1's, are recorded in `re/builds.md` ("B1 on Linux"), and every target of
+`client/patterns.py` mapped onto it in `re/linux.md`. It is supported: a release carries the Linux
+helper, built in the Steam Runtime's SDK ("Branches and releases"), and the setup guide gives its
+install ("Linux and Steam Deck"). Run in the game on one setup (Flatpak Steam on CachyOS); native
+Steam, the Steam Deck and Snap's Steam are not tried, and what is known of them is in
+`re/linux.md`. What there is:
 
 - the Linux helper, `libzexion_ap.so` (`native/linux/`, `native/README.md`, "The Linux helper"),
   preloaded by the game's launch options: it counts the game's frame calls, and on a socket reads
@@ -490,13 +490,13 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
 
 ## Branches and releases
 
-`main` holds released code (or a release waiting for approval; GitHub shows its README);
-`develop` holds code ready for the next release. Work happens on short-lived topic branches cut
-from `develop`, merged into `develop` by pull request, then deleted. `develop` and `main` take
-changes only through pull requests with every CI check passing. Branch protection requires
-every check but `ruff and pytest (macos-latest)`, which a pull request must still pass.
-The `native helper (ubuntu-latest)` check is not required until the owner adds it in GitHub's
-settings (the checks that are required are listed there).
+`main` holds released code (or a release waiting for approval; GitHub shows its README); `develop`
+holds code ready for the next release. Work happens on short-lived topic branches cut from
+`develop`, merged into `develop` by pull request, then deleted. `develop` and `main` take changes
+only through pull requests with every CI check passing. Branch protection requires every check but
+`ruff and pytest (macos-latest)`, which a pull request must still pass. The `native helper
+(ubuntu-latest)` and `Linux helper (Steam Runtime)` checks are not required until the owner adds
+them in GitHub's settings (the checks that are required are listed there).
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate
@@ -524,14 +524,16 @@ To release:
    commit on `main` that `develop` lacks, and the branches would drift apart). Claude never
    merges into `main`: a rule, plus a deny rule for `gh pr merge` in Claude's settings; GitHub
    itself enforces only the release approval below.
-3. The merge starts `.github/workflows/release.yml`. Its job runs in the GitHub environment
+3. The merge starts `.github/workflows/release.yml`. Its first job runs in the GitHub environment
    `release`, so it waits on the Actions page until the owner approves it; nothing is built,
-   tagged or published before that. It then builds the helper and proxy, runs the native
-   tests, builds the release with `tools/build_apworld.py`, tags `v<VERSION>` and publishes a
-   GitHub Release of the files below. Its message is the one `tools/release_notes.py` builds:
-   the version's notes, then the install-and-update guide in `.github/release-footer.md`, then
-   the compare link from the latest release; if the notes are missing or unfinished, nothing is
-   built into the release or published (the helper and proxy are built and tested first). A version
+   tagged or published before that. That job builds the Linux helper in the Steam Runtime's SDK
+   (sniper, the pinned snapshot ci.yml's `native-linux-runtime` uses, GCC 14) and runs its native
+   tests; the release job then takes it, builds the helper and proxy, runs the native tests,
+   builds the release with `tools/build_apworld.py`, tags `v<VERSION>` and publishes a GitHub
+   Release of the files below. Its message is the one `tools/release_notes.py` builds: the
+   version's notes, then the install-and-update guide in `.github/release-footer.md`, then the
+   compare link from the latest release; if the notes are missing or unfinished, nothing is built
+   into the release or published (the helper and proxy are built and tested first). A version
    already released from this same commit is skipped (a re-run). The job fails instead if that
    version's release is a draft (a publish that failed part-way: publish or delete it on GitHub,
    then re-run) or was released from another commit.

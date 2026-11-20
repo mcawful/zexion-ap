@@ -93,6 +93,34 @@ jobs:
           ZEXION_REQUIRE: helper
         run: python -m pytest tests/test_native_linux.py -v
 
+  # The Linux helper as a release builds it (release.yml): in the Steam Runtime's SDK, sniper, at
+  # a pinned snapshot, whose glibc (2.31) is the one the game runs on under Steam, so the build
+  # needs no newer one (tools/build_apworld.py checks the same at release). Its compilers: GCC 14.
+  native-linux-runtime:
+    name: Linux helper (Steam Runtime)
+    runs-on: ubuntu-latest
+    container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:3.0.20261021.266025
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: |
+          cmake -S native -B native/build -G Ninja -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
+          cmake --build native/build
+      - name: Native tests
+        run: ctest --test-dir native/build --output-on-failure
+      - name: Loads in the runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          so=native/build/libzexion_ap.so
+          newest="$(objdump -T "$so" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
+          echo "newest glibc version needed: $newest"
+          [ "$(printf '%s\n' "$newest" GLIBC_2.31 | sort -V | tail -1)" = GLIBC_2.31 ]
+          if objdump -T "$so" | grep -E 'GLIBCXX_|CXXABI_'; then
+            echo "::error::$so needs libstdc++: its C++ runtime is not linked in"
+            exit 1
+          fi
+
   world:
     name: Archipelago world tests
     runs-on: ubuntu-latest
