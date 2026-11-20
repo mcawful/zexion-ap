@@ -2281,11 +2281,14 @@ its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
    terminal; assumed, not tried here). Each of the helper's lines begins `zexion-ap <version>: `:
    `serving build B1` once it is in; `not a known build of Zexion (build id <hex>)` for another
    build; `socket zexion-ap-<pid> not opened: <why>`, `no SDL_GL_SwapWindow after the helper's`
-   or `the game's symbols were not found: no new games` for what failed. Later, with a seed's file
+   or `the game's symbols were not found: no new games` for what failed, and `no token: <why>`
+   (three kinds: the kernel's random bytes, no folder to put it in, the file not written),
+   `memory reads refused: <why>` and `failed to start`, the last three stopping before `serving
+   build` (the helper serves no one). Later, with a seed's file
    and no client: `configured from the game's symbols, no client`, or `not configured with no
    client: <why>`, and `seed files: <why>` for files it could not read. No `serving build` and no
-   failure line: not loaded, turned off by a `zexion_ap.disabled` beside it, or its socket or its
-   thread failed before it could say so (two silent paths in `start`); glibc's loader says why it
+   failure line: not loaded, turned off by a `zexion_ap.disabled` beside it, or the socket's
+   creation or the serving thread's start failed (the two silent paths in `start`); glibc's loader says why it
    did not load (`ERROR: ld.so: object … from LD_PRELOAD cannot be preloaded (…): ignored.`,
    glibc's message, not seen here). Seen 2026-11-18 before the file was copied: no helper mapped
    in the game (stderr not read; `docs/re/linux.md`, "Read from the running game").

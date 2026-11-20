@@ -260,7 +260,7 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 
 The mod is for the game's Windows build. Zexion also has a native Linux build (below), with a
 helper of its own that runs every part of the Windows helper's but unloading, run in the game on
-2026-11-18 and 2026-11-19 (what ran, and what has not yet: below; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (the put-back of only a client that sent `config`, `write` refusing the function tables, the narrower map cache, the Steam check's retry), which have run on stand-ins only: the next in-game run re-checks the attach); the client
+2026-11-18 and 2026-11-19 (what ran, and what has not yet: below; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (what a connection set put back when it goes, `write` taking only the ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map cache, the Steam check's retry, the client's settings sent only on the configured connection), which have run on stand-ins only: the next in-game run re-checks the attach); the client
 attaches to either build. Everything else runs on Windows, Linux and macOS, and CI runs ruff and pytest on
 all three.
 
