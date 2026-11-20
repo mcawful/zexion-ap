@@ -347,7 +347,7 @@ pickup record holds the major-item list").
 
 Two known limits of the ITEMS row, found by review, not seen in game, and left as they are
 (issues #166 and #167). The first is cosmetic (no item is given, lost or doubled; the list grants
-nothing); the second may reach further than the row, and is not traced:
+nothing); the second is by the code a Linux question only, and is not traced there:
 - **An own item can be listed twice.** The helper appends an owned item's icon only if it is
   not in the list, and the game's pickup appends without that check (Linux B1 `0x6428FA`;
   Windows `0x1F761`: `docs/re/linux.md`, "Mapped by disassembly: the major-item list";
@@ -361,27 +361,33 @@ nothing); the second may reach further than the row, and is not traced:
   machinery than the row is worth. The duplicate also takes one of the row's 26 places (the game's
   append and the helper's both stop there, and B1 has 27 listable kinds), so a later item's icon
   can miss the row.
-- **A save state taken in another save, loaded while an AP save is current.** What is known:
-  `loadState` restores the whole of `gGameState`, which holds the inventory, the major-item
-  list, the map grid, the flags, the randomizer marker and `save_loaded`, and not `gCurrentRando`
-  (the section), which lies outside it (Linux B1 `0x4AF4EE`; `docs/re/linux.md`, "Mapped by
-  disassembly: the major-item list" and the `gGameState` row). Save states are a player-facing
-  assist (`docs/re/memory.md`, "The assist menu": SAVE STATES, SAVE STATE SLOTS), loaded by a key.
-  So with a state from another save loaded, the helper's start-with test (`watch_pickups`) reads
-  the current save's section against the other save's inventory, and the list it fills is saved
-  into the current slot: the ITEMS row can list the wrong starting items. Beyond the row, read by
-  the code only: the client takes a save for its seed's by the marker (inside the state, so the
-  other save's) being 1 and the section (outside it, so the current save's) matching the seed
-  (`client/session.py`, `Session.step`), and then reads the map grid and the inventory, which
-  are the other save's; the slot number and the save stamp it reads (`current_slot`, the slot's
-  own block) are not in the state, so they do not change. I found no check in the client or the
-  helper that compares the grid or the inventory with the current slot's own save. So, if a
-  state of another randomizer save can be loaded in an AP save of the client's seed, the client
-  could send the checks of the cells that save collected and give items into its inventory, which
-  the game would then save into the current slot's file. Not traced: whether that can happen
-  (whether a state outlives a `LoadGame` of another slot, or comes from a file), what the game
-  does with a state from a non-randomizer save (its marker 0, so the client sees no seed's save
-  and sends nothing), and the Windows build's `loadState`. Not fixed; the issue stays open.
+- **A save state taken in another save, loaded while an AP save is current.** Save states are a
+  player-facing assist (SAVE STATES, `docs/re/memory.md`, "The assist menu"). `loadState` restores
+  the whole of `gGameState`: the inventory, the major-item list, the map grid, the flags, the
+  randomizer marker and `save_loaded`. The section the client and the helper match a save by,
+  `gCurrentRando`, lies outside it.
+  - **Windows B1, by the code (read in the disassembly, not run in game):** the load copies the
+    state's own section into `gCurrentRando` when the restored marker is 1 (`0x2007D0`, `0x20112A`
+    to `0x20114E`; `memory.md`, "The assist menu", "Save states"). So the seed test (marker and
+    section, `client/session.py`, `Session.step`) sees the state's own seed: a normal save's
+    state leaves no seed's save, another seed's state reads as another seed's save (no check, no
+    grant), and the same seed's is that seed's own finds, which the client already accepts from
+    any of its saves. The helper's start-with test then reads the state's own section too, so
+    the ITEMS row lists what that save started with. No false check and no wrong grant comes
+    from a state by this path. The load key also needs SAVE STATES on (inferred from the gate's
+    place, `+0x3E2DBA`), which a locked AP save does not have. The states are 16 files, named
+    with no slot, so one can come from another day's save.
+  - **Linux B1: not traced.** `loadState` inflates `gGameState` at `0x4AF4EE` to `0x4AF4FD`
+    (`docs/re/linux.md`, "Mapped by disassembly: the major-item list"); whether it then copies the
+    state's section into `gCurrentRando` as Windows' does has not been read. If it does not,
+    the client would take a state of another randomizer save for the current save's (the
+    marker is 1, the section the current save's, the stamp unchanged) and could send the checks
+    of the cells that state collected and give items into its inventory, which the game saves
+    into the current slot, until the next death or load brings the state's section in; the
+    ITEMS row would list the wrong starting items. That needs assists allowed (Allow Assists, or
+    Assist Unlock received), SAVE STATES turned on in the AP save, and a state made in another
+    randomizer save: three deliberate steps.
+  - Not fixed; the issue stays open for the Linux question.
 
 Working in game: 2026-10-22, everything above but the major-item list ("Game functions the helper
 calls", "The client in a live game"); the major-item list, 2026-11-04 (B1, `zexion_ap.dll`
