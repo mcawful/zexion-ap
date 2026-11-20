@@ -121,9 +121,10 @@ target_link_libraries(zap_linux_offline_tests PRIVATE zap_shared_test)
 target_compile_options(zap_linux_offline_tests PRIVATE -Wno-missing-field-initializers)
 add_test(NAME linux_offline COMMAND zap_linux_offline_tests)
 
-# The canary (tests/canary.cpp, native/tests): the real save folder's seed copies and the
-# helper's real seed folder as they were before the first test, checked after the last. Every
-# test requires the fixture, so the snapshot runs first and the check last.
+# The canary (tests/canary.cpp, native/tests): every ZexionAP-seed-* file in each real save folder
+# and every file in each real per-user folder (absent folders recorded as absent), as they were
+# before the first test, checked after the last. Every test requires the fixture, so the snapshot
+# runs first and the check last.
 add_executable(zap_canary ../tests/canary.cpp)
 target_link_libraries(zap_canary PRIVATE zap_shared_test)
 target_compile_options(zap_canary PRIVATE -Wno-missing-field-initializers)

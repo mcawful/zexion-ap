@@ -1267,6 +1267,51 @@ void test_the_read_joins_the_save_folder() {
     std::filesystem::remove_all(save);
 }
 
+void test_a_put_whose_file_cannot_be_kept_waits_for_a_slot() {
+    // A client's put when no slot uses the seed and its own file cannot be written (no folder, a
+    // full disk): no pass finds a file for it, so the helper keeps it and the copy thread's pass
+    // writes the copy once a slot uses the seed.
+    const std::wstring blocker = temp_folder(L"zap_pending_blocker");  // a file, not a folder
+    write_all(blocker, "x");
+    const std::wstring unwritable = blocker + L"\\under-a-file";
+    const std::wstring save = temp_folder(L"zap_pending_save");
+    const std::wstring empty_local = temp_folder(L"zap_pending_local");
+    std::filesystem::create_directories(save);
+    const std::wstring copy_name = L"ZexionAP-seed-AP_9-0-1.sav";
+    const std::string put = "offline_put seed AP_9-0-1\n" + client_text(5, false, 1);
+    const Saved none, used = saves_of(g_table);
+    std::string error;
+    zap::OfflineSeed got;
+    check(zap::put_offline_file(unwritable, "B1", put, &got, save, &error, &none).rfind("error", 0) ==
+                  0 &&
+              got.count == 5 && !std::filesystem::exists(save + L"\\" + copy_name),
+          "a put whose file cannot be kept, no slot: handed over, no copy yet");
+    zap::OfflineFiles f = zap::read_offline_files(empty_local, "B1", save, true, &none);
+    check(!std::filesystem::exists(save + L"\\" + copy_name), "a pass with no slot: still none");
+    f = zap::read_offline_files(empty_local, "B1", save, false, &used);
+    check(!std::filesystem::exists(save + L"\\" + copy_name), "a pass that writes nothing: none");
+    f = zap::read_offline_files(empty_local, "B1", save, true, &used);
+    zap::OfflineSeed copy;
+    check(zap::parse_synced_file(read_all(save + L"\\" + copy_name), copy).empty() && copy.count == 5,
+          "the pass after a slot uses the seed writes the copy of the waiting put");
+    std::filesystem::remove(save + L"\\" + copy_name);
+    f = zap::read_offline_files(empty_local, "B1", save, true, &used);
+    check(!std::filesystem::exists(save + L"\\" + copy_name), "and the entry is gone once written");
+    // An entry goes too once a local file for the seed exists.
+    zap::put_offline_file(unwritable, "B1", "offline_put seed AP_8-0-1\n" + client_text(2, false, 2),
+                          &got, save, &error, &none);
+    write_all(empty_local + L"\\seeds\\AP_8-0-1.txt", client_text(2, false, 2));
+    f = zap::read_offline_files(empty_local, "B1", save, true, &none);
+    std::filesystem::remove(empty_local + L"\\seeds\\AP_8-0-1.txt");
+    // A slot uses the seed now: a copy would be written if the entry were still waiting.
+    f = zap::read_offline_files(empty_local, "B1", save, true, &used);
+    check(!std::filesystem::exists(save + L"\\ZexionAP-seed-AP_8-0-1.sav"),
+          "a local file existing cleared the waiting entry");
+    std::filesystem::remove_all(blocker);
+    std::filesystem::remove_all(save);
+    std::filesystem::remove_all(empty_local);
+}
+
 void test_saved_seeds_are_published_from_the_games_slots() {
     // The game's slots as the stand-in holds them (the file select's match): a randomizer save in
     // use; not an empty or deleted slot, a normal game, or the slot a new game is starting in.
@@ -1394,12 +1439,9 @@ void test_a_test_build_takes_only_a_folder_in_temp() {
               "a copy through the junction is refused and writes nothing there");
         std::filesystem::remove_all(temp / L"zap_guard_local");
         RemoveDirectoryW(link.c_str());  // the junction only, never what it points at
-        // A junction to the real save folder, when there is one.
-        if (std::filesystem::is_directory(saves[0]) && make_junction(link, saves[0])) {
-            check(zap::restrict_to_test_folder(link).empty(),
-                  "a junction in temp to the real save folder: refused");
-            RemoveDirectoryW(link.c_str());
-        }
+        // Never a link, even for a moment, to a real folder: should this process die with it in
+        // place, a temp cleaner that follows reparse points could reach real saves. The real
+        // folders are tested above by their paths alone, and a junction to a stand-in here.
     } else {
         check(false, "a junction could not be made for the test");
     }
@@ -1428,6 +1470,7 @@ int main() {
     test_two_copies_are_made_one();
     test_a_put_reaches_the_save_folder();
     test_the_read_joins_the_save_folder();
+    test_a_put_whose_file_cannot_be_kept_waits_for_a_slot();
     test_saved_seeds_are_published_from_the_games_slots();
     test_the_save_folder_is_the_games();
     test_a_test_build_takes_only_a_folder_in_temp();

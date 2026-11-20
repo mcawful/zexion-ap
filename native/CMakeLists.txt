@@ -109,9 +109,10 @@ target_compile_definitions(zap_proxy_test PRIVATE
 add_dependencies(zap_proxy_test version_proxy)
 add_test(NAME proxy COMMAND zap_proxy_test)
 
-# The canary (tests/canary.cpp): the real save folder's seed copies and the helper's real seed
-# folder as they were before the first test, checked after the last, whatever failed between. Every
-# test requires the fixture, so the snapshot runs first and the check last.
+# The canary (tests/canary.cpp): every ZexionAP-seed-* file in each real save folder and every file
+# in each real per-user folder (absent folders recorded as absent), as they were before the first
+# test, checked after the last, whatever failed between. Every test requires the fixture, so the
+# snapshot runs first and the check last.
 add_executable(zap_canary tests/canary.cpp)
 target_link_libraries(zap_canary PRIVATE zap_core_test)
 add_test(NAME canary_before COMMAND zap_canary snapshot ${CMAKE_BINARY_DIR}/canary.snapshot)

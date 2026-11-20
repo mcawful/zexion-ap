@@ -13,10 +13,10 @@ Four places are protected:
   default ``XDG_DATA_HOME``, is covered as well). Only the helper writes them.
 
 The helpers (the game's own process: the Windows helper and the Linux helper) also write their
-``ZexionAP-seed-<NAME>.sav`` copies of the seeds into the real save folder, so Steam Cloud carries
-them (native/README.md, "Seed files in the save folder"). The guard never sees that: it watches
-Claude's tool calls, and those it blocks as before, these names included. The tools write the save
-folder only through ``save_lab.py install`` and ``restore``.
+``ZexionAP-seed-<NAME>.sav`` copies of the seeds a save uses into the real save folder, so Steam
+Cloud carries them (native/README.md, "Seed files in the save folder"). The guard never sees that:
+it watches Claude's tool calls, and those it blocks as before, these names included. The tools
+write the save folder only through ``save_lab.py install`` and ``restore``.
 
 Matching is by pattern rather than by this machine's paths, so the same rules hold on any PC.
 The write-guard hook (``.claude/hooks/guard_protected.py``) and the tools in this folder share

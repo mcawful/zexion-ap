@@ -954,7 +954,9 @@ void configure_self() {
 void take_offline() {
     // The slots' seeds for the other threads: the first frame and every 16th (cheap).
     static uint32_t frame_count = 0;
-    if ((frame_count++ & 15u) == 0) g_saved->publish(g_game->saved_seeds());
+    if ((frame_count++ & 15u) == 0) {
+        guarded([] { g_saved->publish(g_game->saved_seeds()); });  // a throw skips no other work
+    }
     static std::vector<zap::OfflineSeed> unkept;
     std::optional<zap::OfflineFiles> files;
     std::vector<PutSeed> put;
@@ -1188,6 +1190,18 @@ bool make_token(const std::string& folder) {
     }
     std::string token = hex_text(bytes, sizeof bytes);
     std::memset(bytes, 0, sizeof bytes);
+#ifdef ZAP_HOOKTEST
+    // The test build writes no folder that is not a test's own, the token's included (the folder
+    // already went through restrict_to_test_folder; this is the check at the write itself).
+    {
+        std::wstring named;
+        for (char c : folder) named += static_cast<wchar_t>(static_cast<unsigned char>(c));
+        if (zap::restrict_to_test_folder(named).empty()) {
+            std::fprintf(stderr, "zexion-ap %s: no token: not a test folder\n", kVersion);
+            return false;
+        }
+    }
+#endif
     if (folder.empty() || !make_private_folders(folder)) {
         std::fprintf(stderr, "zexion-ap %s: no token: no folder to put it in (%s)\n", kVersion,
                      folder.empty() ? "no data folder" : folder.c_str());

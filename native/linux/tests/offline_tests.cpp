@@ -234,41 +234,45 @@ void test_a_test_build_takes_only_a_folder_in_temp() {
     for (const std::wstring& real : locals) {
         check(zap::restrict_to_test_folder(real).empty(), "a real per-user folder: refused");
     }
-    // Links are followed, and `..` is never folded as text.
+    // Links are followed, and `..` is never folded as text. A link in temp points only at a
+    // stand-in folder of this test's own outside temp, never at a real folder or the root: should
+    // this process die with it in place, nothing real is reachable through it. The real folders
+    // are tested above by their paths alone.
     const fs::path root = temp / ("zap_restrict_link_" + std::to_string(getpid()));
+    const fs::path stand_in = fs::path("/var/tmp") / ("zap_standin_" + std::to_string(getpid()));
     fs::remove_all(root);
+    fs::remove_all(stand_in);
     fs::create_directories(root / "dir");
-    const char* home = std::getenv("HOME");
     std::error_code error;
-    fs::create_directory_symlink("/", root / "out", error);  // a link out of the temporary folder
-    check(!error, "a symbolic link could be made");
-    check(zap::restrict_to_test_folder(wide(root / "out" / "etc" / "zap_probe")).empty(),
-          "a link in temp to a folder outside it: refused, and what is under it");
-    check(zap::restrict_to_test_folder(wide(root / "out" / "..")).empty(),
-          "/tmp/x/l/.. (a link, then ..): refused");
-    if (home != nullptr && home[0] == '/') {
-        fs::create_directory_symlink(home, root / "home", error);
-        check(zap::restrict_to_test_folder(wide(root / "home" / ".local" / "share" / "ZexionAP"))
-                  .empty() &&
-                  zap::restrict_to_test_folder(wide(root / "home" / ".var")).empty(),
-              "a link in temp to the home, then a real folder under it: refused");
+    fs::create_directories(stand_in, error);
+    if (!error) {
+        fs::create_directory_symlink(stand_in, root / "out", error);  // a link out of temp
+        check(!error, "a symbolic link could be made");
+        check(zap::restrict_to_test_folder(wide(root / "out" / "sub" / "probe")).empty(),
+              "a link in temp to a folder outside it: refused, and what is under it");
+        check(zap::restrict_to_test_folder(wide(root / "out" / "..")).empty(),
+              "/tmp/x/l/.. (a link, then ..): refused");
+        // A link in temp to a folder in temp is fine, and resolved.
+        fs::create_directory_symlink(root / "dir", root / "inside", error);
+        const std::wstring through = zap::restrict_to_test_folder(wide(root / "inside" / "x"));
+        check(!through.empty() && through.find(L"/dir/x") != std::wstring::npos,
+              "a link to another place in temp: allowed, and the resolved path returned");
+        // The write primitives, handed a folder outside the temporary folder, write nothing: the
+        // test-only core refuses (a put whose save folder is a link out of temp).
+        const Saved used = saved_of({0});
+        std::string refused;
+        zap::OfflineSeed got;
+        zap::put_offline_file(wide(root / "local"), "",
+                              "offline_put seed AP_1-0-1\n" + client_text(3, 0), &got,
+                              wide(root / "out"), &refused, &used);
+        check(refused == "refused: not a test folder",
+              "a put with a save folder through a link out of temp: the write is refused");
+        check(fs::is_empty(stand_in), "and nothing was written there");
+    } else {
+        check(true, "no /var/tmp to make a stand-in folder: the link checks skipped");
     }
-    // A link in temp to a folder in temp is fine, and resolved.
-    fs::create_directory_symlink(root / "dir", root / "inside", error);
-    const std::wstring through = zap::restrict_to_test_folder(wide(root / "inside" / "x"));
-    check(!through.empty() && through.find(L"/dir/x") != std::wstring::npos,
-          "a link to another place in temp: allowed, and the resolved path returned");
-    // The write primitives, handed a folder outside the temporary folder, write nothing: the
-    // test-only core refuses (a put whose save folder is a link out of temp).
-    const Saved used = saved_of({0});
-    std::string refused;
-    zap::OfflineSeed got;
-    const fs::path under_link = root / "out" / "tmp";  // /tmp is a real folder: writable if allowed
-    zap::put_offline_file(wide(root / "local"), "", "offline_put seed AP_1-0-1\n" + client_text(3, 0),
-                          &got, wide(under_link), &refused, &used);
-    check(refused == "refused: not a test folder",
-          "a put with a save folder through a link out of temp: the write is refused");
-    check(!fs::exists(under_link / kCopy), "and none exists there");
+    fs::remove_all(root);
+    fs::remove_all(stand_in);
     // A TMPDIR elsewhere is the temporary folder: what is under /tmp is then not.
     setenv("TMPDIR", "/var/tmp/zap-elsewhere", 1);
     check(zap::restrict_to_test_folder(inside).empty() &&

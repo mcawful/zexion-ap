@@ -53,7 +53,8 @@ Where things are:
   machine (`native/README.md`, "Seed files in the save folder"; owner's decision, 2026-11-20). A
   helper writes one only for a seed that one of the game's 30 save slots uses, as the game's
   memory holds them (never by opening a save file: the game opens one to write with no share
-  mode) (the owner's
+  mode), by a put, a read after a client that set something leaves, and a copy thread that runs a
+  pass when the slots change (the owner's
   decision, 2026-11-20: so at most 30 copies are written and refreshed at a time; the ones a deleted
   save leaves stay), only a name that starts with
   `ZexionAP-seed-` and ends in `.sav`, never a `Save Game`, `GameUnlocks` or `Preferences` file or

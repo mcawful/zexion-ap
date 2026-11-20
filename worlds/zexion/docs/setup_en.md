@@ -164,9 +164,10 @@ and the seed's name, ending in `.sav`, in Zexion's save folder beside the saves,
 syncs it with them. This is expected to work but has not been tried on two machines yet.
 
 - Both machines need the mod, from a release with this feature.
-- The first machine writes the file while Zexion runs with the mod, within a moment of the game
-  holding a save of the seed (a new game of it, or a loaded save), with the client connected or
-  not: closing the game after playing writes nothing more, so the mod must have been running
+- The file comes from the client, so it exists only once the client has connected for that seed.
+  The first machine is expected to write it while Zexion runs with the mod, within a moment of the
+  game holding a save of the seed (a new game of it, or a loaded save), with the client connected
+  or not: closing the game after playing writes nothing more, so the mod must have been running
   while the game held that save. The file goes up when Steam syncs, which it is expected to do
   when you close Zexion: wait for the cloud to say it is up to date before you start it on the
   second machine.

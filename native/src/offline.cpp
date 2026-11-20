@@ -622,6 +622,17 @@ std::string put_synced_copy(const std::wstring& save, const std::string& base,
     return write_synced_copy(save, base, seed);
 }
 
+// Seeds put by a client whose own file could not be kept (no folder, a failed write, a full
+// disk) and whose copy waited for a slot, by NAME: the copy thread's pass reaches no file for
+// them, so they are checked against the slots here. An entry goes once its copy is written or a
+// local file for it exists (the next put or read finds it). Guarded by g_files_mutex.
+std::map<std::string, OfflineSeed> g_pending;
+
+void pend(const std::string& name, const OfflineSeed& seed) {
+    if (g_pending.size() >= kMaxSeeds && g_pending.count(name) == 0) return;
+    g_pending[name] = seed;
+}
+
 // A seed put by a client, made one with the copy already in the save folder if that is the
 // same seed (the put one the newer): `seed` and `body`, its file's text, become the result's
 // when that differs from what was put.
@@ -721,6 +732,25 @@ void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstr
             note(synced_file_name(base), write_synced_copy(save, base, files.seeds[i]));
         }
     }
+    // Put seeds with no local file: the copy once a slot uses the seed, else they wait.
+    for (auto it = g_pending.begin(); it != g_pending.end();) {
+        const std::string base = it->first;
+        const bool file_there = local.count(base) != 0 ||
+                                (!folder.empty() && exists(join(join(folder, "seeds"), base + ".txt")));
+        if (file_there) {
+            it = g_pending.erase(it);
+        } else if (write && used(it->second)) {
+            OfflineSeed result = it->second, theirs;
+            if (read_synced_copy(save, base, theirs).empty() && offline_matches(theirs, result)) {
+                result = merge_offline_seeds(theirs, result);
+            }
+            const std::string why = write_synced_copy(save, base, result);
+            note(synced_file_name(base), why);
+            it = why.empty() ? g_pending.erase(it) : std::next(it);
+        } else {
+            ++it;
+        }
+    }
     for (OfflineSeed& seed : added) {
         if (files.seeds.size() >= kMaxSeeds) break;
         files.seeds.push_back(std::move(seed));
@@ -776,14 +806,24 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     // counts come from it with a client too (Game::watch_own_traps). So it is handed over
     // before the checks that concern the file alone. The pipe takes no request much over its
     // 64 KB buffer, which bounds what is parsed here.
+    // Kept for the pending list if the local file cannot be written (a copy waiting for a slot).
+    const std::optional<OfflineSeed> waiting = parsed;
+    const bool may_wait = waiting && !save.empty() && body.size() <= kMaxFile;
     if (parsed && seed_out != nullptr) *seed_out = std::move(*parsed);
-    if (folder.empty()) return "error no LOCALAPPDATA";
+    if (folder.empty()) {
+        if (may_wait) pend(name, *waiting);
+        return "error no LOCALAPPDATA";
+    }
     if (body.size() > kMaxFile) return "error too large";
     make_dir(folder);
     if (parsed) make_dir(folder + L"\\seeds");
     bool changed = false;
     std::string why = write_whole(path, body, changed);
-    if (!why.empty()) return "error " + why;
+    if (!why.empty()) {
+        if (may_wait) pend(name, *waiting);
+        return "error " + why;
+    }
+    if (waiting) g_pending.erase(name);  // its file is there: the passes find it
     return changed ? "stored" : "unchanged";
 }
 
@@ -1054,14 +1094,23 @@ std::string put_offline_file(const std::wstring& folder, const char*, const std:
         if (save_error != nullptr) *save_error = std::move(synced);
     }
     // The running helper's whether the file can be kept or not, as on Windows.
+    const OfflineSeed waiting = seed;  // for the pending list if the local file cannot be written
+    const bool may_wait = !save.empty() && body.size() <= kMaxFile;
     if (seed_out != nullptr) *seed_out = std::move(seed);
-    if (folder.empty()) return "error no folder";
+    if (folder.empty()) {
+        if (may_wait) pend(name, waiting);
+        return "error no folder";
+    }
     if (body.size() > kMaxFile) return "error too large";
     make_folder(folder);
     make_folder(folder + L"/seeds");
     bool changed = false;
     why = write_whole(folder + L"/seeds/" + widen(name) + L".txt", body, changed);
-    if (!why.empty()) return "error " + why;
+    if (!why.empty()) {
+        if (may_wait) pend(name, waiting);
+        return "error " + why;
+    }
+    g_pending.erase(name);  // its file is there: the passes find it
     return changed ? "stored" : "unchanged";
 }
 

@@ -404,16 +404,41 @@ DWORD WINAPI copy_thread(void*) {
     return 0;
 }
 
-void stop_copy_thread() {
-    if (g_copy_thread == nullptr) return;
+// Starts the copy thread (the helper's start, and again after a refused unload stopped it).
+void start_copy_thread() {
+    if (g_copy_thread != nullptr) return;
+    g_copy_stop.store(false);
+    g_copy_wake = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (g_copy_wake == nullptr) return;
+    g_copy_thread = CreateThread(nullptr, 0, copy_thread, nullptr, 0, nullptr);
+    if (g_copy_thread == nullptr) {
+        CloseHandle(g_copy_wake);
+        g_copy_wake = nullptr;
+    }
+}
+
+// Stops the copy thread and waits for it, at most `milliseconds`: true if it is gone (or there was
+// none). It may be inside a file call that does not return (an antivirus filter, a cloud
+// placeholder on the save folder), and the DLL must not be freed under it: on false it is asked
+// to go on as before (it was not stopped), and the caller does not unload.
+bool stop_copy_thread(DWORD milliseconds) {
+    if (g_copy_thread == nullptr) return true;
     g_copy_stop.store(true);
     SetEvent(g_copy_wake);
-    WaitForSingleObject(g_copy_thread, INFINITE);
+    if (WaitForSingleObject(g_copy_thread, milliseconds) != WAIT_OBJECT_0) {
+        g_copy_stop.store(false);
+        ResetEvent(g_copy_wake);
+        // It may have seen the stop just before: then it is gone, and the caller may go on.
+        if (WaitForSingleObject(g_copy_thread, 0) != WAIT_OBJECT_0) return false;
+    }
     CloseHandle(g_copy_thread);
     CloseHandle(g_copy_wake);
     g_copy_thread = nullptr;
     g_copy_wake = nullptr;
+    return true;
 }
+
+constexpr DWORD kCopyStopMs = 5000;  // how long an unload waits for the copy thread
 
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
 void note_put_seed(zap::OfflineSeed seed) {
@@ -448,7 +473,7 @@ uintptr_t frame(void* argument) {
                 g_game.client_gone(&archipelago_chosen);
             }
             take_offline();
-            snapshot_saves();
+            guarded([] { snapshot_saves(); });  // a throw here skips no other frame work
             g_mailbox.serve();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
                 // No watch once an unload has begun: what the client asked for stays set, and a
@@ -712,8 +737,14 @@ std::string handle(const std::string& request, bool& stop) {
         return reply;
     }
     if (request == "unload") {
+        // The copy thread goes first, with a bounded wait: stuck in a file call it would keep the
+        // DLL from being freed, so the unload is refused and the helper works on.
+        if (!stop_copy_thread(kCopyStopMs)) return "error the copy thread is busy; not unloading";
         std::string why = undo_for_unload();
-        if (!why.empty()) return "error " + why + "; not unloading";
+        if (!why.empty()) {
+            start_copy_thread();  // refused: the helper stays, and keeps writing its copies
+            return "error " + why + "; not unloading";
+        }
         stop = true;
         return "bye";
     }
@@ -793,17 +824,7 @@ DWORD WINAPI helper_thread(void*) {
         if (g_slot != nullptr) guarded(run_self_scan);
         // Guarded as the scan is: the pipe comes up whatever these throw (no files read then).
         if (g_slot != nullptr) guarded(read_offline);
-        if (g_slot != nullptr) {
-            g_copy_stop.store(false);
-            g_copy_wake = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-            if (g_copy_wake != nullptr) {
-                g_copy_thread = CreateThread(nullptr, 0, copy_thread, nullptr, 0, nullptr);
-                if (g_copy_thread == nullptr) {
-                    CloseHandle(g_copy_wake);
-                    g_copy_wake = nullptr;
-                }
-            }
-        }
+        if (g_slot != nullptr) start_copy_thread();
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle, [] {
                 g_client_gone.store(true);
                 // The client may have written them; the copies in the save folder only if it
@@ -820,7 +841,9 @@ DWORD WINAPI helper_thread(void*) {
                 Sleep(1000);
             }
         }
-        stop_copy_thread();
+        // Normally stopped by the unload request already. If it is stuck (a file call that does not
+        // return) the DLL stays loaded, as when the hook was replaced: never freed under a thread.
+        if (!stop_copy_thread(kCopyStopMs)) return 0;
         wait_until_no_call_inside();
         while (g_in_callback.load() != 0) Sleep(1);
     } catch (...) {

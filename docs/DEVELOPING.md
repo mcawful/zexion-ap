@@ -120,10 +120,14 @@ worlds/zexion/ → generation → slot data → client
 - **The seed copies in the save folder.** Each helper also keeps a copy of a seed's file in the
   game's own save folder, next to the saves, as `ZexionAP-seed-<NAME>.sav`, so Steam Cloud, which
   syncs `*.sav` there, carries it with the saves: a save that comes to another machine is known
-  there as an AP save with no client run on it. A copy is written only while one of the 30 saves
-  in that folder uses the seed (so at most 30 are written and refreshed at a time; one a save does not use any more is read
-  but not refreshed, none is deleted, and so more than 30 may stand over time), at a put and at a read of the files (at start, and when
-  a client that set something goes: not for `helper.py status`). The helpers read both places and
+  there as an AP save with no client run on it. A copy follows the game's 30 save slots as the
+  game's memory holds them (the helpers never open a save file): it is written only while a slot
+  uses the seed (so at most 30 are written and refreshed at a time; one a save does not use any
+  more is read but not refreshed, none is deleted, and so more than 30 may stand over time). It is
+  written by a put when a slot already uses the seed, by the helper's **copy thread** a moment
+  after the slots change (a new game, a save, a delete; the client connected or not), and by a read
+  after a client that set something leaves (not for `helper.py status`); the helper's start writes
+  local files only, since no slot list is known yet. The helpers read both places and
   make the two copies of a seed one (`native/README.md`, "Seed files in the save folder"). The
   folder is the game's: `%APPDATA%\Gallant Leaf\Zexion`; on Linux `$XDG_DATA_HOME/Gallant
   Leaf/Zexion`, else `~/.local/share/Gallant Leaf/Zexion` (under Flatpak Steam, the sandbox's
