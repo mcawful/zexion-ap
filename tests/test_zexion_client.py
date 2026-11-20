@@ -1571,6 +1571,32 @@ def test_on_linux_the_assist_lock_goes_through_the_linux_helper() -> None:
     assert ctx.linux_mod is None, "configured again on a later poll"
 
 
+def test_on_linux_a_setting_is_sent_only_on_the_connection_that_sent_config() -> None:
+    # A request on a connection made again since (a read in the same poll) would set the ASSIST
+    # lock, the Intel Chip or the disks' count in a helper that keeps it past that connection's
+    # close, as the connection never sent config.
+    ctx = context(
+        connection(),
+        linux_game(
+            {"config": "ok", "assists": "locked", "intel": "intel on", "discs": "discs off"}
+        ),
+    )
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.load.assists_want = ctx.load.intel_want = True
+    ctx.seed_state.dressed = False
+    pm = ctx.game_conn.pm
+    pm.connection = 2
+    sent = len(pm.sent)
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    asyncio.run(ticks.linux_discs_tick(ctx, None))
+    assert len(pm.sent) == sent and ctx.linux_mod is not None
+    pm.connection = 1  # the connection it was configured on
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    assert pm.sent[sent:] == ["assists lock", "intel on"]
+
+
 def test_on_linux_a_connection_made_again_takes_the_saves_disks_for_counted() -> None:
     # The helper had no client between the two connections, so it counted an own disk picked
     # up then itself: the client's next look takes the save's disks for counted (no second count
@@ -1619,12 +1645,13 @@ def test_on_linux_a_failed_follow_up_drops_the_linux_helper_not_the_windows_one(
     ("status", "offered", "followed"),
     [
         ("not asked", True, False),  # dropped before it showed: offered again
+        ("put back: the prompt was up, YES is NO", True, False),  # shown, then put back: again
         ("asked", False, True),  # still on its way
         ("opening after the fade", False, True),
         ("yes: ending when idle (another transition came first)", False, True),
         ("yes: ending when idle, the screen kept black", False, True),
         ("ending started", False, False),  # the ending is going: nothing left to drop
-        ("shown", False, False),  # it reached the player: NO is not undone by a reconnect
+        ("shown", False, True),  # followed once a connection: a put back one is offered again
         ("lapsed: the player left the landing pod", False, False),
     ],
 )
@@ -1643,6 +1670,59 @@ def test_on_linux_a_prompt_dropped_before_it_showed_is_offered_again(
     home.queued = True
     asyncio.run(ticks.linux_finds_tick(ctx, None, None))
     assert home.offer is offered and home.queued is followed
+
+
+def test_on_linux_a_shown_prompt_put_back_by_a_closed_connection_is_offered_again(
+    monkeypatch,
+) -> None:
+    # Shown, then the connection closes with the prompt up: the helper puts YES back to NO's
+    # callback (status "put back"), so pressing YES does nothing: asked for again.
+    ctx = context(connection(), linux_game({"config": "ok", "mission_status": "shown"}))
+    pm = ctx.game_conn.pm
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+
+    async def nothing(*args) -> None:
+        return None
+
+    monkeypatch.setattr(ticks, "followups_tick", nothing)
+    monkeypatch.setattr(ticks, "mission_tick", nothing)
+    home = ctx.load.return_home
+    home.queued = True
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert pm.sent.count("mission_status") == 1, "shown: asked once on a connection"
+    assert home.queued and not home.offer
+    pm.connection = 2  # closed and made again; configured again (linux_newgame_tick)
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+    pm.replies["mission_status"] = "put back: the prompt was up, YES is NO"
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert home.offer and not home.queued
+
+
+def test_on_linux_a_prompt_answered_no_is_not_offered_again_by_a_new_connection(
+    monkeypatch,
+) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "mission_status": "shown"}))
+    pm = ctx.game_conn.pm
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+
+    async def nothing(*args) -> None:
+        return None
+
+    monkeypatch.setattr(ticks, "followups_tick", nothing)
+    monkeypatch.setattr(ticks, "mission_tick", nothing)
+    home = ctx.load.return_home
+    home.queued = True
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    pm.connection = 2  # a NO closed it first: its status stays "shown"
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert not home.offer and home.queued and pm.sent.count("mission_status") == 2
+    pm.connection = 3
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+    pm.replies["mission_status"] = "not asked"  # the NO closed it; the cancel reset the status
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert not home.offer and not home.queued
 
 
 def test_on_linux_the_poll_asks_the_linux_helper_for_shields() -> None:

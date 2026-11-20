@@ -9,7 +9,8 @@ told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs 
 ``poll``, through ``side_tick``, so a failing one never stops items or checks), only while a
 helper is attached, except offline_tick, shields_tick (run with the Windows helper or the Linux
 one: zexion_client.shields_due) and deathlink_tick (either helper), which check, and the linux_
-ticks, which run while none is attached (through the Linux helper, with the game's Linux build).
+ticks, which run while none is attached (through the Linux helper, with the game's Linux build),
+except linux_keepalive_tick, which zexion_client's ``keepalive_loop`` runs as a task of its own.
 """
 
 from __future__ import annotations
@@ -888,7 +889,7 @@ async def linux_discs_tick(ctx: ZexionContext, p: Poll) -> None:
     the Linux helper (discs_helper_tick, with what it told this helper: LinuxMod.told). A helper
     that fails is linux_mod_lost."""
     mod = ctx.linux_mod
-    if mod is None:
+    if mod is None or not mod.current():
         return
     try:
         await discs_helper_tick(ctx, p, mod, mod.told)
@@ -924,9 +925,11 @@ async def linux_other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
 async def linux_intel_tick(ctx: ZexionContext) -> None:
     """With the game's Linux build: the Area Map named INTEL CHIP, its map reveal off, while
     this seed's save is loaded and its Area Maps are Intel Chips (toggle_tick, with what it told
-    this helper: LinuxMod.told). A helper that fails is linux_mod_lost."""
+    this helper: LinuxMod.told). Only on the connection it was configured on (``current``): the
+    helper keeps a setting made on one that never sent ``config``, past its close. A helper that
+    fails is linux_mod_lost."""
     mod = ctx.linux_mod
-    if mod is None:
+    if mod is None or not mod.current():
         return
     try:
         await toggle_tick(ctx, mod.told.intel, ctx.load.intel_want, INTEL, mod)
@@ -940,7 +943,7 @@ async def linux_assists_tick(ctx: ZexionContext) -> None:
     (toggle_tick, with what it told this helper: LinuxMod.told). A helper that fails is
     linux_mod_lost."""
     mod = ctx.linux_mod
-    if mod is None:
+    if mod is None or not mod.current():
         return
     try:
         await toggle_tick(ctx, mod.told.assists, ctx.load.assists_want, ASSISTS, mod)
@@ -963,16 +966,22 @@ async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> N
         return
     try:
         home = ctx.load.return_home
-        if home.queued:
+        here = (mod.pm, mod.connection)
+        if home.queued and home.shown_on != here:
             # A Linux helper's connection that closes cancels what was asked on it (the disks'
             # goal off: native/README.md, "The Linux helper"). Followed while on its way: dropped
-            # before it showed ("not asked"), offered again; and after a YES ("yes: ending when
+            # before it showed ("not asked"), offered again; after a YES ("yes: ending when
             # idle ...") until the ending has started, since a connection that closes before
-            # then drops the queued ending too. Shown, lapsed or ended ("ending started"), no
-            # longer followed, so a prompt answered NO is not offered again.
+            # then drops the queued ending too; and while it is up ("shown"), once on each
+            # connection, since one that closes then puts YES back to NO's callback, which the
+            # status says ("put back": offered again). One read as shown that then reads "not
+            # asked" was closed by NO before the connection did; lapsed or ended ("ending
+            # started"): no longer followed, so a prompt answered NO is not offered again.
             reply = await asyncio.to_thread(mod.request, discs.MISSION_STATUS)
-            if reply == "not asked":
+            if reply.startswith(discs.PUT_BACK) or (reply == "not asked" and home.shown_on is None):
                 home.again()
+            elif reply == "shown":
+                home.shown_on = here
             elif not reply.startswith(("asked", "opening", "yes")):
                 home.queued = False
         await followups_tick(ctx, p, step, mod, mod.told)
@@ -1265,7 +1274,7 @@ async def mission_tick(
     reply = await asyncio.to_thread(helper.request, discs.MISSION_REQUEST)
     if reply != "queued":
         return
-    home.offer, home.queued = False, True
+    home.offer, home.queued, home.shown_on = False, True, None
     ctx.load.replay = ctx.load.replay or step.ended
     detail(
         "Saved at the Landing Pod with enough OS Install Disks: RETURN HOME WITH THE DISKS? is "

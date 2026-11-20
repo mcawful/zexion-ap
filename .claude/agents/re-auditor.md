@@ -109,9 +109,14 @@ around the change.
    that what it does at load is safe in each of them (the game is one process among them); that
    it exports only `SDL_GL_SwapWindow` and `SteamInternal_ContextInit` (`linux/exports.map`) and
    no C++ runtime symbol that could stand in for the game's own; that its abstract socket stays
-   gated by `SO_PEERCRED` (only its own user); that writes into the game go through
-   `process_vm_writev` and are limited to the game's `.bss`, with code patched only by the
-   shared layer through `mprotect`; and that it never unloads, so nothing may
+   gated by `SO_PEERCRED` (only its own user) and the token: 32 random bytes as 64 hex digits in
+   `ZexionAP/token` of the data folder (file 0600, folder 0700, never through a link), compared
+   without an early exit, a connection served nothing but `hello` until `auth TOKEN` passes, 5 s
+   to present it, and the client sending the token only after `hello` showed the server is the
+   game's own process; that writes into the game go through `process_vm_writev` and are limited
+   to the game's `.bss`, and stay out of the function-pointer tables (`write` refuses them), with
+   code patched only by the shared layer through `mprotect`; that a client that sent `config` is
+   put back when it goes (and one that did not changes nothing); and that it never unloads, so nothing may
    wait on an unload to undo a change (a patch with a timer puts itself back).
 
 ## Method

@@ -45,7 +45,7 @@ Where things are:
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
   its `install` (an empty slot, after a verified backup) and `restore` write the save folder.
   The client never writes it. The same hooks block writes to the mod's offline files,
-  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts; on Linux the seeds' files, in
+  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts; on Linux the seeds' files and the helper's socket token, in
   `$XDG_DATA_HOME/ZexionAP`, else `~/.local/share/ZexionAP`): only the helper writes them, and
   they change what the mod does with no client running.
 - **Ask first, every time,** before anything that changes the running game or the saves:
@@ -83,7 +83,7 @@ popups, received traps, Energy Shields, checks, Intel Chips, popups in English(H
 the OS Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending,
 tall popups' text, the title screen's lines, the file select's AP logo, disk counts and ITEMS row
 and the look without the client; this world's own traps, and its own disks with no client, not
-yet), and so do `grant.py`, `check_patterns.py --live` and
+yet; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (the put-back of only a client that sent `config`, `write` refusing the function tables, the narrower map cache, the Steam check's retry), which have run on stand-ins only: the next in-game run re-checks the attach), and so do `grant.py`, `check_patterns.py --live` and
 `helper.py status` ([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
 
 uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
@@ -167,7 +167,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   Shields, checks, Intel Chips, popups in English(HD) and Japanese, the OS Install Disks goal with
   RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending, tall popups' text, the title
   screen's lines, the file select's AP logo, disk counts and ITEMS row and the look without the
-  client; this world's own traps, and its own disks with no client, not yet): [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and
+  client; this world's own traps, and its own disks with no client, not yet; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (the put-back of only a client that sent `config`, `write` refusing the function tables, the narrower map cache, the Steam check's retry), which have run on stand-ins only: the next in-game run re-checks the attach):
+  [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and
   loads it again a few seconds later (for a misbehaving mod; popups still queued are lost); on
   Linux, where the Linux helper stays for the game's run, it says to restart Zexion instead.
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads

@@ -132,7 +132,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs` (frame) | `discs on`, `discs off`, `refused <why>` | The OS Install Disks goal |
-| `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
+| `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `put back: the prompt was up, YES is NO` (an unload or a client gone left it open with YES put back to NO's callback), `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
 | `mission_black` (frame) | how the last black after RETURN HOME's YES ended: `none`, `kept black` or `ended: …` | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
@@ -2313,9 +2313,15 @@ What to try first, each before the next:
    "Platforms").
 3. A new game: ARCHIPELAGO on the game-mode panel, and the seed's placement (`newgame_status`;
    "New games", below).
-4. A grant with its popup, in a lab slot: an item received in play, its popup, sound and HUD
+4. The socket's token, with native Steam and with Flatpak Steam (the first run since it was
+   added; stand-in tested only, `docs/re/linux.md`, "Reading the running game"): the stderr line
+   `serving build B1` and no `no token`; `helper.py status` printing the game, the helper and
+   `memory: readable`; `ls -l` of the folder holding `token` showing the file `-rw-------` and
+   the folder `drwx------`; and another connection (`python3 -c` with a socket to
+   ` zexion-ap-<inner pid>` sending `read 0x400000 16`) refused with `error auth required`.
+5. A grant with its popup, in a lab slot: an item received in play, its popup, sound and HUD
    ("Grants and popups", below).
-5. Then the rest, each part's bullet below saying what it does.
+6. Then the rest, each part's bullet below saying what it does.
 
 The first failure it was feared to be: on Linux `menu_state` is the game's cursor mode
 (`gCursorMode`), which the mouse may set to 1; set in play, `apply` would answer `refused not in
@@ -2720,8 +2726,12 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     gets no reply, so the client follows a prompt it queued while it is on its way
     (`mission_status`, `ticks.linux_finds_tick`) while it is on its way (`asked`, `opening…`) and
     after a YES until the ending has started (`yes: ending when idle…`): one the cancel dropped
-    (`not asked`) is offered again at once; one shown, lapsed or with its ending started is not
-    followed any more, so a NO is never undone;
+    (`not asked`), or left up with YES put back to NO's callback (`put back: …`, which
+    `MissionPrompt::restore` sets only for a prompt still open, so a NO the player pressed, which
+    leaves `shown`, is not taken for it), is offered again at once. A prompt read as `shown` is
+    asked about once more on each new connection (`ReturnHome.shown_on`), not every poll, and
+    then reading `not asked` (a NO closed it, the cancel reset the status) is not offered again;
+    one lapsed or with its ending started is not followed any more, so a NO is never undone;
   - the frame call also comes from a swap inside the game's `loadState()` (`docs/re/linux.md`,
     "The per-frame call"), so `watch_mission` may run mid-load, as the grants, popups, drops and
     traps may: by the code the prompt gives up an opener or a fade another transition took
@@ -3072,9 +3082,14 @@ the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe cli
 `apply_in_frames` and `unload_under_load`, and the last two's busy threads and wait for an unload.
 A test reads the stand-in's code the helper patches (`.zapcode` in `tests/stand_in.h`, a section
 that is read and execute) only through volatile (`code_byte`, `code_is` in `tests/check.h`),
-never with a plain `memcmp`: the optimizer of MSVC 19.52 (the runner's, in some jobs) may take
-such an array, not writable, as holding its initializer, so a patch the helper made reads as not
-made (the text-cut and seen-marker tests failing in those jobs, 19.51's passing).
+never with a plain `memcmp`. The `game` and `offline` tests failed in CI jobs whose MSVC was
+19.52.37029.0, with the same sources passing on 19.51 (four runs: 4a32d47, c5500c7, e9ecd2f,
+9809090); the cause is not reproduced. The working guess is that the optimizer took such an array,
+not writable, as holding its initializer, so a patch the helper made read as not made (the
+text-cut and seen-marker checks inside them). The first guess, the linker folding identical
+code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through volatile, CI runs
+44643254927 (61ecc7c) and 44643374457 (99f12f3) compiled the Windows native job with MSVC
+19.52.37029.0 and passed: that is the evidence for the fix, not a confirmed cause.
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), `game_mem.h`'s menu, panel and label readers, its handler-slot swap, its memory check

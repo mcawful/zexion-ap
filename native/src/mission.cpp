@@ -15,6 +15,7 @@ namespace zap {
 const char kMissionQuestion[] = "Return home with the disks?";
 constexpr float kQuestionCenterBy = -4.0f;
 const char kEndingStarted[] = "ending started";
+const char kPutBack[] = "put back: the prompt was up, YES is NO";
 
 namespace {
 
@@ -436,13 +437,19 @@ void MissionPrompt::restore(const GameAddresses& a) {
             queued_ = false;  // the game's routine set: the ending runs, not asked again
         }
     }
+    bool put_back = false;
     if (yes_child_ != nullptr && is_open(a.current_menu, menu_) &&
-        pointer_at(yes_child_, widget::kCallback) == a.hooks.mission_yes &&
-        !swap_pointer(yes_child_, widget::kCallback, a.hooks.mission_yes, no_fn_)) {
-        return;  // still the helper's: kept, so an unload refuses
+        pointer_at(yes_child_, widget::kCallback) == a.hooks.mission_yes) {
+        if (!swap_pointer(yes_child_, widget::kCallback, a.hooks.mission_yes, no_fn_)) {
+            return;  // still the helper's: kept, so an unload refuses
+        }
+        put_back = true;
     }
     yes_child_ = nullptr;
     menu_ = nullptr;
+    // A prompt left open with YES now NO's: the status no longer says "shown" (which a NO the
+    // player pressed leaves too), so the client can offer it again (client/discs.py, PUT_BACK).
+    if (put_back) status_ = kPutBack;
 }
 
 }  // namespace zap
