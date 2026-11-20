@@ -83,9 +83,9 @@ worlds/zexion/ → generation → slot data → client
   collected in this build of the game", after which nothing is marked), which is part of the
   poll's step, not a side task.
   With no server connection, while a save it has not dressed is loaded and no ending is on
-  its way, it lets the helper go, so the helper gives AP saves their look as with no client,
-  and attaches it again on connecting ([`native/README.md`](../native/README.md), "AP saves
-  without the client").
+  its way, it lets the helper go (on Linux, closes the Linux helper's connection), so the helper
+  gives AP saves their look as with no client, and attaches it again on connecting
+  ([`native/README.md`](../native/README.md), "AP saves without the client").
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
   the look of other players' items, and the rest of the features below. It hooks the game's
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
@@ -259,9 +259,9 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 ## Platforms
 
 The mod is for the game's Windows build. Zexion also has a native Linux build (below), with a
-helper of its own that runs every part of the Windows helper's but unloading, not yet run in the
-game beyond loading, counting frames and serving reads (2026-11-18); the client attaches to
-either build. Everything else runs on Windows, Linux and macOS, and CI runs ruff and pytest on
+helper of its own that runs every part of the Windows helper's but unloading, run in the game on
+2026-11-18 and 2026-11-19 (what ran, and what has not yet: below); the client attaches to either
+build. Everything else runs on Windows, Linux and macOS, and CI runs ruff and pytest on
 all three.
 
 Windows only:
@@ -314,8 +314,8 @@ What there is:
   and own disks counted, the pause row, the file select's counts, RETURN HOME and its ending),
   DeathLink both ways, scrap's drops, the Feats guard at an AP ending (no Feats, no achievement,
   its note) and tall popups' text (`native/README.md`, "The Linux helper"); this world's own traps
-  and disks with no client are not run in the game yet (the client's lines said the ASSIST lock
-  and the labels were set; not looked at). How to run it in the game, and what to try first:
+  traps (with or without a client) and its own disks with no client are not run in the game yet
+  (the client's lines said the ASSIST lock and the labels were set; not looked at). How to run it in the game, and what to try first:
   `native/README.md`, "Running it in the game". `menu_state` is the game's cursor mode on Linux
   (`gCursorMode`), which the mouse may set to 1, but only in menus: in play it stays 0 (read live,
   2026-11-19: `re/linux.md`, `menu_state`). `tools/helper.py status` finds the game, checks its
@@ -372,9 +372,10 @@ What there is:
   `restore` refuse while a process going by `Zexion` or `Zexion.exe` runs (by its `comm`, its
   executable's or a command-line entry's file name: `client/procfs.py`). They also refuse when
   that can't be told: run from a sandbox whose `/proc` hides the host's processes (a nested
-  process-id namespace, a Flatpak terminal, WSL), or with a process of the user's that can't be
-  read. With the Linux build running under Flatpak's Steam it found the game by its name,
-  `Zexion` (2026-11-18); the Windows exe under Proton, `Zexion.exe`, is assumed, not seen.
+  process-id namespace, a Flatpak terminal, WSL, found by its interop handler, its kernel's
+  release or its variables), or with a process of the user's that can't be read. With the Linux
+  build running under Flatpak's Steam it found the game by its name, `Zexion` (2026-11-18); the
+  Windows exe under Proton, `Zexion.exe`, is assumed, not seen.
 
 Running the Windows build under Proton (a forced compatibility tool), with the proxy needing
 `WINEDLLOVERRIDES="version=n,b"` and the Windows Archipelago run inside the game's prefix, is
@@ -428,8 +429,10 @@ them, and there a missing one fails a test as well.
 
 ## Running the client from source
 
-On Windows, with the game. The command, what it needs and its flags: [`CLAUDE.md`](../CLAUDE.md),
-"The client". Running it may load the helper into the game: the one already there if it is this
+With the game, on Windows or on Linux. The command, what it needs and its flags:
+[`CLAUDE.md`](../CLAUDE.md), "The client". On Linux it never loads a helper: the game's launch
+options preload `libzexion_ap.so` and the client attaches to it ("Platforms", above). On
+Windows, running it may load the helper into the game: the one already there if it is this
 version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). One of another version
 that refuses to unload for it (a menu open, a trap waiting or running) is asked again every 5 s,
 the client saying why, with items held back up to 30 s ([`native/README.md`](../native/README.md),
@@ -466,6 +469,8 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
 from `develop`, merged into `develop` by pull request, then deleted. `develop` and `main` take
 changes only through pull requests with every CI check passing. Branch protection requires
 every check but `ruff and pytest (macos-latest)`, which a pull request must still pass.
+The `native helper (ubuntu-latest)` check is not required until the owner adds it in GitHub's
+settings (the checks that are required are listed there).
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate

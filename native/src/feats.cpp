@@ -286,6 +286,7 @@ void FeatsGuard::set_image(HMODULE image, void** context_init_by_name) {
     image_ = image;
     by_name_ = context_init_by_name;
     steam_checked_ = false;
+    steam_wait_ = 0;
     steam_error_.clear();
 }
 
@@ -737,9 +738,21 @@ std::string FeatsGuard::check_steam(const GameAddresses&) {
 bool FeatsGuard::make_pages() { return true; }
 
 void FeatsGuard::hook_steam(const GameAddresses& a, bool on, const std::set<int>& loading) {
+    // A failed check is tried again every kSteamRetryFrames frames, not kept for the run: the
+    // library may not be loaded yet (real_init: "a later load may bring it"), and until the check
+    // passes an AP save would earn Steam achievements. Only a passed one stays (no set_image on
+    // Linux to reset it).
     if (!steam_checked_) {
-        steam_error_ = check_steam(a);
-        steam_checked_ = true;
+        if (steam_wait_ > 0) {
+            --steam_wait_;
+        } else {
+            steam_error_ = check_steam(a);
+            if (steam_error_.empty()) {
+                steam_checked_ = true;
+            } else {
+                steam_wait_ = kSteamRetryFrames;
+            }
+        }
     }
     if (!steam_error_.empty()) return;
     set_switch(a, on, loading);

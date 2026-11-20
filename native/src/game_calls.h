@@ -245,7 +245,8 @@ public:
     bool intel_on() const { return intel_.on(); }
     // Game thread: the title screen's mod lines (title.h), hidden before an unload. title_state,
     // for `hello` (and the Linux helper's `title_status`): "1" up, "0" not, else why they could
-    // not be made.
+    // not be made. set_title_version comes first, before the hook and the pipe (dllmain.cpp's
+    // helper_thread, the Linux helper's start), so no `hello` can ask while there is "no version".
     void set_title_version(const std::string& version) { title_.set_version(version); }
     // Game thread: the map cursor's names for the stand-ins' squares (mapmarks.h); map_after runs
     // from the map handler's wrapper, after the game's handler.

@@ -577,7 +577,8 @@ bool in_game_folder() {
 DWORD WINAPI helper_thread(void*) {
     try {
         g_from_game_folder = in_game_folder();
-        // Before the hook: no frame runs yet.
+        // Before the hook: no frame runs yet. And before the pipe: a `hello` reads title_state,
+        // which answers "no version" until this has run (game_calls.h).
         g_game.set_title_version(kVersion);
         set_hooks();
         hook();

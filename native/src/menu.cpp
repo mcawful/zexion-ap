@@ -310,7 +310,9 @@ bool AssistLock::restore(const GameAddresses& a) {
                 // Frames and palettes derived afresh, not from the pointers saved at install.
                 set_frame(g, frames_[i]);
                 at<int32_t>(g, sprite::kStyle) = styles_[i];
-                // A number past the table (not the game's) keeps the pointer saved at install.
+                // A number past the table keeps the pointer saved at install. The table's size
+                // (kPaletteCount) is Linux B1's, measured; Windows B1's is assumed the same
+                // (game_layout.h), and test_assist_lock_bounds_the_palette_number checks the bound.
                 const int16_t number = palette_numbers_[i];
                 BYTE* palette = number < 0 || number >= sprite::kPaletteCount
                                     ? nullptr

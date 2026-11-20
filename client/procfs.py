@@ -9,13 +9,15 @@ assumed to be ``Zexion.exe``, not seen.
 
 What is not seen is not known to be absent: ``find_pid`` raises ``ProcessError`` rather than
 answer None when this process is in a sandbox whose ``/proc`` shows only its own processes (a
-nested process-id namespace, a Flatpak, WSL), or when a process of this user can't be read.
+nested process-id namespace, a Flatpak, WSL: its interop handler, its kernel's release or its
+variables), or when a process of this user can't be read.
 """
 
 from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 PROC = Path("/proc")
@@ -28,8 +30,32 @@ class ProcessError(OSError):
     there is not known."""
 
 
-def _blind_spot(proc: Path, root: Path) -> str | None:
-    """Why ``proc`` may not show every process of this user, or None."""
+WSL_ENV = ("WSL_DISTRO_NAME", "WSL_INTEROP")  # WSL sets them in its shells
+
+
+def _in_wsl(proc: Path, environ: Mapping[str, str]) -> bool:
+    """Whether this runs in WSL, whose ``/proc`` does not list Windows' processes. Any one sign
+    is enough, as none is on every setup: an interop handler registered with binfmt_misc
+    (``WSLInterop``, or ``WSLInterop-late`` under WSL 2 with systemd), the kernel's release text
+    (``...microsoft-standard-WSL2``, ``...-Microsoft`` of WSL 1), or the variables WSL sets.
+    With interop turned off, the last two remain."""
+    if any(environ.get(name) for name in WSL_ENV):
+        return True
+    try:
+        release = (proc / "sys" / "kernel" / "osrelease").read_text(errors="replace").lower()
+    except OSError:
+        release = ""
+    if "microsoft" in release or "wsl" in release:
+        return True
+    try:
+        return any(e.name.startswith("WSLInterop") for e in (proc / "sys/fs/binfmt_misc").iterdir())
+    except OSError:
+        return False
+
+
+def _blind_spot(proc: Path, root: Path, environ: Mapping[str, str] | None = None) -> str | None:
+    """Why ``proc`` may not show every process of this user, or None. ``environ`` is this
+    process's variables, looked at only for the real ``/proc`` (a stand-in's has no say on them)."""
     try:
         status = (proc / "self" / "status").read_text(errors="replace")
     except OSError as exc:
@@ -39,7 +65,7 @@ def _blind_spot(proc: Path, root: Path) -> str | None:
         return "this runs in a process-id namespace of its own, which hides the game"
     if (root / ".flatpak-info").exists():
         return "this runs inside a Flatpak sandbox, which hides the game"
-    if (proc / "sys" / "fs" / "binfmt_misc" / "WSLInterop").exists():
+    if _in_wsl(proc, (os.environ if proc == PROC else {}) if environ is None else environ):
         return "this runs in WSL, whose processes do not include Windows'"
     return None
 

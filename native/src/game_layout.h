@@ -138,8 +138,9 @@ constexpr ptrdiff_t kGlyphs = 0x228;
 // game-mode panel", "Live item objects").
 namespace sprite {
 // Entries of `palette_table`, the objects a sprite's +0x198 and +0x1A0 name: 65 on Linux B1
-// (gSpriteDrawProcs, 0x208 bytes: docs/re/linux.md, `palette_table`); the Windows table assumed
-// the same size.
+// (gSpriteDrawProcs, 0x208 bytes: docs/re/linux.md, `palette_table`). On Windows the same size
+// is an assumption, not measured: AssistLock::restore (menu.cpp) is the only reader that uses it
+// as a bound, and a number past it keeps the pointer saved at install.
 constexpr int kPaletteCount = 65;
 constexpr ptrdiff_t kTemplate = 0x30;  // the definition's template, null for none
 constexpr ptrdiff_t kX = 0x40, kY = 0x48;  // doubles, pixels
