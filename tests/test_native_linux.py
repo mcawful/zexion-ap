@@ -330,31 +330,102 @@ def test_the_helper_serves_no_one_without_a_folder_for_its_token(tmp_path: Path)
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_a_client_with_another_token_is_refused(game: Game, monkeypatch) -> None:
     found = game.as_found()
-    monkeypatch.setattr(linux_helper, "find_token", lambda *_: "0" * 64)
+    monkeypatch.setattr(linux_helper, "find_tokens", lambda *_: [(Path("/x/token"), "0" * 64)])
     with (
-        pytest.raises(linux_helper.LinuxHelperError, match="refused this client's token"),
+        pytest.raises(linux_helper.LinuxHelperError, match=r"refused every token.*/x/token"),
         linux_helper.LinuxHelper(found),
     ):
         pass
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
-def test_write_leaves_the_games_function_tables_alone(game: Game) -> None:
-    # What the game calls through (the exit action, the exit routines, the area events' handlers,
-    # the sprite-draw procedures, the move procedures): no write may change them, whole or in part.
-    at = config_addresses()
+def test_write_is_refused_outside_what_the_client_writes(game: Game) -> None:
+    # The game calls procedures through pointers all over its .bss, so `write` takes only the
+    # ranges the client writes (core.h, client_write_ranges: in the stand-in, its .bss but for
+    # zap_no_write). Whole or in part: a write that reaches into the hole is refused.
+    hole = stand_in("zap_no_write")
     with game.connect() as sock:
-        for name in ("transition_fn", "routine_table", "event_handlers", "palette_table"):
-            for address in (at[name], at[name] + 1):
-                reply = ask(sock, f"write {address:#x} 00")
-                assert reply == "error not_in_the_game's_function_tables", (name, reply)
-        assert ask(sock, f"write {at['map_handler']:#x} 00") == (
-            "error not_in_the_game's_function_tables"
-        )
-        before = read_at(sock, at["routine_table"], 16 * 8)
-        assert ask(sock, f"write {at['routine_table'] - 4:#x} {'ff' * 8}").startswith("error ")
-        assert read_at(sock, at["routine_table"], 16 * 8) == before
-        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the rest is open
+        for address, data in ((hole, "00"), (hole + 15, "00"), (hole - 4, "ff" * 8),
+                              (hole + 8, "ff" * 16)):  # fmt: skip
+            reply = ask(sock, f"write {address:#x} {data}")
+            assert reply == "error not_in_what_the_client_writes", (hex(address), reply)
+        assert read_at(sock, hole, 16) == bytes(16)  # none of it was written
+        assert ask(sock, f"write {game.block:#x} 00") == "written 1"  # and the rest is open
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_connection_that_sets_something_has_it_put_back_when_it_goes(game: Game) -> None:
+    # A connection made again in the middle of a poll has not sent `config` yet: what it sets
+    # (here the disks' count) is put back when it goes all the same (the Linux helper's
+    # sets_client_state); one that only looks (hello, ping, read, the statuses) changes nothing.
+    at = config_addresses()
+    scanner = stand_in("zap_texts") + 12 * 32
+    with game.connect() as sock:
+        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        assert ask(sock, config) == "ok"
+    with game.connect() as sock:  # the game stays configured; this one never sent `config`
+        line = b"4 OS Install Disks detected!".hex()
+        assert ask(sock, f"discs 1 4 {line} 1") == "discs on"
+        wait_for(sock, f"read {scanner:#x} 4", lambda r: r != "data ENER")
+        assert read_at(sock, scanner, 32).split(b"\x00")[0] == b"4 OS INSTALL DISKS DETECTED!"
+    with game.connect() as sock:  # it went: the game's again
+        wait_for(sock, f"read {scanner:#x} 4", lambda r: r == "data ENER")
+        assert read_at(sock, scanner, 32).split(b"\x00")[0] == b"ENERGY KEYS DETECTED!"
+        assert ask(sock, f"discs 1 4 {line} 1") == "discs on"
+        wait_for(sock, f"read {scanner:#x} 4", lambda r: r != "data ENER")
+        assert ask(sock, "ping").startswith("pong")
+        assert ask(sock, "discs_status") is not None  # the statuses only look
+    with game.connect(authed=False) as sock:  # a probe that never authenticated: nothing at all
+        assert ask(sock, "hello").startswith("zexion-ap ")
+    with game.connect() as sock:  # the status's connection went; the one that set the count too
+        wait_for(sock, f"read {scanner:#x} 4", lambda r: r == "data ENER")
+        assert read_at(sock, scanner, 32).split(b"\x00")[0] == b"ENERGY KEYS DETECTED!"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_an_unauthenticated_connection_cannot_hold_the_helper_past_its_deadline(
+    game: Game,
+) -> None:
+    # One deadline from the accept, not one per request, and one `hello` only: a connection that
+    # asks again every few seconds is closed with the rest (the real client then gets its turn).
+    hello = f"zexion-ap {native.VERSION} build=test hooked=1 platform=linux folder=1"
+    with game.connect(authed=False) as sock:
+        assert ask(sock, "hello") == hello
+        assert ask(sock, "hello") == "error auth required"  # a second one: dropped
+        assert sock.recv(65536) == b""
+    started = time.monotonic()
+    with game.connect(authed=False) as sock:
+        assert ask(sock, "hello") == hello
+        time.sleep(3)
+        sock.settimeout(6)
+        assert sock.recv(65536) == b""  # closed at the 5 s deadline with nothing else sent
+    assert 4.5 < time.monotonic() - started < 7
+    with game.connect() as sock:  # the helper went on to the next client
+        assert ask(sock, "ping").startswith("pong frames=")
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_stale_token_found_first_does_not_stop_the_live_one(
+    game: Game, tmp_path: Path, monkeypatch
+) -> None:
+    found = game.as_found()
+    stale = tmp_path / "stale" / "ZexionAP" / "token"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("0" * 64)
+    stale.chmod(0o600)
+    old = 1_000_000_000  # long before the live one was written
+    os.utime(stale, (old, old))
+    monkeypatch.setattr(
+        linux_helper, "token_paths", lambda *_a, **_k: [stale, game.offline / "token"]
+    )
+    with linux_helper.LinuxHelper(found) as helper:  # the live one tried after the stale one
+        assert helper.frames() >= 0
+    monkeypatch.setattr(linux_helper, "token_paths", lambda *_a, **_k: [stale])
+    with (
+        pytest.raises(linux_helper.LinuxHelperError, match=r"refused every token.*stale"),
+        linux_helper.LinuxHelper(found),
+    ):
+        pass
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
@@ -570,8 +641,8 @@ def test_a_new_game_queued_with_the_seeds_text_gets_the_seed(game: Game) -> None
         assert ask(sock, f"write {at['current_slot']:#x} 04000000") == "written 4"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"
         assert ask(sock, f"write {at['transition_timer']:#x} 28000000") == "written 4"
-        # START GAME: the game writes its exit action itself (the helper's `write` leaves the
-        # function-pointer tables alone: test_write_leaves_the_games_function_tables_alone).
+        # START GAME: the game writes its exit action itself (the helper's `write` takes only
+        # what the client writes: test_write_is_refused_outside_what_the_client_writes).
         assert ask(sock, f"write {stand_in('zap_press'):#x} 01") == "written 1"
         status = wait_for(sock, "newgame_status", lambda r: r != "armed")
         assert status == "applied slot 5"

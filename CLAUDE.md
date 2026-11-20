@@ -83,7 +83,7 @@ popups, received traps, Energy Shields, checks, Intel Chips, popups in English(H
 the OS Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending,
 tall popups' text, the title screen's lines, the file select's AP logo, disk counts and ITEMS row
 and the look without the client; this world's own traps, and its own disks with no client, not
-yet; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (the put-back of only a client that sent `config`, `write` refusing the function tables, the narrower map cache, the Steam check's retry), which have run on stand-ins only: the next in-game run re-checks the attach), and so do `grant.py`, `check_patterns.py --live` and
+yet; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (what a connection set put back when it goes, `write` taking only the ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map cache, the Steam check's retry, the client's settings sent only on the configured connection), which have run on stand-ins only: the next in-game run re-checks the attach), and so do `grant.py`, `check_patterns.py --live` and
 `helper.py status` ([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
 
 uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
@@ -167,7 +167,7 @@ Nothing in `tests/` needs the game, and CI never runs it.
   Shields, checks, Intel Chips, popups in English(HD) and Japanese, the OS Install Disks goal with
   RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending, tall popups' text, the title
   screen's lines, the file select's AP logo, disk counts and ITEMS row and the look without the
-  client; this world's own traps, and its own disks with no client, not yet; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (the put-back of only a client that sent `config`, `write` refusing the function tables, the narrower map cache, the Steam check's retry), which have run on stand-ins only: the next in-game run re-checks the attach):
+  client; this world's own traps, and its own disks with no client, not yet; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (what a connection set put back when it goes, `write` taking only the ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map cache, the Steam check's retry, the client's settings sent only on the configured connection), which have run on stand-ins only: the next in-game run re-checks the attach):
   [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and
   loads it again a few seconds later (for a misbehaving mod; popups still queued are lost); on
   Linux, where the Linux helper stays for the game's run, it says to restart Zexion instead.

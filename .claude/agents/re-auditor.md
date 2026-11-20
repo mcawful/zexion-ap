@@ -111,12 +111,18 @@ around the change.
    no C++ runtime symbol that could stand in for the game's own; that its abstract socket stays
    gated by `SO_PEERCRED` (only its own user) and the token: 32 random bytes as 64 hex digits in
    `ZexionAP/token` of the data folder (file 0600, folder 0700, never through a link), compared
-   without an early exit, a connection served nothing but `hello` until `auth TOKEN` passes, 5 s
-   to present it, and the client sending the token only after `hello` showed the server is the
-   game's own process; that writes into the game go through `process_vm_writev` and are limited
-   to the game's `.bss`, and stay out of the function-pointer tables (`write` refuses them), with
-   code patched only by the shared layer through `mprotect`; that a client that sent `config` is
-   put back when it goes (and one that did not changes nothing); and that it never unloads, so nothing may
+   without an early exit, a connection served nothing but `hello` (answered once) until
+   `auth TOKEN` passes, one 5 s deadline from the accept to present it, and the client sending the
+   token only after `hello` showed the server is the game's own process (trying each token it
+   finds, newest first, one connection each); that writes into the game go through
+   `process_vm_writev`, limited to the game's `.bss` and, inside it, to an allow-list of the
+   ranges the client writes (inventory bytes, supply numbers, cell item states, the map grid:
+   offsets from `gGameState`, checked against `client/game.py` by a test), so a new write
+   target in the client needs its range added there and nothing the game calls through (a
+   function-pointer table, a sprite record's move procedure) is ever reachable, with code patched
+   only by the shared layer through `mprotect`; that anything a connection set (`config`, discs,
+   assists, intel and the rest) is put back when it goes, and one that only looks (`status`, a
+   probe) changes nothing; and that it never unloads, so nothing may
    wait on an unload to undo a change (a patch with a timer puts itself back).
 
 ## Method

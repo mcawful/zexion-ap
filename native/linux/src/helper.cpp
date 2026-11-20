@@ -91,15 +91,6 @@ constexpr int kMaxSegments = 4;
 uintptr_t g_writable[kMaxSegments][2] = {};
 int g_writable_count = 0;
 
-// The game's tables of function pointers in that .bss, which the game calls through (the exit
-// action and its table, the move, area-event and sprite-draw procedures: docs/re/linux.md,
-// "Lookup: targets"), as [start, end) from the game's own symbols: `write` leaves them alone, so
-// a client can't turn a write into a call. Nothing the client writes is among them (its
-// inventory, cell states and map grid).
-constexpr int kMaxDenied = 8;
-uintptr_t g_denied[kMaxDenied][2] = {};
-int g_denied_count = 0;
-
 // The game's thread's work (native/src/mailbox.h), and the Windows helper's Game, configured by
 // a client's `config` (native/src/game_calls.h). Of Game, only the parts ported run here: new
 // games and the ARCHIPELAGO choice, `apply` and its popups, other players' items, this world's
@@ -122,6 +113,14 @@ private:
     alignas(T) unsigned char bytes_[sizeof(T)];
 };
 static_assert(std::is_trivially_destructible_v<Kept<std::string>>, "nothing run at exit");
+
+// Where `write` may change the game, inside that .bss: what the client writes and no more
+// (core.h, client_write_ranges), from the game's own symbols, set once before the serving thread
+// starts. The game calls procedures through pointers all over its .bss (the exit action and its
+// table, the move, area-event, enemy-action and sprite-draw procedures, each sprite record's own:
+// docs/re/linux.md), so a list of those to leave alone could never be whole; this list of what the
+// client needs is short. Empty: nothing is written.
+__attribute__((init_priority(101))) Kept<std::vector<Range>> g_client_writes;
 
 // Both constructed before the helper's own constructor (start) runs, which sets the game's title
 // version and starts the serving thread: a constructor function runs, in the library's
@@ -243,23 +242,16 @@ bool in_game_data(uint64_t address, size_t size) {
     return false;
 }
 
-// Whether [address, address + size) touches one of g_denied's tables.
-bool in_function_tables(uint64_t address, size_t size) {
-    for (int i = 0; i < g_denied_count; ++i) {
-        if (address < g_denied[i][1] && address + size > g_denied[i][0]) return true;
-    }
-    return false;
-}
-
 // Into this process's memory, by the kernel (a page not writable is EFAULT, not a fault), and
-// only inside the main program's .bss (g_writable), outside its function tables (g_denied).
+// only inside the main program's .bss (g_writable) and what the client writes there
+// (g_client_writes).
 bool write_own(uint64_t address, const std::string& data, std::string& out) {
     if (!in_game_data(address, data.size())) {
         out = "not_in_the_game's_writable_data";
         return false;
     }
-    if (in_function_tables(address, data.size())) {
-        out = "not_in_the_game's_function_tables";
+    if (!within_ranges(*g_client_writes, address, data.size())) {
+        out = "not_in_what_the_client_writes";
         return false;
     }
     iovec local{const_cast<char*>(data.data()), data.size()};
@@ -542,6 +534,39 @@ constexpr ConfigKey kConfigKeys[] = {
 #endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
 
+// The game's object `write` is bounded by (kWriteBase): gGameState, which the client's writes lie
+// in. In the test build the stand-in's `zap_no_write` is the one place in its .bss not written.
+#ifdef ZAP_HOOKTEST
+constexpr char kWriteBase[] = "zap_no_write";
+#else
+constexpr char kWriteBase[] = "gGameState";
+#endif
+
+// g_client_writes from the symbol `base`: each range of client_write_ranges that lies in the
+// game's .bss and in the symbol's own extent; one that doesn't is left out, so none is written.
+void set_client_writes(const zap::linux_helper::SymbolSpan& base) {
+    g_client_writes->clear();
+#ifdef ZAP_HOOKTEST
+    for (int i = 0; i < g_writable_count; ++i) {  // all of the stand-in's .bss but its one hole
+        const uint64_t start = g_writable[i][0], end = g_writable[i][1];
+        const uint64_t hole = base.value, hole_end = base.value + base.size;
+        if (hole < start || hole_end > end) {
+            g_client_writes->push_back({start, end});
+        } else {
+            g_client_writes->push_back({start, hole});
+            g_client_writes->push_back({hole_end, end});
+        }
+    }
+#else
+    for (const Range& range : client_write_ranges(base.value)) {
+        if (in_game_data(range.start, range.end - range.start) &&
+            (base.size == 0 || range.end <= base.value + base.size)) {
+            g_client_writes->push_back(range);
+        }
+    }
+#endif
+}
+
 // Each key's address by the game's own symbols (kConfigKeys), read from its binary at start-up:
 // a config must give these and no others, so a client whose mapping drifted changes nothing.
 uint64_t g_expected[kConfigKeyCount] = {};
@@ -553,7 +578,7 @@ bool read_own_symbols() {
     std::ifstream file("/proc/self/exe", std::ios::binary);
     std::string elf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     std::vector<std::string> names{kFrameFunction, kSpriteDefCount, kPlayerPointer, kStatsContext,
-                                   kSetAchievement};
+                                   kSetAchievement, kWriteBase};
     for (const ConfigKey& key : kConfigKeys) names.emplace_back(key.symbol);
     auto found = zap::linux_helper::find_symbols(elf, names);
     for (const std::string& name : names) {
@@ -567,21 +592,7 @@ bool read_own_symbols() {
     for (size_t i = 0; i < kConfigKeyCount; ++i) {
         g_expected[i] = found[kConfigKeys[i].symbol].value + kConfigKeys[i].offset;
     }
-    // The keys that are function-pointer tables, whole by their symbols' sizes (at least the
-    // key's own bytes): the exit action, the exit routines, the area events' handlers, the
-    // sprite-draw procedures (the palette table is the start of theirs) and the move procedures.
-    g_denied_count = 0;
-    for (const char* name :
-         {"transition_fn", "routine_table", "event_handlers", "palette_table", "map_handler"}) {
-        for (const ConfigKey& key : kConfigKeys) {
-            if (std::strcmp(key.name, name) != 0 || g_denied_count >= kMaxDenied) continue;
-            const zap::linux_helper::SymbolSpan& symbol = found[key.symbol];
-            const uint64_t own = key.offset + (key.size == 0 ? sizeof(void*) : key.size);
-            g_denied[g_denied_count][0] = symbol.value;
-            g_denied[g_denied_count][1] = symbol.value + std::max<uint64_t>(symbol.size, own);
-            ++g_denied_count;
-        }
-    }
+    set_client_writes(found[kWriteBase]);
     g_expected_known = true;
     return true;
 }
@@ -1159,22 +1170,49 @@ bool make_token(const std::string& folder) {
     return true;
 }
 
+// Whether a request sets something a client's going must put back (a plan, labels, the ASSIST
+// lock, Intel Chips, the disks' count, a prompt asked for, a seed put): by its first word, the
+// others only read the game, answer it, or act once (a grant, a death, a shield). `config` is one
+// as it installs the client as the active one.
+bool sets_client_state(std::string_view request) {
+    std::string_view word = request.substr(0, request.find_first_of(" \n"));
+    for (std::string_view name :
+         {"config", "ap_newgame", "ap_labels", "discs", "mission_prompt", "other_save",
+          "client_back", "assists", "intel", "offline_put"}) {
+        if (word == name) return true;
+    }
+    return false;
+}
+
 // One client: a request a message, a reply a message, until it goes, sends too much, or says
-// nothing for kClientSilenceSeconds. It serves nothing but `hello` until the client has shown the
-// token (core.h, gate), and is dropped if its first words are anything else, or not the token,
-// or do not come within kAuthSeconds. `sent_config` is set once it sends `config`: only a client
-// that did has anything to put back when it goes.
-void serve_client(int client, bool& sent_config) {
-    timeval waiting{kAuthSeconds, 0};
-    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &waiting, sizeof waiting);
-    bool authed = false;
+// nothing for kClientSilenceSeconds. It serves nothing but one `hello` until the client has shown
+// the token (core.h, gate), and is dropped if its first words are anything else, or not the
+// token, or the token has not come kAuthSeconds after it was accepted (one deadline: asking
+// `hello` again does not extend it). `left_state` is set once it sends a request that sets
+// something (sets_client_state): only a client that did has anything to put back when it goes,
+// whether or not it sent `config` (a connection made again in the middle of a poll may not have).
+void serve_client(int client, bool& left_state) {
+    const uint64_t deadline = zap::ticks_ms() + kAuthSeconds * 1000ull;
+    bool authed = false, said_hello = false;
     std::vector<char> buffer(kMaxRequest);
     for (;;) {
+        if (!authed) {
+            const uint64_t now = zap::ticks_ms();
+            if (now >= deadline) return;
+            const uint64_t left = deadline - now;
+            timeval waiting{static_cast<time_t>(left / 1000),
+                            static_cast<suseconds_t>((left % 1000) * 1000)};
+            setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &waiting, sizeof waiting);
+        }
         ssize_t n = recv(client, buffer.data(), buffer.size(), MSG_TRUNC);
         if (n <= 0 || static_cast<size_t>(n) > buffer.size()) return;
         std::string_view request(buffer.data(), static_cast<size_t>(n));
         if (!authed) {
             Gate checked = gate(request, *g_token, state());
+            if (request == "hello") {
+                if (said_hello) checked = Gate{"error auth required", false, true};
+                said_hello = true;
+            }
             if (send(client, checked.answer.data(), checked.answer.size(), MSG_NOSIGNAL) < 0 ||
                 checked.drop) {
                 return;
@@ -1186,7 +1224,7 @@ void serve_client(int client, bool& sent_config) {
             }
             continue;
         }
-        if (request == "config" || request.starts_with("config ")) sent_config = true;
+        if (sets_client_state(request)) left_state = true;
         std::optional<std::string> game;
         t_posted = false;
         try {
@@ -1224,17 +1262,18 @@ void* serve(void* arg) {
         socklen_t size = sizeof cred;
         if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cred, &size) == 0 &&
             cred.uid == geteuid()) {
-            bool sent_config = false;
+            bool left_state = false;
             try {
-                serve_client(client, sent_config);
+                serve_client(client, left_state);
             } catch (...) {
             }
             // As the Windows helper does, a client's plan is not kept for it: the next frame puts
             // back what it set (client_gone), and before any request of the next client
-            // (on_game). A connection that never sent `config` (`helper.py status`, a probe) set
-            // nothing, and its going changes nothing: no plan to drop, the offline look as it
-            // was. The seeds' files are read again for a client that did, as there.
-            if (sent_config) {
+            // (on_game). A connection that set nothing (`helper.py status`, a probe, or one made
+            // again after a drop that has not sent its `config` yet) has nothing to put back, and
+            // its going changes nothing: the offline look as it was. The seeds' files are read
+            // again for a client that did set something, as there.
+            if (left_state) {
                 g_client_left = true;
                 read_offline_guarded();
             }

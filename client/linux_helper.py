@@ -217,9 +217,9 @@ def token_paths(
     return list(dict.fromkeys(found))
 
 
-def _read_token(path: Path) -> str | None:
-    """The token in the file at ``path``, or None if it is not a plain file only its user can
-    read, holding one (never through a link)."""
+def _read_token(path: Path) -> tuple[str, float] | None:
+    """The token in the file at ``path`` and when the file was written, or None if it is not a
+    plain file only its user can read, holding one (never through a link)."""
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     except OSError:
@@ -233,7 +233,40 @@ def _read_token(path: Path) -> str | None:
         return None
     finally:
         os.close(fd)
-    return text if re.fullmatch(f"[0-9a-f]{{{TOKEN_LENGTH}}}", text) else None
+    if not re.fullmatch(f"[0-9a-f]{{{TOKEN_LENGTH}}}", text):
+        return None
+    return text, info.st_mtime
+
+
+def find_tokens(
+    game: LinuxGame,
+    proc: Path = PROC,
+    environ: dict[str, str] | None = None,
+    home: Path | None = None,
+) -> list[tuple[Path, str]]:
+    """Every token in the places ``token_paths`` names, with its file, the most recently written
+    first (the helper writes its own when the game starts, so a stale one is older; files of
+    one time keep ``token_paths``' order), none twice. LinuxHelperError, naming the places looked,
+    when none of them holds one."""
+    paths = token_paths(game, proc, environ, home)
+    found: list[tuple[float, Path, str]] = []
+    for path in paths:
+        read = _read_token(path)
+        if read is not None and all(read[0] != other for _, _, other in found):
+            found.append((read[1], path, read[0]))
+    if found:
+        found.sort(key=lambda entry: -entry[0])  # stable
+        return [(path, token) for _, path, token in found]
+    where = "; ".join(str(p) for p in paths)
+    raise LinuxHelperError(
+        f"the helper in Zexion (pid {game.pid}) takes only a client that has its token, and "
+        f"none is in a place this client can read (looked: {where}). The helper writes it, "
+        "readable by its user alone, into ZexionAP/token of the game's data folder "
+        "($XDG_DATA_HOME, else ~/.local/share, as the game sees them) when the game starts. "
+        "Either that folder is one this client can't read (another user, a sandbox that hides "
+        "it), or the helper had nowhere to write it: the game's stderr then has a 'no token' "
+        "line"
+    )
 
 
 def find_token(
@@ -242,21 +275,8 @@ def find_token(
     environ: dict[str, str] | None = None,
     home: Path | None = None,
 ) -> str:
-    """The helper's token (``token_paths``); LinuxHelperError, naming the places looked, when
-    none of them holds one."""
-    paths = token_paths(game, proc, environ, home)
-    for path in paths:
-        token = _read_token(path)
-        if token is not None:
-            return token
-    where = "; ".join(str(p) for p in paths)
-    raise LinuxHelperError(
-        f"the helper in Zexion (pid {game.pid}) takes only a client that has its token, and "
-        f"none is in a place this client can read (looked: {where}). The helper writes it, "
-        "readable by its user alone, into ZexionAP/token of the game's data folder "
-        "($XDG_DATA_HOME, else ~/.local/share, as the game sees them) when the game starts: "
-        "start the game again, and check its stderr for a 'no token' line"
-    )
+    """The most recently written token ``find_tokens`` finds."""
+    return find_tokens(game, proc, environ, home)[0][1]
 
 
 class LinuxHelper:
@@ -268,6 +288,39 @@ class LinuxHelper:
         self._sock: socket.socket | None = None
 
     def __enter__(self) -> LinuxHelper:
+        """Connect, check the server, and show it a token. The tokens found (``find_tokens``) are
+        tried newest first on a connection of their own each: a helper drops a connection that
+        shows a wrong one, and a stale file found first (a token left by an earlier run, in another
+        data folder) must not keep the client from the live one."""
+        tokens: list[tuple[Path, str]] | None = None
+        refused: list[Path] = []
+        while True:
+            self._connect()
+            try:
+                if tokens is None:
+                    tokens = find_tokens(self.game)
+                path, token = tokens[len(refused)]
+                reply = self.request(f"auth {token}")
+                if reply == "ok":
+                    return self
+                refused.append(path)
+                if len(refused) == len(tokens):
+                    raise LinuxHelperError(
+                        f"the helper in Zexion (pid {self.game.pid}) refused every token this "
+                        f"client found: {', '.join(str(p) for p in refused)}. Each is a file from "
+                        "another run of the game or another game's data folder; the helper "
+                        "writes its own token into ZexionAP/token of the data folder the game "
+                        "sees ($XDG_DATA_HOME, else ~/.local/share, inside Flatpak's Steam "
+                        "the sandbox's), which this client can't read: is the game's folder "
+                        "hidden from it (another user, a sandbox)?"
+                    )
+                self.__exit__()  # the helper closed this one: a new connection for the next
+            except BaseException:
+                self.__exit__()
+                raise
+
+    def _connect(self) -> None:
+        """The socket to the helper, made and checked (``_check_server``)."""
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         sock.settimeout(self.timeout)
         try:
@@ -284,11 +337,10 @@ class LinuxHelper:
         except BaseException:
             self.__exit__()
             raise
-        return self
 
     def _check_server(self) -> None:
-        """The socket's server is the game, of this user, says it is the game's build and this
-        client's version, and takes the client's token."""
+        """The socket's server is the game, of this user, and says it is the game's build and this
+        client's version (the token comes after, to that server alone)."""
         assert self._sock is not None
         raw = self._sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, UCRED.size)
         pid, uid, _gid = UCRED.unpack(raw)
@@ -313,14 +365,6 @@ class LinuxHelper:
             raise LinuxHelperError(
                 f"the mod in Zexion is version {hello.get('version')}, this client {VERSION}: "
                 "copy this client's libzexion_ap.so into the game's folder"
-            )
-        # The process is the game's (the checks above), so the token goes to it and no other.
-        reply = self.request(f"auth {find_token(self.game)}")
-        if reply != "ok":
-            raise LinuxHelperError(
-                f"the helper in Zexion (pid {self.game.pid}) refused this client's token "
-                f"({reply}): one left by an earlier run of the game, or from another game's "
-                "folder? Start the game again"
             )
 
     def __exit__(self, *_exc: object) -> None:
