@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "build.h"
+#include "findaddr.h"
 #include "game_calls.h"
 #include "iat.h"
 #include "mailbox.h"
@@ -74,13 +75,63 @@ std::atomic<int> g_offline_reads{0};
 std::atomic<int> g_offline_found{-1};
 std::string g_offline_error;  // guarded by g_offline_lock
 
+// The helper's own scan of the game's code for its addresses (findaddr.h). Made on the helper's
+// thread after the hook and before the first read of the offline files and the pipe, so every
+// reader (the game's thread taking those files, a `config` request, `hello`) comes after it, by
+// the offline lock or the pipe. `why` is "" once it ran, else why it did not (the hook-test build,
+// a build the helper does not know).
+struct SelfScan {
+    std::string why = "not run";
+    zap::find::Found found;
+};
+SelfScan g_scan;
+// Game thread, from the scan on: `hello`'s scan and addresses fields (native/README.md, "Finding
+// its own addresses").
+std::string g_scan_note = "-";
+std::string g_addresses = "-";  // "scan", "cache" or "client": where the configuration came from
+
+// Helper's thread: finds the game's addresses by byte pattern (the client's, findaddr.h) in a
+// known build. It never runs in DllMain: the thread starts after the loader lock is released.
+// Everything that allocates is inside the try, and the catch allocates nothing (an assignment of
+// a short literal to a string, `clear`), so a failed allocation cannot escape: it would skip the
+// files and the pipe, leaving the helper hooked, unreachable and unable to unload.
+void run_self_scan() {
+    try {
+        g_scan = {};
+        g_scan.why = zap::find::find_in_image(GetModuleHandleW(nullptr), g_scan.found);
+        if (!g_scan.why.empty()) {
+            g_scan_note = g_scan.why;
+        } else if (!g_scan.found.failed.empty()) {
+            g_scan_note = "failed " + g_scan.found.failed.front();  // taken or refused: below
+        } else {
+            g_scan_note = "ok";
+        }
+    } catch (...) {
+        g_scan.found.rvas.clear();
+        g_scan.found.failed.clear();
+        g_scan.why = "scan_failed";
+        g_scan_note = "scan_failed";
+    }
+}
+
+// An exclusive hold of the offline lock, released however the scope ends.
+class OfflineLock {
+public:
+    OfflineLock() { AcquireSRWLockExclusive(&g_offline_lock); }
+    ~OfflineLock() { ReleaseSRWLockExclusive(&g_offline_lock); }
+    OfflineLock(const OfflineLock&) = delete;
+    OfflineLock& operator=(const OfflineLock&) = delete;
+};
+
 void read_offline() {
     zap::OfflineFiles files = zap::read_offline_files(zap::offline_folder(), g_build);
-    AcquireSRWLockExclusive(&g_offline_lock);
-    g_offline_error = files.error;
+    // Copied before the lock, and the lock released however this ends: a throw under it would
+    // leave the next `hello` waiting for it for good.
+    std::string error = files.error;
+    OfflineLock lock;
+    g_offline_error = std::move(error);
     g_offline_found.store(static_cast<int>(files.seeds.size()));
     g_offline_files = std::move(files);
-    ReleaseSRWLockExclusive(&g_offline_lock);
 }
 
 // Counts a call from the game into one of the helper's functions outside the frame call (the
@@ -93,7 +144,8 @@ public:
     InCallback& operator=(const InCallback&) = delete;
 };
 
-// Runs the helper's part of a call from the game: nothing may unwind into the game.
+// Runs the helper's part of a call from the game, or its thread's start-up reads (the files),
+// and nothing may unwind: into the game, or past the pipe's start.
 template <typename Work>
 void guarded(Work&& work) {
     try {
@@ -195,20 +247,43 @@ void set_hooks() {
     g_game.set_hooks(hooks);
 }
 
-// Game thread: the files read last. With no client yet, the cached addresses for this build
-// configure the helper (inactive: only the offline look uses them).
+// Game thread: with no client yet, the helper configured (inactive: only what runs with no client
+// uses it) from its own scan's addresses if it found every one the game needs; else, from the
+// cached addresses for this build, if they check out against the game (client/offline.py wrote
+// them). Nothing from a scan that missed a required address: those are the cache's or the
+// client's.
+void configure_without_client(const zap::OfflineFiles& files) {
+    HMODULE exe = GetModuleHandleW(nullptr);
+    if (g_scan.why.empty()) {
+        std::string why = g_game.configure(exe, g_scan.found.rvas, false);
+        if (why.empty()) {
+            g_addresses = "scan";
+            // Only optional keys can be missing from an accepted scan (kConfigKeys).
+            const std::string lacking = zap::find::failed_names(g_scan.found);
+            g_scan_note = lacking.empty() ? "ok" : "ok without " + lacking;
+            return;
+        }
+        g_scan_note = "refused " + zap::find::failure_of(g_scan.found, why);
+    }
+    if (files.config.empty()) return;
+    std::string why = zap::check_offline_cache(exe, files);
+    if (why.empty()) why = g_game.configure(exe, files.config, false);
+    if (why.empty()) {
+        g_addresses = "cache";
+        return;
+    }
+    // The game's thread never waits for the lock (the pipe thread holds it only to swap the files
+    // in): an error it cannot record now is dropped.
+    if (TryAcquireSRWLockExclusive(&g_offline_lock)) {
+        g_offline_error = "cache: " + why;
+        ReleaseSRWLockExclusive(&g_offline_lock);
+    }
+}
+
+// Game thread: the files read last.
 void take_files(zap::OfflineFiles files) {
     g_offline_reads.fetch_add(1);
-    if (!g_game.configured() && !files.config.empty()) {
-        std::string why = zap::check_offline_cache(GetModuleHandleW(nullptr), files);
-        if (why.empty()) why = g_game.configure(GetModuleHandleW(nullptr), files.config, false);
-        // The game's thread never waits for the lock (the pipe thread holds it only to swap the
-        // files in): an error it cannot record now is dropped.
-        if (!why.empty() && TryAcquireSRWLockExclusive(&g_offline_lock)) {
-            g_offline_error = "cache: " + why;
-            ReleaseSRWLockExclusive(&g_offline_lock);
-        }
-    }
+    if (!g_game.configured()) configure_without_client(files);
     // With no client, in place of the last ones; with one, added to them (other_save's look kept).
     if (g_game.active()) {
         g_game.merge_offline(std::move(files.seeds));
@@ -339,6 +414,7 @@ std::string one_word(std::string text) {
 std::string hello() {
     // The fields read on the game's thread; these defaults stand if no frame comes.
     std::string game = " configured=0 feats=off", look = " offline=- active=0 title=0 lang=?";
+    std::string found = " scan=- addresses=-";
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
@@ -349,6 +425,7 @@ std::string hello() {
                        " active=" + (g_game.active() ? "1" : "0") +
                        " title=" + one_word(g_game.title_state()) +
                        " lang=" + one_word(g_game.language());
+                found = " scan=" + one_word(g_scan_note) + " addresses=" + g_addresses;
                 return std::string();
             },
             kFrameWaitMs, ignored);
@@ -361,7 +438,7 @@ std::string hello() {
            " hooked=" + (g_slot ? "1" : "0") + game +
            " folder=" + (g_from_game_folder ? "1" : "0") + look +
            " reads=" + std::to_string(g_offline_reads.load()) + "/" +
-           std::to_string(g_offline_found.load()) +
+           std::to_string(g_offline_found.load()) + found +
            (error.empty() ? "" : " read_error=" + one_word(error));
 }
 
@@ -449,7 +526,13 @@ std::string config(const std::string& request) {
     return on_game(
         [&] {
             std::string e = g_game.configure(exe, rvas);
-            return e.empty() ? std::string("ok") : "error " + e;
+            if (!e.empty()) return "error " + e;
+            g_addresses = "client";
+            // The client's addresses take over as they are; a key where they differ from the
+            // helper's own is a bug in one scan, said so it is seen (client/native.py logs it).
+            std::string differs =
+                g_scan.why.empty() ? zap::find::differing_keys(rvas, g_scan.found.rvas) : "";
+            return differs.empty() ? std::string("ok") : "ok differs " + differs;
         },
         false, error);
 }
@@ -582,10 +665,14 @@ DWORD WINAPI helper_thread(void*) {
         g_game.set_title_version(kVersion);
         set_hooks();
         hook();
-        if (g_slot != nullptr) read_offline();
+        // Then the helper's own scan (never in DllMain: this thread starts after the loader lock
+        // is released), before the first read of the files and the pipe: those come after it.
+        if (g_slot != nullptr) guarded(run_self_scan);
+        // Guarded as the scan is: the pipe comes up whatever these throw (no files read then).
+        if (g_slot != nullptr) guarded(read_offline);
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle, [] {
                 g_client_gone.store(true);
-                if (g_slot != nullptr) read_offline();  // the client may have written them
+                if (g_slot != nullptr) guarded(read_offline);  // the client may have written them
             })) {
             // No pipe: nothing could ever unload us, so put the game back as unload does and
             // leave, retrying until a frame comes; if the hook was replaced, stay.

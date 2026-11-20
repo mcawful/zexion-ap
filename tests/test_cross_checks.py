@@ -157,6 +157,33 @@ def test_the_config_names_the_addresses_the_helper_takes() -> None:
     assert set(keys) == client - patterns.CLIENT_ONLY_TARGETS <= client
 
 
+def test_the_helper_scans_for_the_addresses_it_configures() -> None:
+    # The header tools/gen_native_patterns.py writes (tests/test_gen_native_patterns.py checks it
+    # is current) names the targets in the client's order; the helper needs each of its keys.
+    table = braced(source("findaddr_patterns.h"), "inline constexpr Target kTargets[] = {")
+    scanned = re.findall(r'\{"(\w+)", k_\w+, \d+\}', table)
+    assert scanned == list(native.CONFIG_KEYS)
+    assert set(scanned) == set(config_keys())
+
+
+def test_the_helper_says_when_its_addresses_differ_from_the_clients_as_the_client_reads_it() -> (
+    None
+):
+    dllmain = source("dllmain.cpp")
+    assert f'"{native.DIFFERS}" + differs' in dllmain
+    assert native.DIFFERS.endswith(" ")
+    # `hello` gives the scan's outcome and where the addresses came from (native/README.md).
+    for field in (" scan=", " addresses="):
+        assert f'"{field}' in dllmain, field
+    for where in ("scan", "cache", "client"):
+        assert f'g_addresses = "{where}";' in dllmain, where
+    # The scan's note for optional addresses not found, as hello sends it: spaces made underscores.
+    assert '"ok without " + lacking' in dllmain
+    one_word = dllmain.split("std::string one_word(std::string text) {", 1)[1].split("}", 1)[0]
+    assert "std::replace(text.begin(), text.end(), ' ', '_')" in one_word
+    assert "ok without ".replace(" ", "_") == native.SCAN_OK_WITHOUT
+
+
 def test_the_helper_takes_functions_as_code() -> None:
     keys = config_keys()
     by_name = {t.name: t for t in patterns.TARGETS}
@@ -259,7 +286,7 @@ def test_the_replies_the_client_branches_on_are_ones_the_helper_gives() -> None:
         "stored", "unchanged", "labeled", "spawned", "died", "armed", "shown", "unknown", "idle",
         "queued", "on:", "the new game is not this seed", discs.ENDING_STARTED, discs.PUT_BACK,
         "a menu is open", "free", "locked", "intel on", "intel off",
-        "discs on", "discs off",
+        "discs on", "discs off", "ok differs ",
     )  # fmt: skip
     for reply in replies:
         assert f'"{reply}' in text, reply

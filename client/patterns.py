@@ -7,7 +7,10 @@ every one must match exactly once in .text and all must lead to the same address
 another refers to the start, so a layout change makes them disagree. Recorded with evidence
 in docs/re/memory.md. ``rvas`` is what each target resolved to on each build it was checked
 on, by the build's name in ``KNOWN_BUILDS`` (tools/check_patterns.py compares them), for
-checking only: code never uses it as an address.
+checking only: code never uses it as an address. The Windows helper scans the game with the same
+patterns to find its own addresses: tools/gen_native_patterns.py writes them into
+native/src/findaddr_patterns.h, which tests/test_gen_native_patterns.py checks is current, so run
+it after any change here.
 """
 
 from __future__ import annotations

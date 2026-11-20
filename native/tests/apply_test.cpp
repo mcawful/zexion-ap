@@ -79,12 +79,18 @@ int wmain(int argc, wchar_t** argv) {
     check(pipe != INVALID_HANDLE_VALUE, "connects");
     std::string hello = zap_test::ask(pipe, "hello");
     check(hello.find("hooked=1 configured=0") != std::string::npos, "hello before config", hello);
+    // The hook-test build hooks a host that is no known game build: its own scan says so, and
+    // nothing configured the helper from it (native/README.md, "Finding its own addresses").
+    check(hello.find(" scan=not_a_build_the_helper_knows addresses=-") != std::string::npos,
+          "hello: no scan in a stand-in game", hello);
     std::string reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused not configured", "apply before config", reply);
     reply = zap_test::ask(pipe, config_request());
     check(reply == "ok", "config", reply);
     hello = zap_test::ask(pipe, "hello");
     check(hello.find("configured=1") != std::string::npos, "hello after config", hello);
+    check(hello.find(" addresses=client") != std::string::npos, "hello: the client's addresses",
+          hello);
 
     reply = zap_test::ask(pipe, "apply\ncas 36 0 1\npopup 36 FROM ALICE");
     check(reply == "applied", "apply in the frame calls", reply);

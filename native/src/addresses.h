@@ -1,5 +1,6 @@
 // Where the game's state and functions are: one member per config key (game_calls.cpp,
-// kConfigKeys, from the RVAs client/patterns.py resolved), and the helper's wrappers. Calls as
+// kConfigKeys, from the RVAs client/patterns.py's patterns resolve: the client's, or the helper's
+// own scan with the same patterns, findaddr.h), and the helper's wrappers. Calls as
 // traced in docs/re/memory.md, "Game functions the helper calls"; each part's header says more.
 #pragma once
 

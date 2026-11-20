@@ -104,7 +104,7 @@ def test_load_talk_and_unload_in_a_stand_in_process(stand_in) -> None:
     with native.Helper(process.pid) as helper:
         assert helper.request("hello").endswith(
             "build=unknown hooked=0 configured=0 feats=off folder=0 offline=- active=0 title=0 "
-            "lang=? reads=0/-1"
+            "lang=? reads=0/-1 scan=- addresses=-"
         )
         assert helper.request("ping") == "pong frames=0"
         with pytest.raises(native.ModMismatch, match="doesn.t know the request nonsense"):
@@ -172,6 +172,7 @@ class _Game:
     file_version: str = "0.0.1"  # what the built file loads as
     folder: str = "0"
     build: str = "B1"  # the build the helper knows the game as
+    scan: str | None = None  # the hello's scan field (the helper's own address scan), if any
     stays: bool = False  # the helper refuses to unload
     loads: int = 0
     unloads: int = 0
@@ -208,6 +209,8 @@ def stand_in_attach(monkeypatch, **fields) -> _Game:
                 "hooked": hooked,
                 "lang": "-",
             }
+            if game.scan is not None:
+                out["scan"] = game.scan
             return out
 
         def request(self, text: str, *args: object) -> str:
@@ -531,6 +534,72 @@ def test_an_address_the_mod_needs_and_the_client_lacks_is_another_build(monkeypa
     with pytest.raises(native.HelperError) as caught:
         helper.configure(rvas)
     assert not isinstance(caught.value, native.ModMismatch)
+
+
+@pytest.mark.parametrize(
+    ("scan", "said"),
+    [
+        (None, None),  # a mod from before the scan
+        ("-", None),
+        ("ok", None),
+        ("ok_without_text_cut_code", "these addresses by itself (text_cut_code)"),
+        ("failed_map_grid:_pattern_2_matched_0_times", "map_grid:_pattern_2_matched_0_times"),
+        ("refused_missing_flags", "refused_missing_flags"),
+    ],
+)
+def test_a_mod_that_could_not_find_its_addresses_says_so_when_attached(
+    monkeypatch, tmp_path, caplog, scan, said
+) -> None:
+    built = tmp_path / "zexion_ap.dll"
+    built.write_bytes(b"")
+    game = stand_in_attach(monkeypatch, loaded=native.VERSION, file_version=native.VERSION)
+    game.scan = scan
+    with caplog.at_level("WARNING", logger="Zexion"):
+        native.attach(game, built)
+    if said is None:
+        assert not caplog.text
+    else:
+        assert said in caplog.text and "bug" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("addresses", "effect"),
+    [
+        ("cache", "using the addresses a client saved earlier"),
+        ("-", "works only while this client runs"),
+        ("client", "works only while this client runs"),
+    ],
+)
+def test_the_warning_says_what_the_mod_uses_instead_of_its_own_addresses(
+    addresses: str, effect: str
+) -> None:
+    text = native.scan_warning({"scan": "refused_x", "addresses": addresses})
+    assert text is not None and effect in text
+    # Optional addresses missing only affect what needs them, whatever configured the mod.
+    text = native.scan_warning({"scan": "ok_without_a,b", "addresses": addresses})
+    assert text is not None and "(a,b)" in text and "while this client runs" in text
+
+
+def test_addresses_the_mod_found_differently_are_said_and_the_clients_are_used(
+    monkeypatch, caplog
+) -> None:
+    rvas = dict.fromkeys(native.CONFIG_KEYS, 0x1000)
+    sent: list[bytes] = []
+
+    def reply(data: bytes, seconds: float) -> bytes:
+        sent.append(data)
+        return b"ok differs map_grid,flags"
+
+    helper, _ = piped_helper(monkeypatch, reply)
+    with caplog.at_level("WARNING", logger="Zexion"):
+        helper.configure(rvas)  # taken: no error
+    assert sent and sent[0].startswith(b"config ")
+    assert "map_grid,flags" in caplog.text and "bug" in caplog.text
+    caplog.clear()
+    helper, _ = piped_helper(monkeypatch, lambda data, seconds: b"ok")
+    with caplog.at_level("WARNING", logger="Zexion"):
+        helper.configure(rvas)
+    assert not caplog.text  # agreeing is not said
 
 
 @pytest.mark.parametrize(

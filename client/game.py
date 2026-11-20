@@ -409,7 +409,8 @@ class Game:
     def code_checks(self, keys: Iterable[str], size: int) -> dict[str, bytes]:
         """The first ``size`` bytes of each located target among ``keys`` that lies in the
         game's code (.text), as the game holds them: what the helper compares before it uses
-        cached addresses (client/offline.py). Windows-only: the Linux build has no such cache."""
+        cached addresses (client/offline.py: a fallback, since the helper finds its own).
+        Windows-only: the Linux build has no such cache."""
         if self.platform != "windows":
             raise GameError("code_checks is for the Windows build's helper")
         start, length = code_section(self._read_pointer(self.base, 0x1000))
