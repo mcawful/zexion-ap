@@ -2257,6 +2257,13 @@ client, the scanner's line and the equipment screen's disk (not reached), the St
 without Flatpak, a Steam Deck. What both runs saw, with the build and what was not seen, is
 recorded in `docs/re/linux.md`, "Seen in the running game, 2026-11-19".
 
+Both runs predate the socket's token, the client's keep-alive and let-go, and the review fixes
+that followed: the put-back of whatever a connection set when it goes, `write` taking only the
+ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map
+cache, the Steam check's retry, the client's settings sent only on the configured connection,
+and a RETURN HOME prompt put back being offered again. Those have run on stand-ins only; the next
+in-game run re-checks the attach as a whole.
+
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
 
@@ -2321,7 +2328,7 @@ What to try first, each before the next:
    `serving build B1` and no `no token`; `helper.py status` printing the game, the helper and
    `memory: readable`; `ls -l` of the folder holding `token` showing the file `-rw-------` and
    the folder `drwx------`; and another connection (`python3 -c` with a socket to
-   ` zexion-ap-<inner pid>` sending `read 0x400000 16`) refused with `error auth required`.
+   `\0zexion-ap-<inner pid>` sending `read 0x400000 16`) refused with `error auth required`.
 5. A grant with its popup, in a lab slot: an item received in play, its popup, sound and HUD
    ("Grants and popups", below).
 6. Then the rest, each part's bullet below saying what it does.
@@ -2831,7 +2838,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   afresh (not through a link) and synced, then renamed over it, the folders made for the user
   alone (mode 0700); a file is read only if it is a plain file, through no link. The serving
   thread reads them, at most 256, newest first, when the helper starts and each time a client
-  that sent `config` goes (not a probe such as `tools/helper.py status`), saying on stderr a
+  that set something goes (`sets_client_state`; not a probe such as `tools/helper.py status`),
+  saying on stderr a
   file it could not read; the same folder holds the client's `token` ("Who may connect"), which
   the seed reader ignores (it reads `seeds/` alone); the next frame call takes them, in place of the
   last ones with no client and added to them with one (`Game::set_offline`, `merge_offline`). A
@@ -2877,6 +2885,11 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     tells it all afresh, on its first poll with a connection, before that poll's step (stand-in
     tests only, not run in the game). Until then it sends no `ping`, as there is no connection
     to keep;
+  - the settings the helper keeps past a connection's close (Intel Chips, the ASSIST lock, the
+    disk count) are sent only on the connection it was configured on (`LinuxMod.current`, the
+    client's connection that sent `config` and is still open), as the finds', labels',
+    client-back and other-save ticks do: a connection made again by a read in the same poll never
+    sets them (stand-in tests only, not run in the game);
   - a client that goes leaves the look to dress the save again from scratch at the helper's next
     look, its not-connected notice with it, as `client_gone` does on Windows: its own parts put
     back and the look left (`leave_offline`, `linux/src/helper.cpp`), its notices not shown yet
