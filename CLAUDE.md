@@ -338,7 +338,9 @@ Committed under `.claude/`, so they apply to anyone working here:
   `tests/test_guard_hook.py`). The guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
-  It answers within about a second, as a hook that times out lets the call through: a command
+  The hook has a 120 s timeout in `settings.json`, a backstop: a hook that times out lets the
+  call through, so the guard's own protection is its deadline of about a second, which blocks
+  when it runs out. It answers within about a second: a command
   over 100,000 characters is blocked unread; one over a size budget (many different words,
   counting a word with a wildcard and each redirect target for more, many commands, or many
   different folders a `cd` goes to) counts as reaching a protected folder, so only a read-only

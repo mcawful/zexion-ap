@@ -88,7 +88,8 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     ``export`` of a variable that names a program (``_PROGRAM_VAR``: ``GIT_PAGER``,
     ``LESSOPEN``, ``PATH``, …), even before a read-only command.
   - Answers within about a second whatever the command, as a hook that times out lets the call
-    through. Past a budget the words are not read one by one: the command counts as reaching a
+    through (``settings.json`` gives the hook 120 s, a backstop: the deadline below is the
+    protection). Past a budget the words are not read one by one: the command counts as reaching a
     protected folder, so only a read-only one passes (a redirect, a substitution, and the
     ``tools/`` scripts and ``git`` and ``gh`` commands that are trusted otherwise are blocked:
     ``Too long or too complex to check``). The budget: ``MAX_WORK`` (the different words, 1
