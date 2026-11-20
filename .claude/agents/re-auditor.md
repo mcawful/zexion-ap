@@ -116,10 +116,13 @@ around the change.
    token only after `hello` showed the server is the game's own process (trying each token it
    finds, newest first, one connection each); that writes into the game go through
    `process_vm_writev`, limited to the game's `.bss` and, inside it, to an allow-list of the
-   ranges the client writes (inventory bytes, supply numbers, cell item states, the map grid:
-   offsets from `gGameState`, checked against `client/game.py` by a test), so a new write
-   target in the client needs its range added there and nothing the game calls through (a
-   function-pointer table, a sprite record's move procedure) is ever reachable, with code patched
+   ranges the client writes (the player's inventory bytes, each of its six supply numbers by
+   its own two bytes, the map cells' item states, the map grid: offsets from `gGameState`,
+   built by `keep_ranges` and checked against `client/game.py` by tests, the helper saying on
+   stderr how many it keeps), so a new write target in the client needs its range added there.
+   The function-pointer tables and each sprite record's move procedure are outside it; what
+   stays writable (the player record's supply and inventory fields) is not shown to hold
+   anything but numbers, which is not a proof, so a widened range is a finding. Code is patched
    only by the shared layer through `mprotect`; that anything a connection set (`config`, discs,
    assists, intel and the rest) is put back when it goes, and one that only looks (`status`, a
    probe) changes nothing; and that it never unloads, so nothing may
