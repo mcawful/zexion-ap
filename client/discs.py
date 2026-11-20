@@ -153,7 +153,8 @@ MISSION_REQUEST = f"mission_prompt {HOME[0]} {HOME[1]}"
 MISSION_STATUS = "mission_status"
 ENDING_STARTED = "ending started"
 # The start of its status once an unload or a client gone left the prompt up with YES put back to
-# NO's callback (native/src/mission.h, kPutBack): the prompt is offered again.
+# NO's callback (native/src/mission.h, kPutBack), or the cancel dropped a YES before the ending had
+# started (kYesDropped): the prompt is offered again.
 PUT_BACK = "put back"
 
 # A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
@@ -248,7 +249,8 @@ class ReturnHome:
 
     def again(self) -> None:
         """The prompt queued in this load was dropped before it showed (the Linux helper's
-        connection closed, its status ``not asked``): offered again, as after a save at the
+        connection closed, its status ``not asked``, or ``put back``: left up with YES put back,
+        or a YES dropped before the ending started): offered again, as after a save at the
         pod."""
         if self.queued:
             self.offer, self.queued = True, False

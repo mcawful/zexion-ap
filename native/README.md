@@ -2291,7 +2291,9 @@ its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
    or `the game's symbols were not found: no new games` for what failed, and `no token: <why>`
    (three kinds: the kernel's random bytes, no folder to put it in, the file not written),
    `memory reads refused: <why>` and `failed to start`, the last three stopping before `serving
-   build` (the helper serves no one). Later, with a seed's file
+   build` (the helper serves no one). Before it, `write: N ranges, M bytes allowed` (the client's
+   writes the helper takes) and, for a range the game's layout leaves out, `write: 0x... is
+   outside gGameState ...: the client's writes there are refused`. Later, with a seed's file
    and no client: `configured from the game's symbols, no client`, or `not configured with no
    client: <why>`, and `seed files: <why>` for files it could not read. No `serving build` and no
    failure line: not loaded, turned off by a `zexion_ap.disabled` beside it, or the socket's
@@ -2326,8 +2328,10 @@ What to try first, each before the next:
 4. The socket's token, with native Steam and with Flatpak Steam (the first run since it was
    added; stand-in tested only, `docs/re/linux.md`, "Reading the running game"): the stderr line
    `serving build B1` and no `no token`; `helper.py status` printing the game, the helper and
-   `memory: readable`; `ls -l` of the folder holding `token` showing the file `-rw-------` and
-   the folder `drwx------`; and another connection (`python3 -c` with a socket to
+   `memory: readable`; the line `write: 5 ranges, 29222 bytes allowed` with no line saying a
+   range is outside `gGameState` (else the layout is not the one recorded, and the client's
+   writes there are refused); `ls -l` of the folder holding `token` showing the file `-rw-------`
+   and the folder `drwx------`; and another connection (`python3 -c` with a socket to
    `\0zexion-ap-<inner pid>` sending `read 0x400000 16`) refused with `error auth required`.
 5. A grant with its popup, in a lab slot: an item received in play, its popup, sound and HUD
    ("Grants and popups", below).
@@ -2500,8 +2504,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   data (`.data`'s function pointers) or its import slots (`.got.plt`, writable in a binary
   without `BIND_NOW`, as B1's is), nor a library's memory, and within that `.bss` only the
   ranges the client writes (`client_write_ranges`, `src/core.cpp`: offsets from `gGameState`; the
-  player's inventory bytes 0 to 49 and its six supply numbers, the map cells' item states and the
-  map grid; `tests/test_linux_helper.py` checks them against `client/game.py`'s own), any other
+  player's inventory bytes 0 to 49 and its six supply numbers, the map cells' whole 9-byte records
+  (54 x 54 of them, 26244 bytes) and the map grid; `tests/test_linux_helper.py` checks them against `client/game.py`'s own), any other
   `error not_in_what_the_client_writes`. At start-up it says on stderr how many ranges it keeps and,
   for each one of them that is outside `gGameState`'s recorded extent or the game's data (the game
   not as recorded), which: `write: 5 ranges, 29222 bytes allowed`, `write: 0x... is outside

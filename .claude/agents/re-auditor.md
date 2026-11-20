@@ -117,7 +117,7 @@ around the change.
    finds, newest first, one connection each); that writes into the game go through
    `process_vm_writev`, limited to the game's `.bss` and, inside it, to an allow-list of the
    ranges the client writes (the player's inventory bytes, each of its six supply numbers by
-   its own two bytes, the map cells' item states, the map grid: offsets from `gGameState`,
+   its own two bytes, the map cells' whole 9-byte records, the map grid: offsets from `gGameState`,
    built by `keep_ranges` and checked against `client/game.py` by tests, the helper saying on
    stderr how many it keeps), so a new write target in the client needs its range added there.
    The function-pointer tables and each sprite record's move procedure are outside it; what
