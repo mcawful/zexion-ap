@@ -6,6 +6,7 @@
 #include <dlfcn.h>
 
 #include <atomic>
+#include <cstdio>
 #endif
 
 #include "game_layout.h"
@@ -658,18 +659,24 @@ Steam g_steam;
 
 // The stand-in: the holder the game reads the interface from, the interface, its vtable. Every
 // method returns 0 (SetAchievement, ClearAchievement, StoreStats: their results are not read),
-// whatever its arguments.
+// whatever its arguments. Built at load time, before any constructor runs (constinit: the build
+// fails if it could not be), so the helper's constructor, or another library's, never finds the
+// holder still zero. It fits the game's accessor, which reads one interface pointer through the
+// holder (`mov rax,[rax]`) and calls slots of its vtable that return nothing read, and no more:
+// an accessor that reads more of a context block, an interface of more than kMethods methods,
+// or a method whose result is a pointer would not be served.
+using Method = uint64_t (*)();
 extern "C" uint64_t zap_feats_zero() { return 0; }
 constexpr size_t kMethods = 64;  // the library's ISteamUserStats has 44
 struct StandIn {
-    void* vtable[kMethods];
+    Method vtable[kMethods];
     void* interface = vtable;  // an object is its vtable's address
     void* holder = &interface;
-    StandIn() {
-        for (void*& m : vtable) m = reinterpret_cast<void*>(&zap_feats_zero);
+    constexpr StandIn() : vtable() {
+        for (Method& m : vtable) m = &zap_feats_zero;
     }
 };
-StandIn g_stand_in;
+constinit StandIn g_stand_in;
 
 bool blocking() {
     if (g_steam.blocked.load()) return true;
@@ -716,6 +723,14 @@ void* feats_context_init(void* context) {
         return &g_stand_in.holder;
     }
     Init real = real_init();
+    static std::atomic<bool> said{false};
+    if (real == nullptr && !said.exchange(true)) {
+        // In the game this stubs Steam (no achievement outside AP saves) with `feats_status` the
+        // only other sign (check_steam says the library's function is not found).
+        std::fprintf(stderr,
+                     "zexion-ap: SteamInternal_ContextInit has no libsteam_api's to go on to: "
+                     "Steam's calls are answered by the stand-in, which does nothing\n");
+    }
     // With no libsteam_api to go on to (a program without it that the preload reaches: the game
     // has it NEEDED), the stand-in's holder, not null: the game's accessor reads through what it
     // gets (`mov rax,[rax]`), and the stand-in's every method returns 0.

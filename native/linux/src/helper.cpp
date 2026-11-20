@@ -19,7 +19,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1086,6 +1088,11 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "die") {  // a DeathLink death received (game_calls.h, kill)
         return on_game([] { return g_game->kill(zap::ticks_ms()); }, false);
     }
+#ifdef ZAP_HOOKTEST
+    if (request == "frame_calls") {  // the calls frame work was taken for (tests only)
+        return "frame_calls " + std::to_string(g_frame_calls.load());
+    }
+#endif
     if (request == "feats_status") {  // the Feats guard (feats.h, state): checks
         return on_game([] { return g_game->feats_state(); }, false);
     }
@@ -1479,10 +1486,30 @@ __attribute__((noinline)) bool called_through_wrapper(uintptr_t site) {
     return walk.found && walk.above != 0 && in_frame_function(walk.above);
 }
 
+// A wrapper may call the helper's swap more than once for one call of its own from the frame
+// function (a frame pacer, a duplicating layer), and frame work must run once a game frame, as
+// its frame-counted timers (the popups' gap, the file select's, the Steam retry) assume. The
+// helper cannot see the game's frame from the wrapper's calls, so a call through a wrapper is
+// taken only if kWrapperGapUs have passed since the last one taken: far less than a frame of
+// the fastest display (240 Hz is 4.2 ms), more than a wrapper's calls in a row are apart. A
+// wrapper that sleeps longer between its calls than that still runs the work for each.
+constexpr int64_t kWrapperGapUs = 2000;
+std::atomic<int64_t> g_wrapper_last_us{INT64_MIN / 2};
+
+bool wrapper_frame_due() {
+    const int64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+    if (now - g_wrapper_last_us.load(std::memory_order_relaxed) < kWrapperGapUs) return false;
+    g_wrapper_last_us.store(now, std::memory_order_relaxed);
+    return true;
+}
+
 void game_frame(uintptr_t site) {
     // Another swap (UpdatePalette's window), or the frame function unknown, passes straight on:
-    // frame work runs once for a call, whichever way it is found to come from the frame function.
-    if (!in_frame_function(site) && !called_through_wrapper(site)) return;
+    // frame work runs once for a call, whichever way it is found to come from the frame function,
+    // and, through a wrapper, once in kWrapperGapUs.
+    if (!in_frame_function(site) && !(called_through_wrapper(site) && wrapper_frame_due())) return;
     g_frame_calls.fetch_add(1, std::memory_order_relaxed);
     FrameScope scope;
     if (!scope.entered) return;
