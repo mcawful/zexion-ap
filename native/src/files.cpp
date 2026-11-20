@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "game_mem.h"
+#include "offline.h"
 
 namespace zap {
 
@@ -133,6 +134,21 @@ bool in_use(BYTE* entry, bool randomizer = false) {
            (!randomizer || (read(block, slot::kRandoMarker, marker) && marker == 1));
 }
 
+// The count the entry shows: `count`'s base and each of its cells the entry's own block's map
+// reads collected (the block `in_use` reads: the record the entry shows, not the slot's full save).
+int entry_disk_count(BYTE* entry, const DiskCount& count) {
+    int shown = count.base;
+    BYTE* block = pointer_at(entry, kChildBlock);
+    for (int cell : count.cells) {
+        uint8_t state = 0;
+        if (cell >= 0 && cell < kMapCells && read(block, slot::kMap + cell, state) &&
+            state == kCollectedCell) {
+            ++shown;
+        }
+    }
+    return shown;
+}
+
 }  // namespace
 
 std::string file_disk_digits(int value) {
@@ -245,7 +261,7 @@ void FileEntries::unmark(BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
 bool FileEntries::rewrite(BYTE* entry, int32_t slot, BYTE* (&g)[kEntryGlyphs], Wrapped& w) {
     auto listed = counts_.find(slot);
     if (listed == counts_.end() || !in_use(entry)) return false;
-    const int shown = listed->second;
+    const int shown = entry_disk_count(entry, listed->second);
     // What the block should read: DISK, then the count, then nothing; with no disk, nothing at
     // all, as a save with no key.
     std::string count = file_disk_digits(shown);

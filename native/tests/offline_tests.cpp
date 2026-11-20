@@ -325,18 +325,15 @@ void test_a_save_of_the_seed_dressed_offline() {
     g_save_loaded = 0xFF;
     for (int i = 0; i < 16; ++i) game.watch_offline();
     auto counts = game.files().counts();
-    check(counts.size() == 1 && counts.count(3) == 1 && counts[3] == 3,
-          "the file select: the seed's save with its count");
-    slot_block(3)[0x877F - 2 + 1312] = 0x1B;  // a disk this save found offline, on its own map
-    for (int i = 0; i < 16; ++i) game.watch_offline();
-    check(game.files().counts().at(3) == 4, "counted for that save on the file select");
+    check(counts.size() == 1 && counts.count(3) == 1 && counts[3] == zap::DiskCount(3, s.unfound),
+          "the file select: the seed's save with its count and own disks' cells");
 
     check(configure(game).empty() && game.active(), "a client's config");
     check(game.files().counts().empty(), "the file select's counts dropped with the look, counted again at the next");
     check(game.queued_popups() == 0, "no notice: no save was dressed (the file select)");
     for (int i = 0; i < 16; ++i) game.watch_offline();
-    check(game.files().counts().size() == 1 && game.files().counts().at(3) == 4,
-          "with a client too: each save's own count, from the seed's file and its map");
+    check(game.files().counts().size() == 1 && game.files().counts().at(3) == zap::DiskCount(3, s.unfound),
+          "with a client too: each save's own, from the seed's file (the entry reads its map)");
 
     zap::Game again;
     dress_offline(again, s);
@@ -394,7 +391,8 @@ void test_a_save_of_the_seed_dressed_offline() {
 
     g_save_loaded = 0xFF;  // the file select
     for (int i = 0; i < 16; ++i) other.watch_offline();
-    check(other.files().counts().size() == 1 && other.files().counts().at(3) == 4,
+    check(other.files().counts().size() == 1 &&
+              other.files().counts().at(3) == zap::DiskCount(3, s.unfound),
           "the known seed's slot 3 keeps its own count with a client of another seed");
 }
 
@@ -681,6 +679,27 @@ void test_the_ap_saves_slots() {
     check(configure(game).empty() && game.active() &&
               game.ap_file_slots() == std::set<int>{3, 7},
           "with a client too");
+
+    // A new game queued in slot 3 (a deleted AP save there, its empty mark 0 for the fade, its
+    // marker word and section kept): the slot is not that save's for the 40 frames, neither for
+    // the logo nor for the count; another slot's new game leaves it.
+    g_save_loaded = 0xFF;
+    g_transition_fn = reinterpret_cast<void*>(&newgame_fn);
+    g_transition_timer = 40;
+    g_current_slot = 3;  // slot 4
+    check(game.ap_file_slots() == std::set<int>{3, 7}, "a new game in another slot: kept");
+    g_current_slot = 2;  // slot 3
+    check(game.ap_file_slots() == std::set<int>{7}, "a new game in slot 3: not listed");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.files().counts().empty(), "nor counted");
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    g_current_slot = 0;
+    check(game.ap_file_slots() == std::set<int>{3, 7}, "listed again once none is queued");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.files().counts().size() == 1 && game.files().counts().count(3) == 1,
+          "and counted again");
+    g_save_loaded = 3;  // as it was
 
     check(game.files().ap_slots().empty(), "not before a frame");
     game.watch_all(&no_callback);

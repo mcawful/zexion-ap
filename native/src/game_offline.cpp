@@ -207,18 +207,16 @@ void Game::watch_offline() {
     // client (which keeps the seed's file, and so what every save of it shares, up to date). Not
     // without the save slots' addresses (a config that leaves them out: slot_section reads them
     // directly); the Linux helper has them for the Feats guard's load test and the file select's
-    // counts (watch_files).
-    std::map<int, int> counts;
+    // counts (watch_files). Each entry reads its own disk cells from the block it shows
+    // (files.h, DiskCount), so the count here is only the seed's.
+    std::map<int, DiskCount> counts;
     const bool slots = at_.slot_array != nullptr && at_.rando_slots != nullptr;
     for (int n = 1; slots && n <= slot::kCount; ++n) {
         const BYTE* copy = slot_section(n);
         if (copy == nullptr) continue;
-        const BYTE* block = at_.slot_array + static_cast<ptrdiff_t>(n - 1) * slot::kStride;
         for (const OfflineSeed& sd : offline_seeds_) {
             if (sd.discs && section_is(sd, copy)) {
-                // This save's own count, from its map grid (docs/re/save-format.md, "The map
-                // grid marks collected locations").
-                counts[n] = offline_disk_count(sd, block + slot::kMap);
+                counts[n] = DiskCount(sd.count, sd.unfound);
                 break;
             }
         }

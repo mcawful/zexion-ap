@@ -196,6 +196,35 @@ void test_this_seeds_slots_show_the_disks() {
           "off: the game's frames back (slot 5's KEYS and keys)");
 }
 
+// The count reads the map of the block the entry holds (+0x1F8: the checkpoint record while that is
+// in use, on the Linux build), as it is each frame, not the slot's full save.
+void test_the_count_reads_the_entry_blocks_map() {
+    Screen s;
+    zap::GameAddresses a = s.addresses();
+    constexpr int kMap = 0x877F - 2;
+    s.e[0].fill(false);
+    s.e[1].fill(false);
+    s.e[0].block[kMap + 1312] = 0x1B;  // an own disk this entry's record holds collected
+    zap::FileEntries f;
+    f.set_counts({{4, zap::DiskCount(3, {1312, 1313})}, {5, zap::DiskCount(3, {1312, 1313})}});
+    f.watch(a);
+    check(cells(s.e[0], {kDi, kSk, '0', '4', 0, 0}), "the base and the disk its own block holds");
+    check(cells(s.e[1], {kDi, kSk, '0', '3', 0, 0}),
+          "another entry's block does not hold it: the base alone");
+    s.e[0].block[kMap + 1313] = 0x1B;  // picked up while the screen is open
+    f.watch(a);
+    check(cells(s.e[0], {kDi, kSk, '0', '5', 0, 0}), "another one found: counted at once");
+    s.e[0].block[kMap + 1312] = 0x1A;  // not collected any more (a load put it back)
+    f.watch(a);
+    check(cells(s.e[0], {kDi, kSk, '0', '4', 0, 0}), "one gone: not counted");
+    // Cells out of the grid are never read.
+    f.set_counts({{4, zap::DiskCount(3, {-1, 54 * 54, 100000})}});
+    f.watch(a);
+    check(cells(s.e[0], {kDi, kSk, '0', '3', 0, 0}), "cells off the map: not counted");
+    f.set_counts({});
+    f.watch(a);
+}
+
 // COPY FILE's and DELETE FILE's entries: wrapped as the file select's, each handler put back.
 void test_copy_and_delete_entries() {
     Screen s;
@@ -452,6 +481,7 @@ void test_the_request() {
 
 int main() {
     test_this_seeds_slots_show_the_disks();
+    test_the_count_reads_the_entry_blocks_map();
     test_copy_and_delete_entries();
     test_only_what_it_moved_goes_back();
     test_an_entry_not_wrapped_is_not_written();
