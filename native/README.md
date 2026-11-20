@@ -114,9 +114,12 @@ know where the game's state and functions are.
   an addend, none needs more.
 - **What then:** with no client yet, the first frame call after the files are read configures
   the helper from the scan, inactive as the cache did (only what runs with no client uses it).
-  `Game::configure` gives the same checks to these addresses as to a client's: each lies where
-  its key must (a function in code with 16 bytes of room, data in writable data, an import slot
-  outside code, room for what is read there: `kConfigKeys`). A scan that missed a required key,
+  `Game::configure` gives the same checks to these addresses as to a client's (`check_key`): each
+  lies in the image with 16 bytes after it, in the kind of section its key needs (a function in
+  code, data in writable data, an import slot outside code), with the room `kConfigKeys` gives
+  it. They compare no bytes: the cache's comparison with the bytes a client read
+  (`check_offline_cache`) is not applied to the scan, which has no such record, its patterns
+  having matched the code itself. A scan that missed a required key,
   or whose addresses fail those checks, configures nothing: the helper then tries the offline
   cache ("AP saves without the client", "The pipe"), and then waits for a client. Missing only
   an optional key (`text_cut_code`, the AILMENTS keys) it configures without it, as the cache
@@ -135,8 +138,13 @@ know where the game's state and functions are.
   nothing has tried to configure from the scan yet, or a client's `config` came first); or why
   it did not run (`not_a_build_the_helper_knows`). `addresses=` is `-` while not configured,
   then where the configuration came from: `scan`, `cache` or `client`. The client logs a
-  warning when it attaches to a helper whose scan did not find everything and configure
-  (`client/native.py`, `attach`).
+  warning when it attaches to a helper whose scan did not find everything (`ok_without_…`
+  too), saying by `addresses=` whether the mod then uses a cache or only the client's addresses
+  (`client/native.py`, `scan_warning`).
+- **An exception in the scan** (an allocation of the copy of `.text` failing, say) is caught: `scan`
+  then reads `scan_failed`, and the helper goes on to read the files and serve the pipe, as it
+  would after a scan that found nothing (stand-in tests do not reach it: nothing makes the
+  scan throw there). The reads of the files are guarded the same way.
 - **The Linux helper does not scan:** it already finds each address by name in the game's symbol
   table at start, after the binary's GNU build id matched a known build (`configure_self`,
   `read_own_symbols` in `linux/src/helper.cpp`; "The Linux helper"), and refuses a client's
@@ -144,11 +152,18 @@ know where the game's state and functions are.
   error, not a warning. It differs from the Windows helper in one rule: it configures only once a
   seed file has been read (a first start on a PC no client has run on stays unconfigured, so no
   title lines, until one has), and once the game's player pointer reads the player state.
-- **Cost:** the scan of a copy of B1's `.text` (2026-11-20) took 201 ms in a Release build, 248
-  patterns, on the development PC.
+- **Cost, and the pipe's start:** the pipe comes up after the scan, so a helper loaded late (the
+  client's injection, `/reload_mod`) answers about that much later. On a copy of B1's exe
+  (2026-11-20, the development PC, `tests/findaddr_tests.cpp`, 248 patterns): `find_all` 205 ms and
+  `find_in_image` on the exe mapped as an image 197 ms in a Release build, 382 ms and 407 ms in a
+  Debug build, whose checked containers slow `count_matches`. The client's wait for the pipe is
+  `CONNECT_SECONDS` (`client/native.py`), 5 s since this change (3 s before): about 10 times the
+  Release scan, 12 the Debug one. Not measured: the scan in the game under load.
 
 Evidence, on build B1 only: the helper's scanner, run in `tests/findaddr_tests.cpp` on a copy of
-the exe's `.text`, finds all 95 addresses, at the RVAs the client's `locate_all` finds
+the exe's `.text`, and through `find_in_image` on that copy mapped as an image (`SEC_IMAGE`: the
+known-build check, the section walk over the in-memory headers and the fault-safe copy), finds all
+95 addresses, at the RVAs the client's `locate_all` finds
 (`tests/test_native_scan.py`, with `ZEXION_EXE` naming the copy: skipped where there is none, so
 never in CI), and the rules' cases run on synthetic code in CI: exactly once, none, overlapping
 matches, wildcards, both kinds, the addend, disagreeing patterns, the ends of the code, texts the
@@ -3504,10 +3519,11 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
   refused).
 - `findaddr`: the helper's own address scan ("Finding its own addresses") on synthetic code: both
   kinds, the addend, exactly once (none, twice, overlapping matches), wildcards, the ends of the
-  code, patterns that disagree, texts it cannot read, the generated table's patterns all readable
-  and its names once each, the comparison of a client's addresses with the scan's, and an unknown
+  code, patterns that disagree, texts it cannot read, each of the generated table's patterns on its
+  own readable and its names once each, the comparison of a client's addresses with the scan's, and an unknown
   build refused. With `ZEXION_EXE` naming a copy of the game's exe, it also scans that exe's
-  `.text` and fails unless every target is found (`tests/test_native_scan.py` compares the
+  `.text`, and `find_in_image` on the copy mapped as an image, and fails unless every target is
+  found, at the same addresses by both (`tests/test_native_scan.py` compares the
   addresses with the client's); it skips that without one, so never in CI. `apply_in_frames`
   checks `hello`'s `scan` and `addresses` in a stand-in game, which no scan can read.
 - `translation`: the translations, on a stand-in English(HD) (its tables as the game's parser leaves

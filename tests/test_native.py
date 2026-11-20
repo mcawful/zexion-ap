@@ -537,18 +537,18 @@ def test_an_address_the_mod_needs_and_the_client_lacks_is_another_build(monkeypa
 
 
 @pytest.mark.parametrize(
-    ("scan", "warned"),
+    ("scan", "said"),
     [
-        (None, False),  # a mod from before the scan
-        ("-", False),
-        ("ok", False),
-        ("ok_without_text_cut_code", False),
-        ("failed_map_grid:_pattern_2_matched_0_times", True),
-        ("refused_missing_flags", True),
+        (None, None),  # a mod from before the scan
+        ("-", None),
+        ("ok", None),
+        ("ok_without_text_cut_code", "these addresses by itself (text_cut_code)"),
+        ("failed_map_grid:_pattern_2_matched_0_times", "map_grid:_pattern_2_matched_0_times"),
+        ("refused_missing_flags", "refused_missing_flags"),
     ],
 )
 def test_a_mod_that_could_not_find_its_addresses_says_so_when_attached(
-    monkeypatch, tmp_path, caplog, scan, warned
+    monkeypatch, tmp_path, caplog, scan, said
 ) -> None:
     built = tmp_path / "zexion_ap.dll"
     built.write_bytes(b"")
@@ -556,9 +556,28 @@ def test_a_mod_that_could_not_find_its_addresses_says_so_when_attached(
     game.scan = scan
     with caplog.at_level("WARNING", logger="Zexion"):
         native.attach(game, built)
-    assert ("could not find the game's addresses by itself" in caplog.text) is warned
-    if warned:
-        assert scan in caplog.text
+    if said is None:
+        assert not caplog.text
+    else:
+        assert said in caplog.text and "bug" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("addresses", "effect"),
+    [
+        ("cache", "using the addresses a client saved earlier"),
+        ("-", "works only while this client runs"),
+        ("client", "works only while this client runs"),
+    ],
+)
+def test_the_warning_says_what_the_mod_uses_instead_of_its_own_addresses(
+    addresses: str, effect: str
+) -> None:
+    text = native.scan_warning({"scan": "refused_x", "addresses": addresses})
+    assert text is not None and effect in text
+    # Optional addresses missing only affect what needs them, whatever configured the mod.
+    text = native.scan_warning({"scan": "ok_without_a,b", "addresses": addresses})
+    assert text is not None and "(a,b)" in text and "while this client runs" in text
 
 
 def test_addresses_the_mod_found_differently_are_said_and_the_clients_are_used(

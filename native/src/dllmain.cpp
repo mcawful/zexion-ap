@@ -94,7 +94,14 @@ std::string g_addresses = "-";  // "scan", "cache" or "client": where the config
 // known build. It never runs in DllMain: the thread starts after the loader lock is released.
 void run_self_scan() {
     g_scan = {};
-    g_scan.why = zap::find::find_in_image(GetModuleHandleW(nullptr), g_scan.found);
+    try {
+        g_scan.why = zap::find::find_in_image(GetModuleHandleW(nullptr), g_scan.found);
+    } catch (...) {
+        // An allocation of the scan's (the copy of .text) must not skip the files and the pipe
+        // below: the helper would be hooked and unreachable, and could not be unloaded.
+        g_scan = {};
+        g_scan.why = "scan_failed";
+    }
     if (!g_scan.why.empty()) {
         g_scan_note = g_scan.why;
     } else if (!g_scan.found.failed.empty()) {
@@ -646,10 +653,11 @@ DWORD WINAPI helper_thread(void*) {
         // Then the helper's own scan (never in DllMain: this thread starts after the loader lock
         // is released), before the first read of the files and the pipe: those come after it.
         if (g_slot != nullptr) run_self_scan();
-        if (g_slot != nullptr) read_offline();
+        // Guarded as the scan is: the pipe comes up whatever these throw (no files read then).
+        if (g_slot != nullptr) guarded(read_offline);
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle, [] {
                 g_client_gone.store(true);
-                if (g_slot != nullptr) read_offline();  // the client may have written them
+                if (g_slot != nullptr) guarded(read_offline);  // the client may have written them
             })) {
             // No pipe: nothing could ever unload us, so put the game back as unload does and
             // leave, retrying until a frame comes; if the hook was replaced, stay.

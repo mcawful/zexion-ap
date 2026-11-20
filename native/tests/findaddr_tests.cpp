@@ -180,11 +180,15 @@ void test_the_generated_table_is_readable_and_has_every_name_once() {
     for (const Target& target : targets) {
         check(names.insert(target.name).second, "a name once", target.name);
         check(target.count >= 2, "two patterns or more", target.name);
-        // On code with none of it: every pattern reads (so is refused by "matched 0 times").
-        uint64_t rva = 0;
-        std::string why = zap::find::find_target(std::vector<uint8_t>(64, 0xCC), kCodeRva, target,
-                                                 rva);
-        if (why != "pattern 1 matched 0 times") ++bad;
+        // On code with none of it, each pattern on its own (find_target stops at a target's
+        // first failure): it reads, so it is refused by "matched 0 times", not as unreadable.
+        for (int i = 0; i < target.count; ++i) {
+            const Target one{target.name, target.patterns + i, 1};
+            uint64_t rva = 0;
+            std::string why =
+                zap::find::find_target(std::vector<uint8_t>(64, 0xCC), kCodeRva, one, rva);
+            if (why != "pattern 1 matched 0 times") ++bad;
+        }
     }
     check(bad == 0, "every pattern in the table is readable", std::to_string(bad));
     // The helper's own table has the targets that make its title lines and map markers run.
@@ -237,6 +241,36 @@ std::string env(const char* name) {
     return n > 0 && n < sizeof(value) ? std::string(value, n) : std::string();
 }
 
+// find_in_image's known-build branch, as it runs in the game: the exe copy mapped as an image
+// (its sections at their RVAs, as a loaded module's), whose headers identify_build and the section
+// walk read, and whose .text safe_read copies. `file_found` is what find_all found on the file's
+// bytes: the same addresses must come out.
+void test_the_exe_mapped_as_an_image(const std::string& path, const zap::find::Found& file_found) {
+    HANDLE file = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    check(file != INVALID_HANDLE_VALUE, "the exe opens for mapping");
+    if (file == INVALID_HANDLE_VALUE) return;
+    HANDLE mapping = CreateFileMappingW(file, nullptr, PAGE_READONLY | SEC_IMAGE, 0, 0, nullptr);
+    void* view = mapping != nullptr ? MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0) : nullptr;
+    check(view != nullptr, "the exe maps as an image");
+    if (view != nullptr) {
+        zap::find::Found found;
+        const auto begin = std::chrono::steady_clock::now();
+        std::string why = zap::find::find_in_image(static_cast<HMODULE>(view), found);
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - begin)
+                            .count();
+        std::printf("findaddr tests: find_in_image on the mapped exe: %zu found, in %lld ms\n",
+                    found.rvas.size(), static_cast<long long>(ms));
+        check(why.empty(), "a known build mapped as an image is scanned", why);
+        check(found.failed.empty() && found.rvas == file_found.rvas,
+              "the same addresses as the file's bytes give");
+        UnmapViewOfFile(view);
+    }
+    if (mapping != nullptr) CloseHandle(mapping);
+    CloseHandle(file);
+}
+
 // The real exe, if ZEXION_EXE names a copy of it: the table scanned on its .text, as the helper
 // scans it in the game. Prints `key=0xRVA` lines to ZEXION_SCAN_OUT if that is set, for
 // tests/test_native_scan.py, which compares them with the client's own scan.
@@ -274,6 +308,7 @@ void test_the_real_exe_if_there_is_one() {
                 found.failed.size(), static_cast<long long>(ms));
     for (const std::string& failure : found.failed) std::printf("  not found: %s\n", failure.c_str());
     check(found.failed.empty(), "every target is found in the real exe");
+    test_the_exe_mapped_as_an_image(path, found);
     if (const std::string out = env("ZEXION_SCAN_OUT"); !out.empty()) {
         std::ofstream lines(out, std::ios::trunc);
         for (const auto& [key, rva] : found.rvas) lines << key << "=" << std::hex << rva << "\n";

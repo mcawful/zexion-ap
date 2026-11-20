@@ -902,8 +902,8 @@ void note_put_seed(zap::OfflineSeed seed, bool kept) {
 }
 
 // Game thread: with no client yet, the helper configured from the game's own symbols (the
-// addresses a client's config must give: parse_config), inactive, as the Windows helper's cached
-// config is: only what runs with no client uses it. Only with a seed file read to work from, so
+// addresses a client's config must give: parse_config), inactive, as the Windows helper's own scan's
+// (or its cache's) is: only what runs with no client uses it. Only with a seed file read to work from, so
 // a game with none is left alone until a client configures, and only once the game's player
 // pointer reads where the config's player state is (tried again each frame until then).
 bool g_seed_files = false;  // a seed file has been read

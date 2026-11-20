@@ -326,7 +326,8 @@ the release's.
   | `offline.py` | `offline_put`: files for AP saves without the client |
 
 - `native/`: the helper `zexion_ap.dll` (which finds the game's addresses itself at start, so it
-  works with no client on a first launch: `src/findaddr.cpp`) and, in `proxy/`, the proxy
+  should work with no client on a first launch: `src/findaddr.cpp`; stand-in tests and an offline
+  exe copy only, not yet run in the game) and, in `proxy/`, the proxy
   `version.dll`; in `linux/`,
   the Linux helper `libzexion_ap.so`, which also builds the sources of `src/` it shares (`Game`,
   through `src/platform.h`; it runs new games, grants with their popups, scrap's drops and Energy

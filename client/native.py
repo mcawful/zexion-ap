@@ -45,7 +45,10 @@ APPLY_SECONDS = 3.0  # longer than the 1 s the helper waits for a frame to take 
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0
 LOAD_SECONDS = 10.0
-UNLOAD_SECONDS = CONNECT_SECONDS = 3.0
+UNLOAD_SECONDS = 3.0
+# Longer than UNLOAD_SECONDS: a helper loaded late serves its pipe after its own scan of the game
+# (about 0.2 s in a Release build, 0.4 s in Debug: native/README.md, "Finding its own addresses").
+CONNECT_SECONDS = 5.0
 UNLOAD_REFUSED = "; not unloading"  # the end of the helper's refusal: "error <why>; not unloading"
 
 
@@ -89,6 +92,28 @@ class UnreadableHello(ModMismatch):
 class ModDisabled(HelperError):
     """The player turned the mod off (DISABLED_NAME in the game's folder): the game folder's
     helper is not loaded. The message is for the player as it is."""
+
+
+def scan_warning(hello: dict[str, str]) -> str | None:
+    """What to tell the player when the mod's own scan of the game (hello's ``scan``, with
+    ``addresses``: where its addresses came from) did not find everything, or None. The mod finds
+    the addresses it needs itself, by this client's patterns, and works with no client; this
+    client's take over once it configures, so only a start with none is affected."""
+    scan, where = hello.get("scan", ""), hello.get("addresses", "-")
+    if scan in ("", "-", "ok"):  # "": a mod from before the scan
+        return None
+    report = "This is a bug: please report it, with the game's build (tools/build_id.py)."
+    if scan.startswith("ok_without_"):
+        names = scan.removeprefix("ok_without_")
+        return (
+            f"The mod could not find these addresses by itself ({names}): what needs them "
+            f"works only while this client runs. {report}"
+        )
+    if where == "cache":
+        effect = "so it is using the addresses a client saved earlier"
+    else:
+        effect = "so it works only while this client runs"
+    return f"The mod could not find the game's addresses by itself ({scan}), {effect}. {report}"
 
 
 def config_text(rvas: dict[str, int]) -> str:
@@ -654,15 +679,8 @@ def _attach(g, dll: Path, notes: list[str] | None, unloaded: list[bool]) -> Help
                     "the mod doesn't know this version of Zexion, which the client does"
                 )
             raise HelperError(f"the helper did not hook the game: {hello}")
-        scan = hello.get("scan", "")
-        if scan not in ("", "-") and not scan.startswith("ok"):
-            # The mod finds the addresses it needs itself, by this client's patterns, and works
-            # with no client; this one's take over now, but a start with none would not work.
-            log.warning(
-                f"The mod could not find the game's addresses by itself ({scan}), so it works "
-                "only while this client runs. This is a bug: please report it, with the "
-                "game's build (tools/build_id.py)."
-            )
+        if warning := scan_warning(hello):
+            log.warning(warning)
         helper.configure(dict(g.rva))
     except BaseException:
         helper.close()

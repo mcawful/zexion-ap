@@ -50,8 +50,10 @@ exactly once** in `.text`; a pattern that matches twice is never used. Add the c
 in at least two functions plus its start pattern), with the target's RVA on each known build in
 `rvas`. Prefer references inside the function that does the thing you care about (the pickup
 routine, the inventory UI): they are likelier to survive a patch. Update `FROZEN_SHA256` in
-`tests/test_patterns.py` (`.venv/Scripts/python tests/test_patterns.py` prints it), then check
-with `tools/check_patterns.py EXE` and `--live`. A new target also needs its row in
+`tests/test_patterns.py` (`.venv/Scripts/python tests/test_patterns.py` prints it), run
+`.venv/Scripts/python tools/gen_native_patterns.py` (the Windows helper scans the game with the
+same patterns, written into `native/src/findaddr_patterns.h`; `tests/test_gen_native_patterns.py`
+fails while it is stale), then check with `tools/check_patterns.py EXE` and `--live`. A new target also needs its row in
 `docs/re/linux.md`'s Lookup, its counterpart in the game's Linux build found by symbol or
 disassembly (or the row saying it is not found yet); `tests/test_patterns.py` fails without it.
 
