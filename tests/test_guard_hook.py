@@ -1337,6 +1337,8 @@ BY_NAME_BLOCKED = [
     ("PowerShell", "cd $(gci ~ -r -Filter ZexionAP); git init; git clean -fdx"),
     ("Bash", "x=$'a[\\x24(find ~ -name ZexionAP -delete)]'; echo ${s:x}"),
     ("Bash", "x='a[$''(find ~ -name ZexionAP -delete)]'; echo $[x]"),
+    ("Bash", 'x="a[\\`find ~ -name ZexionAP -delete\\`]"; echo $[x]'),
+    ("Bash", 'x="a[\\$(find ~ -name ZexionAP -delete)]"; echo $[x]'),
     ("PowerShell", "Remove-Item ~\\* -Recurse -Include x, ZexionAP"),
     ("PowerShell", "Get-Item ~\\* -Include 'x', 'ZexionAP' | Remove-Item -Recurse"),
     ("PowerShell", "Move-Item ~\\* -Include x, ZexionAP C:\\tmp\\x"),

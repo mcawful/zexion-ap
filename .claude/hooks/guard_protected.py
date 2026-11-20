@@ -61,7 +61,7 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     they can't be told from ``ZexionAP``). A name or a list of names over 1000 characters is
     read as a name. A reach by a name alone lets a command substitution through, as the guard
     did before, when every command in the command line reads, and so does every one in the
-    substitution (plain ones: none inside another, none made by quoting): ``ls -ld $(find ~
+    substitution (plain ones: none inside another): ``ls -ld $(find ~
     -name ZexionAP)`` passes, ``cd $(find …) && git clean -fdx`` does not. Or when it runs in
     or changes directory to a folder in a protected one or a parent of one. Other names in
     the folder's path don't count, so a worktree named ``steam-achievements`` works as any
@@ -92,17 +92,21 @@ xargs rm``, ``Where-Object Name -like``, ``cmd /c for /d``, a .NET search), a na
 variable or an expression (``find -name "$n"``, ``"Zexion$(echo AP)"``, a ``$'…'`` string
 with escapes, text after a backtick), a regular expression's quantifier (``-regex
 'Zex(ion)?AP'``) or an alternation inside a group that splits a name (``(Z|z)exion``), a
-brace expansion past five levels or 32 alternatives, or what a script file does when it runs
-(the file's contents are not read). A scratch script written by a heredoc and run in the
-same command is code, like ``python - <<'EOF'``, so it is blocked when it
-names the saves, even to read them or in a comment; but the run is tied to the heredoc only
-by the file's name, so ``sh *.sh`` or a variable holding the name is missed, as is a program
-variable that is not on the list, set with ``env`` before a command that is otherwise
-allowed, or set in PowerShell (``$env:GIT_PAGER = …``). A ``tools/`` script is trusted in the
-session's own ``cwd`` without checking that it is a checkout of this repo. The joined reading
-may take prose such as ``print('Gallant Leaf, Zexion')`` for the folder; that blocks only in
-a command that is not read-only. It fails closed: if the guard itself breaks while looking at a
-call that mentions the saves, a Steam folder or ``ZexionAP``, the call is blocked.
+brace expansion past five levels or 32 alternatives, a PowerShell ``@(…)`` list split by
+newlines or ``;``, or what a script file does when it runs (the file's contents are not
+read). Many short lists in one command add up (10 s at 50 000 characters: each is under the
+1000-character cap); ``ls``, ``dir`` or ``gci`` inside a quoted PowerShell string
+(``Write-Host "run ls zexion"; Remove-Item …``) counts as a call, so that command blocks. A
+scratch script written by a heredoc and run in the same command is code, like ``python -
+<<'EOF'``, so it is blocked when it names the saves, even to read them or in a comment; but
+the run is tied to the heredoc only by the file's name, so ``sh *.sh`` or a variable holding
+the name is missed, as is a program variable that is not on the list, set with ``env``
+before a command that is otherwise allowed, or set in PowerShell (``$env:GIT_PAGER = …``).
+A ``tools/`` script is trusted in the session's own ``cwd`` without checking that it is a
+checkout of this repo. The joined reading may take prose such as ``print('Gallant Leaf,
+Zexion')`` for the folder; that blocks only in a command that is not read-only. It fails
+closed: if the guard itself breaks while looking at a call that mentions the saves, a Steam
+folder or ``ZexionAP``, the call is blocked.
 """
 
 from __future__ import annotations
@@ -1254,9 +1258,12 @@ _SUBSTITUTION = re.compile(r"\$\(([^()`]*)\)|`([^`$()]*)`")
 
 
 def _substitutions_only_read(code: str, powershell: bool) -> bool:
-    """Whether every command substitution in ``code`` is a plain one (none inside another) whose
+    r"""Whether every command substitution in ``code`` is a plain one (none inside another) whose
     commands are all read-only: ``ls -ld $(find ~ -name ZexionAP)`` reads, ``ls $(find ~ -name
-    ZexionAP -delete)`` does not."""
+    ZexionAP -delete)`` does not. In Bash an escaped backtick or ``$(`` (``"a[\`find …\`]"``,
+    which a later arithmetic reads as a command) is no plain one."""
+    if not powershell and ("\\`" in code or "\\$(" in code):
+        return False
     for m in _SUBSTITUTION.finditer(code):
         inner = m.group(1) if m.group(1) is not None else m.group(2)
         if powershell and m.group(2) is not None:
