@@ -1536,6 +1536,224 @@ def test_a_long_pattern_in_a_command_is_read_quickly() -> None:
 TERMINAL = "mcp__terminal__run_in_terminal"
 SLOTS_PS = f'.venv\\Scripts\\python.exe tools\\save_lab.py slots --save-dir "{SAVES}"'
 
+# A redirect's target is read as an argument is: a substitution in it that finds a protected
+# folder by its name blocks, whatever writes (a redirect, tee, Out-File, Set-Content).
+FIND_OFFLINE = "$(find ~ -name ZexionAP)"
+GCI_OFFLINE = "$(gci ~ -r -Filter ZexionAP)"
+JOIN_OFFLINE = "(Join-Path (gci ~ -r -Filter ZexionAP).FullName seeds.json)"
+
+REDIRECT_BY_SUBSTITUTION_BLOCKED = [
+    ("Bash", f'echo x > "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", f'echo x >> "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", f'echo x 2> "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", f'echo x &> "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", f'echo x >| "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", f'echo x >& "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", f'echo x 2>&1 > "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", f"echo x > {FIND_OFFLINE}/seeds.json"),
+    ("Bash", 'echo x > "`find ~ -name ZexionAP`/seeds.json"'),
+    ("Bash", "echo x >> `find ~ -name ZexionAP`/seeds.json"),
+    ("Bash", 'echo x > "${f:-$(find ~ -name ZexionAP)}/seeds.json"'),
+    ("Bash", """{ echo x; } > "$(find ~ -iname '*zexionap*')/seeds.json\""""),
+    ("Bash", f'(echo x) > "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", f'exec 3> "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", f'cd lab && echo y > "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", """echo x > "$(sh -c 'find ~ -name ZexionAP')/seeds.json\""""),
+    ("Bash", """echo x > "$(find ~ -path '*/ZexionAP')/seeds.json\""""),
+    ("Bash", """echo x > "$(find ~ -regex '.*/ZexionAP')/seeds.json\""""),
+    ("Bash", 'echo x > "$(find ~ -name Zexion)/Save Game 1.sav"'),
+    ("Bash", """cat a > "$(find ~ -name 'Gallant Leaf')/Zexion/Save Game 1.sav\""""),
+    ("Bash", f'echo x | tee "{FIND_OFFLINE}/seeds.json"'),
+    ("Bash", 'echo x | tee -a "`find ~ -name ZexionAP`/seeds.json"'),
+    ("Monitor", f'echo x > "{FIND_OFFLINE}/seeds.json"'),
+    ("PowerShell", f'"x" > "{GCI_OFFLINE}\\seeds.json"'),
+    ("PowerShell", f'"x" >> "{GCI_OFFLINE}\\seeds.json"'),
+    ("PowerShell", f'"x" *> "{GCI_OFFLINE}\\seeds.json"'),
+    ("PowerShell", f'"x" 2> "{GCI_OFFLINE}\\seeds.json"'),
+    ("PowerShell", f'"x" > {JOIN_OFFLINE}'),
+    ("PowerShell", '"x" >> (Get-ChildItem ~ -Recurse -Filter ZexionAP).FullName'),
+    ("PowerShell", '"x" > (gci ~ -r -Filter ZexionAP | select -f 1).FullName'),
+    ("PowerShell", '"x" > $(gci ~ -r -Filter ZexionAP).FullName'),
+    (
+        "PowerShell",
+        """"x" > (Join-Path (gci ~ -r -Filter 'Gallant Leaf').FullName Zexion\\x.sav)""",
+    ),
+    ("PowerShell", f'"x" | Out-File -Path "{GCI_OFFLINE}\\seeds.json"'),
+    ("PowerShell", f'"x" | Out-File {JOIN_OFFLINE}'),
+    ("PowerShell", f'"x" | Out-File -Append -FilePath {JOIN_OFFLINE}'),
+    ("PowerShell", f'Set-Content -Path "{GCI_OFFLINE}\\seeds.json" -Value x'),
+    ("PowerShell", f"Set-Content -LiteralPath {JOIN_OFFLINE} -Value x"),
+    ("PowerShell", f"Add-Content -Path {JOIN_OFFLINE} -Value x"),
+    (TERMINAL, f'"x" > {JOIN_OFFLINE}'),
+]
+# The same forms where no protected folder is named stay as they were; so does reading what a
+# substitution found (``ls $(find ~ -name ZexionAP)``).
+REDIRECT_BY_SUBSTITUTION_ALLOWED = [
+    ("Bash", 'echo x > "$(mktemp)"'),
+    ("Bash", 'echo x > "$(pwd)/out.txt"'),
+    ("Bash", 'echo "$(date)" > lab/x.txt'),
+    ("Bash", 'git log > "$(mktemp)"'),
+    ("Bash", 'echo x | tee "$(mktemp)"'),
+    ("Bash", f"ls {FIND_OFFLINE}"),
+    ("Bash", f'ls -ld "{FIND_OFFLINE}"'),
+    ("PowerShell", '"x" > (Join-Path $PWD out.txt)'),
+    ("PowerShell", '"x" > "$(Get-Date -f yyyy).txt"'),
+    ("PowerShell", '"x" | Out-File -Path (Join-Path $PWD out.txt)'),
+    ("PowerShell", "Set-Content -Path (Join-Path $PWD out.txt) -Value x"),
+    ("PowerShell", '"x" > out.txt'),
+]
+
+
+@pytest.mark.parametrize(("tool", "command"), REDIRECT_BY_SUBSTITUTION_BLOCKED)
+def test_a_redirect_target_built_by_a_substitution_is_read(tool: str, command: str) -> None:
+    assert run(tool, command=command), command
+
+
+@pytest.mark.parametrize(("tool", "command"), REDIRECT_BY_SUBSTITUTION_ALLOWED)
+def test_a_redirect_target_built_by_a_substitution_elsewhere_allowed(
+    tool: str, command: str
+) -> None:
+    assert run(tool, command=command) is None, command
+
+
+def test_a_redirect_into_a_parenthesis_is_one_target() -> None:
+    _, targets = guard_protected.lex('"x" > (Join-Path $PWD out.txt)', True)
+    assert targets == ["("]
+    segments, targets = guard_protected.lex('"x" > out.txt (1)', True)
+    assert targets == ["out.txt"]
+
+
+# A hook that times out lets the call through, so the guard answers in about a second whatever
+# the command: past a budget (``MAX_*``) it does not read word by word but takes the command to
+# reach a protected folder, and then only a read-only one passes.
+SLOW = 4  # seconds; the guard needs a fraction of one, a CI machine more
+Z_AP = "Zexion" + "AP"  # kept apart: the test file itself names no folder in one piece
+HOSTILE = {
+    "dollar-paren run": ("Bash", "$(" * 25000),
+    "dollar-paren and a name": ("Bash", "$(" * 25000 + f" -name {Z_AP}"),
+    "doubled quotes and parentheses": ("Bash", '"$(' * 16000),
+    "many redirects": ("Bash", "echo x > f;" * 4000),
+    "different redirects": ("Bash", "".join(f"echo x > f{i};" for i in range(3000))),
+    "many cds": ("Bash", "cd a;" * 10000),
+    "different cds": ("Bash", "".join(f"cd d{i};" for i in range(4000))),
+    "many heredoc operators": ("Bash", "cat <<A\nx\nA\n" * 4000),
+    "many heredocs saved and run": ("Bash", "cat <<E > f.sh\nx\nE\nsh f.sh\n" * 1500),
+    "many words": ("Bash", "echo a " * 14000),
+    "different words": ("Bash", "echo " + " ".join(f"w{i}" for i in range(9000))),
+    "different wildcards": ("Bash", "ls " + " ".join(f"a*b{i}?" for i in range(6000))),
+    "different relative paths": ("Bash", "ls " + " ".join(f"a{i}/../b" for i in range(7000))),
+    "one long wildcard word": ("Bash", "ls " + "q1" * 40000 + "*"),
+    "one long word with short-name tildes": ("Bash", "ls " + "find~" * 15000),
+    "network paths": ("Bash", "ls " + " ".join(f"//host{i}/share" for i in range(5000))),
+    "network cds": ("Bash", "".join(f"cd //host{i}/x;" for i in range(5000))),
+    "many names": ("Bash", "find . -name n -o " * 5000),
+    "different names": ("PowerShell", "".join(f"gci . -Filter f{i};" for i in range(4000))),
+    "many positional filters": ("PowerShell", "gci . a; " * 11000),
+    "a list of filters": ("PowerShell", "gci -Filter " + ",".join(f"f{i}" for i in range(14000))),
+    "many sub-expressions": ("PowerShell", "$(" * 45000),
+    "many methods": ("PowerShell", "$a.ToString();" * 7000),
+    "many here-strings": ("PowerShell", "@'\nx\n'@ " * 12000),
+    "many pipes": ("Bash", "a|" * 45000),
+    "many escapes": ("Bash", "\\" * 99000),
+    "many backticks": ("Bash", "`" * 99000),
+    "a name repeated": ("Bash", "echo gallant " * 7000),
+    "the app id repeated": ("Bash", "echo 3392510 " * 7000),
+}
+
+
+@pytest.mark.parametrize("name", HOSTILE)
+def test_a_hostile_command_is_read_in_about_a_second(name: str) -> None:
+    tool, command = HOSTILE[name]
+    assert len(command) <= guard_protected.MAX_COMMAND
+    started = time.monotonic()
+    run(tool, command=command)
+    assert time.monotonic() - started < SLOW
+
+
+def test_a_command_over_the_length_limit_is_blocked_unread() -> None:
+    assert run("Bash", command="echo " + "a" * guard_protected.MAX_COMMAND)
+    assert run("PowerShell", command="echo " + "a" * guard_protected.MAX_COMMAND)
+    assert run("Bash", command="echo " + "a" * (guard_protected.MAX_COMMAND - 10)) is None
+
+
+def test_a_command_over_the_work_budget_is_read_as_reaching_a_protected_folder() -> None:
+    many = " ".join(f"w{i}" for i in range(guard_protected.MAX_WORK + 1))
+    assert run("Bash", command=f"ls {many}") is None  # only reads
+    assert run("Bash", command=f"echo {many} | sort") is None
+    assert run("Bash", command=f"rm {many}")
+    assert run("Bash", command=f"git add {many}")  # not trusted as the repo's own
+    assert run("Bash", command=f"echo x > f; ls {many}")  # a redirect
+    assert run("Bash", command=f"ls {many} $(date)")  # a substitution
+    assert run("PowerShell", command=f"gci {many} | ri")
+    assert run("PowerShell", command=f"gci {many}") is None
+    assert run("Bash", command=f"rm {many[:2000]}") is None  # under it: read as before
+
+
+def test_a_command_with_too_many_folders_or_commands_is_read_as_reaching_one() -> None:
+    cds = "".join(f"cd d{i}; " for i in range(guard_protected.MAX_FOLDERS + 1))
+    assert run("Bash", command=cds + "ls") is None
+    assert run("Bash", command=cds + "rm x")
+    assert run("Bash", command="cd d; " * 100 + "ls") is None  # one folder again and again
+    assert run("Bash", command="ls;" * (guard_protected.MAX_SEGMENTS + 1) + "rm x")
+
+
+def test_many_heredocs_are_not_cut_out_as_data() -> None:
+    n = guard_protected.MAX_HEREDOCS
+    one = "cat <<'EOF'\nsee Gallant Leaf/Zexion\nEOF\n"
+    assert run("Bash", command=one) is None
+    assert run("Bash", command=one * n) is None
+    assert run("Bash", command=one * (n + 1))  # the bodies are code now: ``see`` is no read
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # The text of a message may name the folders, however long.
+        "git commit -F - <<'EOF'\n"
+        + "Fix the save in Gallant Leaf/Zexion [a] * ?\n" * 2000
+        + "EOF",
+        "git commit -m \"$(cat <<'EOF'\n"
+        + "Fix the save in Gallant Leaf/Zexion.\n" * 2000
+        + 'EOF\n)"',
+        "gh pr create --title t --body-file - <<'EOF'\n"
+        + "ZexionAP and Gallant Leaf\n" * 3000
+        + "EOF",
+        'gh pr create --title t --body "' + "ZexionAP, Gallant Leaf/Zexion, [a] * ?. " * 1500 + '"',
+        # A long script that names no folder.
+        "python - <<'EOF'\n"
+        + "x = a[0] + b['k'] * 2  # fix {y} ?\nfor i in range(9): print(i)\n" * 400
+        + "EOF",
+        "git add " + " ".join(f"worlds/zexion/file{i}.py" for i in range(1500)),
+        "ls " + " ".join(f"tools/f{i}.py" for i in range(1500)),
+    ],
+    ids=["commit -F", "commit -m", "gh body-file", "gh body", "script", "git add", "ls"],
+)
+def test_normal_long_commands_still_pass(command: str) -> None:
+    started = time.monotonic()
+    assert run("Bash", command=command) is None
+    assert time.monotonic() - started < SLOW
+
+
+def test_nothing_asks_the_network_about_a_network_path(monkeypatch) -> None:
+    # Windows resolves ``//host/share`` over the network, seconds for each host.
+    real = os.path.realpath
+    asked: list[str] = []
+
+    def realpath(path, *args, **kwargs):
+        if str(path).replace("\\", "/").startswith("//"):
+            asked.append(str(path))
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(os.path, "realpath", realpath)
+    assert protected.is_network_path("//host/share")
+    assert protected.is_network_path("\\\\host\\share")
+    assert not protected.is_network_path("/host/share")
+    assert not protected.is_network_path("C:/host/share")
+    assert not protected.is_protected_path("//host/share/x")
+    run("Bash", command="ls //host1/a > //host2/b; cd //host3/c && ls")
+    run("PowerShell", command="gci \\\\host4\\a | Out-File \\\\host5\\b")
+    assert not asked
+
 
 @pytest.mark.parametrize(
     ("tool", "tool_input"),

@@ -59,9 +59,11 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     pass while ``-delete``, ``-exec``, ``-fprint`` and an ``xargs rm`` after it do not
     (``find . -iname '*zexion*' -delete`` and ``gci . zexion | ri`` in this repo block too:
     they can't be told from ``ZexionAP``). A name or a list of names over 1000 characters is
-    read as a name. A reach by a name alone lets a command substitution through, as the guard
-    did before, when every command in the command line reads, and so does every one in the
-    substitution (plain ones: none inside another): ``ls -ld $(find ~
+    read as a name. A redirect's target is read as an argument is (``echo x > "$(find ~ -name
+    ZexionAP)/seeds.json"`` blocks, whatever the operator: ``>``, ``>>``, ``2>``, ``&>``,
+    PowerShell's ``*>``). A reach by a name alone lets a command substitution through, as the
+    guard did before, when every command in the command line reads, and so does every one in
+    the substitution (plain ones: none inside another): ``ls -ld $(find ~
     -name ZexionAP)`` passes, ``cd $(find …) && git clean -fdx`` does not. Or when it runs in
     or changes directory to a folder in a protected one or a parent of one. Other names in
     the folder's path don't count, so a worktree named ``steam-achievements`` works as any
@@ -78,10 +80,23 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     ``${s:x}`` or ``${a[x]}``), but the message form above and PowerShell's ``"$($_.Name)"``,
     which only reads a member; a PowerShell ``::`` call other than a known reader or a method call
     other than a few string and date ones (``_ps_calls_block``); output redirected to a path
-    that still holds a variable after the hook's own environment is applied (the guard can't
-    see where it leads); and in Bash an environment prefix or ``export`` of a variable that
+    that still holds a variable, a substitution or a backtick after the hook's own environment
+    is applied, or to PowerShell's ``> (expression)`` (the guard can't see where it leads:
+    ``_DYNAMIC_TARGET``); and in Bash an environment prefix or ``export`` of a variable that
     names a program (``_PROGRAM_VAR``: ``GIT_PAGER``, ``LESSOPEN``, ``PATH``, …), even before a
     read-only command.
+  - Answers within about a second whatever the command, as a hook that times out lets the call
+    through. Past a budget the words are not read one by one: the command counts as reaching a
+    protected folder, so only a read-only one passes (and a redirect, a substitution, a ``tools/``
+    script or a ``git`` command is blocked: ``Too long or too complex to check``). The budget:
+    ``MAX_WORK`` (6000 for the different words, 8 each with a wildcard, and 8 for each redirect
+    target), ``MAX_SEGMENTS``, ``MAX_FOLDERS`` (different folders a ``cd`` goes to) and
+    ``MAX_HEREDOCS`` (past it no heredoc is cut out as data). A command over ``MAX_COMMAND``
+    (100 000 characters) is blocked unread: write long text to a file with the Write tool. A
+    commit message or a PR body is one word to it, and a script's words count once each. Nothing
+    asks the file system about a path that starts with two separators
+    (``protected.is_network_path``): Windows resolves ``//host/x`` over the network, seconds a
+    host.
 
 This is a tripwire against mistakes, not a sandbox. It can't see a path assembled entirely from
 variables or string arithmetic, a link to a parent folder made outside the command, the
@@ -94,8 +109,7 @@ with escapes, text after a backtick), a regular expression's quantifier (``-rege
 'Zex(ion)?AP'``) or an alternation inside a group that splits a name (``(Z|z)exion``), a
 brace expansion past five levels or 32 alternatives, a PowerShell ``@(…)`` list split by
 newlines or ``;``, or what a script file does when it runs (the file's contents are not
-read). Many short lists in one command add up (10 s at 50 000 characters: each is under the
-1000-character cap); ``ls``, ``dir`` or ``gci`` inside a quoted PowerShell string
+read). ``ls``, ``dir`` or ``gci`` inside a quoted PowerShell string
 (``Write-Host "run ls zexion"; Remove-Item …``) counts as a call, so that command blocks. A
 scratch script written by a heredoc and run in the same command is code, like ``python -
 <<'EOF'``, so it is blocked when it names the saves, even to read them or in a comment; but
@@ -379,6 +393,10 @@ def lex(command: str, powershell: bool) -> tuple[list[list[Word]], list[Word]]:
                 else:  # >& FILE: the next word is the target
                     i += 1
                 continue
+            if c == "(" and expect_target and text is None:
+                # > (expr): the target is what the parenthesis works out (PowerShell), unseen
+                targets.append(_word("(", "(", i, i + 1))
+                expect_target = False
             flush(i)
             segments.append([])
             if powershell and c == "&":
@@ -431,13 +449,24 @@ def _heredocs(command: str) -> list[Heredoc]:
     found: list[Heredoc] = []
     pending: list[tuple[re.Match, tuple | None]] = []
     stack: list[tuple[str, int, int]] = []  # quotes, parentheses and backticks we are inside
+    arith = 0  # how many of them are arithmetic or a subscript (``_NO_HEREDOC``)
+
+    def push(entry: tuple[str, int, int]) -> None:
+        nonlocal arith
+        stack.append(entry)
+        arith += entry[0] in _NO_HEREDOC
+
+    def pop() -> None:
+        nonlocal arith
+        arith -= stack.pop()[0] in _NO_HEREDOC
+
     i, n = 0, len(command)
     while i < n:
         c = command[i]
         top = stack[-1][0] if stack else ""
         if top == "'":
             if c == "'":
-                stack.pop()
+                pop()
             i += 1
             continue
         if c == "\\":
@@ -445,47 +474,47 @@ def _heredocs(command: str) -> list[Heredoc]:
             continue
         if top == '"':
             if c == '"':
-                stack.pop()
+                pop()
             elif command.startswith("$(", i):
                 kind = "$((" if command.startswith("$((", i) else "$("
-                stack.append((kind, i, i + len(kind)))
+                push((kind, i, i + len(kind)))
                 i += len(kind)
                 continue
             elif c == "`":
-                stack.append(("`", i, i + 1))
+                push(("`", i, i + 1))
             i += 1
             continue
-        arithmetic = any(k in _NO_HEREDOC for k, _, _ in stack)
+        arithmetic = arith > 0
         if c in "'\"":
-            stack.append((c, i, i + 1))
+            push((c, i, i + 1))
         elif c == "`":
             if top == "`":
-                stack.pop()
+                pop()
             else:
-                stack.append(("`", i, i + 1))
+                push(("`", i, i + 1))
         elif command.startswith("((", i) or command.startswith("$((", i):
             kind = "$((" if c == "$" else "(("
-            stack.append((kind, i, i + len(kind)))
+            push((kind, i, i + len(kind)))
             i += len(kind)
             continue
         elif c == ")" and top in ("$((", "((") and command.startswith("))", i):
-            stack.pop()
+            pop()
             i += 2
             continue
         elif command.startswith("$[", i) or command.startswith("${", i):
-            stack.append((command[i : i + 2], i, i + 2))
+            push((command[i : i + 2], i, i + 2))
             i += 2
             continue
         elif c == "[" and top in ("$[", "${", "["):  # a subscript inside one: a[1<<2]
-            stack.append(("[", i, i + 1))
+            push(("[", i, i + 1))
         elif (c == "]" and top in ("$[", "[")) or (c == "}" and top == "${"):
-            stack.pop()
+            pop()
         elif c == "(":
             kind = command[i - 1] + "(" if i and command[i - 1] in "$<>" else "("
-            stack.append((kind, i - len(kind) + 1, i + 1))
+            push((kind, i - len(kind) + 1, i + 1))
         elif c == ")":
             if top.endswith("("):
-                stack.pop()
+                pop()
         elif c == "#" and (i == 0 or command[i - 1] in " \t\n;&|()"):
             newline = command.find("\n", i)
             i = n if newline < 0 else newline
@@ -696,7 +725,10 @@ def _cut_heredocs(command: str) -> str:
     (``_heredoc_is_data``). Every other body stays in, to be judged as code."""
     out: list[str] = []
     pos = 0
-    for doc in _heredocs(command):
+    docs = _heredocs(command)
+    if len(docs) > MAX_HEREDOCS:  # each one is read against the rest of the command
+        return command
+    for doc in docs:
         if _heredoc_is_data(command, doc):
             out.append(command[pos : doc.body_start])
             pos = doc.after
@@ -991,14 +1023,19 @@ def _names_parent(word: str, folders: list[str | None], protected) -> bool:
     word = re.sub(r"^--?[\w-]+=", "", word)  # --target-directory=…
     bare = word.lower() in ("steamapps", "userdata")
     return any(
-        protected.may_be_above_protected(p) and (not bare or os.path.isdir(p))
+        protected.may_be_above_protected(p)
+        and (not bare or (not protected.is_network_path(p) and os.path.isdir(p)))
         for p in _as_paths(word, folders, protected)
     )
 
 
 def _repo_checkout(folder: str | None) -> bool:
     """Whether a folder is a checkout of this repo, so its ``tools/`` are the repo's tools."""
-    return folder is not None and os.path.isfile(os.path.join(folder, "tools", "protected.py"))
+    return (
+        folder is not None
+        and not re.match(r"[\\/]{2}", folder)  # nor over the network (``is_network_path``)
+        and os.path.isfile(os.path.join(folder, "tools", "protected.py"))
+    )
 
 
 def _names_app_id(text: str, words: list[Word], protected) -> bool:
@@ -1040,7 +1077,9 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
         return True
     # Each word's pieces, split at quotes, commas, plus signs, parentheses and spaces as well
     # (code: join(base, 'Zexion', …)), then each piece's path components.
-    pieces = [s for w in words for s in re.split(r"[\"'\s,+()]+", protected.normalize(w))]
+    pieces = dict.fromkeys(
+        s for w in dict.fromkeys(words) for s in re.split(r"[\"'\s,+()]+", protected.normalize(w))
+    )
     parts = [[c for c in s.split("/") if c] for s in pieces if s]
     # The offline folder built from a variable: ``d = $LOCALAPPDATA; join(d, 'ZexionAP')``.
     # ``GetFolderPath(28)`` (or ``0x1c``) is LocalApplicationData by number. The folder counts
@@ -1277,7 +1316,7 @@ def _substitutions_only_read(code: str, powershell: bool) -> bool:
 
 def _may_reach_protected(text, words, targets, folders, protected) -> bool:
     """``folders``: where the command runs (the ``cwd``) and its ``cd`` targets."""
-    every = words + targets
+    every = list(dict.fromkeys(words + targets))  # a word again is not read again
     links = any(w.lower() in LINK_WORDS for w in words)
     return (
         protected.mentions_protected(text)
@@ -1403,6 +1442,65 @@ def _quotes_taken_off(code: str) -> str:
     return "".join(out)
 
 
+def _blanked(code: str, words: list[Word]) -> str:
+    """``code`` with the given words (from it) replaced by spaces."""
+    out, pos = [], 0
+    for w in sorted(words, key=lambda w: w.start):
+        out.append(code[pos : w.start])
+        out.append(" " * (w.end - w.start))
+        pos = w.end
+    out.append(code[pos:])
+    return "".join(out)
+
+
+# What the guard reads of one command, so that it answers in about a second whatever the input
+# (a hook that times out lets the call through). Past any of these it does not look at the
+# words one by one: the command is taken to reach a protected folder, so only a read-only
+# command passes (``check``). Normal commands are far below them: a commit message or a PR
+# body is one word, and a heredoc that is only data is cut out before the words are counted.
+MAX_COMMAND = 100_000  # characters; a longer command is blocked unread
+MAX_SEGMENTS = 8000  # simple commands
+MAX_WORK = 6000  # over the different words (1 each, 8 with a wildcard) and redirect targets (8)
+MAX_FOLDERS = 16  # different folders the command's ``cd`` goes to
+MAX_HEREDOCS = 32  # Bash heredocs; with more, none is cut out as data
+
+
+# A redirect's target that is worked out when the command runs: a variable still unexpanded, a
+# substitution (``$(…)``, a backtick), or PowerShell's ``> (expr)`` (the lexer's ``(``).
+_DYNAMIC_TARGET = re.compile(r"[$%(`]")
+_WILDCARD = re.compile(r"[*?\[{~]")  # what makes a word cost much more to read as a path
+
+
+class _Memo:
+    """``protected`` with its functions of one string remembered for one command, so a word
+    that comes up again (``cd a; cd a``) is not read again. ``__getattr__`` hands out the
+    others as they are."""
+
+    PURE = frozenset({
+        "normalize", "_expand", "mentions_protected", "word_may_name_protected",
+        "may_be_above_protected", "pattern_may_name_protected", "is_protected_path",
+    })  # fmt: skip
+
+    def __init__(self, module) -> None:
+        self._module = module
+        self._seen: dict[tuple, object] = {}
+
+    def __getattr__(self, name: str):
+        attr = getattr(self._module, name)
+        if name not in self.PURE:
+            return attr
+        seen = self._seen
+
+        def remembered(*args):
+            key = (name, *args)
+            if key not in seen:
+                seen[key] = attr(*args)
+            return seen[key]
+
+        setattr(self, name, remembered)
+        return remembered
+
+
 def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") -> str | None:
     """Return a reason to block, or None to allow. ``protected`` is the tools/protected module.
 
@@ -1419,21 +1517,38 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
         return None
     powershell = SHELL_TOOLS[tool_name]
     command = str(tool_input.get("command") or "")
+    if len(command) > MAX_COMMAND:
+        return f"{BLOCK_HINT}\nA command of {len(command):,} characters is too long to check."
+    protected = _Memo(protected)
     cwd = str(tool_input.get("cwd") or session_cwd or "")
     code = _here_strings_to_quotes(command) if powershell else _cut_heredocs(command)
     segments, targets = lex(code, powershell)
     text_ids = _text_words(segments, powershell)
     words = [w for s in segments for w in s if id(w) not in text_ids]
-    text = code
-    for w in sorted((w for s in segments for w in s if id(w) in text_ids), key=lambda w: -w.start):
-        text = text[: w.start] + " " * (w.end - w.start) + text[w.end :]
-    cds = _cd_targets(segments, cwd, code, protected)
-    folders = ([cwd] if cwd else []) + cds
+    text = _blanked(code, [w for s in segments for w in s if id(w) in text_ids])
+    unique = {str(w) for s in segments for w in s}
+    work = sum(8 if _WILDCARD.search(w) else 1 for w in unique) + 8 * len({str(t) for t in targets})
+    over = len(segments) > MAX_SEGMENTS or work > MAX_WORK
+    cds = [] if over else _cd_targets(segments, cwd, code, protected)
+    distinct = list(dict.fromkeys(cds))  # the same folder again is not read again
+    over = over or len(distinct) > MAX_FOLDERS
+    folders = ([cwd] if cwd else []) + distinct
     kept = [[w for w in s if id(w) not in text_ids] for s in segments]
-    by_path = _may_reach_protected(text, words, targets, folders, protected)
-    by_name = _selects_protected_name(kept, protected, powershell, text=text)
+    if over:  # not read word by word: taken to reach a protected folder, as far as it goes
+        by_path, by_name = True, False
+    else:
+        by_path = _may_reach_protected(text, words, targets, folders, protected)
+        # A redirect's target is read as an argument is: ``> "$(find ~ -name ZexionAP)/x"``.
+        by_name = _selects_protected_name(
+            kept + [[t] for t in targets], protected, powershell, text=text
+        )
     if not (by_path or by_name):
         return None
+
+    def block(detail: str) -> str:
+        if over:
+            detail = f"Too long or too complex to check, so read as reaching one. {detail}"
+        return f"{BLOCK_HINT}\n{detail}"
 
     substitution = _CAT_HEREDOC.sub("heredoc", code)
     if powershell:  # "$($_.Name)" only reads a member
@@ -1450,33 +1565,35 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
         and _substitutions_only_read(substitution, powershell)
     )
     if not reads and ("$(" in substitution or (not powershell and "`" in substitution)):
-        return f"{BLOCK_HINT}\nCommand substitution next to a protected path."
+        return block("Command substitution next to a protected path.")
     if powershell and (call := _ps_calls_block(code)):
-        return f"{BLOCK_HINT}\nA method or .NET call next to a protected path: {call}"
+        return block(f"A method or .NET call next to a protected path: {call}")
 
     assigned = _assigned_names(code, segments)
     for target in targets:
         if target.startswith("&") or target.lower() in HARMLESS_TARGETS:
             continue
+        if over:
+            return block(f"Redirect target: {target}")
         # A variable the command sets itself (``TEMP="<folder>"; … > $TEMP/x``) is not the one
         # in the hook's environment, which ``protected.normalize`` would put in its place.
         refs = {next(g for g in m.groups() if g).lower() for m in _ENV_REF.finditer(target)}
         if refs & assigned:
-            return f"{BLOCK_HINT}\nRedirect target: {target}"
+            return block(f"Redirect target: {target}")
         expanded = protected.normalize(_expand_env(target, assigned))
         if (
             protected.is_protected_path(expanded)  # also by its words: Gallant*, GALLAN~1
             or _reaches_protected(expanded, folders, protected)
-            or re.search(r"[$%]", expanded)
+            or _DYNAMIC_TARGET.search(expanded)
         ):
-            return f"{BLOCK_HINT}\nRedirect target: {target}"
+            return block(f"Redirect target: {target}")
 
-    suspect_dir = any(_folder_is_suspect(f, protected) for f in folders)
+    suspect_dir = over or any(_folder_is_suspect(f, protected) for f in folders)
     # After a cd, tools/ is the repo's own only in a checkout of the repo.
     repo_tools = all(_repo_checkout(f) for f in cds)
     for words in segments:
         if not powershell and (program := _sets_program(words)):
-            return f"{BLOCK_HINT}\nAn environment prefix that names a program: {program}"
+            return block(f"An environment prefix that names a program: {program}")
         if _segment_is_read_only(words, powershell):
             continue
         if not suspect_dir and (
@@ -1485,7 +1602,7 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
         ):
             continue
         shown = " ".join(w for w in words if id(w) not in text_ids)
-        return f"{BLOCK_HINT}\nNot a read-only command: {shown}"
+        return block(f"Not a read-only command: {shown}")
     return None
 
 

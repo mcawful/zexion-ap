@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
+import functools
 import json
 import os
 import re
@@ -84,18 +85,32 @@ class ProtectedPathError(RuntimeError):
     """Raised when a tool is asked to write into a protected folder."""
 
 
+# %NAME%, $env:NAME, ${env:NAME}, ${NAME}, $NAME, per variable
+_ENV_SPELLINGS = [
+    (
+        name,
+        re.compile(
+            rf"%{re.escape(name)}%|\$env:{re.escape(name)}(?!\w)|\$\{{env:{re.escape(name)}\}}"
+            rf"|\$\{{{re.escape(name)}\}}|\${re.escape(name)}(?!\w)",
+            re.IGNORECASE,
+        ),
+    )
+    for name in _ENV_NAMES
+]
+_TILDE = re.compile(r"(^|[\s\"'=])~(?=[/\\])")
+
+
 def _expand(text: str) -> str:
     """Expand the env-var spellings of cmd, PowerShell and sh, and a leading ``~``."""
-    for name in _ENV_NAMES:
+    if not re.search(r"[$%~]", text):
+        return text
+    for name, spellings in _ENV_SPELLINGS:
         value = os.environ.get(name)
-        if not value:
-            continue
-        esc = re.escape(name)
-        # %NAME%, $env:NAME, ${env:NAME}, ${NAME}, $NAME
-        spellings = rf"%{esc}%|\$env:{esc}(?!\w)|\$\{{env:{esc}\}}|\$\{{{esc}\}}|\${esc}(?!\w)"
-        text = re.sub(spellings, lambda _m, v=value: v, text, flags=re.IGNORECASE)
-    home = os.path.expanduser("~")
-    text = re.sub(r"(^|[\s\"'=])~(?=[/\\])", lambda m: m.group(1) + home, text)
+        if value:
+            text = spellings.sub(lambda _m, v=value: v, text)
+    if "~" in text:
+        home = os.path.expanduser("~")
+        text = _TILDE.sub(lambda m: m.group(1) + home, text)
     return text
 
 
@@ -108,12 +123,30 @@ def normalize(text: str, fold: bool = True) -> str:
     return text.lower() if fold else text
 
 
+def _by_env(fn):
+    """Cache a function of the environment alone for as long as the variables it reads
+    (``_ENV_NAMES``, the home folder) stay the same: the guard asks for the offline folders once
+    per word of a command."""
+    cache: dict[tuple, object] = {}
+
+    @functools.wraps(fn)
+    def wrapper():
+        key = (*(os.environ.get(name) for name in _ENV_NAMES), os.path.expanduser("~"))
+        if key not in cache:
+            cache.clear()  # only the current environment is kept
+            cache[key] = fn()
+        return cache[key]
+
+    return wrapper
+
+
 def _local_appdata() -> str:
     """``LOCALAPPDATA`` as ``normalize`` reads a path, without a trailing slash. "" when it is
     not set (Linux and macOS), so nothing more is protected there and nothing fails."""
     return normalize(os.environ.get("LOCALAPPDATA") or "").rstrip("/")
 
 
+@_by_env
 def _offline_bases() -> list[str]:
     """The folders this machine's environment puts the offline folder in, read as ``normalize``
     reads a path: ``LOCALAPPDATA`` and, on Linux, ``XDG_DATA_HOME``, each when set."""
@@ -121,6 +154,7 @@ def _offline_bases() -> list[str]:
     return [base for base in (_local_appdata(), data_home) if base]
 
 
+@_by_env
 def _offline_patterns() -> list[re.Pattern]:
     """The offline folder where this machine's ``LOCALAPPDATA`` or ``XDG_DATA_HOME`` puts it,
     for a value that is not the usual ``AppData/Local`` or ``~/.local/share`` (the fixed
@@ -130,6 +164,7 @@ def _offline_patterns() -> list[re.Pattern]:
     ]
 
 
+@_by_env
 def _offline_parts() -> list[tuple]:
     """The same folders as path components, for ``word_may_name_protected``."""
     found = []
@@ -205,7 +240,15 @@ def word_may_name_protected(word: str) -> bool:
     also match another folder.
     """
     parts = _path_parts(word)
+    # Without a wildcard or a short name's ``~`` a name must be there as it is: a word that
+    # lacks one of a folder's names is not read against it (a long word has many components).
+    joined = "/".join(parts)
+    exact = re.search(r"[*?\[]", joined) is None and not any(
+        _SHORT_NAME.fullmatch(p) for p in parts
+    )
     for names in _PROTECTED_PARTS + _offline_parts():
+        if exact and any(isinstance(n, str) and n not in joined for n in names):
+            continue
         last = len(names) - 1
         for start in range(len(parts) - last):
             if all(
@@ -390,6 +433,7 @@ def _path_parts(word: str, fold: bool = True) -> list[str]:
     return parts
 
 
+_SHORT_NAME = re.compile(r"([^~*?\[]{1,6})~\d+")  # an 8.3 short name: ``GALLAN~1``
 _ANY = "?"  # one wildcard character; "*" is a run of them; anything else is itself
 
 
@@ -416,7 +460,7 @@ def _part_matches(part: str, name: object, first: bool, last: bool) -> bool:
     if name is _DIGITS:
         return bool(tokens) and all(t in "*?" or t.isdigit() for t in tokens)
     assert isinstance(name, str)
-    short = re.fullmatch(r"([^~*?\[]{1,6})~\d+", part)
+    short = _SHORT_NAME.fullmatch(part)
     if short:
         return name.replace(" ", "").startswith(short.group(1))
     n = len(name)
@@ -448,12 +492,21 @@ def _part_matches(part: str, name: object, first: bool, last: bool) -> bool:
     return n in states or after in states
 
 
+def is_network_path(path: str) -> bool:
+    """True for a path that starts with two separators (``//host/share``, ``\\\\host\\share``,
+    ``//./pipe``): Windows resolves one over the network, seconds for each host, so nothing asks
+    the file system about it."""
+    return re.match(r"[\\/]{2}", path) is not None
+
+
 def is_protected_path(path: str | os.PathLike[str]) -> bool:
     """True when ``path`` is inside a protected folder, before or after resolving links."""
     raw = os.fspath(path)
     candidates = [raw]
-    with contextlib.suppress(OSError, ValueError):
-        candidates.append(os.path.realpath(_expand(raw)))
+    expanded = _expand(raw)
+    if not is_network_path(expanded):
+        with contextlib.suppress(OSError, ValueError):
+            candidates.append(os.path.realpath(expanded))
     return any(mentions_protected(c + "/") or word_may_name_protected(c) for c in candidates)
 
 

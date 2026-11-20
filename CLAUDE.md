@@ -338,7 +338,11 @@ Committed under `.claude/`, so they apply to anyone working here:
   `tests/test_guard_hook.py`). The guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
-  `deny` rules for Edit and Write back it up for the save folder, the game install and the cloud
+  It answers within about a second, as a hook that times out lets the call through: a command
+  over 100,000 characters is blocked unread, and one over a size budget (many different words,
+  folders or heredocs) counts as reaching a protected folder, so only a read-only one passes;
+  a long commit message, PR body or script is fine, and long text goes to a file with the Write
+  tool. `deny` rules for Edit and Write back it up for the save folder, the game install and the cloud
   cache (not the offline files); only the game-install one has been seen to fire.
   `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist runs `git status`, `diff`,
   `log` and `show`, the read-only forms of `git branch` (bare, `-a`, `-r`, `-v`, `-vv`,
