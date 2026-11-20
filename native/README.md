@@ -2845,8 +2845,11 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   (`death_fn`, `docs/re/linux.md`: its kind-0 callers, the halt byte, and the death's popup
   written through unchecked when every message slot is busy, which the message check keeps from).
   The client deals the queued ones through `LinuxMod` when no Windows helper is there
-  (`ticks.deathlink_tick`): a request with no reply leaves it as being dealt (a death seen soon
-  after the reply was lost is it, as a reply lost on Windows); one that never went out stays
+  (`ticks.deathlink_tick`): a request with no reply leaves it as being dealt (a death seen within
+  `DEALT_SECONDS` of the first in-play or dead state read after the reply was lost is it, as a
+  reply lost on Windows, but counted from that read, not from the loss: the next poll first
+  configures the helper again, which can take longer than the window, and the socket's timeout is
+  itself longer; stand-in tests only, not run in the game); one that never went out stays
   queued, and a Linux helper of this version from before deaths is said once, the deaths waiting
   for a newer one; the Linux helper is dropped (`linux_mod_lost`) either way. Tested on the
   stand-in game through the socket (`tests/test_native_linux.py`: `die` refused unconfigured and
@@ -2942,7 +2945,12 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `other_save` for another seed's save in play (`linux_other_save_tick`). The client hands over
   the whole seed file, its labels included, once known (`offline_seed`, as on Windows), and what
   the slot data alone gives until then, never after the whole file went in that client run (a
-  reconnect lists the items afresh: `ZexionContext.linux_full_seeds`). The file select's counts,
+  reconnect lists the items afresh: `ZexionContext.linux_full_seeds`), and a new client run's first
+  put, before the scouts answer, carries the labels and the disk counts of the file the helper
+  already keeps under that name (`offline.keep_richer`: the client reads it beside the helper's
+  token, `ticks.linux_stored_seed`, once a run; the helper has no request that says what its file
+  holds), so a client that closes before the whole text is known leaves the later runs with no
+  client the labels they had (stand-in tests only, not run in the game). The file select's counts,
   from the save slots, and its logo show as on Windows ("The file select's AP logo and disk
   counts", below). What differs on Linux:
   - a client that loses its server connection lets the Linux helper's connection go, as the
@@ -2967,7 +2975,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   taking the look back, `client_back` shown once, `other_save` dressing it again with the
   other-seed notice, and that client gone, dressed afresh with the not-connected notice again) and
   with stand-ins for the client (`tests/test_zexion_client.py`: the whole seed file not replaced
-  by the slot data's after a reconnect); run in the game, 2026-11-19 ("The Linux helper", above).
+  by the slot data's after a reconnect, and a stored file's labels kept in a new run's first put); run in the game, 2026-11-19 ("The Linux helper", above).
 - **The title screen's lines.** `Game::watch_title` runs at each frame call with no save loaded,
   as on Windows ("The title screen's lines"): ARCHIPELAGO MOD and the version (set in the helper's
   constructor), ©2026 MCAWFUL, and with no client attached the hint to start it, made with the

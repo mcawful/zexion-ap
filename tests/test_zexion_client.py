@@ -17,7 +17,18 @@ from unittest import mock
 import pytest
 from fakes import connection, seed_state, slot_data
 
-from client import game, ids, linux_helper, native, newgame, patterns, session, state, ticks
+from client import (
+    game,
+    ids,
+    linux_helper,
+    native,
+    newgame,
+    offline,
+    patterns,
+    session,
+    state,
+    ticks,
+)
 
 
 class CommonContext:
@@ -175,6 +186,24 @@ def test_a_reconnect_carries_on_with_the_seeds_state_and_another_seed_starts_afr
     # Its slot's shield count has the same data storage key: the stop and the count not sent
     # yet were the other seed's.
     assert not other.shields.stopped and other.shields.given is None
+
+
+@pytest.mark.parametrize("platform", ["windows", "linux"])
+def test_a_reconnect_sends_the_labels_at_once_whichever_helper_holds_them(
+    monkeypatch, platform
+) -> None:
+    monkeypatch.setattr(zc.Utils, "async_start", lambda coro, name="": coro.close(), raising=False)
+    ctx = zc.ZexionContext(None, None)
+    ctx.seed_name = "A"
+    ctx.connected(slot_data())
+    told = state.HelperState()
+    told.labels_retry_at = math.inf  # a refusal's retry delay, still running
+    if platform == "linux":
+        ctx.linux_mod = types.SimpleNamespace(told=told)
+    else:
+        ctx.told = told
+    ctx.connected(slot_data())  # a drop, then Connected again
+    assert told.labels_retry_at == 0.0
 
 
 class Mismatched:
@@ -1921,3 +1950,88 @@ def test_the_ping_is_sent_every_few_seconds_to_stay_inside_the_helpers_30(monkey
     asyncio.run(zc.keepalive_loop(ctx))
     assert naps == [ticks.LINUX_KEEPALIVE_SECONDS] * 2
     assert ctx.game_conn.pm.sent.count("ping") == 2
+
+
+WHOLE_FILE = (
+    "zexion-ap offline 1\ntable 0102\nstart 0600bf004901\nintel 0\nassists free\n"
+    "discs 3 12 41\nunfound 7\ntraps -\nap_labels\nlabel 23 14 4150\n"
+)
+POORER_FILE = (
+    "zexion-ap offline 1\ntable 0102\nstart 0600bf004901\nintel 0\nassists free\n"
+    "discs -\nunfound -\ntraps 100:103\n"
+)
+
+
+def test_on_linux_a_new_client_run_never_puts_a_poorer_text_over_the_whole_file(
+    monkeypatch,
+) -> None:
+    # The labels and the disk counts the file holds, put before the scouts answer (a client that
+    # closes meanwhile leaves the later runs with no client the file as it was put).
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "stored"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    looked: list[str] = []
+    monkeypatch.setattr(
+        ticks, "linux_stored_seed", lambda mod, name: looked.append(name) or WHOLE_FILE
+    )
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: POORER_FILE)
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: None)  # not known yet
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    sent = ctx.game_conn.pm.sent[-1]
+    assert sent.startswith("offline_put seed S-0-1\n")
+    text = sent.split("\n", 1)[1]
+    assert "traps 100:103\n" in text, "its own traps are this run's"
+    assert "discs 3 12 41\nunfound 7\n" in text and text.endswith("ap_labels\nlabel 23 14 4150\n")
+    ctx.linux_mod.told.offline_at = 0.0
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    assert looked == ["S-0-1"], "the file is looked at once a run"
+    assert [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")] == [sent]
+
+
+def test_on_linux_with_no_file_kept_the_poorer_text_goes_as_it_is(monkeypatch) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "stored"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: POORER_FILE)
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: None)
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    assert ctx.game_conn.pm.sent[-1] == "offline_put seed S-0-1\n" + POORER_FILE
+
+
+def test_on_linux_the_whole_text_is_put_as_it_is_whatever_the_file_holds(monkeypatch) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "stored"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    newer = WHOLE_FILE.replace("label 23 14 4150", "label 9 9 41")
+    monkeypatch.setattr(ticks, "linux_stored_seed", lambda mod, name: WHOLE_FILE)
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: newer)
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    assert ctx.game_conn.pm.sent[-1] == "offline_put seed S-0-1\n" + newer
+
+
+REAL_LINUX_STORED_SEED = ticks.linux_stored_seed  # before the autouse fixture's stand-in
+
+
+def test_the_stored_seed_is_read_beside_the_newest_token(tmp_path, monkeypatch) -> None:
+    folder = tmp_path / "ZexionAP"
+    (folder / "seeds").mkdir(parents=True)
+    (folder / "seeds" / "S-0-1.txt").write_bytes(WHOLE_FILE.encode())
+    mod = types.SimpleNamespace(pm=types.SimpleNamespace(game=object()))
+    monkeypatch.setattr(
+        linux_helper, "find_tokens", lambda game: [(folder / "token", "ab"), (tmp_path / "t", "cd")]
+    )
+    assert REAL_LINUX_STORED_SEED(mod, "S-0-1") == WHOLE_FILE
+    assert REAL_LINUX_STORED_SEED(mod, "other-0-1") is None  # no such file
+    (folder / "seeds" / "big-0-1.txt").write_bytes(b"x" * (offline.MAX_FILE + 1))
+    (folder / "seeds" / "bin-0-1.txt").write_bytes(b"\xff\xfe")
+    assert REAL_LINUX_STORED_SEED(mod, "big-0-1") is None
+    assert REAL_LINUX_STORED_SEED(mod, "bin-0-1") is None  # not text
+
+
+def test_the_stored_seed_is_none_where_no_token_is_found(monkeypatch) -> None:
+    def none(game):
+        raise linux_helper.LinuxHelperError("no token")
+
+    monkeypatch.setattr(linux_helper, "find_tokens", none)
+    mod = types.SimpleNamespace(pm=types.SimpleNamespace(game=object()))
+    assert REAL_LINUX_STORED_SEED(mod, "S-0-1") is None

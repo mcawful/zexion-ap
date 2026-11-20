@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from client import offline
 
 
@@ -64,3 +66,57 @@ def test_grid_cells() -> None:
 def test_the_requests() -> None:
     assert offline.put_request("config", "config a=0x1\n") == "offline_put config\nconfig a=0x1\n"
     assert offline.put_request("seed", "x\n", "AP-0-1") == "offline_put seed AP-0-1\nx\n"
+
+
+# --- a poorer text never replaces a richer file ---------------------------------------------------
+
+
+def seed(*, discs=None, labels=None, traps=None, table=None) -> str:
+    return offline.seed_text(
+        table if table is not None else list(range(154)),
+        (6, 191, 329),
+        intel=False,
+        lock_assists=True,
+        discs=discs,
+        labels=labels,
+        traps=traps or [],
+    )
+
+
+WHOLE = seed(
+    discs=(3, 12, "COLLECT 12 OS INSTALL DISKS!", [1312, 40]),
+    labels="ap_labels\nlabel 23 14 4150\nlabel 4 5 41",
+    traps=[(40, 102)],
+)
+POOR = seed(traps=[(40, 102), (7, 103)])
+
+
+def test_the_stored_labels_and_disk_counts_stay_in_a_poorer_text() -> None:
+    merged = offline.keep_richer(POOR, WHOLE)
+    lines = merged.splitlines()
+    whole = WHOLE.splitlines()
+    assert lines[:3] == whole[:3]  # the seed's table, start
+    assert lines[-3:] == ["ap_labels", "label 23 14 4150", "label 4 5 41"]
+    assert whole[5] in lines and whole[6] in lines  # discs, unfound
+    assert "traps 7:103,40:102" in lines, "this run's own traps are the poorer text's"
+    assert merged.endswith("\n")
+
+
+def test_a_text_with_its_own_labels_and_disks_is_left_as_it_is() -> None:
+    mine = seed(discs=(1, 12, "X", [5]), labels="ap_labels\nlabel 1 1 41")
+    assert offline.keep_richer(mine, WHOLE) == mine
+
+
+@pytest.mark.parametrize("stored", [None, "", "junk", "zexion-ap offline 1\ntraps -\n"])
+def test_nothing_is_taken_from_a_file_that_is_no_seed_of_this_one(stored) -> None:
+    assert offline.keep_richer(POOR, stored) == POOR
+
+
+def test_nothing_is_taken_from_the_file_of_another_table() -> None:
+    other = seed(table=[1] * 154, labels="ap_labels\nlabel 1 1 41")
+    assert offline.keep_richer(POOR, other) == POOR
+
+
+def test_a_stored_file_without_labels_adds_none() -> None:
+    plain = seed(traps=[(40, 102)])
+    assert offline.keep_richer(POOR, plain) == POOR

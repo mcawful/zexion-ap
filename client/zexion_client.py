@@ -160,6 +160,10 @@ class ZexionContext(CommonContext):
         # The seed files whose whole text (offline_seed) went to the Linux helper in this client
         # run: from then on the slot data's alone (linux_seed) never replaces it (linux_seed_tick).
         self.linux_full_seeds: set[str] = set()
+        # What the Linux helper's folder held under each seed file's name when this client run
+        # first looked (linux_stored_seed), so a poorer text put keeps what it had of the whole
+        # one (offline.keep_richer): None where there was no file, or it could not be read.
+        self.linux_stored_seeds: dict[str, str | None] = {}
         self.helper_retry_at = 0.0
         # Let go while no connection stepped, for the helper's own look (leave_helper_tick).
         self.helper_left = False
@@ -246,8 +250,11 @@ class ZexionContext(CommonContext):
         self.load.seed_loaded = False
         self.load.disks_counted = None  # a disk picked up meanwhile shows no count
         self.load.return_home = discs.ReturnHome()
-        if self.told is not None:
-            self.told.labels_retry_at = 0.0
+        # The labels are sent at once on the new connection, not after a refusal's retry delay:
+        # for the Windows helper's record and, on Linux, the Linux helper's own.
+        for told in (self.told, self.linux_mod.told if self.linux_mod is not None else None):
+            if told is not None:
+                told.labels_retry_at = 0.0
         Utils.async_start(self.update_death_link(conn.death_link_on), name="death link tag")
         if conn.death_link_on:
             detail("DeathLink is on for this seed.")

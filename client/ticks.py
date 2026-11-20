@@ -19,6 +19,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import (
@@ -580,9 +581,10 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
         try:
             reply = await asyncio.to_thread(mod.request, "die")
         except linux_helper.NoReply as exc:
-            # It may have been dealt: a death seen soon is this one, soon from now (a reply that
-            # timed out took the socket's whole timeout, longer than DEALT_SECONDS).
-            deaths.dealing(time.monotonic())
+            # It may have been dealt: a death seen soon is this one, soon from the next read of
+            # the state (a reply that timed out took the socket's whole timeout, longer than
+            # DEALT_SECONDS, and the next poll configures the helper again before it reads).
+            deaths.reply_lost(time.monotonic())
             linux_mod_lost(ctx, exc)
             return
         except linux_helper.LinuxHelperError as exc:
@@ -788,13 +790,39 @@ def linux_seed(ctx: ZexionContext, p: Poll) -> str | None:
     )
 
 
+def read_stored_seed(folder: Path, name: str) -> str | None:
+    """The seed file ``seeds/NAME.txt`` in the helper's data folder ``folder``, read only (the
+    helper alone writes it); None with no such file, or one too large, not text, or not readable."""
+    try:
+        with open(folder / "seeds" / f"{name}.txt", "rb") as f:
+            raw = f.read(offline.MAX_FILE + 1)
+        return None if len(raw) > offline.MAX_FILE else raw.decode("utf-8")
+    except (OSError, ValueError):
+        return None
+
+
+def linux_stored_seed(mod, name: str) -> str | None:
+    """The seed file the Linux helper keeps under ``name``, read as this client can see it, in the
+    data folder of the newest token it found (``linux_helper.find_tokens``: the one the helper
+    wrote when the game started); None where it can't be read. The helper has no request that
+    tells what its file holds."""
+    try:
+        folder = linux_helper.find_tokens(mod.pm.game)[0][0].parent
+    except linux_helper.LinuxHelperError:
+        return None
+    return read_stored_seed(folder, name)
+
+
 async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
     """With the game's Linux build: this seed's file (linux_seed) handed to the Linux helper for
     this world's own traps, which it sets off at their pickup (native/README.md, "Traps"), and
     own disks, whose count it shows at their pickup with no client, and once known the whole
     seed file (offline_seed: its labels, Intel Chips and ASSIST, for the look without the
     client), from the connection's first poll and again when it changes, looked at every
-    OFFLINE_WRITE_SECONDS. The helper keeps it as the Windows one does, in its own folder
+    OFFLINE_WRITE_SECONDS. Until the whole file is known, the slot data's text carries the labels
+    and disk counts the helper's file for the seed already holds (``linux_stored_seed``, read once
+    a client run: offline.keep_richer), as a poorer text never replaces a richer file. The helper
+    keeps it as the Windows one does, in its own folder
     (``stored``, ``unchanged``: native/README.md, "The Linux helper"), for its later runs with
     no client; one it took but could not keep (no folder for it, too large, a failed write) is
     its own until the game closes, and not put again. A helper that fails is linux_mod_lost."""
@@ -814,7 +842,15 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
     if full is None and name in ctx.linux_full_seeds:
         return
     seed = full if full is not None else linux_seed(ctx, p)
-    if seed is None or mod.told.offline_sent.get("seed") == seed:
+    if seed is None:
+        return
+    if full is None:
+        # A new client run puts the slot data's text before the scouts answer: not over a whole
+        # file a run before left (its labels, for the look without the client).
+        if name not in ctx.linux_stored_seeds:
+            ctx.linux_stored_seeds[name] = await asyncio.to_thread(linux_stored_seed, mod, name)
+        seed = offline.keep_richer(seed, ctx.linux_stored_seeds[name])
+    if mod.told.offline_sent.get("seed") == seed:
         return
     request = offline.put_request("seed", seed, name)
     if len(request.encode()) > offline.MAX_REQUEST:  # it would end the connection

@@ -358,7 +358,8 @@ What there is:
   (`ticks.shields_tick`) and DeathLink's deaths (`ticks.deathlink_tick`), Intel Chips
   (`ticks.linux_intel_tick`), the ASSIST lock (`ticks.linux_assists_tick`), other players' items'
   labels (`ticks.linux_labels_tick`), this seed's file (`ticks.linux_seed_tick`: at first its own
-  traps and disks, then the whole file, labels included, for the look without the client), CLIENT
+  traps and disks, with the labels and disk counts the file already kept, then the whole file,
+  labels included, for the look without the client), CLIENT
   CONNECTED and the other-seed notice (`linux_client_back_tick`, `linux_other_save_tick`), the
   language (`linux_language_tick`), the OS Install Disks' count (`linux_discs_tick`), the finds'
   follow-ups and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step

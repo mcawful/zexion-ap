@@ -68,6 +68,52 @@ def test_a_death_whose_reply_was_lost_counts_as_dealt() -> None:
     assert link.owed == 1
 
 
+def test_a_lost_reply_looks_for_the_death_from_the_first_state_read_after_it() -> None:
+    # The Linux helper's connection closed (or timed out, 5 s): the next poll configures it again
+    # before it reads any state, and that takes longer than DEALT_SECONDS.
+    link = in_play()
+    link.receive()
+    link.receive()
+    link.dealing(10.0)
+    link.reply_lost(15.0)
+    late = 15.0 + 3 * deathlink.DEALT_SECONDS
+    assert not link.observe(game.CHANGING, late - 1.0)  # not a read of in play or dead
+    assert not link.observe(game.DEAD, late)  # dealt, not sent back
+    assert link.owed == 1  # and counted, so the player is not killed again for it
+    assert not link.observe(game.DEAD, late + 0.5)  # still on screen
+    link.observe(game.IN_PLAY, late + 8.0)
+    assert link.observe(game.DEAD, late + 20.0)  # the next death is the player's own
+
+
+def test_a_lost_reply_waits_for_a_death_after_an_in_play_read_too() -> None:
+    link = in_play()
+    link.receive()
+    link.reply_lost(15.0)
+    late = 15.0 + 3 * deathlink.DEALT_SECONDS
+    assert not link.observe(game.IN_PLAY, late)  # the death not on screen yet
+    assert not link.observe(game.DEAD, late + 1.0)
+    assert link.owed == 0 and not link.observe(game.DEAD, late + 1.5)
+
+
+def test_a_lost_reply_of_a_death_never_dealt_hides_none_that_come_later() -> None:
+    link = in_play()
+    link.receive()
+    link.reply_lost(15.0)
+    late = 15.0 + 3 * deathlink.DEALT_SECONDS
+    link.observe(game.IN_PLAY, late)  # the window opens here, and nothing happens in it
+    assert link.observe(game.DEAD, late + deathlink.DEALT_SECONDS + 1)
+    assert link.owed == 1
+
+
+def test_a_lost_reply_ends_with_the_save_left() -> None:
+    link = in_play()
+    link.receive()
+    link.reply_lost(15.0)
+    link.observe(game.NO_SAVE, 16.0)  # another save, or none: the death was not this one's
+    link.observe(game.IN_PLAY, 17.0)
+    assert link.observe(game.DEAD, 18.0)  # the player's own, not hidden by the old ask
+
+
 def test_a_refused_deal_stays_queued_and_the_next_death_is_the_players() -> None:
     link = in_play()
     link.receive()
