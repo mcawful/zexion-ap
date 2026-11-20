@@ -109,6 +109,16 @@ def test_load_talk_and_unload_in_a_stand_in_process(stand_in) -> None:
         assert helper.request("ping") == "pong frames=0"
         with pytest.raises(native.ModMismatch, match="doesn.t know the request nonsense"):
             helper.request("nonsense")
+        # A program that is not the game (no known build) takes no seed and writes no folder,
+        # whatever LOCALAPPDATA and APPDATA are here: the tests' canary (tests/conftest.py)
+        # checks the real ones as they were.
+        from client import offline
+
+        text = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
+        put = offline.put_request("seed", text, offline.seed_file_name("S", 0, 1))
+        with pytest.raises(native.HelperError, match="not the game"):
+            helper.request(put)
+        assert helper.request("ping") == "pong frames=0"  # error replies keep it in step
         # Hooked to nothing, it has no frames to work in: config and apply are refused.
         rvas = {key: 0x1000 for key in native.CONFIG_KEYS}
         with pytest.raises(native.HelperError, match="not hooked"):

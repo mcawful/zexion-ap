@@ -1,8 +1,9 @@
 # Developing zexion-ap
 
 For contributors. Players start at the [README](../README.md). The project's rules (evidence,
-no hard-coded addresses, the game and save folders and the mod's offline files read-only, what
-never gets committed) are in [`CLAUDE.md`](../CLAUDE.md), "Rules": read them before changing
+no hard-coded addresses, the game and save folders and the mod's offline files read-only to us,
+except the seed copies the helpers themselves write into the save folder, what never gets
+committed) are in [`CLAUDE.md`](../CLAUDE.md), "Rules": read them before changing
 anything.
 
 Zexion has no modding API, so everything here rests on reverse engineering, recorded with its
@@ -114,7 +115,28 @@ worlds/zexion/ → generation → slot data → client
   `$XDG_DATA_HOME`: `native/README.md`, "The Linux helper"). With no client, the helper uses the
   seeds' files to give AP saves their look. With or without a client, they also tell it which
   saves are AP saves, which earn no Feats or Steam achievements. Deleting the folder is safe: the
-  client sends the files again the next time it attaches to the game.
+  client sends the files again the next time it attaches to the game, and the copies below bring
+  back those a save uses with no client.
+- **The seed copies in the save folder.** Each helper also keeps a copy of a seed's file in the
+  game's own save folder, next to the saves, as `ZexionAP-seed-<NAME>.sav`, so Steam Cloud, which
+  syncs `*.sav` there, carries it with the saves: a save that comes to another machine is known
+  there as an AP save with no client run on it. A copy follows the game's 30 save slots as the
+  game's memory holds them (the helpers never open a save file): it is written only while a slot
+  uses the seed (so at most 30 are written and refreshed at a time; one a save does not use any
+  more is read but not refreshed, none is deleted, and so more than 30 may stand over time). It is
+  written by a put when a slot already uses the seed, by the helper's **copy thread** a moment
+  after the slots change (a new game, a save, a delete; the client connected or not), and by a read
+  after a client that set something leaves (not for `helper.py status`); the helper's start writes
+  local files only, since no slot list is known yet. The helpers read both places and
+  make the two copies of a seed one (`native/README.md`, "Seed files in the save folder"). The
+  folder is the game's: `%APPDATA%\Gallant Leaf\Zexion`; on Linux `$XDG_DATA_HOME/Gallant
+  Leaf/Zexion`, else `~/.local/share/Gallant Leaf/Zexion` (under Flatpak Steam, the sandbox's
+  home). Steam's Auto-Cloud rule for Linux is measured as a root override to `LinuxHome` with the
+  path `.local/share/Gallant Leaf/Zexion`; that it therefore syncs `$HOME/.local/share/Gallant
+  Leaf/Zexion` is inferred, not seen (`docs/re/save-format.md`, "Steam Auto-Cloud syncs only
+  `*.sav` and `*.png` in the save folder itself"). If so, that is the game's folder only while
+  `XDG_DATA_HOME` is unset or the default `~/.local/share`: with it set elsewhere the saves
+  themselves would not be what Steam syncs. Not yet run in the game, nor on two machines.
 
 How the helper works: [`native/README.md`](../native/README.md).
 

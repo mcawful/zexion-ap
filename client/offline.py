@@ -9,8 +9,10 @@ patterns, it falls back to this file only if its own scan failed), and
 ``seeds/<seed>-<team>-<slot>.txt`` in the format
 native/src/offline.h describes. The helper writes them, not the client: a client run from a
 packaged (MSIX) app has its AppData writes redirected where the game does not see them
-(docs/re/memory.md, "AP saves without the client"). Pure functions; client/ticks.py
-(offline_tick) sends them.
+(docs/re/memory.md, "AP saves without the client"). The helper also keeps a copy of the file of
+each seed a save uses in the game's save folder, as ``ZexionAP-seed-<NAME>.sav``, for Steam Cloud
+to carry to another machine (native/README.md, "Seed files in the save folder"): never the
+client's write. Pure functions; client/ticks.py (offline_tick) sends them.
 """
 
 from __future__ import annotations

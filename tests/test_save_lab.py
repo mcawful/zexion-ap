@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -79,6 +80,32 @@ def test_backup_copies_everything_with_hashes(saves: Path) -> None:
     manifest = json.loads((dest / "manifest.json").read_text(encoding="utf-8"))
     assert set(manifest["files"]) == {p.name for p in saves.iterdir()}
     assert (dest / "Save Game 1.sav").read_bytes() == (saves / "Save Game 1.sav").read_bytes()
+
+
+def test_backup_leaves_out_a_helpers_temporary_file(saves: Path) -> None:
+    # The helpers write ZexionAP-seed-<NAME>.sav through ZexionAP-seed-<NAME>.sav.tmp: a backup
+    # taken in that moment holds the copy, never the temporary file (a restore would write it
+    # back under a name outside the helpers' own).
+    (saves / "ZexionAP-seed-S-0-1.sav").write_bytes(b"COPY")
+    (saves / "ZexionAP-seed-S-0-1.sav.tmp").write_bytes(b"HALF")
+    dest = save_lab.backup()
+    manifest = json.loads((dest / "manifest.json").read_text(encoding="utf-8"))
+    assert "ZexionAP-seed-S-0-1.sav" in manifest["files"]
+    assert not any(name.endswith(".tmp") for name in manifest["files"])
+    assert not (dest / "ZexionAP-seed-S-0-1.sav.tmp").exists()
+
+
+def test_the_backup_command_warns_while_the_game_runs(
+    saves: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(save_lab, "game_running", lambda: True)
+    assert save_lab.cmd_backup(argparse.Namespace()) == 0
+    out = capsys.readouterr().out
+    assert "Zexion is running" in out and "ZexionAP-seed-<NAME>.sav" in out
+    assert "Backed up" in out  # read only, so it still backs up
+    monkeypatch.setattr(save_lab, "game_running", lambda: False)
+    assert save_lab.cmd_backup(argparse.Namespace()) == 0
+    assert "Zexion is running" not in capsys.readouterr().out
 
 
 def _patched(tmp_path: Path) -> Path:
@@ -200,6 +227,25 @@ def test_restore_puts_a_slot_back_and_backs_up_first(saves: Path, tmp_path: Path
     assert (saves / "Save Game 3.sav").read_bytes() == original
     backups = list((tmp_path / "lab" / "backups").iterdir())
     assert len(backups) == 2  # the original, plus the safety copy taken before restoring
+
+
+def test_restore_never_puts_back_a_temporary_file_an_old_backup_holds(
+    saves: Path, tmp_path: Path
+) -> None:
+    # A backup from before backups left helpers' temporary files out may hold one: a full
+    # restore writes the copy beside it and not the temporary file.
+    (saves / "ZexionAP-seed-S-0-1.sav").write_bytes(b"COPY")
+    backup = save_lab.backup()
+    (backup / "ZexionAP-seed-S-0-1.sav.tmp").write_bytes(b"HALF")
+    manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
+    manifest["files"]["ZexionAP-seed-S-0-1.sav.tmp"] = save_lab.sha256(
+        backup / "ZexionAP-seed-S-0-1.sav.tmp"
+    )
+    (backup / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (saves / "ZexionAP-seed-S-0-1.sav").write_bytes(b"CHANGED")
+    assert save_lab.main(["restore", str(backup), "--yes"]) == 0
+    assert (saves / "ZexionAP-seed-S-0-1.sav").read_bytes() == b"COPY"
+    assert not (saves / "ZexionAP-seed-S-0-1.sav.tmp").exists()
 
 
 def test_restore_requires_yes(saves: Path, tmp_path: Path) -> None:

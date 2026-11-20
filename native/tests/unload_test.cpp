@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <thread>
 
@@ -53,6 +54,18 @@ int wmain(int argc, wchar_t** argv) {
         return EXIT_FAILURE;
     }
     int rounds = argc > 2 ? _wtoi(argv[2]) : 200;
+    // The helper reads the seed files each time it loads: its folders are this run's own, inside
+    // the temporary folder (the test build takes no other: offline.h, restrict_to_test_folder),
+    // never the real ones.
+    const std::filesystem::path base = std::filesystem::temp_directory_path() /
+                                       (L"zap_unload_test_" + std::to_wstring(GetCurrentProcessId()));
+    std::filesystem::remove_all(base);
+    std::filesystem::create_directories(base / L"save");
+    if (SetEnvironmentVariableW(L"LOCALAPPDATA", base.wstring().c_str()) == 0 ||
+        SetEnvironmentVariableW(L"ZAP_TEST_SAVE_DIR", (base / L"save").wstring().c_str()) == 0) {
+        std::printf("FAIL: the test's folders not set\n");
+        return EXIT_FAILURE;
+    }
     std::thread worker1(busy);
     std::thread worker2(busy);
     bool ok = true;
@@ -62,6 +75,7 @@ int wmain(int argc, wchar_t** argv) {
     g_stop = true;
     worker1.join();
     worker2.join();
+    std::filesystem::remove_all(base);
     if (ok) {
         std::printf("%d rounds, %llu calls through the hooked import\n", rounds,
                     static_cast<unsigned long long>(g_calls.load()));

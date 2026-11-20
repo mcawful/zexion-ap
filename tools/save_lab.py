@@ -15,7 +15,14 @@ keeps the slots in memory, wrote them back over an install (docs/re/memory.md, "
 achievements"), and would presumably over a restore. ``install`` fills only an empty slot, and
 only when a backup from the last 12 hours holds that slot as it is now. ``restore`` may
 overwrite slots in use; it refuses a backup of another save folder, checks the backup against
-its manifest, and backs up the present state first.
+its manifest, and backs up the present state first, and never writes a ``*.tmp`` file.
+
+``backup`` leaves out ``*.tmp`` files and warns while Zexion runs (it still backs up: it
+only reads). A mod helper in the running game may be writing a seed copy
+(``ZexionAP-seed-<NAME>.sav``, through ``<name>.sav.tmp`` renamed over it) and the game its
+saves, so a backup taken then may hold a half-moved state; the helper's temporary file is no
+save and no copy, and a restore would put it back under a name outside the helpers' own
+(CLAUDE.md, "Rules"). Close the game for a backup you will restore from.
 
 A slot is empty in two ways, and ``slots`` names both. "empty" holds the unused-slot template.
 "empty (deleted, data kept)" holds a save deleted in the game: deleting keeps the file and all
@@ -259,6 +266,11 @@ def backup() -> Path:
     for path in sorted(source.rglob("*")):
         if not path.is_file():
             continue
+        # A helper's temporary file (``ZexionAP-seed-<NAME>.sav.tmp``, whole or half-written)
+        # is no save and no copy: a restore would put it back under a name outside the
+        # helpers' own (CLAUDE.md, "Rules").
+        if path.name.endswith(".tmp"):
+            continue
         rel = path.relative_to(source).as_posix()
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -273,6 +285,16 @@ def backup() -> Path:
 
 
 def cmd_backup(_: argparse.Namespace) -> int:
+    try:
+        running = game_running()
+    except OSError:
+        running = False  # could not be told: the backup is read only, so it goes on
+    if running:
+        print(
+            "Zexion is running: a mod helper in it may write its seed copies "
+            "(ZexionAP-seed-<NAME>.sav) while this copies the folder, and the game writes "
+            "saves. Close it first for a backup you will restore from."
+        )
     dest = backup()
     count = len(json.loads((dest / "manifest.json").read_text(encoding="utf-8"))["files"])
     print(f"Backed up {count} files to {dest}")
@@ -455,7 +477,9 @@ def cmd_restore(args: argparse.Namespace) -> int:
         print(f"{chosen} is a backup of {manifest['source']}, not of {save_dir()}; not restoring.")
         print("Pass --save-dir (or ZEXION_SAVE_DIR) for the folder it came from.")
         return 1
-    files = manifest["files"]
+    # A helper's temporary file in an older backup is no save and no copy: never put back, under
+    # a name outside the helpers' own (backup() leaves them out now).
+    files = {rel: digest for rel, digest in manifest["files"].items() if not rel.endswith(".tmp")}
     if args.slot is not None:
         name = SLOT_NAME.format(args.slot)
         files = {name: files[name]}

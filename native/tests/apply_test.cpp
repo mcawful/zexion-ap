@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 
@@ -60,6 +61,16 @@ int wmain(int argc, wchar_t** argv) {
     if (SetEnvironmentVariableW(L"LOCALAPPDATA", base.wstring().c_str()) == 0 ||
         GetEnvironmentVariableW(L"LOCALAPPDATA", now, MAX_PATH) == 0 || base.wstring() != now) {
         std::printf("FAIL: LOCALAPPDATA not set to the test's folder\n");
+        std::filesystem::remove_all(base);
+        return EXIT_FAILURE;
+    }
+    // The helper in the test build uses no save folder but the one named in ZAP_TEST_SAVE_DIR
+    // (never ZEXION_SAVE_DIR, which the repo's tools define as the real one), and only if it is
+    // inside the temporary folder: never the real one.
+    const std::filesystem::path save = base / L"save";
+    std::filesystem::create_directories(save);
+    if (SetEnvironmentVariableW(L"ZAP_TEST_SAVE_DIR", save.wstring().c_str()) == 0) {
+        std::printf("FAIL: ZAP_TEST_SAVE_DIR not set to the test's folder\n");
         std::filesystem::remove_all(base);
         return EXIT_FAILURE;
     }
@@ -148,6 +159,21 @@ int wmain(int argc, wchar_t** argv) {
     check(reply == "stored", "seed B put", reply);
     check(std::filesystem::is_regular_file(base / L"ZexionAP" / L"seeds" / L"12345-0-1.txt"),
           "written into the test's folder");
+    // No slot of the game holds the seed yet: no copy in the test's save folder. Then the stand-in
+    // game's slot 1 does: the frame calls publish the slots' seeds and the copy thread writes the
+    // copy, under its own name, a moment later (no put, no client, no save file of the game).
+    check(!std::filesystem::exists(save / L"ZexionAP-seed-12345-0-1.sav"),
+          "no slot of the seed: no copy in the test's save folder");
+    stand_in::slot_block(1)[0x935E] = 0;
+    put<uint16_t>(stand_in::slot_block(1), 0x9400, 1);
+    std::memcpy(stand_in::rando_copy(1), stand_in::g_section, 0x908);
+    for (int i = 0; i < 300 && !std::filesystem::exists(save / L"ZexionAP-seed-12345-0-1.sav"); ++i) {
+        Sleep(10);
+    }
+    check(std::filesystem::is_regular_file(save / L"ZexionAP-seed-12345-0-1.sav"),
+          "a slot of the seed now: the copy thread wrote its copy into the test's save folder");
+    reply = zap_test::ask(pipe, "offline_put seed 12345-0-1\n" + file);
+    check(reply == "unchanged", "the same put again: unchanged", reply);
     for (int i = 0; i < 200 && reply != "told"; ++i) {  // asked again until a frame has taken it
         reply = zap_test::ask(pipe, "other_save");
         if (reply != "told") Sleep(5);

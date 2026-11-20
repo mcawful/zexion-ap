@@ -8,10 +8,12 @@ description: Experiment with Zexion save files safely - pause Steam Cloud, back 
 The real saves live in `%APPDATA%\Gallant Leaf\Zexion` (on Linux, the folder `save_dir()` in
 `tools/protected.py` finds: SDL's under `~/.local/share`, or Flatpak Steam's) and Steam Cloud
 syncs them, between Windows and Linux too. The user has
-real progress in some slots. Nothing writes there except `tools/save_lab.py install` and
-`restore` (the Archipelago client never does). The write-guard hook blocks every other route
-through Bash, PowerShell, Monitor, the terminal tool and the file tools (`CLAUDE.md`, "Repo
-tooling").
+real progress in some slots. Nothing of ours writes there except `tools/save_lab.py install` and
+`restore` (the Archipelago client never does), and the mod's helpers, which write only
+`ZexionAP-seed-<NAME>.sav` there, a copy of each seed one of the saves uses, so Steam Cloud
+carries it to another machine (`CLAUDE.md`, "Rules"; `native/README.md`, "Seed files in the
+save folder"). The write-guard hook blocks every other route through Bash, PowerShell, Monitor,
+the terminal tool and the file tools (`CLAUDE.md`, "Repo tooling"), those copies' names too.
 
 ## 1. Pause Steam Cloud for Zexion first
 
@@ -23,7 +25,8 @@ off for Zexion, and wait until they confirm. You can't do it for them, and you c
 
 With it on, Steam can upload a test save over the cloud copy, or pull the cloud copy back over a
 restore. Remind the user to turn it back on only after `restore` has put everything back and
-the game has been closed.
+the game has been closed. A restore changes the seed copies (`ZexionAP-seed-*.sav`) too, which
+Steam is expected to upload like the saves (not yet seen): another reason to keep Steam Cloud off until it is done.
 
 ## 2. Look before changing anything
 
@@ -46,7 +49,10 @@ the rest".
 ```
 
 Copies the whole folder to `lab/backups/<time>/` with a SHA-256 manifest, and checks every copy
-against its original. `install` refuses to run unless the newest backup is from the last 12
+against its original. The backup holds the mod's seed copies, `ZexionAP-seed-*.sav`, with the
+saves; it leaves out a helper's temporary file (`*.tmp`), and warns while the game runs (a helper
+may be writing a copy, and the game its saves): close the game for a backup you will restore from.
+`install` refuses to run unless the newest backup is from the last 12
 hours and holds the target slot exactly as it is now (an older backup does not count), so take
 one at the start of each session and again after the game has saved.
 
@@ -105,6 +111,12 @@ Ask first, and have the user close the game: like `install`, `restore` refuses w
 running. It refuses a backup of another save folder (one taken with `--save-dir` or
 `ZEXION_SAVE_DIR` set; restore it with the same setting), checks the backup against its
 manifest, then backs up the current state before overwriting, so a restore can itself be undone.
+A full restore (no `--slot`) puts the backup's seed copies back too, each with a fresh
+modification time, so the helpers' merge (`native/README.md`, "Seed files in the save folder":
+the larger disk count and the labels with more lines stand, the copy last written is the newer)
+reads a restored copy as the newest, and a copy whose seed no save uses is read but not refreshed.
+`--slot N` restores that save alone and leaves the copies as they are. A restore never writes a
+`*.tmp` file.
 
 ## 7. Record what you learned
 

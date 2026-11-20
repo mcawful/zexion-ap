@@ -207,6 +207,10 @@ public:
     void put_back_files();  // the entries and glyphs; the counts kept
     // Slots holding a randomizer save in use whose own section copy is a known seed's.
     std::set<int> ap_file_slots() const;
+    // Game thread: the seeds (table and start) of the randomizer saves among the 30 slots, as the
+    // game's memory holds them, the file select's match: what a slot's save uses, with no save
+    // file opened. None before the helper is configured. The caller publishes it (SavedSeeds).
+    std::vector<OfflineSeed> saved_seeds() const;
 
     // Game thread: the Area Map as INTEL CHIP while on (`intel`, intel.h).
     void set_intel(bool on) { intel_.set(on); }

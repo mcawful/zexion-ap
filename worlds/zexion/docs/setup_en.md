@@ -155,6 +155,37 @@ open but not connected (the server down, say), and for the one you are in when y
 
 With the client closed, your other saves play as normal.
 
+## Playing on more than one machine
+
+With Steam Cloud on, your saves follow you to another computer, a Steam Deck or the other
+operating system. The mod is meant to know your seed's saves there too, with no client run on
+that machine: it keeps a small file for each seed a save of yours uses, named `ZexionAP-seed-`
+and the seed's name, ending in `.sav`, in Zexion's save folder beside the saves, and Steam Cloud
+syncs it with them. This is expected to work but has not been tried on two machines yet.
+
+- Both machines need the mod, from a release with this feature.
+- The file comes from the client, so it exists only once the client has connected for that seed.
+  The first machine is expected to write it while Zexion runs with the mod, within a moment of the
+  game holding a save of the seed (a new game of it, or a loaded save), with the client connected
+  or not: closing the game after playing writes nothing more, so the mod must have been running
+  while the game held that save. The file goes up when Steam syncs, which it is expected to do
+  when you close Zexion: wait for the cloud to say it is up to date before you start it on the
+  second machine.
+- The save folder is `%APPDATA%\Gallant Leaf\Zexion` on Windows; on Linux
+  `~/.local/share/Gallant Leaf/Zexion`, or Flatpak Steam's `~/.var/app/com.valvesoftware.Steam/.local/share/Gallant Leaf/Zexion`
+  ("Linux and Steam Deck", above). Steam Cloud syncs that Linux folder only if it is where the
+  game keeps its saves, which it is unless `XDG_DATA_HOME` points somewhere else.
+- Leave these files alone. The mod writes only a copy for a seed one of your 30 saves uses,
+  deletes nothing, and no longer updates a copy once no save uses its seed (so a few old ones
+  may stay; delete them if you like).
+- A copy keeps the free ASSIST menu and the larger OS Install Disks count it has seen: a room
+  you host again, or a server restored from an older save, does not take them back.
+
+If a save on the other machine still shows as a plain randomizer game (no Archipelago logo on the
+file select, other players' items look like Scrap), the first machine did not write the file yet
+or Steam did not sync it. Connect the client once with Zexion running and that seed's room up:
+it gives the mod the seed's file again. Saves from before this feature need that once, as before.
+
 ## Updating
 
 - Finish your seed first, or keep the old release until it ends: a seed made with an older
@@ -198,7 +229,9 @@ play as normal.
   when you pick it up), and they can earn Feats and
   Steam achievements again. To play a seed again, install the mod again. The mod's small files for
   playing without the client stay in `%LOCALAPPDATA%\ZexionAP` (on Linux, the folder named in
-  "Linux and Steam Deck"); you can delete that folder.
+  "Linux and Steam Deck"); you can delete that folder. So do the copies named `ZexionAP-seed-`
+  and ending in `.sav` in Zexion's save folder, which Steam Cloud syncs ("Playing on more than
+  one machine"); delete those too if you don't want them, and none of your saves.
 
 ## Troubleshooting
 
