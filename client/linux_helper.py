@@ -15,7 +15,8 @@ that the process serving it is the game, and of this user (``SO_PEERCRED``), and
 ``hello`` names the game's build. Any process of the user in the network namespace, a sandboxed
 one too, can also connect to it, so the helper serves a connection only after it has sent the
 token the helper wrote when the game started, into ``ZexionAP/token`` of the game's data folder
-(``find_token``: where it looks, and why that reaches the folder under Flatpak's Steam); the
+(``find_tokens``: where it looks, and why that reaches the folder under Flatpak's Steam; it
+tries each token found, newest first, one connection each); the
 client sends it only to the process it has checked. The client reads the game's memory only
 through the helper (``read``): it never opens the game's memory itself.
 """
