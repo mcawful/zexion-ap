@@ -299,8 +299,9 @@ mod works on Linux and the Steam Deck, and that problems on other setups are dea
 report them. What backs it: the in-game runs, all on one setup (Flatpak Steam on the test PC,
 CachyOS), of local builds; runs 1 and 2 (below) and run 3, 2026-11-20, of the socket's token and
 some of the later fixes (pull request #183 records it, with what it did not see, in
-`re/linux.md`, "Seen in the running game, 2026-11-20 (run 3)"). A release's build, made in the
-SDK, has not run in the game yet (`native/README.md`, "Its own runtime"). Native Steam, the Steam
+`re/linux.md`, "Seen in the running game, 2026-11-20 (run 3)"). A release's build, made in the SDK,
+ran in the game too, 2026-11-20 (CI's build, on the same setup: `native/README.md`, "Its own
+runtime"). Native Steam, the Steam
 Deck and Snap's Steam are not tried: what is known of the Deck and the runtime is in
 `re/builds.md`, "B1 on Linux", and of Snap's layout in "finding it", below. What there is:
 

@@ -3266,8 +3266,14 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   published package list, `com.valvesoftware.SteamRuntime.Sdk-amd64,i386-sniper.manifest.dpkg`
   in <https://repo.steampowered.com/steamrt-images-sniper/snapshots/3.0.20261021.266025/> (read
   2026-11-20): `libc6` 2.31-13+deb11u14, `gcc-14` and `g++-14` 14.2.0-19~steamrt3.1, `cmake`
-  3.25.1-1~bpo11+1+bsrt3.1 and `ninja-build` 1.10.1-1. **A build made there has not run in the
-  game yet**: every in-game run was of a build made on the test PC. Read on the
+  3.25.1-1~bpo11+1+bsrt3.1 and `ninja-build` 1.10.1-1. CI's build there (the `libzexion_ap-runtime`
+  artifact of e9cfad2's run, `libzexion_ap.so` `fba8ed52…`) ran in the game, 2026-11-20, B1 on
+  Linux, Flatpak Steam on the test PC (the game on the Flatpak runtime's glibc, `/run/parent/…`):
+  `helper.py status` answered (`zexion-ap 1.2.0 build=B1 hooked=1`, 165 frame calls a second from
+  `SWHardwareEnd`), the helper dressed run 3's save before the client attached, then, with it,
+  ARCHIPELAGO CLIENT CONNECTED., a received Missile Container's popup opening and closing, and the
+  title screen's lines, as the owner saw them; native Steam and the Steam Deck not tried. Read on
+  the
   test PC, 2026-11-18: the Steam Runtime installed there (sniper 3.0.20261021) ships glibc 2.31
   (its `usr-mtree.txt.gz` lists `libc-2.31.so`); Flatpak's Steam runs on the Flatpak runtime
   `org.freedesktop.Platform` 26.08, whose glibc is 2.44 (`strings` of its `libc.so.6`); a build
