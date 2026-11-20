@@ -716,9 +716,11 @@ void* feats_context_init(void* context) {
         return &g_stand_in.holder;
     }
     Init real = real_init();
-    return real != nullptr ? real(context) : nullptr;
+    // With no libsteam_api to go on to (a program without it that the preload reaches: the game
+    // has it NEEDED), the stand-in's holder, not null: the game's accessor reads through what it
+    // gets (`mov rax,[rax]`), and the stand-in's every method returns 0.
+    return real != nullptr ? real(context) : &g_stand_in.holder;
 }
-
 
 void* FeatsGuard::stand_in() const { return &g_stand_in.holder; }
 

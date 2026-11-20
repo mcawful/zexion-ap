@@ -2413,8 +2413,18 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   none of the first 1200 calls comes from the frame function (`SWHardwareEnd`) while the game's
   symbols give it, another library's `SDL_GL_SwapWindow` stands in front of the helper's, and it
   says so on stderr once, naming that library (`put libzexion_ap.so first in LD_PRELOAD`): every
-  frame request would be refused, though `hello` says `hooked=1`. **Known limit:** `SWHardwareEnd`
-  is also called from `loadState`, which is not traced (`docs/re/linux.md`, "The per-frame
+  frame request would be refused, though `hello` says `hooked=1`. The exception is one level of
+  wrapper: a call whose caller is called from `SWHardwareEnd` also counts as a frame call, so
+  a library in front that calls the helper's from its own code does no harm. The caller's caller
+  is found with the unwinder on every library's `.eh_frame` (a wrapper built without frame
+  pointers keeps none), only for a call that did not come from the frame function itself, so
+  frame work still runs once for a call at most; a stack the unwinder cannot read, or a
+  wrapper called from anywhere but `SWHardwareEnd` (`UpdatePalette`'s swap, say), is only
+  passed on. Stand-in tested (`tests/test_native_linux.py`,
+  `test_frame_work_runs_for_a_wrapper_the_frame_function_calls` and the test for a wrapper called
+  from another function, with `native/linux/tests/swap_wrapper.cpp`, built with no frame
+  pointer); no such library has been in front of the helper in the game. **Known limit:**
+  `SWHardwareEnd` is also called from `loadState`, which is not traced (`docs/re/linux.md`, "The per-frame
   call"); the helper tells that call from the others only by the return address inside
   `SWHardwareEnd`, which is the same, so frame work runs at that swap too. A grant that lands in
   the middle of a load can then be overwritten by the load's copy of the inventory, with its popup
@@ -2426,7 +2436,13 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   off (a line on stderr), never an aborted program. It reads one of its own constants through
   `process_vm_readv` first, and if the kernel or a sandbox's filter refuses, says
   `memory reads refused: <why>` and does not serve (grants would otherwise land with no
-  popups and no labels).
+  popups and no labels). It starts the serving thread last, from the library's constructor,
+  which runs ahead of the default-priority dynamic initializers of the helper's file and of the
+  shared sources: every global with a constructor that the thread reads (the offline folder, the
+  token, the mailbox, `Game`, the seeds' lists and lock, and the memory layer's map, its lock and
+  its program spans) is `Kept` (built in place, never destroyed) or has `init_priority(101)`, so
+  it is built before the constructor sets it, whatever the compiler's library builds at load time
+  (`tests/test_native_linux_init_order.py` reads the sources for any that is not).
 - **The socket.** An abstract unix socket, `zexion-ap-<pid>`, `SOCK_SEQPACKET`: one request a
   message, one reply a message, one client at a time, as the Windows pipe. The next client's
   connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
@@ -3001,7 +3017,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     loaded, marker 1 and slot an AP save's, read at the call; every other call goes on to
     `libsteam_api`'s own (`dlsym(RTLD_NEXT)`, else the library's own if it is loaded but not
     global; looked for again while not found, never the helper's), the game's first, before any
-    config, too, and in any other program the preload reaches; the guard reports a fault
+    config, too, and in any other program the preload reaches; where there is none to go on to
+    (a program without `libsteam_api`: the game has it `NEEDED`) the answer is the stand-in's
+    holder, never null, as the game's accessor reads through it (stand-in tested,
+    `native/linux/tests/feats_tests.cpp`); the guard reports a fault
     (`feats_status`) unless the game's call binds to the helper's export (the first definition in
     the global scope: another preload ahead of it would take the calls) and the library's is
     found (a check that fails is made again every `kSteamRetryFrames`, 60 frames, so a library loaded later still counts); `watch_feats` runs before the frame's player-pointer gate, as it only reads;

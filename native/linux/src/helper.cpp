@@ -14,6 +14,7 @@
 #include <sys/uio.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <unwind.h>
 
 #include <algorithm>
 #include <atomic>
@@ -862,7 +863,7 @@ bool player_where_expected() {
 // AP saves without the client (native/README.md, "AP saves without the client"): the seeds'
 // files (offline.h) read on the serving thread at start and each time a client goes, and the
 // seeds put since; the next frame takes both (take_offline).
-std::mutex g_offline_mutex;
+__attribute__((init_priority(101))) std::mutex g_offline_mutex;
 __attribute__((init_priority(101))) Kept<std::optional<zap::OfflineFiles>>
     g_offline_files;  // read, not yet taken
 struct PutSeed {
@@ -1434,10 +1435,54 @@ struct FrameScope {
     FrameScope() = default;
 };
 
-void game_frame(uintptr_t site) {
-    if (site < g_frame_function.value || site >= g_frame_function.value + g_frame_function.size) {
-        return;  // another swap (UpdatePalette's window), or the frame function unknown
+bool in_frame_function(uintptr_t address) {
+    return address >= g_frame_function.value &&
+           address < g_frame_function.value + g_frame_function.size;
+}
+
+// One level of wrapper: another library's SDL_GL_SwapWindow, preloaded ahead of the helper's (an
+// overlay, a frame limiter), calls ours from its own code, and the game's frame function is the
+// wrapper's caller (docs/re/linux.md, "The per-frame call"). Found by the unwinder, from every
+// library's .eh_frame, not by frame pointers, which a wrapper built without them does not keep:
+// the first few frames of the stack, to the one whose address is `site` (the wrapper's call), and
+// the address above it. A stack the unwinder cannot read ends the walk: no frame work, nothing more.
+struct StackWalk {
+    uintptr_t site;       // where our caller will return: the wrapper's frame
+    bool found = false;   // `site`'s frame has been passed
+    uintptr_t above = 0;  // the frame above it: where the wrapper itself will return
+    int steps = 0;
+};
+
+_Unwind_Reason_Code walk_one_frame(_Unwind_Context* context, void* data) {
+    constexpr int kMaxSteps = 6;  // ours, the wrapper's, its caller's, and room for a helper frame
+    auto* walk = static_cast<StackWalk*>(data);
+    const auto address = static_cast<uintptr_t>(_Unwind_GetIP(context));
+    if (walk->found) {
+        walk->above = address;
+        return _URC_END_OF_STACK;
     }
+    if (address == walk->site) {
+        walk->found = true;
+    } else if (++walk->steps >= kMaxSteps) {
+        return _URC_END_OF_STACK;
+    }
+    return _URC_NO_REASON;
+}
+
+// Whether `site`'s caller was called from the frame function: it is a wrapper the frame function
+// calls. Only for a call not itself from the frame function (a direct call is the common case and
+// costs no walk), and never when the frame function is unknown.
+__attribute__((noinline)) bool called_through_wrapper(uintptr_t site) {
+    if (g_frame_function.size == 0) return false;
+    StackWalk walk{site};
+    _Unwind_Backtrace(walk_one_frame, &walk);
+    return walk.found && walk.above != 0 && in_frame_function(walk.above);
+}
+
+void game_frame(uintptr_t site) {
+    // Another swap (UpdatePalette's window), or the frame function unknown, passes straight on:
+    // frame work runs once for a call, whichever way it is found to come from the frame function.
+    if (!in_frame_function(site) && !called_through_wrapper(site)) return;
     g_frame_calls.fetch_add(1, std::memory_order_relaxed);
     FrameScope scope;
     if (!scope.entered) return;
