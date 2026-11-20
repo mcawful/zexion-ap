@@ -232,24 +232,46 @@ def test_frame_work_runs_for_a_wrapper_the_frame_function_calls(tmp_path: Path) 
     assert "no frame call came from" not in err
 
 
-@pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
-def test_frame_work_runs_once_a_frame_for_a_wrapper_that_calls_twice(tmp_path: Path) -> None:
-    # A wrapper that passes each swap on twice, back to back: frame work (counted by the hooktest
-    # build's `frame_calls`) is taken for one of the two, so about once a game frame, while every
-    # call is still counted and passed on. The game swaps its frame window every loop and the other
-    # window's every fourth, so the helper's calls are 2 x 1.25 a loop, the frames' 1 a loop.
-    started = Game((WRAPPER, HOOKTEST), tmp_path / "data", ZAP_WRAPPER_TWICE="1")
+def wrapped_frame_work(tmp_path: Path, **env: str) -> tuple[int, int, int]:
+    """The frame calls taken for frame work (the hooktest build's `frame_calls`) and all the
+    helper's swap calls, once the stand-in game has made 200 or more, with its swaps through the
+    wrapper; and the swaps that reached the stand-in SDL."""
+    started = Game((WRAPPER, HOOKTEST), tmp_path / "data", **env)
     try:
         with started.connect() as sock:
-            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > 200)
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > 200, seconds=20)
             work = int(ask(sock, "frame_calls").removeprefix("frame_calls "))
             calls = int(ask(sock, "ping").removeprefix("pong frames="))
             assert ask(sock, "intel on") == "refused not configured"  # frame work still runs
     finally:
         swaps, _, _ = started.stop()
+    assert swaps >= calls  # every call still went on to SDL
+    return work, calls, swaps
+
+
+@pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
+@pytest.mark.parametrize("swap_us", ["0", "3000"])
+def test_frame_work_runs_once_a_frame_for_a_wrapper_that_calls_twice(
+    tmp_path: Path, swap_us: str
+) -> None:
+    # A wrapper that passes each swap on twice, back to back, with the real swap returning at once
+    # or waiting (3 ms, as the real one waits for the refresh): frame work is taken for one of the
+    # two, so once a game frame. The game swaps its frame window every loop and the other window's
+    # every fourth, so the helper's calls are 2 x 1.25 a loop, the frames' 1 a loop.
+    work, calls, _ = wrapped_frame_work(tmp_path, ZAP_WRAPPER_TWICE="1", ZAP_STUB_SWAP_US=swap_us)
     assert work > 20
     assert calls >= 2.3 * work  # taken twice a frame it would be 1.25 x, taken once 2.5 x
-    assert swaps >= calls  # every call still went on to SDL
+
+
+@pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
+@pytest.mark.parametrize("swap_us", ["0", "3000"])
+def test_a_wrapper_that_calls_once_never_loses_a_frames_work(tmp_path: Path, swap_us: str) -> None:
+    # One call a frame through the wrapper, the real swap returning at once or waiting: every
+    # frame takes its work (the calls are 1.25 a loop, the frames 1 a loop), none skipped by the
+    # gap that tells a repeated call from the next frame.
+    work, calls, _ = wrapped_frame_work(tmp_path, ZAP_STUB_SWAP_US=swap_us)
+    assert work > 20
+    assert calls <= 1.4 * work, f"{work} frames took work in {calls} calls"
 
 
 @pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")

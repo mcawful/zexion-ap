@@ -11,7 +11,9 @@ What this covers, exactly (it reads the sources; nothing here needs the build or
   ``constinit``, ``std::atomic``, a scalar, a pointer, an array of those, or one of the few plain
   structs listed below), ``Kept`` (built in place, never destroyed), or has ``init_priority(101)``,
   which builds it before the constructor runs, whatever the compiler's library does. Any other
-  type, a user's or the library's, fails until it is one of these.
+  type, a user's or the library's, fails until it is one of these, and so does a scalar whose
+  initializer is a call (``= getenv(...)``), which runs at load time. Not seen by this scan: a
+  type declared together with its object (``struct { ... } g;``).
 * ``feats.cpp``'s stand-in holder, which the Steam export answers with from any thread, must be
   ``constinit``.
 
@@ -69,8 +71,11 @@ def objects(text: str) -> list[tuple[str, str, str]]:
     for statement in declarations(text):
         bare = PRIORITY.sub("", statement).strip()
         end = min((bare.find(c) for c in ";{=" if c in bare), default=len(bare))
-        head = bare[:end].strip()
-        if "(" in head or re.match(r"(template|using|struct|class|enum|typedef)\b", head):
+        head = re.sub(r"\balignas\([^)]*\)", "", bare[:end]).strip()
+        plain = head
+        while re.search(r"<[^<>]*>", plain):  # std::function<void()>: the parentheses are a type's
+            plain = re.sub(r"<[^<>]*>", "", plain)
+        if "(" in plain or re.match(r"(template|using|struct|class|enum|typedef)\b", head):
             continue
         match = re.match(r"(.*?)\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$", head)
         if not match:
@@ -85,6 +90,17 @@ def test_every_global_is_constant_kept_or_built_before_the_helpers_constructor()
         for statement, kind, name in objects(path.read_text(encoding="utf-8")):
             checked += 1
             if CONSTANT.match(kind):
+                # Constant by its type, unless a call initializes it (`= getenv(...)`): that runs
+                # at load time, in an initializer of default priority.
+                after = PRIORITY.sub("", statement).split(";")[0]
+                initializer = after[after.index("=") :] if "=" in after else ""
+                constant_init = re.match(
+                    r"(?:thread_local\s+|static\s+)*(?:constexpr|constinit)\b", kind
+                )
+                assert constant_init or "(" not in initializer or PRIORITY.search(statement), (
+                    f"{path.name}: {name} is initialized by a call, at load time: "
+                    f"{statement.strip()}"
+                )
                 continue
             if kind.startswith("Kept<") or PRIORITY.search(statement):
                 priority = PRIORITY.search(statement)

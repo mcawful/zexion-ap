@@ -2423,17 +2423,24 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   passed on. That the wrapper has `.eh_frame` (the unwinder's one source) is assumed, not
   checked: without it the walk ends and the call is only passed on, as with no wrapper handling.
   A wrapper that passes a swap on more than once for one of its own calls (a frame-duplicating
-  layer) has frame work taken for one of them: the helper cannot see the game's frame from
-  the wrapper's calls, so a call through a wrapper counts only if 2 ms have passed since the last
-  one that did (kWrapperGapUs; a frame of the fastest display is 4 ms). A wrapper that sleeps
-  longer between its repeated calls than that still runs the work for each, and the frame-counted
-  timers (popup gap, file slots, Steam retry) then run fast: a known limit. Stand-in tested (`tests/test_native_linux.py`,
-  `test_frame_work_runs_for_a_wrapper_the_frame_function_calls` and the test for a wrapper called
-  from another function, with `native/linux/tests/swap_wrapper.cpp`, built with no frame
-  pointer); no such library has been in front of the helper in the game. **Known limit:**
-  `SWHardwareEnd` is also called from `loadState`, which is not traced (`docs/re/linux.md`,
-  "The per-frame call"); the helper tells that call from the others only by the return address
-  inside `SWHardwareEnd` (or, through a wrapper, the wrapper's caller's), which is the same, so
+  layer) has frame work taken for one of them: the helper cannot see the game's frame from the
+  wrapper's calls (no per-loop counter of the game's is recorded), so a call through a wrapper
+  counts only if 100 microseconds (`kWrapperGapUs`) have passed since the last call through a
+  wrapper returned from the real swap, which waits for the refresh and so is no part of the gap:
+  a repeated call follows the first's return at once, the next frame follows the game's own work
+  for it. Two limits, both timing: a wrapper that does something slow between its repeated calls
+  still has the work run for each (the frame-counted timers, the popup gap, file slots and Steam
+  retry, then run fast); and two real frames less than 100 microseconds of the game's own work
+  apart (`loadState`'s swap, then the frame's) lose the second's work, which waits one frame.
+  Neither touches a call from the frame function itself. Stand-in tested
+  (`tests/test_native_linux.py`, `test_frame_work_runs_for_a_wrapper_the_frame_function_calls`,
+  the tests for a wrapper that calls twice, with the real swap returning at once and waiting, one
+  that calls once and loses no frame's work, and one called from another function, with
+  `native/linux/tests/swap_wrapper.cpp`, built with no frame pointer); no such library has been
+  in front of the helper in the game. **Known limit:** `SWHardwareEnd` is also called from
+  `loadState`, which is not traced (`docs/re/linux.md`, "The per-frame call"); the helper tells
+  that call from the others only by the return address inside `SWHardwareEnd` (or, through a
+  wrapper, the wrapper's caller's), which is the same, so
   frame work runs at that swap too. A grant that lands in
   the middle of a load can then be overwritten by the load's copy of the inventory, with its popup
   (and a trap riding on it) already out; the next poll gives the item again (the client's
@@ -3186,7 +3193,9 @@ fixed-address executable as the game is, calling `SDL_GL_SwapWindow` from a stan
 (`linux/tests/translation_tests.cpp`, "Translations") and `zap_feats_tests` the Steam export's
 answer in a program with no `libsteam_api` (`linux/tests/feats_tests.cpp`);
 `libzap_swap_wrapper.so` (`linux/tests/swap_wrapper.cpp`) is a stand-in for another library's
-`SDL_GL_SwapWindow`, preloaded ahead of the helper by the wrapper tests, and
+`SDL_GL_SwapWindow`, preloaded ahead of the helper by the wrapper tests (a frame function's
+call through it, a repeated call, a call from another function: "The Linux helper", "The frame
+call"), and
 `tests/test_native_linux_init_order.py` reads the helper's sources for globals built too late
 ("The Linux helper", "Start-up", for what it covers);
 `ZEXION_NATIVE_BUILD` points it at another build folder than `native/build`.

@@ -1,9 +1,21 @@
-// A stand-in libSDL for the stand-in game: SDL2's SDL_GL_SwapWindow, counting its calls.
+// A stand-in libSDL for the stand-in game: SDL2's SDL_GL_SwapWindow, counting its calls. With
+// ZAP_STUB_SWAP_US set it waits that many microseconds in each, as the real one waits for the
+// display's refresh.
+#include <unistd.h>
+
 #include <atomic>
+#include <cstdlib>
 
 std::atomic<unsigned long> g_real_swaps{0};
 
-extern "C" void SDL_GL_SwapWindow(void*) { g_real_swaps.fetch_add(1); }
+extern "C" void SDL_GL_SwapWindow(void*) {
+    static const long wait_us = [] {
+        const char* wait = std::getenv("ZAP_STUB_SWAP_US");
+        return wait != nullptr ? std::atol(wait) : 0L;
+    }();
+    if (wait_us > 0) usleep(static_cast<useconds_t>(wait_us));
+    g_real_swaps.fetch_add(1);
+}
 
 extern "C" unsigned long zap_stub_swaps() { return g_real_swaps.load(); }
 
