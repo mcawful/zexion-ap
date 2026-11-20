@@ -36,7 +36,8 @@ worlds/zexion/ → generation → slot data → client
 ```
 
 - **The world** places items at the game's 154 locations (150 in OHKO, which cannot reach the
-  other 4; in Custom, those the settings reach from the start, 155 with Secret Shuffle), using the game's own randomizer map and rules (`docs/re/locations.md`).
+  other 4; in Custom, those the settings reach from the start, 155 with Secret Shuffle), using the
+  game's own randomizer map and rules (`docs/re/locations.md`).
   The owner's principles: follow the game's own rules and add no protection the game does not
   have (where the world departs from them: `docs/re/locations.md`, "Where the world departs
   from the game"); and in a new game the game's menu holds the seed's settings, so the game
@@ -82,9 +83,9 @@ worlds/zexion/ → generation → slot data → client
   collected in this build of the game", after which nothing is marked), which is part of the
   poll's step, not a side task.
   With no server connection, while a save it has not dressed is loaded and no ending is on
-  its way, it lets the helper go, so the helper gives AP saves their look as with no client,
-  and attaches it again on connecting ([`native/README.md`](../native/README.md), "AP saves
-  without the client").
+  its way, it lets the helper go (on Linux, closes the Linux helper's connection), so the helper
+  gives AP saves their look as with no client, and attaches it again on connecting
+  ([`native/README.md`](../native/README.md), "AP saves without the client").
 - **The helper** does what the client cannot from outside: popups, new games from the seed,
   the look of other players' items, and the rest of the features below. It hooks the game's
   once-per-frame call, so its work runs on the game's own thread, between frames; its own
@@ -99,7 +100,8 @@ worlds/zexion/ → generation → slot data → client
   the helper. A `zexion_ap.disabled` file beside them turns off the game folder's copy: neither
   the proxy nor the client loads it (a client run from source still loads its own build).
 - **The offline cache.** The client sends the helper a small file per seed it connects to and
-  the addresses it found for this build; the helper keeps them in `%LOCALAPPDATA%\ZexionAP`.
+  the addresses it found for this build; the helper keeps them in `%LOCALAPPDATA%\ZexionAP` (the
+  Linux helper the seeds alone, under `$XDG_DATA_HOME`: `native/README.md`, "The Linux helper").
   With no client, the helper uses them to give AP saves their look. With or without a client,
   they also tell it which saves are AP saves, which earn no Feats or Steam achievements.
   Deleting the folder is safe: the client sends the files again the next time it attaches to
@@ -112,15 +114,19 @@ How the helper works: [`native/README.md`](../native/README.md).
 - **AP save**: a randomizer save holding a seed a client has played. The helper recognizes one
   by its item table and start room, matched against the seed files in the offline cache.
   **This seed's save** is an AP save of the seed the connected client plays.
-- **The helper**: `zexion_ap.dll`, built from `native/`. **The proxy**: `version.dll`, built
-  from `native/proxy/`. Players call the two together "the mod".
+- **The helper**: `zexion_ap.dll`, built from `native/`, for the game's Windows build. **The
+  proxy**: `version.dll`, built from `native/proxy/`. Players call the two together "the mod".
+- **The Linux helper**: `libzexion_ap.so`, built from `native/linux/` with the sources of
+  `native/src/` it shares, for the game's Linux build: preloaded by the game's launch options
+  (`LD_PRELOAD`), never loaded into a running game or unloaded.
 - **Stand-in**: the Scrap Energy (47) or Scrap Chunk (48) the game holds at a location whose
   item it cannot hand out itself: another player's item (48 if it is progression or a trap,
   except another Zexion player's supplies, 47 and minor as the game marks this player's own:
   `world.important_elsewhere`), or, with the OS Install Disks goal, one of this world's own disks
   (48), or one of this world's own traps (48). The helper restyles them.
 - **Frame call**: one call the game makes, once per frame, through the hooked import; the
-  helper runs its frame function in it.
+  helper runs its frame function in it. The Linux helper's is the game's `SDL_GL_SwapWindow`
+  call from `SWHardwareEnd`, which the preloaded library defines in SDL's place.
 - **B1**: the only game build supported so far (Steam build 23943567:
   [`docs/re/builds.md`](re/builds.md)).
 - **Working in game (date, B1)**: ran in the real game on that date and build and did the right
@@ -252,23 +258,152 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 
 ## Platforms
 
-The game runs on Windows, so whatever touches it does too. Everything else runs on Windows,
-Linux and macOS, and CI runs ruff and pytest on all three.
+The mod is for the game's Windows build. Zexion also has a native Linux build (below), with a
+helper of its own that runs every part of the Windows helper's but unloading, run in the game on
+2026-11-18 and 2026-11-19 (what ran, and what has not yet: below; these runs predate the socket's
+token, the client's keep-alive and let-go, and the review's later fixes to the helper and client
+(`native/README.md`, "The Linux helper", lists them), which have run on stand-ins only: the next
+in-game run re-checks the attach); the client attaches to either build. Everything else runs on
+Windows, Linux and macOS, and CI runs ruff and pytest on all three.
 
 Windows only:
 
-- the client attached to the game (`client/process.py` is the Windows API; the rest of
-  `client/` is plain Python, tested anywhere);
-- the live tools: `memscan.py`, `grant.py`, `helper.py`, `check_patterns.py --live`;
-- the helper and the proxy (`native/`): MSVC and CMake's Visual Studio generator, and so a
+- the client attached to the Windows build (`client/process.py` is the Windows API; the rest of
+  `client/` is plain Python, tested anywhere; on Linux it attaches to the Linux build: below);
+- the live tools `memscan.py` and `helper.py load` and `unload` (`grant.py`,
+  `check_patterns.py --live` and `helper.py status` run against the Linux build too: below);
+- the helper and the proxy (`native/`, but `native/linux/`): MSVC and CMake's Visual Studio
+  generator, and so a
   release, whose builder packs their DLLs. `tools/build_apworld.py` itself, and its tests, run
   anywhere;
-- finding the game by itself: Steam's path comes from the registry. Elsewhere, set
-  `ZEXION_GAME_DIR`; the saves' folder comes from `%APPDATA%`, else `ZEXION_SAVE_DIR`.
+- finding the game's install from Steam's registry entry, and the saves from `%APPDATA%`.
+
+On Linux the tools look for the install and the saves in the usual places instead (below); on
+macOS, set `ZEXION_GAME_DIR` and `ZEXION_SAVE_DIR`.
+
+**Zexion's Linux build.** Zexion also has a native Linux build on Steam (the store's platform
+list shows Linux, read 2026-11-16), which Steam runs by default on Linux and a Steam Deck
+unless Proton is forced (assumed, as `re/builds.md`'s Status has it: a Deck's Properties showed
+"Steam Linux Runtime 3.0", 2026-11-16). Its binary, a fixed-address
+ELF executable that keeps its symbol table, and its data files, B1's, are recorded in
+`re/builds.md` ("B1 on Linux"), and every target of `client/patterns.py` mapped onto it in
+`re/linux.md`.
+Its support is in the repo: the client attaches to it (below), but no release carries the
+Linux helper yet, so it is not supported, and the setup guide says so ("Linux and Steam Deck").
+What there is:
+
+- the Linux helper, `libzexion_ap.so` (`native/linux/`, `native/README.md`, "The Linux helper"),
+  preloaded by the game's launch options: it counts the game's frame calls, and on a socket reads
+  and writes the game's memory for the client (the client can't reach it itself: `re/linux.md`,
+  "Reading the running game"), starts new games (ARCHIPELAGO on the menu, or RANDOMIZER) and gives
+  the client's items with their popups, scrap's drops and Energy Shields, deals DeathLink's
+  deaths, names Intel Chips, locks ASSIST, with the Windows helper's own `Game`
+  (`native/src/game_calls.h`, built for both through `native/src/platform.h` and the Linux parts
+  of the memory layer; it runs every part but unloading), shows other players' items as
+  Archipelago items (on the map too), sets off traps, shows its text in a translation's font, and
+  runs the OS Install Disks goal (its count, this world's own disks counted at their pickup with
+  no client, and RETURN HOME); it keeps the seeds' files (under `$XDG_DATA_HOME`) and, with one
+  and no client, configures itself from the game's symbols, so this world's own traps and disks
+  work with no client, gives AP saves their look without the client and the file select's AP logo,
+  disk counts and ITEMS row, shows the title screen's lines, keeps Feats and Steam achievements
+  out of AP saves, with the Feats screen's note, and repairs tall popups' text. Tested against a
+  stand-in game (`tests/test_native_linux.py`, run on the test PC and by CI's `native-linux` job).
+  Working in game on B1 (Linux) under Flatpak Steam, 2026-11-18: loaded, counting the frame calls
+  and serving reads; 2026-11-19: new games (ARCHIPELAGO), grants with their popups, both traps, an
+  Energy Shield, location checks, an Intel Chip and its hint, popups in English(HD) and Japanese,
+  the title's lines, the file select's AP logo and ITEMS row, the look without the client, and
+  `menu_state` read in play with the mouse used; and in run 2, the OS Install Disks goal (received
+  and own disks counted, the pause row, the file select's counts, RETURN HOME and its ending),
+  DeathLink both ways, scrap's drops, the Feats guard at an AP ending (no Feats, no achievement,
+  its note) and tall popups' text (`native/README.md`, "The Linux helper"); this world's own traps
+  (with or without a client) and its own disks with no client are not run in the game yet (the
+  client's lines said the ASSIST lock and the labels were set; not looked at); those runs predate
+  the socket's token, the client's keep-alive and let-go, and the review's later fixes to the
+  helper and client (the put-back of whatever a connection set, `write` taking only the ranges the
+  client writes, the auth deadline, the token candidates, the narrower map cache, the Steam
+  check's retry, the settings sent only on the configured connection, a RETURN HOME prompt put
+  back offered again), which have run on stand-ins only (the next run re-checks the attach). How
+  to run it in the game, and what to try first: `native/README.md`, "Running it in the game".
+  `menu_state` is the game's cursor mode on Linux (`gCursorMode`), which the mouse may set to 1,
+  but only in menus: in play it stays 0 (read live, 2026-11-19: `re/linux.md`, `menu_state`).
+  `tools/helper.py status` finds the game, checks its build, makes sure the socket is the game's,
+  and reads its memory through it (`client/linux_helper.py`); `helper.py load` and `unload` are
+  Windows-only. `tools/grant.py` and `check_patterns.py --live` attach as the client does
+  (`game.Game.attach`), so through the Linux helper, `grant.py set` writing through its `write`
+  (no such run recorded); `--live` prints each target's link address after `Zexion.exe+`, the base
+  being 0 on Linux;
+- the client: on Linux `game.Game.attach()` attaches to the Linux build (`attach_linux()`), its
+  targets from the binary's symbol table (`client/linux_targets.py`, the ones `game.py` reads and
+  writes), every read and write through the helper, one request at a time, connecting again once a
+  connection drops (a request with no reply closes it, so a late reply is never read as the next
+  one's); every connection must first show the helper's token (`LinuxHelper.__enter__`: `hello`
+  has shown the server is the game's own process, then each token `find_tokens` finds is sent,
+  newest first, one connection each, so a stale file found first cannot stop the live one; a
+  failure names the files refused, or the places looked), and a second task, `keepalive_loop`,
+  pings the configured connection every 10 s so the helper's 30 s of silence never closes it while
+  the game loop is busy. It writes nothing through a target `re/linux.md` only assumes (every one
+  is measured now; `Game.unwritable` stays for any later one), and reports play only while the
+  player state is where the layout puts it. The Linux helper is configured once an attach, and
+  again once the client's connection to it was made again (`ticks.linux_newgame_tick`,
+  `client/linux_targets.py`'s `helper_config`, `client/linux_helper.py`'s `LinuxMod`); what the
+  helper keeps past a connection's close (Intel Chips, the ASSIST lock, the disk count) is sent
+  only on the connection it was configured on (`LinuxMod.current`), never on one made again by a
+  read in the same poll. New games go through it, ARCHIPELAGO offered as on Windows, and so do the
+  step's items, with their popups, traps and scrap's drops (`apply`), received Energy Shields
+  (`ticks.shields_tick`) and DeathLink's deaths (`ticks.deathlink_tick`), Intel Chips
+  (`ticks.linux_intel_tick`), the ASSIST lock (`ticks.linux_assists_tick`), other players' items'
+  labels (`ticks.linux_labels_tick`), this seed's file (`ticks.linux_seed_tick`: at first its own
+  traps and disks, then the whole file, labels included, for the look without the client), CLIENT
+  CONNECTED and the other-seed notice (`linux_client_back_tick`, `linux_other_save_tick`), the
+  language (`linux_language_tick`), the OS Install Disks' count (`linux_discs_tick`), the finds'
+  follow-ups and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step
+  back until the Linux helper is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll),
+  so no step meanwhile writes the items owed with no popup or drops a waiting trap. One lost after
+  it was configured holds the step back for 30 s too (`ticks.linux_mod_lost`), as does one let go
+  of with no server connection (`LinuxProcess.disconnect`, `linux_back_by`: the poll waits for it
+  to be configured again, up to 30 s), then the items are written directly with no popup until it
+  is back; one that failed two steps running has the next step's written directly. A Linux helper
+  of this version built before traps, which answers `trap_status` with `error unknown request`
+  (`linux_helper.HelperTooOld`), holds nothing back: items are written directly until it is
+  replaced; any other reply but `queued …` (a frame not come in time: `refused no frame`) is a
+  failed configuration, tried again. The rest of the client runs as without the mod:
+  `native.attach` refuses the Linux build (`native.NoWindowsHelper`, nothing said: the Linux
+  helper runs every part); checks, the goal, DeathLink's deaths out and marking other players'
+  items collected go on. Tested against stand-ins; run in the game for the attach, the seed's new
+  game and grants (2026-11-19: `native/README.md`, "The Linux helper"), the rest not yet, and the
+  token, the keep-alive and the let-go not at all;
+- finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
+  `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak
+  (`~/.var/app/com.valvesoftware.Steam/.local/share/Steam`) or Snap Steam, and for the saves in
+  SDL's preference folder (`$XDG_DATA_HOME/Gallant Leaf/Zexion`, else under `~/.local/share`),
+  Flatpak Steam's (`~/.var/app/com.valvesoftware.Steam/.local/share/Gallant Leaf/Zexion`),
+  Snap Steam's, or a library's Proton prefix (for the Windows build under Proton). For each,
+  the one that exists, and an error naming them when several do (two installs, or saves synced
+  into a folder the game doesn't use). Snap's and Proton's layouts are assumed, not seen;
+- `tools/build_id.py` fingerprints the Linux binary from its ELF header (`client/elf.py`, which
+  also reads its symbols), and `tools/game_data.py --exe` copies it, into a folder of its own
+  hash. That copy is an ELF file: `check_patterns.py`, `make_pattern.py` and
+  `gen_world_data.py` take the Windows exe's copy, which `--exe` makes only from a Windows
+  install;
+- `tools/save_lab.py` reads its saves, which have the Windows layout, and `install` and
+  `restore` refuse while a process going by `Zexion` or `Zexion.exe` runs (by its `comm`, its
+  executable's or a command-line entry's file name: `client/procfs.py`). They also refuse when
+  that can't be told: run from a sandbox whose `/proc` hides the host's processes (a nested
+  process-id namespace, a Flatpak terminal, WSL, found by its interop handler, its kernel's
+  release or its variables), or with a process of the user's that can't be read. With the Linux
+  build running under Flatpak's Steam it found the game by its name, `Zexion` (2026-11-18); the
+  Windows exe under Proton, `Zexion.exe`, is assumed, not seen.
+
+Running the Windows build under Proton (a forced compatibility tool), with the proxy needing
+`WINEDLLOVERRIDES="version=n,b"` and the Windows Archipelago run inside the game's prefix, is
+an untried route: the Steam Deck run stopped before it, at the owner's choice, with no Proton
+run of the game at all.
 
 Tests that need Windows skip elsewhere and say why (`tests/test_process.py`, parts of
 `tests/test_native.py` and `tests/test_pe.py`), as does `tests/test_native.py`'s load test
-without a built helper and `tests/test_hook_runner.py`'s runner tests without `sh`.
+without a built helper and `tests/test_hook_runner.py`'s runner tests without `sh`; tests that
+need Linux skip elsewhere (`tests/test_procfs.py`'s and `tests/test_elf.py`'s tests on the
+running system).
 
 The commands here and in `CLAUDE.md` are for a POSIX shell: bash or zsh, or Git Bash on Windows, which Git for
 Windows installs. Claude Code needs Git Bash on Windows here too: the hook commands in
@@ -287,9 +422,11 @@ python.org install on Windows; on Linux and macOS use uv's own installer, since 
 Ubuntu's and Homebrew's Pythons refuse `pip install --user` (they are "externally managed") and
 many systems have `python3` but no `python`.
 
-The native helper, on Windows only, needs Visual Studio 2022 or later with the C++ workload, and
-CMake 3.20 or later; `native/CMakeLists.txt` refuses another compiler or a single-config
-generator (such as plain Ninja), since the DLLs are looked for under `native/build/Release/`.
+The Windows helper needs Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or
+later; on Windows `native/CMakeLists.txt` refuses another compiler or a single-config generator
+(such as plain Ninja), since the DLLs are looked for under `native/build/Release/`. On Linux the
+same file builds the Linux helper instead, with GCC or Clang and CMake 3.20 or later
+([`CLAUDE.md`](../CLAUDE.md), "Checks").
 
 Line endings: `.gitattributes` checks every text file out with LF, on Windows too, whatever
 `core.autocrlf` says.
@@ -302,14 +439,17 @@ native tests cover: [`native/README.md`](../native/README.md), "Building".
 
 Some tests skip without what they need: the hook runner's without `sh`,
 `worlds/zexion/test/test_client_agrees.py` without the repo's `client` beside the world (the
-link `ap_checkout.py` makes), and `tests/test_native.py`'s load test without a built helper. CI
+link `ap_checkout.py` makes), `tests/test_native.py`'s load test without a built helper, and
+`tests/test_native_linux.py` without a Linux build of `native/`. CI
 sets `ZEXION_REQUIRE` (a comma-separated list: `sh`, `client`, `helper`) in the jobs that have
 them, and there a missing one fails a test as well.
 
 ## Running the client from source
 
-On Windows, with the game. The command, what it needs and its flags: [`CLAUDE.md`](../CLAUDE.md),
-"The client". Running it may load the helper into the game: the one already there if it is this
+With the game, on Windows or on Linux. The command, what it needs and its flags:
+[`CLAUDE.md`](../CLAUDE.md), "The client". On Linux it never loads a helper: the game's launch
+options preload `libzexion_ap.so` and the client attaches to it ("Platforms", above). On
+Windows, running it may load the helper into the game: the one already there if it is this
 version, else `native/build/Release/zexion_ap.dll` (or `ZEXION_DLL`). One of another version
 that refuses to unload for it (a menu open, a trap waiting or running) is asked again every 5 s,
 the client saying why, with items held back up to 30 s ([`native/README.md`](../native/README.md),
@@ -319,7 +459,8 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
   into the menu gets the seed: the helper places it again with the seed's settings, whatever
   else the menu holds (`client/newgame.py`; `native/README.md`, "New games"; working in game,
   2026-10-27). From the Launcher: `ArchipelagoLauncher.exe "Zexion Client" -- --keep-randomizer`.
-- `/reload_mod` unloads the helper and loads it again 3 seconds later, giving no items meanwhile
+- `/reload_mod` (on Linux it only says to restart Zexion: the Linux helper is preloaded for the
+  game's run) unloads the helper and loads it again 3 seconds later, giving no items meanwhile
   (popups still queued are lost; items are not, nor traps waiting in the save loaded, or received
   with none loaded, for which it refuses; one waiting for a save not loaded is lost); with a menu or
   the map open, while the ending RETURN HOME WITH THE DISKS? started is on its way, or while a trap
@@ -334,8 +475,9 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
   it for an Archipelago save), the client warns once that achievements may be earned in this
   save (the reason goes to the log).
 - Every few seconds while the helper is attached, the client reads the game's language from
-  its `hello` (`lang`); in any translation but English(HD) it says once per game run that the
-  mod's text is made for the default English and English(HD) (`state.language_line`).
+  its `hello` (`lang`; on Linux, the Linux helper's `lang` request); in any translation but
+  English(HD) it says once per game run that the mod's text is made for the default English and
+  English(HD) (`state.language_line`).
 
 ## Branches and releases
 
@@ -344,6 +486,8 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
 from `develop`, merged into `develop` by pull request, then deleted. `develop` and `main` take
 changes only through pull requests with every CI check passing. Branch protection requires
 every check but `ruff and pytest (macos-latest)`, which a pull request must still pass.
+The `native helper (ubuntu-latest)` check is not required until the owner adds it in GitHub's
+settings (the checks that are required are listed there).
 
 CI (`.github/workflows/ci.yml`) runs the checks above on every push to and pull request into
 `develop` or `main`. A pull request into `main` also runs the release gate
@@ -354,12 +498,12 @@ approval: it has no tag yet, but `main` already holds its number. If GitHub can'
 releases or `main`'s version can't be read, the gate fails. The gate runs again on any edit to the pull request, so one retargeted from
 `develop` to `main` is checked too.
 
-A release has one version number, in three places, which the tests and the builder check
+A release has one version number, in four places, which the tests and the builder check
 ([`CLAUDE.md`](../CLAUDE.md), "Releases and versions").
 
 To release:
 
-1. On a topic branch, raise the version in all three places and run
+1. On a topic branch, raise the version in all four places and run
    `tools/gen_sample_yamls.py`. In the same pull request, write the release's notes for players:
    copy `docs/releases/TEMPLATE.md` to `docs/releases/<version>.md` and draft it from the pull
    requests merged into `develop` since the last release, as

@@ -326,6 +326,9 @@ void test_unload_puts_back() {
           "a prompt up: YES is NO, never the game's own YES");
     check(!m.holds_hook(), "nothing held");
     check(g_fades.size() == 1, "no fade back once the prompt is up: NO's close does that");
+    check(m.status() == zap::kPutBack, m.status().c_str());  // not "shown": YES is NO now
+    m.request();
+    check(m.on_its_way() && m.status() == "asked", "and it can be asked for again");
 
     // Not on its way once shown, nor once NO has closed it (YES still wrapped until the next
     // watch): a refused unload in that frame does not ask for it again (Game::put_back_game).
@@ -337,6 +340,9 @@ void test_unload_puts_back() {
     g_current = nullptr;  // NO: the prompt closed
     check(m.holds_hook() && !m.on_its_way(), "closed by NO, before the next watch: nor then");
     m.watch(a, true);
+    check(m.status() == "shown", "a NO leaves it at shown");
+    m.restore(a);
+    check(m.status() == "not asked", "a restore after it: nothing put back, nothing up");
 }
 
 void test_an_unexpected_prompt_never_keeps_the_games_yes() {
@@ -372,6 +378,7 @@ void test_cancel_drops_it_for_another_save() {
     m.open(a);
     m.yes();
     m.cancel(a);  // YES, then the save changed before the ending
+    check(m.status() == zap::kYesDropped, m.status().c_str());  // not "not asked": no NO
     g_current = nullptr;
     g_fn = kIdle;
     m.watch(a, true);

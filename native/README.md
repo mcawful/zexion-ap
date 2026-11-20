@@ -1,6 +1,7 @@
 # The native helper
 
-`zexion_ap.dll`, **the helper**, runs inside Zexion and does what the client cannot from
+`zexion_ap.dll`, **the helper**, runs inside Zexion (its Windows build; the Linux build's helper
+runs every part of it but unloading: "The Linux helper", below) and does what the client cannot from
 outside: work on the game's own thread, between frames. It gets in two ways: **the proxy**
 `version.dll` in the game's folder loads it as the game starts, or the client loads it on
 attaching (`client/native.py`; `tools/helper.py` too, for tests). The client talks to it over a
@@ -131,7 +132,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs` (frame) | `discs on`, `discs off`, `refused <why>` | The OS Install Disks goal |
-| `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
+| `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `put back: the prompt was up, YES is NO` (an unload or a client gone left it open with YES put back to NO's callback), `put back: YES was pressed, the ending had not started` (a cancel dropped the YES), `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
 | `mission_black` (frame) | how the last black after RETURN HOME's YES ended: `none`, `kept black` or `ended: …` | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
@@ -400,7 +401,7 @@ select filled; the Machine Gun's row in a Standard save not singled out).
   popup) a line flashes back whole while the box opens and closes; the game's own popups never
   get there (`docs/re/memory.md`, "Game functions the helper calls"). While configured (with or
   without a client, in every save; not from a 1.0.0 cache, which lacks the key: "The pipe"), the
-  helper repairs that cut in the game's code (`text_cut_code`, 24 bytes; `TextCut` in
+  helper repairs that cut in the game's code (`text_cut_code`, 24 bytes on Windows; `TextCut` in
   `src/text.h`, built by `src/text.cpp`): each frame call it patches it if it still reads as the game's, and puts it
   back with the rest of the game ("Unloading"). Every line then opens and closes with the box
   as the game's short popups do. A translation draws its own text, never through this window;
@@ -875,6 +876,8 @@ Working in game: 2026-10-23, the lock and Assist Unlock; 2026-10-25, unlocked in
 
 ### New games
 
+The plan, the seed's placement and the RANDOMIZER route are `src/newgame.cpp`'s, and the
+ARCHIPELAGO choice `src/choice.cpp`'s, both shared with the Linux helper ("The Linux helper").
 While a plan is armed (`ap_newgame`), each frame call:
 
 - **RANDOMIZER:** watches for a randomizer new game the game has queued (by the player's own
@@ -890,7 +893,7 @@ While a plan is armed (`ap_newgame`), each frame call:
   when the two differ), and the seed's second start must be one of its rooms. Working in
   game: 2026-10-27 (`docs/re/memory.md`, "Starting a new game").
 - **ARCHIPELAGO:** with `choice`, offers ARCHIPELAGO in place of RANDOMIZER on the
-  game-mode panel shown after an empty slot is picked (`src/menu.cpp`), after checking every
+  game-mode panel shown after an empty slot is picked (`src/choice.cpp`), after checking every
   handler, size and pointer on the way with fault-safe reads. The panel's handler is then a
   wrapper that fits the border drawn around the button under the mouse to ARCHIPELAGO's eleven
   letters. In a translation the label's translated text is built again as Archipelago (the game
@@ -1644,7 +1647,9 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   client"). While the save stays dressed, each look sets that look again where it was changed: a
   client of another seed, attaching with the save in play, takes its own look back, which is not
   this save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26). A client
-  with no server connection (the server down, say) lets the helper go, as if it had closed, while
+  with no server connection (the server down, say) lets the helper go, as if it had closed (on
+  Linux it closes the Linux helper's connection, and configures it again on connecting, before
+  that poll's step: the step waits for it as after an attach), while
   a save it has not dressed is loaded: one loaded after a drop's save was left, or the one in play
   when the player disconnects. Such a save then gets this look and its notice too. The client
   keeps the helper for a save it dressed before a drop (its look stays), in the ending (its hold),
@@ -1835,31 +1840,32 @@ closed, gone with it open.
     - the import table names it for that function;
     - it still holds steam_api64's own function (so another hook is never replaced);
     - the context's init function asks for `STEAMUSERSTATS_INTERFACE_VERSION`.
-  - **The Feats of Natu screen.** It still follows an AP ending, with nothing flashing:
-    MISSION COMPLETE's builder always leads on to it (by disassembly). The helper writes
-    ARCHIPELAGO SAVE: NO FEATS EARNED, centered, into the blank last line of its title label,
-    under FEATS OF NATU! (`feats_screen_note`). It writes only on that screen as it follows an
-    ending: the top menu with 4 panels (the title's 3 widgets, EXIT, and two rows of Feats: 7,
-    or 6 on top and 5 or 6 below when the game hides some: 6 and 5 seen), a live title widget
-    whose label is three equal lines (the middle one naming NATU), and MISSION COMPLETE's
-    statistics under it: a panel of 10 lines and, seen after an ending in a seed with Allow
-    Assists on, ASSISTS USED's 8 as a second (read live on B1, 2026-10-27; what makes the game
-    add it is not traced). With the secret row (a secret Feat earned, or the title screen's code
-    typed since the game started) the top menu has a fifth panel of 5 Feats and the game moves
-    the title up 8 and the rows up 16 (read live, 2026-10-28): the last line is still blank, and
-    the note goes there (working in game, 2026-10-28; 0.30.0 showed none there). It writes the
-    whole line or nothing, only over a line that is blank or already its note, and only if every
-    glyph of it is writable and has the font's frames. In a translation, while the note (or the
-    title written over the hint) is there, the title's translated text is built again as
-    LargeText 220's (the game's Feats of Natu!) with "Archipelago save: no Feats earned" (in
-    capitals outside English(HD): "Translations", mixed case) under it, wrapped, the shorter line centered on the longer with leading spaces, the two centered
-    and kept at the title's middle as the game lays out its title ("Translations"); the game's
-    own entry (220, or 219 for the hint) again when the note goes.
-    Without LargeText's count, or with too little room, the title's pixel glyphs are shown in its place instead, the whole title in the pixel
-    font. (Working in game in English(HD): the title and the note in the HD font, 2026-11-02, B1,
-    `zexion_ap.dll` `946b08a1…`; the shorter line centered, 2026-11-03, `fce9e73b…`, the 1.0.0
-    RC at develop 76df074, the owner's screenshot: `docs/re/memory.md`, "Where a rebuilt label
-    goes".)
+  - **The Feats of Natu screen.** It still follows an AP ending, with nothing flashing: MISSION
+    COMPLETE's builder always leads on to it (by disassembly). The helper writes ARCHIPELAGO SAVE:
+    NO FEATS EARNED, centered, into the blank last line of its title label, under FEATS OF NATU!
+    (`feats_screen_note`). It writes only on that screen as it follows an ending: the top menu
+    with 4 panels (the title's 3 widgets, EXIT, and two rows of Feats: 7, or 6 on top and 5 or 6
+    below when the game hides some: 6 and 5 seen), a live title widget whose label is three equal
+    lines (the middle one naming NATU), and MISSION COMPLETE's statistics under it: a panel of 10
+    lines and, seen after an ending in a seed with Allow Assists on, ASSISTS USED's 8 as a second
+    (read live on B1, 2026-10-27; what makes the game add it is not traced on Windows; on Linux it
+    is: `docs/re/linux.md`, "Mapped by disassembly: the Feats of Natu screen's note"). With the
+    secret row (a secret Feat earned, or the title screen's code typed since the game started) the
+    top menu has a fifth panel of 5 Feats and the game moves the title up 8 and the rows up 16
+    (read live, 2026-10-28): the last line is still blank, and the note goes there (working in
+    game, 2026-10-28; 0.30.0 showed none there). It writes the whole line or nothing, only over a
+    line that is blank or already its note, and only if every glyph of it is writable and has the
+    font's frames. In a translation, while the note (or the title written over the hint) is there,
+    the title's translated text is built again as LargeText 220's (the game's Feats of Natu!) with
+    "Archipelago save: no Feats earned" (in capitals outside English(HD): "Translations", mixed
+    case) under it, wrapped, the shorter line centered on the longer with leading spaces, the two
+    centered and kept at the title's middle as the game lays out its title ("Translations"); the
+    game's own entry (220, or 219 for the hint) again when the note goes. Without LargeText's
+    count, or with too little room, the title's pixel glyphs are shown in its place instead, the
+    whole title in the pixel font. (Working in game in English(HD): the title and the note in the
+    HD font, 2026-11-02, B1, `zexion_ap.dll` `946b08a1…`; the shorter line centered, 2026-11-03,
+    `fce9e73b…`, the 1.0.0 RC at develop 76df074, the owner's screenshot: `docs/re/memory.md`,
+    "Where a rebuilt label goes".)
     - **The hint at the title.** In a game that has never reached Ending B (and an AP ending
       does not reach it, so a player whose only endings are AP ones), the title is the game's
       hint COMPLETE ANY ONE OF THESE / TO SEE THE EXPANDED ENDING! on the upper two lines of a
@@ -2175,9 +2181,882 @@ lands, not only the place passed.
     unload's refusal while a popup shows; Assist Unlock in a translation; a trap's popup (its name
     in the translation's case, `layout_popup`: "Traps"); a save-state load.
 
+## The Linux helper
+
+`libzexion_ap.so` (`linux/`) is the helper of the game's Linux build (`docs/re/linux.md`):
+it reads and writes the running game's memory for the client, counts its frames, starts new games,
+ARCHIPELAGO on the menu or RANDOMIZER ("New games"), gives the client's items with their popups,
+scrap's drops and Energy Shields (`apply`, `shield`: "Grants", "Popups", "Received scrap",
+"Received Energy Shields"), deals DeathLink's deaths (`die`: "DeathLink"), names Intel Chips
+(`intel on`: "Intel Chips"), locks ASSIST (`assists lock`: "The assist menu"), shows other
+players' items as Archipelago items (`ap_labels`: "Other players' items", "Other Zexion players'
+items, as themselves"), sets off traps ("Traps"), shows its text in a translation's font
+("Translations"), runs the OS Install Disks goal, its count and RETURN HOME WITH THE DISKS? ("The
+OS Install Disks goal"), keeps AP saves' look without the client ("AP saves without the client"),
+puts the AP logo and the disk counts on the file select ("The file select's AP logo and disk
+counts", below), fills the major-item list the file select's ITEMS row draws ("The major-item
+list", below), shows the title screen's lines ("The title screen's lines"), keeps Feats and Steam
+achievements out of AP saves ("Feats and achievements in AP saves"), and repairs tall popups' text
+("Popups", "Tall text"). It holds the Windows helper's `Game` (`src/game_calls.h`) and runs every
+part of it but unloading (it stays for the game's run): below. The client reads and writes the
+game through it (`game.Game.attach_linux`), gives its items, labels, seed, shields, deaths, Intel
+Chips, the ASSIST lock, the disks' count, the finds' follow-ups and the Landing Pod's prompt
+through it and asks it the language (`client/linux_helper.py`'s `LinuxMod`), and otherwise runs as
+without a helper; `tools/helper.py status` talks to it too. Tested against a stand-in game
+(`tests/test_native_linux.py`).
+
+Working in game: 2026-11-18, B1 (Linux), Flatpak Steam on the test PC, the branch's build of
+that day (the helper of 647b3a2, then with `callers`, as committed in 6dfc54a) copied into the
+game's folder: loaded by the launch options, it served `hello` (`build=B1 hooked=1 folder=1`),
+counted the frame calls (165 in a second on a 165 Hz display, all from `SWHardwareEnd`, the game
+window's swap, at the title screen and in play: `callers`) and served reads that matched the
+binary (`docs/re/linux.md`, "Read from the running game").
+
+Working in game: 2026-11-19, B1 (Linux), Flatpak Steam on the test PC (CachyOS), the helper of
+207af39 (`libzexion_ap.so` `d6e91080…`), then with the popup's steps (`b98752ac…`, built from the
+commit that records this run), a seed of `samples/zexion-standard.yaml` hosted locally, the client
+from source (`lab/run/`). Seen by the owner: the title screen's lines once the client configured
+it; ARCHIPELAGO on the game-mode panel, and the seed's new game started from it in an empty slot
+(the client: "The new game holds the AP seed (applied slot 5)"); the AP logo on that slot's entry
+on the file select; a received Energy Tank's and Missile Container's popups with their items (the
+first, before the steps, popping in and out whole: `kPopupStepX` in `src/text.h`); the client's
+notices; and, the game started again with the seed's file kept and no client yet, the save dressed
+by the helper alone (configured from the game's symbols), then ARCHIPELAGO CLIENT CONNECTED. once
+the client was back (the client: "This save was played without the client: told the client is
+back"). Read live through the helper: the game state, the pickup counter and the inventory
+(`tools/grant.py watch`), and `menu_state` in play with the mouse used (0; non-zero only in menus:
+`docs/re/linux.md`, `menu_state`). Then, received through the server's console (`/send`), each
+with its popup: a Disorient Trap (the controls reversed) and a Disruption Trap (energy weapons not
+firing), each going off as its popup showed and wearing off; an Energy Shield, up around the
+player (the client: "A received Energy Shield is up."); an Intel Chip, its popup named INTEL CHIP
+and its hint's notice after it (the server's hint: the Progressive Lance at Pulsava 34,15); and,
+in English(HD) and in Japanese, an Energy Tank's and a Missile Container's popups in the
+translation's font, opening and closing (Japanese with the client's warning that the mod's own
+text is English there). Two items picked up in the world reached the server as found (Kresezoa
+25,25 and Machinus 24,29), and after a save at a save point the file select's ITEMS row showed the
+received items too. The client's own lines also said other players' items' labels and the ASSIST
+lock were set for the seed (not looked at in the game). Not checked: the popups' sounds and the
+HUD after the grants.
+
+Run 2, the same day and setup, the helper of 4e0203f's sources (no hash recorded: which binary ran
+is known by its sources only), a two-slot seed (`lab/run2/`: RunA
+played, RunB a plain Archipelago client with DeathLink), both with the OS Install Disks goal (16,
+3 required), DeathLink and the Landing Pod as start. Seen by the owner: the pause screen's disk
+row from 0; received disks' popups with their count notices, the pause row and the file select's
+DISK count following; this world's own two disks by the pod counted at their pickup (the client
+attached); a death RunB sent dealt in the game (the client: "the received death was dealt."), and
+the owner's own death reaching RunB ("RunA died in Zexion."), not dealt back; a received Scrap
+Energy's drop near the player once settled; tall popups' text fine; at 3 disks and a save at the
+pod, RETURN HOME WITH THE DISKS? offered, its YES starting the ending through the helper's
+wrapper, the credits, MISSION COMPLETE and the Feats of Natu screen with ARCHIPELAGO SAVE: NO
+FEATS EARNED, no Feat earned and no Steam achievement shown; the server: "RunA (Team #1) has
+completed their goal." `GameUnlocks.sav` as the ending wrote it was byte for byte the backup taken
+before the run (`cmp`; the title's fold of a run's Feats comes later, and an unlock already set
+before could not show). Not run in the game yet: this world's own traps and disks counted with no
+client, the scanner's line and the equipment screen's disk (not reached), the Steam Runtime
+without Flatpak, a Steam Deck. What both runs saw, with the build and what was not seen, is
+recorded in `docs/re/linux.md`, "Seen in the running game, 2026-11-19".
+
+Both runs predate the socket's token, the client's keep-alive and let-go, and the review fixes
+that followed: the put-back of whatever a connection set when it goes, `write` taking only the
+ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map
+cache, the Steam check's retry, the client's settings sent only on the configured connection,
+and a RETURN HOME prompt put back being offered again. Those have run on stand-ins only; the next
+in-game run re-checks the attach as a whole.
+
+**Running it in the game.** A build's first run, in this order. A step that changes the game,
+its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
+
+1. Build it on Linux with the Linux helper's CMake commands of `CLAUDE.md`, "Checks" ("The
+   Linux helper, on Linux", with `.venv/bin/cmake`): `native/build/libzexion_ap.so`. It loads
+   only under a glibc at least as new as the newest symbol version it asks for: `objdump -T
+   native/build/libzexion_ap.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1` prints that
+   version. Under Flatpak's Steam the game ran on the Flatpak runtime's glibc, 2.44 on the test
+   PC (`org.freedesktop.Platform` 26.08, 2026-11-18; not the host's), and a build asking for up
+   to `GLIBC_2.38` loaded; without Flatpak the Steam Runtime's is 2.31 ("Its own runtime",
+   below). A newer version than the game's: it does not load (step 4).
+2. The owner closes the game, then copies `libzexion_ap.so` into the game's folder (the guard
+   hook blocks Claude's writes into the install); under Flatpak's Steam on the test PC,
+   `~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Zexion`
+   (`docs/re/builds.md`, "B1 on Linux"). Never over a copy a running game has mapped: the helper
+   can't be unloaded, so each build takes a fresh launch. It must be of the client's version: a
+   client of another version refuses it (the client says it can't reach the running game, and its
+   log names both versions).
+3. The owner sets the game's launch options in Steam, the helper first in `LD_PRELOAD` ("Getting
+   in", below), at its path in that folder (the same inside Steam's container).
+4. Start the game and read its stderr (Steam passes it on as its own: start Steam from a
+   terminal; assumed, not tried here). Each of the helper's lines begins `zexion-ap <version>: `:
+   `serving build B1` once it is in; `not a known build of Zexion (build id <hex>)` for another
+   build; `socket zexion-ap-<pid> not opened: <why>`, `no SDL_GL_SwapWindow after the helper's`
+   or `the game's symbols were not found: no new games` for what failed, and `no token: <why>`
+   (three kinds: the kernel's random bytes, no folder to put it in, the file not written),
+   `memory reads refused: <why>` and `failed to start`, the last three stopping before `serving
+   build` (the helper serves no one). Before it, `write: N ranges, M bytes allowed` (the client's
+   writes the helper takes) and, for a range the game's layout leaves out, `write: 0x... is
+   outside gGameState ...: the client's writes there are refused`. Later, with a seed's file
+   and no client: `configured from the game's symbols, no client`, or `not configured with no
+   client: <why>`, and `seed files: <why>` for files it could not read. No `serving build` and no
+   failure line: not loaded, turned off by a `zexion_ap.disabled` beside it, or the socket's
+   creation or the serving thread's start failed (the two silent paths in `start`); glibc's loader says why it
+   did not load (`ERROR: ld.so: object … from LD_PRELOAD cannot be preloaded (…): ignored.`,
+   glibc's message, not seen here). Seen 2026-11-18 before the file was copied: no helper mapped
+   in the game (stderr not read; `docs/re/linux.md`, "Read from the running game").
+5. `.venv/bin/python tools/helper.py status`: the game found, its build checked, the socket the
+   game's, the frame calls by call site, and `.rodata` read through the helper.
+6. Asked first, the client from source, as the same user as the game (the helper serves only a
+   client of its own user, `SO_PEERCRED`; the abstract socket is in the game's network namespace,
+   which Flatpak's Steam shared with the host, 2026-11-18), against a seed with a Zexion slot
+   generated and hosted with `.ap/` (`samples/` holds a YAML per mode):
+   `.venv/bin/python -m client.zexion_client --nogui --verbose archipelago://NAME@localhost:38281`
+   (`CLAUDE.md`, "The client"). New games and grants go into an empty lab slot (`/save-lab`;
+   `save_lab.py install` is asked first too).
+7. Then check the seeds' files the client put: the game's `$XDG_DATA_HOME/ZexionAP/seeds/`, else
+   `~/.local/share/ZexionAP/seeds/`, which under Flatpak's Steam is its sandbox's home's:
+   `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP/seeds/` (inferred, not seen: "Seed
+   files", below), `<seed>-<team>-<slot>.txt` (`client/offline.py`, `seed_file_name`), and the
+   stderr line `configured from the game's symbols, no client` once the game runs with it and no
+   client. Only the helper writes them (`CLAUDE.md`, "Rules").
+
+What to try first, each before the next:
+
+1. `helper.py status` (step 5).
+2. The client's attach: `Attached to Zexion.` in its log, and no "Can't reach the running
+   game"; its step waits until the Linux helper is configured, or 30 s (`docs/DEVELOPING.md`,
+   "Platforms").
+3. A new game: ARCHIPELAGO on the game-mode panel, and the seed's placement (`newgame_status`;
+   "New games", below).
+4. The socket's token, with native Steam and with Flatpak Steam (the first run since it was
+   added; stand-in tested only, `docs/re/linux.md`, "Reading the running game"): the stderr line
+   `serving build B1` and no `no token`; `helper.py status` printing the game, the helper and
+   `memory: readable`; the line `write: 5 ranges, 29222 bytes allowed` with no line saying a
+   range is outside `gGameState` (else the layout is not the one recorded, and the client's
+   writes there are refused); `ls -l` of the folder holding `token` showing the file `-rw-------`
+   and the folder `drwx------`; and another connection (`python3 -c` with a socket to
+   `\0zexion-ap-<inner pid>` sending `read 0x400000 16`) refused with `error auth required`.
+5. A grant with its popup, in a lab slot: an item received in play, its popup, sound and HUD
+   ("Grants and popups", below).
+6. Then the rest, each part's bullet below saying what it does.
+
+The first failure it was feared to be: on Linux `menu_state` is the game's cursor mode
+(`gCursorMode`), which the mouse may set to 1; set in play, `apply` would answer `refused not in
+play` and popups wait. On the test PC it stays 0 in play, the game tracking the mouse only in
+menus (2026-11-19: `docs/re/linux.md`, `menu_state`). On another setup, the check before any
+grant: load a save, and with no menu open move the mouse, reading the state through the helper:
+`tools/grant.py watch` prints `state: in play -> menu` if the mouse sets it. With no client
+connected: the helper serves one at a time, so `grant.py` (`set` too) waits while the client is.
+
+- **Getting in.** The game's launch options in Steam preload it:
+  `LD_PRELOAD="/path/to/libzexion_ap.so:$LD_PRELOAD" %command%`. The game's folder is at the
+  same path inside Steam's runtime container as outside, and the container passed the preload on
+  (seen with Flatpak's Steam, 2026-11-18). Every program the launch starts loads it, so it does
+  nothing unless the program it is in is a known Linux build, told by the main program's GNU
+  build id (`src/core.cpp`, `kKnownBuilds`, kept in step with `KNOWN_LINUX_BUILDS` in
+  `client/patterns.py`; `tests/test_cross_checks.py` checks them). In a known build it writes
+  `zexion-ap <version>: serving build <name>` to stderr; in a program named `Zexion` of another
+  build, `zexion-ap <version>: not a known build of Zexion (build id <hex>)`, the line a player
+  sees after a game update; elsewhere nothing. A preloaded library can't be unloaded: there is
+  no `unload`, and no load into a running game. A `zexion_ap.disabled` beside the `.so` turns
+  it off, as beside the proxy on Windows. It exports `SDL_GL_SwapWindow` and
+  `SteamInternal_ContextInit` alone, the calls it stands in for (`linux/exports.map`): the C++
+  runtime linked into it stays its own, never standing in for the game's `libstdc++` (a test
+  reads the build's `.dynsym`).
+- **The frame call.** It defines `SDL_GL_SwapWindow`, which the game calls through its PLT
+  from two places (`docs/re/linux.md`, "The per-frame call": in the game the frame's swap was
+  `SWHardwareEnd`'s, once a frame, and `UpdatePalette`'s swaps another window), so the preloaded one is the game's; it counts the call and passes it on to the next
+  one, SDL's or another preloaded library's (Steam's overlay, say), found by
+  `dlsym(RTLD_NEXT)` before the game starts, and looked for again if it was missing then (said
+  on stderr). It returns the next one's result as an `int`: nothing for SDL2's callers, SDL3's
+  `bool` for a program of SDL3 in the same launch. It counts the calls by call site too (the
+  return address, in a lock-free table of eight; `callers`), which tells a frame's swap from
+  another window's. In another program, or another build, it only passes the call on. Frame work
+  runs one frame at a time, as the Windows helper's: a swap that a game function the work called
+  makes again (a draw in a menu builder, say) finds the work running and is only passed on. If
+  none of the first 1200 calls comes from the frame function (`SWHardwareEnd`) while the game's
+  symbols give it, another library's `SDL_GL_SwapWindow` stands in front of the helper's, and it
+  says so on stderr once, naming that library (`put libzexion_ap.so first in LD_PRELOAD`): every
+  frame request would be refused, though `hello` says `hooked=1`. **Known limit:** `SWHardwareEnd`
+  is also called from `loadState`, which is not traced (`docs/re/linux.md`, "The per-frame
+  call"); the helper tells that call from the others only by the return address inside
+  `SWHardwareEnd`, which is the same, so frame work runs at that swap too. A grant that lands in
+  the middle of a load can then be overwritten by the load's copy of the inventory, with its popup
+  (and a trap riding on it) already out; the next poll gives the item again (the client's
+  reconcile), so none is lost, and the extra popup is the cost. Telling a load apart needs
+  `loadState`'s own state or a second return address (the stack's, with no frame pointers in
+  the game), neither traced.
+- **Start-up.** The constructor does its work inside a `try`: whatever it throws leaves the helper
+  off (a line on stderr), never an aborted program. It reads one of its own constants through
+  `process_vm_readv` first, and if the kernel or a sandbox's filter refuses, says
+  `memory reads refused: <why>` and does not serve (grants would otherwise land with no
+  popups and no labels).
+- **The socket.** An abstract unix socket, `zexion-ap-<pid>`, `SOCK_SEQPACKET`: one request a
+  message, one reply a message, one client at a time, as the Windows pipe. The next client's
+  connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
+  when its first request has no reply), and a client that sends nothing for 30 s is dropped (the
+  client sends `ping` every 10 s while it is configured on the connection:
+  `ticks.linux_keepalive_tick`, which runs apart from the game loop).
+  The pid is the game's own, which inside Flatpak's Steam is not the host's (seen: 873 for
+  the host's 33866): the client takes it from `NSpid`. An abstract socket
+  has no file permissions, and any process can bind a name first: the helper serves only a
+  client of its own user (`SO_PEERCRED`) and drops the others; the client talks only to a server
+  that is the game's own process, of its user (`SO_PEERCRED` again: the pid as the client sees
+  it), whose `hello` names the game's build. A connection is served nothing but `hello` until it
+  has sent the helper's token ("Who may connect", below). A request over 64 KB drops the client.
+  The helper refuses to start, saying so on stderr, if the name is taken. The serving thread catches every
+  exception, so none reaches the game (`serve`,
+  `read_offline_guarded`): one thrown before a request's work went to the game thread is answered
+  `error exception` (nothing done, so the client tries again); one thrown after it, or while
+  serving a request of its own (a `write`, say), drops that client, which reads it as a lost
+  reply (maybe applied, never refused), and the next client is served (the Windows pipe thread,
+  catching one, stops serving instead). The mailbox never unwinds with its work still posted: it
+  takes it back, or waits for the frame running it. The globals that
+  thread uses (the mailbox, the `Game`, the seed files read and the seeds put, the offline folder)
+  are `Kept<T>`: built before the helper's constructor and never destroyed, so the game's exit
+  does not destroy them under it. Requests:
+
+  | Request | Reply |
+  |---|---|
+  | `hello` | `zexion-ap <version> build=<B1\|unknown> hooked=<0\|1> platform=linux folder=<0\|1>` (`folder=1`: the `.so` is in the game binary's own folder) |
+  | `auth TOKEN` (first, after `hello` if the client likes) | `ok`, or `error auth refused` and the connection closed; every request below is `error auth required`, and the connection closed, before it |
+  | `ping` | `pong frames=<calls since load>` |
+  | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
+  | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
+  | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it, `error not_in_what_the_client_writes` inside it, outside the ranges the client writes ("Reading and writing the game")) |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 90 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
+  | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
+  | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
+  | `offline_put seed NAME` and the seed's file | `stored`, `unchanged`, or `error <why>`: the seed parsed and its file written as the Windows helper's ("AP saves without the client"), into the helper's folder ("Seed files", below), and the seed the running helper's from the next frame call whether kept or not (`error no folder`, `error too large`), for this world's own traps ("Traps") and own disks ("This world's own disks, counted at their pickup", below); `offline_put config` is `error not on the Linux build` |
+  | `trap_status` (frame) | as the Windows helper's ("Traps") |
+  | `discs` and `discs_status` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
+  | `drop_status` (frame) | as the Windows helper's ("The pipe", "Received scrap") |
+  | `shield` (frame) | as the Windows helper's ("The pipe", "Received Energy Shields") |
+  | `die` (frame) | as the Windows helper's ("The pipe", "DeathLink") |
+  | `other_save`, `client_back` (frame) | as the Windows helper's ("The pipe", "AP saves without the client") |
+  | `feats_status` (frame) | the Feats guard as the Windows helper's `hello` gives it (`feats=`): `off`, `on`, or `on:` and why a change could not be made |
+  | `title_status` (frame) | the title's lines as the Windows helper's `hello` gives them (`title=`): `1` shown, `0` not, or what failed |
+  | `intel on`, `intel off` (frame) | as the Windows helper's ("The pipe", "Intel Chips") |
+  | `assists lock`, `assists free` (frame) | as the Windows helper's ("The pipe", "The assist menu") |
+  | `mission_prompt COLUMN ROW`, `mission_status`, `mission_black` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
+  | `lang` (frame) | `lang <name>`: the language the game shows, spaces as underscores (the Windows helper's `hello`'s `lang`); `lang ?` unconfigured or with no name readable |
+  | `newgame_status`, `disarm` (frame) | as the Windows helper's |
+
+  Anything else gets `error unknown request`.
+- **Who may connect.** The socket is reachable by every process of the user in the host's
+  network namespace, a Flatpak app with network access too (`docs/re/linux.md`, "Read from the
+  running game": the game under Flatpak's Steam shared the client's network namespace), and
+  through `read` and `write` a client has the game's memory. `SO_PEERCRED`'s user check keeps
+  other users out and nothing else, so the helper serves a connection only once it has shown a
+  **token**:
+  - The helper makes 32 random bytes from the kernel in its constructor, before it listens, and
+    writes them as 64 hex digits into `token` of its data folder, `ZexionAP` in `$XDG_DATA_HOME`,
+    else `~/.local/share`, the folder of the seed files ("Seed files", below), made with mode 0700
+    if it is not there: a new file (mode 0600, never through a link) renamed over the last run's.
+    The folder is the game's own view of it, so under Flatpak's Steam it is the sandbox's
+    (`~/.var/app/com.valvesoftware.Steam/...` on the host), which another Flatpak app can't see
+    unless it was given the user's home, and an app that was can read the saves and the game's
+    files anyway. With no absolute data folder, or if the token can't be written, the helper says
+    so on stderr (`no token`) and serves no one: it passes the frame call on as in another
+    program.
+  - The first request of a connection is `hello` (answered: the build and the version, so a
+    client can tell a helper of another version from a wrong token) or `auth TOKEN`; anything
+    else, and a token that is not the helper's, is answered `error auth required` or
+    `error auth refused` and the connection is closed. `hello` is answered once: a second before
+    the token closes the connection too. The token must come within 5 s of the connection being
+    accepted, one deadline whatever is sent meanwhile (after the token, the 30 s of silence
+    above). The comparison does not stop at the first byte that differs. The serving thread serves
+    one connection at a time, so a process that connects, says nothing and connects again holds it
+    up to 5 s at a turn, and the client's connection waits behind it (its first request then goes
+    unanswered, and it says the helper is busy, as it does behind another client): a nuisance, not
+    a way in.
+  - The client (`client/linux_helper.py`, `find_tokens`) reads the token after `hello` has shown the
+    server is the game's own process of its user and the right build and version, and sends it to
+    that process only. It looks in the game's own view first: `/proc/<pid>/root` and the game's
+    `XDG_DATA_HOME` or `HOME` from `/proc/<pid>/environ` (a process of the same user may follow
+    both, as it reads `/proc/<pid>/exe`), which is the sandbox's folder under Flatpak's Steam;
+    then the host's own `$XDG_DATA_HOME` or `~/.local/share`, and Flatpak Steam's
+    `~/.var/app/com.valvesoftware.Steam/.local/share` and `.../data`. It uses only a plain file
+    (not a link) that no one but its user can read, holding exactly 64 lower-case hex digits. It
+    tries each token it finds, the most recently written first (the helper writes its own when the
+    game starts, so a stale one, from an earlier run in another data folder, is older), on a
+    connection of its own, since the helper closes one that shows a wrong token; when none is
+    taken, its error names the files the helper refused, or, with none found, the places it looked.
+  - A connection that set something is put back when it goes (`sets_client_state`: `config`,
+    `ap_newgame`, `ap_labels`, `discs`, `mission_prompt`, `other_save`, `client_back`, `assists`,
+    `intel` and `offline_put`, which a client sends after its `config`, but a connection made again
+    in the middle of a poll may send before it): the helper's plan, labels, Intel Chips, ASSIST
+    lock and disk count, and the seed files read again.
+    It is put back at the next frame call or before the next request's work on the game thread
+    (`client_gone_if_left`), whichever comes first, and the serving thread marks the client gone
+    before it takes the next one: so a client that comes back at once (a request with no reply
+    ends a connection and the client makes another) never has its `config` followed by the last
+    one's clean-up. A connection that set nothing (`tools/helper.py status`, a probe: `hello`,
+    `ping`, `callers`, `read`, the `*_status` requests, `lang`) leaves nothing to put back, and
+    its closing changes nothing in the game or in the look of an AP save with no client.
+  - Not run in the game yet: the stand-in tests cover the handshake, the refusals, the file's
+    modes and a client reading it through `/proc/<pid>/root`, not Flatpak's Steam
+    (`docs/re/linux.md`, "Read from the running game": what the owner checks).
+- **Reading and writing the game.** The helper reads the game's memory itself, for `read`, with
+  `process_vm_readv` on its own pid: the kernel copies it, so an address not mapped is an
+  error (`error Bad_address`), not a fault. It writes it for `write` with `process_vm_writev`,
+  and only inside the zero-filled part of the game binary's writable segments (its `.bss`: from
+  `p_filesz` to `p_memsz` of each `PT_LOAD` with `PF_W`, read at start-up), where `gGameState`
+  and the other state the client writes live: never its code, its constants, its initialized
+  data (`.data`'s function pointers) or its import slots (`.got.plt`, writable in a binary
+  without `BIND_NOW`, as B1's is), nor a library's memory, and within that `.bss` only the
+  ranges the client writes (`client_write_ranges`, `src/core.cpp`: offsets from `gGameState`; the
+  player's inventory bytes 0 to 49 and its six supply numbers, the map cells' whole 9-byte records
+  (54 x 54 of them, 26244 bytes) and the map grid; `tests/test_linux_helper.py` checks them against `client/game.py`'s own), any other
+  `error not_in_what_the_client_writes`. At start-up it says on stderr how many ranges it keeps and,
+  for each one of them that is outside `gGameState`'s recorded extent or the game's data (the game
+  not as recorded), which: `write: 5 ranges, 29222 bytes allowed`, `write: 0x... is outside
+  gGameState ...: the client's writes there are refused`. The game calls procedures through pointers all over its
+  `.bss` (`gExitActionP` and its table, the move, area-event, enemy-action and sprite-draw
+  tables, each sprite record's move procedure at `+0x168`), so a list of those to leave alone
+  could not be known whole; this one keeps a client, or whoever got past its token, from turning
+  a write into a call except through what the player's record's supply and inventory fields
+  hold (numbers, not shown to hold anything else). The helper's own parts write the game
+  directly and are not asked. The client's
+  `game.Game` reads and writes through these (`Game.attach_linux`, `client/linux_helper.py`'s
+  `LinuxProcess`), reading back every write as on Windows. It never opens the game's memory
+  to another process through the kernel (no `prctl(PR_SET_PTRACER)`), whatever the kernel's ptrace
+  scope: the client reads only through it, and the helper serves `read` and `write` to a client
+  that has the token alone ("Who may connect"; `docs/re/linux.md`, "Reading the running game").
+  Stand-in tests: a separate process
+  is refused the stand-in game's memory with a client connected or not (on the test PC, scope 1,
+  2026-11-18), and reads through the helper return the stand-in's bytes, one piece or two;
+  `game.Game` writes and reads back through it, a write to the stand-in's `.rodata` or `.data`
+  is refused and leaves it as it was, a dropped connection is made again, and the game's exit
+  is noticed (by its pid's start time).
+- **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
+  placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
+  addresses (with the rest of the 90), which the client resolves from the game's symbols
+  (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
+  them, so a client and a helper that disagree change nothing (the client also refuses a helper of
+  another version, and one of this version built before the traps, which answers `trap_status`
+  with `error unknown request`: it would refuse every batch with a trap's popup; any other reply
+  but `queued …`, such as `refused no frame`, is a configuration tried again). "Frame" requests
+  and the watch run on the game's thread through `src/mailbox.h` (`src/mailbox_linux.cpp`), only
+  at `SWHardwareEnd`'s swap, by its return address (not the palette window's: `docs/re/linux.md`,
+  "The per-frame call"), with nothing they throw reaching the game. As on Windows, a client that
+  goes takes its plan with it: the helper disarms at the next frame, and puts back the choice's
+  hooks in an open game-mode panel (`Game::put_back_client_menus`, which `put_back_game` calls on
+  Windows). The ARCHIPELAGO choice on the game-mode panel is `src/choice.cpp`'s, shared too: the
+  same relabel, panel hook and callback (the game calls a menu callback with no arguments on
+  Linux, and the helper's reads none), at the frame call, in a translation too ("Translations",
+  below). The choice is tested on Windows' stand-in menu (`tests/menu_tests.cpp`,
+  `game_tests.cpp`); on Linux only built, and configured through the socket. The shared sources
+  build on Linux through `src/platform.h` and the Linux parts of the memory layer,
+  `src/game_mem_linux.cpp`: fault-safe reads through the kernel, writability from the process's
+  memory map (kept 250 ms between reads, and only for a range in the program's own segments or
+  `[heap]`: below), the game's code from
+  its program headers, code patches with `mprotect`, the page's own protection put back. `Game`
+  and every part it holds build there too, the Windows-only pieces of those left out:
+  `Game::configure` takes the helper's checked addresses instead of resolving a client's, the
+  offline cache reads and writes the seeds' files alone, with no config file (`src/offline.cpp`;
+  "Seed files", below); the Feats guard's Steam stand-in runs as an export and its ending's patch
+  over the Linux ending's own call ("Feats and Steam achievements in AP saves", below). Tested on
+  stand-ins (`linux/tests/newgame_tests.cpp`, and through the socket in
+  `tests/test_native_linux.py`); a seed's new game from ARCHIPELAGO run in the game, 2026-11-19
+  ("The Linux helper", above). Not known: whether an exception the game's placement threw would be
+  caught here (the helper's own C++ runtime is linked in, the game's is its own: "refused the
+  placement failed" is unverified); a fault there is the game's crash, as on Windows.
+- **Grants and popups.** `Game::apply` and `Game::pump_popups` run here as on Windows
+  ("Grants", "Popups"): the `cas` writes all or none, the counts and the HUD refreshed (the
+  number display's third argument, `true`, as the game passes it: `docs/re/linux.md`, "Mapped
+  by disassembly: HUD, items, sound, popups, deaths"), Magnus Armor's suit color, then the
+  popups one a frame call apart as there, each with its item's sound, waiting for their own save.
+  What differs: `menu_state` is the cursor mode on Linux, which the mouse can set to 1, but
+  in play it read 0 with the mouse used (2026-11-19: `docs/re/linux.md`, `menu_state`); if it
+  read 1 in play, an `apply` would be refused (`refused not in play`) and popups wait.
+
+  A client that goes takes its plan with it, but its popups stay queued for their save, as on
+  Windows. Tested on the stand-in game through the socket (`tests/test_native_linux.py`: an
+  `apply` refused unconfigured, by a `cas` that differs, and out of play; one taken writes the
+  byte, and its popup, at a later frame call, carries the record's name and the suffix and plays
+  the record's sound); run in the game, 2026-11-19 ("The Linux helper", above), but its sound and
+  the HUD not checked.
+- **Other players' items.** `Game::watch_ap_items` runs at each frame call as on Windows ("Other
+  players' items", "Other Zexion players' items, as themselves"): the stand-ins' records named
+  after the labels and restyled, the logo painted into the sprite texture, the pickup popup as
+  wide as the label, the stand-ins' own colors, other Zexion players' items dressed as
+  themselves, R'Talva X34 Y51's marker and a reversed-gravity room's collected item hidden, and
+  this player's own Scrap Metal picked up as the game's, on the same object and sprite fields
+  (`docs/re/linux.md`, "Mapped by disassembly: item looks"). What differs on Linux:
+  - the popup's width is the immediate of `mov esi, 24` (`BE`), not `mov edx, 24` (`BA`):
+    `Game::set_popup_width` checks the opcode of the build it is built for;
+  - OpenGL's functions come from the game's own `libGL.so.1`, found with `dlsym` (`load_gl`;
+    `docs/re/linux.md`, "Mapped by disassembly: item looks": four of them assumed). As the
+    painting is not proven there, the records are restyled only while the logos are in the
+    texture the game draws from (`ApItems::logo_shown`): with none painted (an OpenGL function
+    missing, the texture not passing its check) the stand-ins stay the game's Scrap Energy and
+    Scrap Chunk, named and drawn as the game has them, rather than drawing their empty frames;
+  - the writability checks before the records' writes read `/proc/self/maps`, which the memory
+    layer keeps for 250 ms between reads, only for a range that lies wholly in the game
+    binary's own segments or `[heap]` (whose protection does not change under the game) and is
+    still mapped (`mincore`), and drops after its own `mprotect` (`src/game_mem_linux.cpp`): any
+    other range (a large allocation's own mapping, a stack, a library) is read afresh each
+    time, as Windows' `VirtualQuery` asks, since another mapping may take a freed one's
+    addresses with another protection within the 250 ms, and the write after the check is a
+    plain store (a window of microseconds is left, as on Windows);
+  - a client that goes takes its labels with it, the records, the width and the pixels put back at
+    the next frame call; the look without the client (below) then dresses a known seed's save
+    again with its seed file's labels. The client sends them again on a new connection (a request
+    with no reply ends one: `LinuxMod.current`).
+
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`: `ap_labels`
+  refused unconfigured, then a label for the player's cell names Scrap Energy's record after it,
+  the stand-in's `mov esi, 24` is patched to the label's width, and both are put back once the
+  client goes, the logos painted first through the stand-in's OpenGL; with its texture gone,
+  the stand-ins left as the game's; and in `linux/tests/newgame_tests.cpp`, a range unmapped
+  since the last map read is not writable). Not run in the game.
+- **The map.** `Game::watch_map_names` and `watch_map_marks` run at each frame call as on
+  Windows ("The map"): in the labels' seed's save the squares of item 48 raised to a major's,
+  the item update's on-screen write patched to keep them so, and, while the map is open, the
+  cursor's name written over SCRAP ENERGY or SCRAP CHUNK by a wrapper on the map's move
+  procedure, put back in an open map when a client goes (`Game::put_back_client_menus`, as
+  `put_back_game` does on Windows). What differs on Linux:
+  - the on-screen write's patch: the Linux build tests the item's ID twice in
+    `PowerUpMoveProc`, once for each base of the square (`0x53DB6C` and `0x53DC7E`), so it is
+    two patches (`src/mapmarks.h`, `SeenMarker`), each rewriting one 23-byte test as "48, or 3
+    to 35" (`cmp ax, 0x30; je`, `sub eax, 3; cmp ax, 0x20; ja`, a nop) where it reads as B1's,
+    each held and put back on its own; the code between them is never written;
+  - the wrapper is called with the map's child alone, as the game calls its move procedures
+    (`map_hook`, `linux/src/helper.cpp`).
+
+  Tested: `linux/tests/patch_tests.cpp` runs the game's two tests and the patched ones side by
+  side for every ID from 0 to 255 (only 48 changes, from the minor's write to the major's); and
+  on the stand-in game through the socket, the stand-in's copies of the two tests patched once
+  the labels' seed's save has been loaded for two looks, put back once the client goes. The
+  cursor's names: built only (the stand-in has no map). Not run in the game.
+- **Translations.** `Game::watch_translation` runs at each frame call, and the popups, names and
+  labels above take the translation's font as on Windows ("Translations"): popups in SmallText 66
+  to 72, the stand-ins' labels in ItemNames 47 and 48, the Area Map's as Intel Chip in ItemNames
+  49 while Intel Chips are on, ARCHIPELAGO and the map cursor's name built again (the game's
+  `MapMoveProc` builds its own translated name first, as Windows': `docs/re/linux.md`, "Mapped
+  by disassembly: the helper's translated text"), the helper's
+  icons in the icon sheets (painted through the same unproven OpenGL path as the logos, into
+  definitions 101 and 104, the game's count of definitions plus 5 and 8: the helper reads that
+  count, `gSpriteDefCount`, at each `config` and paints no icons unless it is 96,
+  `Game::hold_icon_sheets`); and the client asks the language
+  (`lang`) to warn in any but English(HD), as from the Windows helper's `hello`. What differs on
+  Linux (`docs/re/linux.md`, "Mapped by disassembly: translations"):
+  - the tables hold 4-byte characters, which is `wchar_t` in the helper's GCC build, so the same
+    code reads and writes them; the translation object is `0x40150` bytes (`tr::kSize`);
+  - the font's glyph records are `0x40` bytes, their two fields 64-bit at `+0x10` and `+0x20`
+    (FreeType's `long`s), so `FontMetrics` reads that layout for the popups' wrapping and
+    centering (`docs/re/linux.md`, "Mapped by disassembly: the helper's translated text");
+  - the label builder, `generateText`, takes the caller's `std::wstring` by reference and the
+    caller destroys it: the helper builds its own (libstdc++'s, as the game's, on the same heap)
+    and passes it, with no `wstring_new_fn` (`build`, `src/translation.cpp`);
+  - the message call, `createTranslationGameMessage`, reads the ints the game passes with a
+    popup, so the helper passes the pickup's (24, 160, 88, 100, 1, 180), not zeros
+    (`PopupAreas::show`);
+  - a client that goes takes the helper's translation changes with it, as on Windows
+    (`Game::restore_translation`: the names in the tables, entry 70's offset once the popup
+    areas are free, the icons);
+  - the Feats of Natu screen's title with the note builds its text through the shared code too
+    (`large_count` configured; `docs/re/linux.md`, "Mapped by disassembly: the Feats of Natu
+    screen's note"); RETURN HOME's question is built and centered in a translation through the
+    shared code (`docs/re/linux.md`, "Mapped by disassembly: the RETURN HOME prompt"), the locked
+    ASSIST entry's text built again with the HD padlock ("Mapped by disassembly: the ASSIST
+    lock"), and the title lines' translated text ("Mapped by disassembly: the title screen's
+    lines"), none run in the game; the equipment screen's disk name and description and the pause
+    row's count, in a translation, go through the same code as on Windows, the entries they read
+    (SmallText 139, ItemNames 44, LargeText 87) and the game's rebuilds of them assumed as
+    `docs/re/memory.md` has them, not mapped on Linux;
+  - where a rebuilt label goes, the font's other fields and the icons' characters are as on
+    Windows (measured by disassembly: the same section); that the game reads none of SmallText
+    66 to 72 is assumed for its data-driven entries, as on Windows.
+
+  Tested: `linux/tests/translation_tests.cpp` builds a label through a stand-in builder of
+  `generateText`'s signature (the helper's string, longer than libstdc++ holds in place, reaches
+  it whole) and reads a glyph's advance from a record of the Linux layout; on the stand-in game
+  through the socket, a received popup in a translation goes into SmallText 66 or 70, its message
+  given it with the pickup's ints and the translation's name for the item, the entry holding the
+  text; and one that cannot go there (the run not as traced) shows the pixel text, its slot's mark
+  cleared. Popups in English(HD) and Japanese run in the game, 2026-11-19 ("The Linux helper",
+  above); the rest not.
+- **The OS Install Disks' count.** `Game::watch_discs` and `watch_equipment` run at each frame
+  call as on Windows ("The OS Install Disks goal"), from the client's `discs`: the scanner's
+  message as the client's line, the disk glyph (for a received disk's popup too), the equipment
+  screen's disk widget and the pause screen's disk row. What differs on Linux
+  (`docs/re/linux.md`, "Mapped by disassembly: the disks' count"):
+  - the KEYS row's branch is `jne +0x3C` (`75 3C`), made `EB 3C` (`src/pause.cpp`);
+  - the equipment screen's new child array is glibc's `malloc`, freed with glibc's `free`, as the
+    game's own `calloc` and `free` (`src/equip.cpp`): no allocator slots;
+  - EQUIPMENT's callback is called with no arguments (`equipment_hook`); the Energy Tank panel's
+    handler takes `(widget, event)` and the pause menu's way back its menu, as on Windows
+    (`equipment_panel_hook`, `options_back_hook`, `linux/src/helper.cpp`);
+  - a client that goes turns the count off and puts its changes back (`set_discs`, then
+    `restore_discs`), as `drop_save_look` does on Windows; the look without the client (below)
+    then sets its seed file's count again for a known seed's save.
+
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`): `discs` writes
+  the scanner's Text entry as the client's line in capitals and makes the stand-in's KEYS branch a
+  `jmp`, both put back once the client goes. The equipment screen and the pause row: built only
+  (the stand-in has no menus), and in a translation assumed ("Translations", above). The pause row
+  and the count notices run in the game, 2026-11-19 ("The Linux helper", above: run 2); the
+  scanner's line and the equipment screen not reached.
+- **This world's own disks, counted at their pickup.** `Game::watch_own_disks` runs at each frame
+  call as on Windows ("The OS Install Disks goal", "The count follows the save"): in a known disk
+  seed's save, an own disk's cell turning collected after two frames in play queues "OS Install
+  Disk N" ("of M" once the scanner has told) with the disk's pickup sound, only with no client
+  attached; with one, its follow-up shows the count, and the cells are watched all the same, so a
+  disk picked up with a client is no pickup once it goes. The seed's own disks' cells and the
+  count every save shares come with the seed's text the client hands over (`offline_put seed`,
+  `ticks.linux_seed` once the items are listed, then the whole seed file: `offline_seed`), which
+  the helper keeps in its seed file ("Seed files", below): so it counts in any later run of the
+  game too, with no client at all (the helper configured from the game's own symbols), once a
+  client has put the seed with the items listed; a disk picked up before the first such put is not
+  counted, and nothing makes it up later. A client that goes leaves the helper with none attached
+  (`Game::client_left`, which `client_gone` does on Windows), and so does any connection that
+  closes (a request with no reply), until the next `config`: so a client configuring on another
+  connection than before takes the disks the save holds for counted at its next look
+  (`ticks.linux_newgame_tick`, as `attach_helper` does on Windows), and gives no follow-up through
+  a connection not configured yet (`linux_finds_tick`), so one pickup shows one count; one picked
+  up with the client attached just before its connection closed, its follow-up not run yet, shows
+  none, as on Windows. Tested on the stand-in game through the socket
+  (`tests/test_native_linux.py`: a pickup with a client queues nothing, one after it has gone
+  queues the count) and with stand-ins for the client (`tests/test_zexion_client.py`); with a
+  client attached run in the game, 2026-11-19 ("The Linux helper", above: run 2), with none not
+  yet.
+- **RETURN HOME WITH THE DISKS?** `Game::watch_mission` runs at each frame call and
+  `mission_prompt` is taken as on Windows ("The OS Install Disks goal"): the prompt opened as the
+  escape skip's after event 3667's fade, its YES keeping the screen black until the ending
+  (through the helper's ending wrapper), its NO fading back in, a request lapsing away from home;
+  and while it is on its way or its ending runs, `apply` is refused and popups and traps wait, as
+  there. What differs on Linux (`docs/re/linux.md`, "Mapped by disassembly: the RETURN HOME
+  prompt": the fade block, event 3667, the prompt, the ending, the pause and the frame clock as
+  on Windows):
+  - YES is a menu callback, which the game calls with no arguments, so the helper's
+    (`mission_yes_hook`) takes none and calls the game's NO with none; the opener and the
+    ending's wrapper take none on either build;
+  - the prompt checks that event 3667's handler is in the game's code through a handle that
+    stands for the main binary (`main_image`, `src/game_mem_linux.cpp`);
+  - a client that goes puts back what the prompt holds, as `put_back_game` does on Windows
+    (`Game::put_back_client_menus`, before the disks' count goes off): a prompt on its way is
+    canceled (the screen faded back in if it was kept black), an ending its YES set going is left
+    to the game's own routine (it still comes, without the fade in), and an open prompt's YES is
+    no longer the helper's. The Windows helper then asks for a prompt on its way again; the Linux
+    helper does not, and the look without the client (below) does not ask for it either. A Linux
+    client's connection closes with any request that
+    gets no reply, so the client follows a prompt it queued while it is on its way
+    (`mission_status`, `ticks.linux_finds_tick`) while it is on its way (`asked`, `opening…`) and
+    after a YES until the ending has started (`yes: ending when idle…`): one the cancel dropped
+    (`not asked`), or left up with YES put back to NO's callback (`put back: …`, which
+    `MissionPrompt::restore` sets only for a prompt still open, so a NO the player pressed, which
+    leaves `shown`, is not taken for it; or `put back: YES was pressed…`, which `cancel` sets
+    for a YES whose ending had not started, so one the client had read only as `shown` is not
+    taken for a NO), is offered again at once. A prompt read as `shown` is
+    asked about once more on each new connection (`ReturnHome.shown_on`), not every poll, and
+    then reading `not asked` (a NO closed it, the cancel reset the status) is not offered again;
+    one lapsed or with its ending started is not followed any more, so a NO is never undone;
+  - the frame call also comes from a swap inside the game's `loadState()` (`docs/re/linux.md`,
+    "The per-frame call"), so `watch_mission` may run mid-load, as the grants, popups, drops and
+    traps may: by the code the prompt gives up an opener or a fade another transition took
+    (`taken_over`, `fade_still_ours`); not measured.
+
+  The client's side runs on Linux too: the finds' follow-ups (the found disks' counts, the Area
+  Maps' hints) and the Landing Pod's reminder and prompt (`ticks.linux_finds_tick`), and the
+  ending again on a save past it (`linux_replay_tick`). Tested on the stand-in game through the
+  socket: `mission_prompt` taken once configured, lapsing away from home's cell, waiting at home
+  (the stand-in has no event 3667 or prompt to open), and dropped when `discs` turns off. The
+  prompt itself: stand-in tested on Windows only (`tests/mission_tests.cpp`); the prompt at the
+  pod and YES's ending run in the game, 2026-11-19 ("The Linux helper", above: run 2).
+- **Received scrap's drops.** `Game::pump_drops` runs at each frame call, after the popups, as on
+  Windows ("Received scrap"): a received Scrap Metal's, Scrap Energy's or Scrap Chunk's drop is
+  spawned once its popup has shown, the player in play in one cell for a second in the save the
+  popup was for, through the game's type-11 handler with the item's event, each checked first, and
+  not through an ending or RETURN HOME's. Nothing the drops rely on differs on Linux but the
+  handler's arguments, SysV's registers (`docs/re/linux.md`, "Mapped by disassembly: received
+  scrap's drops", which also records the spawn's and the runaway check's insides; what clears flag
+  211 as the ending begins, which the wait through an ending rests on, is not traced there).
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`: Scrap Metal's,
+  Scrap Energy's and Scrap Chunk's spawns called with the player's cell and their events, a notice
+  spawning nothing); a received Scrap Energy's drop run in the game, 2026-11-19 ("The Linux
+  helper", above: run 2).
+- **Received Energy Shields.** `shield` runs `Game::spawn_shield` as on Windows ("Received Energy
+  Shields"): event 3553 through the game's type-11 handler, as the drops' (above), once the player
+  has been in play in one cell for a second, not through RETURN HOME's ending. The client asks for
+  one (`ticks.shields_tick`, through `LinuxMod` when no Windows helper is there), then reads it up
+  through the helper's reads as on Windows: the player's link and the shield's own handle
+  (`docs/re/linux.md`, "Mapped by disassembly: received Energy Shields"). A request with no reply
+  leaves it looked for, as a reply lost on Windows (one that failed in making the connection again
+  never went out: not looked for); the Linux helper is dropped (`linux_mod_lost`) either way. A
+  Linux helper of this version built before shields answers `error unknown request`: said once,
+  and received shields wait for a newer one. Tested on the stand-in game through the socket
+  (`tests/test_native_linux.py`: `shield` refused unconfigured and until settled, then event 3553
+  run with the player's cell; a received one's popup spawning nothing) and with stand-ins for the
+  client (`tests/test_ticks.py`, the poll's gate in `test_zexion_client.py`); run in the game,
+  2026-11-19 ("The Linux helper", above).
+- **DeathLink's deaths received.** `die` runs `Game::kill` as on Windows ("DeathLink"): once the
+  player has been in play in one cell for a second, not while the game is halted (`halt_flag`,
+  `gEditorMode`), a message shows, or RETURN HOME's fade, black or ending runs, the player's
+  energy set to 0 and `PlayerDestruction(player, 0)` called, as the game's damage code does
+  (`death_fn`, `docs/re/linux.md`: its kind-0 callers, the halt byte, and the death's popup
+  written through unchecked when every message slot is busy, which the message check keeps from).
+  The client deals the queued ones through `LinuxMod` when no Windows helper is there
+  (`ticks.deathlink_tick`): a request with no reply leaves it as being dealt (a death seen soon
+  after the reply was lost is it, as a reply lost on Windows); one that never went out stays
+  queued, and a Linux helper of this version from before deaths is said once, the deaths waiting
+  for a newer one; the Linux helper is dropped (`linux_mod_lost`) either way. Tested on the
+  stand-in game through the socket (`tests/test_native_linux.py`: `die` refused unconfigured and
+  halted, then energy 0 and the death routine with the player and kind 0) and with stand-ins for
+  the client (`tests/test_ticks.py`); both ways run in the game, 2026-11-19 ("The Linux helper",
+  above: run 2).
+- **Intel Chips.** `intel on` and `intel off` are taken as on Windows ("Intel Chips"), and
+  `Game::watch_intel` runs at each frame call: the Area Map's record (49) named INTEL CHIP, its
+  map reveal (3551) off, while on and only if the record reads as the game loads it or as the
+  helper left it; a client that goes puts the game's back (`restore_intel`), and the look without
+  the client (below) then names it again for a known seed's save. Nothing differs on Linux: the
+  game loads the `Objects` records as they are, and the installed file's record 49 reads as
+  `kAreaMap` (whether anything writes the records after the load is not swept: the check before
+  each write leaves one that reads otherwise alone) (`docs/re/linux.md`, "Mapped by disassembly:
+  Intel Chips"). A received one's popup and its name in a translation were shared already ("Grants
+  and popups", "Translations"). The client sends it through `LinuxMod` (`ticks.linux_intel_tick`);
+  a Linux helper of this version built before Intel Chips refuses it, which the client asks again
+  every few seconds, saying nothing. Tested on the stand-in game through the socket
+  (`tests/test_native_linux.py`: refused unconfigured, named with its event off, put back by
+  `intel off` and by the client going) and with stand-ins for the client
+  (`tests/test_zexion_client.py`); a received chip and its hint run in the game, 2026-11-19 ("The
+  Linux helper", above).
+- **The ASSIST lock.** `assists lock` and `assists free` are taken as on Windows ("The assist
+  menu"), and `Game::watch_assists` runs at each frame call: while locked, the options menu's
+  ASSIST entry found afresh each frame call, drawn in STYLE: AUTO's style with the padlock after
+  it (painted through the same unproven OpenGL path as the logos: "Other players' items" here),
+  its callback cleared and moved past the panel's selectable entries, and all of it put back when
+  freed or when a client goes (the look without the client, below, then locks it again for a
+  known seed's save that disallows assists); in a translation, the entry's text
+  built again with the HD padlock. Nothing the lock reads or writes differs on Linux but the
+  callback's arguments, none, which the lock only clears and puts back; the options menu has one
+  more way to be built again (the translation-mod screens' way back), which finding the entry
+  afresh each frame call covers (`assist_menu_fn`, `AssistMenu`; `docs/re/linux.md`, "Mapped by
+  disassembly: the ASSIST lock"). The client sends it through `LinuxMod`
+  (`ticks.linux_assists_tick`); a Linux helper of this version built before the lock refuses it,
+  which the client asks again every few seconds, saying nothing. Tested through the socket only
+  for the requests (`tests/test_native_linux.py`: refused unconfigured, then taken; the stand-in
+  opens no options menu) and with stand-ins for the client (`tests/test_zexion_client.py`); the
+  lock itself is stand-in tested on Windows (`tests/menu_tests.cpp`); not run in the game.
+- **Seed files.** `offline_put seed` writes the seed's file as the Windows helper does ("AP saves
+  without the client", `src/offline.cpp`), into `$XDG_DATA_HOME/ZexionAP/seeds/NAME.txt`, else
+  under `~/.local/share` (an absolute path only): the base the game's own saves use, as SDL finds
+  it in the same process, so under Flatpak's Steam, whose home is
+  `~/.var/app/com.valvesoftware.Steam`, its `.local/share/ZexionAP` (inferred from the saves'
+  folder there: `docs/re/builds.md`, "B1 on Linux"; not seen; the folder is found once, in the
+  helper's constructor, before the game's threads run), whole, through a temporary file made
+  afresh (not through a link) and synced, then renamed over it, the folders made for the user
+  alone (mode 0700); a file is read only if it is a plain file, through no link. The serving
+  thread reads them, at most 256, newest first, when the helper starts and each time a client
+  that set something goes (`sets_client_state`; not a probe such as `tools/helper.py status`),
+  saying on stderr a
+  file it could not read; the same folder holds the client's `token` ("Who may connect"), which
+  the seed reader ignores (it reads `seeds/` alone); the next frame call takes them, in place of the
+  last ones with no client and added to them with one (`Game::set_offline`, `merge_offline`). A
+  seed taken but not kept (`error too large`, a write that failed: the client takes each for
+  taken, and puts it again only when it changes; `error no folder` is not reached on Linux, where
+  a helper with no data folder has nowhere for its token and serves no one) stays the helper's
+  until the game closes, added again after each read. No config is kept: with a seed file read and no client yet,
+  the helper configures itself from the game's own symbols (`configure_self`: the addresses a
+  client's `config` must give, checked as one, said on stderr), with no client attached, so this
+  world's own traps and disks work with no client; with no seed file it waits for a client, as
+  before. Configured so, or once its client has gone, it touches the game only while the game's
+  player pointer (`gMainCharacterSpriteP`) reads the player state the config's `inventory` lies
+  in, as the client checks before it attaches. With a disk seed's file, the pause screen's disk
+  row shows its save's count with no client, and in a translation the helper's icons are painted
+  into the icon sheets in any save, as on Windows with its cached config. The guard hook and
+  `tools/protected.py` protect the folder as they do the Windows one. Tested on the stand-in game
+  through the socket (`tests/test_native_linux.py`: a seed put stored in the stand-in's own data
+  folder, `unchanged` the second time; with a seed file at start and no client, an own trap going
+  off at its pickup, and not while the player pointer reads elsewhere; a seed not kept still the
+  helper's after its client went; with no seed file, a request refused until a client configures);
+  the helper configured from a seed's file, run in the game, 2026-11-19 ("The Linux helper",
+  above).
+- **The look without the client.** `Game::watch_offline` runs at each frame call, before the
+  watches that apply what it sets (on Windows `watch_all` runs INTEL CHIP's and the disks' watches
+  before it, so they apply its changes a frame later there) ("AP saves without the client"): with
+  no client (configured from the game's symbols, or its client gone), or with one
+  that said `other_save`, a known seed's save is dressed once in play since it loaded, from its
+  seed file: the item labels, INTEL CHIP, the ASSIST lock and the disk count and scanner's line,
+  with the not-connected notice (or, for `other_save`, the other-seed notice) once a load; left,
+  it is put back. A client's `config` takes the look off first and withdraws the notices not
+  shown yet; the client then asks `client_back`, which pops up ARCHIPELAGO CLIENT CONNECTED. once
+  if that save was dressed (`ticks.linux_client_back_tick`, before the poll's step), and
+  `other_save` for another seed's save in play (`linux_other_save_tick`). The client hands over
+  the whole seed file, its labels included, once known (`offline_seed`, as on Windows), and what
+  the slot data alone gives until then, never after the whole file went in that client run (a
+  reconnect lists the items afresh: `ZexionContext.linux_full_seeds`). The file select's counts,
+  from the save slots, and its logo show as on Windows ("The file select's AP logo and disk
+  counts", below). What differs on Linux:
+  - a client that loses its server connection lets the Linux helper's connection go, as the
+    Windows client lets its helper go (`leave_helper_tick`: under the same conditions, with
+    `LinuxProcess.disconnect`), so the helper takes it for a client that went (below) and this
+    look dresses the save, its notice with it; the client configures the helper again, and
+    tells it all afresh, on its first poll with a connection, before that poll's step (stand-in
+    tests only, not run in the game). Until then it sends no `ping`, as there is no connection
+    to keep;
+  - the settings the helper keeps past a connection's close (Intel Chips, the ASSIST lock, the
+    disk count) are sent only on the connection it was configured on (`LinuxMod.current`, the
+    client's connection that sent `config` and is still open), as the finds', labels',
+    client-back and other-save ticks do: a connection made again by a read in the same poll never
+    sets them (stand-in tests only, not run in the game);
+  - a client that goes leaves the look to dress the save again from scratch at the helper's next
+    look, its not-connected notice with it, as `client_gone` does on Windows: its own parts put
+    back and the look left (`leave_offline`, `linux/src/helper.cpp`), its notices not shown yet
+    withdrawn.
+
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`: with a seed file
+  and no client, the save dressed (INTEL CHIP) with the not-connected notice; a client's config
+  taking the look back, `client_back` shown once, `other_save` dressing it again with the
+  other-seed notice, and that client gone, dressed afresh with the not-connected notice again) and
+  with stand-ins for the client (`tests/test_zexion_client.py`: the whole seed file not replaced
+  by the slot data's after a reconnect); run in the game, 2026-11-19 ("The Linux helper", above).
+- **The title screen's lines.** `Game::watch_title` runs at each frame call with no save loaded,
+  as on Windows ("The title screen's lines"): ARCHIPELAGO MOD and the version (set in the helper's
+  constructor), ©2026 MCAWFUL, and with no client attached the hint to start it, made with the
+  game's own text functions under the title's copyright line (`draw_layer`, `gStatsSpriteLayerP`;
+  `text_new_fn`, `newSpriteString`; `text_place_fn`; `text_link_fn`, `addSpriteString`), only
+  while no menu is open, and in English(HD) in the translation's font through the shared label
+  builder (`docs/re/linux.md`, "Mapped by disassembly: the title screen's lines"). Configured from
+  the game's symbols with no client (a seed file read), the lines show with the hint as they do on
+  Windows with its cached config, while the game's player pointer reads the player state the
+  config's `inventory` lies in ("Seed files."): it did at the title screen before any save, and in
+  play (`docs/re/linux.md`, "Read from the running game"), so from the first title; with no seed
+  file and no client, the helper is not configured, so no line shows until a client configures. If
+  the mouse sets `menu_state` to 1 at the title (open: `docs/re/linux.md`), the lines wait unmade,
+  or the translated ones hidden, until a key is pressed. `title_status` says what the watch last
+  found (for checks). Tested through the socket only for the watch and the request
+  (`tests/test_native_linux.py`: the stand-in has no title, so nothing is made, its version line
+  set all the same, which `title_status` says as `no version` when it is not: the helper's globals
+  are built before its constructor sets it, `init_priority`); the lines themselves are stand-in
+  tested on Windows (`tests/title_tests.cpp`); run in the game, 2026-11-19 ("The Linux helper",
+  above).
+- **Feats and Steam achievements in AP saves.** `Game::watch_feats` runs at each frame call, as on
+  Windows ("Feats and achievements in AP saves"): the guard on while an AP save is loaded, and the
+  load test over the slots holding AP saves, filled with no save loaded from the slots' own copies
+  of their sections (`slot_array`, `gSaveGames`; `rando_slots`, `gSavedRandos`). What differs on
+  Linux (`docs/re/linux.md`, "Mapped by disassembly: the Feats guard's Steam and load test"):
+  - no slot is written and no code made: the helper exports `SteamInternal_ContextInit` itself, so
+    the dynamic linker binds the game's call (from its two accessors, `SteamUserStats()` and
+    `SteamUtils()`, on the frame call's thread) to it, and `feats_context_init` (`src/feats.cpp`)
+    answers the stats context (`SteamUserStats()`'s, from the game's own symbols) with a stand-in
+    interface whose every method returns 0 while the guard blocks: on, or the load test's save
+    loaded, marker 1 and slot an AP save's, read at the call; every other call goes on to
+    `libsteam_api`'s own (`dlsym(RTLD_NEXT)`, else the library's own if it is loaded but not
+    global; looked for again while not found, never the helper's), the game's first, before any
+    config, too, and in any other program the preload reaches; the guard reports a fault
+    (`feats_status`) unless the game's call binds to the helper's export (the first definition in
+    the global scope: another preload ahead of it would take the calls) and the library's is
+    found (a check that fails is made again every `kSteamRetryFrames`, 60 frames, so a library loaded later still counts); `watch_feats` runs before the frame's player-pointer gate, as it only reads;
+  - the ending's patch is made over the Linux ending's own first achievement call, not a call
+    through the import slot: `mov edi, 13` (14Victory) and `call setTheAchievement` (the game's
+    own function, from its symbols) at `ending_unlocks` (`EndingCutscene` + `0x3B`), the six-byte
+    `mov word [rbp-0x26], 0` after them, which the patch's last two bytes land in (nothing jumps
+    there); flag 251's store just before `ending_join` (`EndingCutscene` + `0x39C`), and flag
+    250's at it, not `0x11` bytes after (`docs/re/linux.md`, the `ending_unlocks` and `ending_join`
+    rows). The same 12 bytes, `mov byte [flag 251], 0` and `jmp ending_join`, put back as on
+    Windows;
+  - an AP ending the patch did not jump over (one refused: `feats_status` says why) earns that
+    run's Feats (flag 251 set), so Steam then stays blocked from that ending until a save is
+    loaded again (the Feats of Natu screen after it, with no save loaded, would set the flashing
+    Feats' achievements), the title's own achievements meanwhile with it. Flag 251 does not tell
+    this run's Feats from a saved one: an AP save that reached its ending with no patch (an
+    earlier helper, or none) holds it, so leaving that save for the title holds Steam there too,
+    until a save loads (a code typed at the title meanwhile earns no 13SecretCode);
+  - the Feats of Natu screen's note runs as on Windows (`feats_screen_note`, with LargeText's count
+    configured for a translation's title: `large_count`), the screen as `feats.cpp` checks it on
+    Linux too: MISSION COMPLETE's statistics always lead on to it, its panels, rows, title label
+    and the hint at the title, and the six achievement calls it makes, each behind this run's Feat
+    byte the ending's patch leaves unset (`docs/re/linux.md`, "Mapped by disassembly: the Feats of
+    Natu screen's note"). The Linux stand-in game has no menus: the note is stand-in tested on
+    Windows only (`tests/feats_tests.cpp`).
+
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`: its stand-in
+  Steam's achievement set before a config and with a normal save, not with an AP save loaded, and
+  not after an unpatched AP ending until a save loads; the stand-in's ending, the Linux site's
+  bytes, patched while an AP save is loaded and put back after); an AP save's ending, its note and
+  no achievement run in the game, 2026-11-19 ("The Linux helper", above: run 2).
+- **Tall text.** `Game::watch_text_cut` runs in the Linux helper's frame as in `watch_all`
+  ("Popups", "Tall text"), with or without a client: the text window's top cut patched once
+  configured. The Linux build's cut is other code (`text_cut_code`, `setGameMessageStringClipping`
+  + `0x661`, 14 bytes, the window's edge and the row's 10 x row on the stack: `docs/re/linux.md`),
+  so `src/text.cpp` builds its own patch there: the edge less the row's top, as the Windows
+  patch's. The cut's second branch, for a glyph whose `+0x38` reads `0x5A` (cut mod 9), is left
+  alone (what those glyphs are, and whether popups draw them: not traced). The client no longer
+  says a part is missing on Linux: the Linux helper runs every part (`native.attach` refuses the
+  Windows helper there, `native.NoWindowsHelper`, said nothing of, and the client goes on with the
+  Linux helper). Tested beside the game's bytes (`linux/tests/patch_tests.cpp`: for rows 0 to 31
+  and every edge the cut is taken at, the game's gives the edge mod 8 and ours the edge less the
+  row's top) and on the stand-in game through the socket (patched once configured); tall popups
+  run in the game, 2026-11-19 ("The Linux helper", above: run 2).
+- **The major-item list.** `Game::watch_pickups` runs in the Linux helper's frame as in
+  `watch_all` ("Grants", "The major-item list"), in play in an AP save, with or without a client:
+  each owned item the game's pickup would list goes in the list (`pickup_list`, `gGameState` +
+  `0xAE0`, configured from the game's symbols), but what the new game started with, so the file
+  select's ITEMS row shows it once the game saves or reaches a checkpoint (the entry shows the
+  checkpoint's record while it is in use). The pickup's rule, the load, the save, the ITEMS row's
+  fill, the records' icons and the start-with array are as `watch_pickups` expects on Linux too
+  (`docs/re/linux.md`, "Mapped by disassembly: the major-item list"). Tested on the stand-in game
+  through the socket (`tests/test_native_linux.py`: an owned item listed once an AP save is
+  loaded, one started with and a key left out); the ITEMS row run in the game, 2026-11-19 ("The
+  Linux helper", above).
+- **The file select's AP logo and disk counts.** `Game::watch_files` runs in the Linux helper's
+  frame as in `watch_all` ("AP saves on the file select"), after the look without the client has
+  set the counts, with or without a client: each entry of the file select, COPY FILE and DELETE
+  FILE gets the helper's handler (`linux/src/helper.cpp`, `file_entry_hook`: the game's, then the
+  entry rewritten after its fill, event `0xF`; handlers take (widget, event) on Linux), the logo
+  on AP saves and each disk seed's save its own count, the four handlers configured from the
+  game's symbols (`file_panel_fn`, `file_entry_fn`, `copy_entry_fn`, `delete_entry_fn`). The Linux
+  helper is never unloaded, so nothing puts the handlers back but the watch itself when both are
+  off. The entries, their fill and the fills that bypass the handler, the logo's blank cells, the
+  font's empty glyphs and the new game's fade are as `files.cpp` expects on Linux too
+  (`docs/re/linux.md`, "Mapped by disassembly: the file select's AP logo and disk counts"; that
+  the logo's style shows white and the painting itself are not measured there). The Linux stand-in
+  game has no menus: the rewrite is stand-in tested on Windows only (`tests/files_tests.cpp`); the
+  logo run in the game, 2026-11-19 ("The Linux helper", above), the disk counts too (run 2).
+- **Traps.** `Game::pump_traps` runs at each frame call as on Windows ("Traps"), after
+  `note_play` (the quarter second in play), `watch_own_traps` and `watch_trap_patches`: a
+  received trap goes off as its popup shows, in its turn among the popups, and this world's own
+  at its pickup, with the same writes, sounds, timers and holds (one of each kind at a time, a
+  transition counting down, the halt byte, the game's ending). What differs on Linux:
+  - the AILMENTS tests the patches skip are `weaponCool`'s, in another shape (`src/trap.h`:
+    `0x35` and `0x38` bytes, the second jumps at `+0x33` and `+0x36`; `docs/re/linux.md`,
+    "Mapped by disassembly: traps"), checked byte for byte but the loads, which must lead to
+    `ailments`, as on Windows;
+  - this world's own traps come from the seed's text the client hands the helper (`offline_put
+    seed`, `ticks.linux_seed_tick`) at its connection's first poll (at first its identity and
+    traps from the slot data, and the disks once the items are listed: `ticks.linux_seed`; then
+    the whole seed file once known: `offline_seed`), kept in its seed file ("Seed files", above),
+    so they go off with no client in later runs too; one picked up before a client first put the
+    seed does nothing, and nothing makes it up later;
+  - nothing differs for RETURN HOME WITH THE DISKS? or the game's own ending: traps are held
+    through them as on Windows;
+  - there is no unload, so nothing waits for a running trap's patch: it is put back once its
+    timer has run out.
+
+  Tested on the stand-in game through the socket (`tests/test_native_linux.py`: a received
+  Disruption Trap goes off as its popup shows, DISRUPTION TRAP over FROM TESTER with sound 26, its
+  timer at 660 and the stand-in's `weaponCool` tests patched, put back once the timer is 0; this
+  world's own Disorient Trap goes off at its pickup, its timer at 660 with sound 82, from a seed
+  the helper took). Both received traps run in the game, 2026-11-19 ("The Linux helper", above);
+  this world's own not.
+- **Its own runtime.** The C++ runtime is linked in, so it needs only glibc (with `ld-linux`,
+  its dynamic loader) from the game's container, which may be older than the one it was built
+  with. A build on a newer glibc asks for its newer symbol versions and would fail to load under an
+  older one: a release must be built on an old enough glibc (not settled yet). Read on the test
+  PC, 2026-11-18: the Steam Runtime installed there (sniper 3.0.20261021) ships glibc 2.31
+  (its `usr-mtree.txt.gz` lists `libc-2.31.so`); Flatpak's Steam runs on the Flatpak runtime
+  `org.freedesktop.Platform` 26.08, whose glibc is 2.44 (`strings` of its `libc.so.6`); a build
+  there on glibc 2.44 asks for up to `GLIBC_2.38` (`objdump -T`) and nothing from libstdc++
+  (`readelf -d`: `libc`, `libm` and `ld-linux` only). Under Flatpak's Steam the game ran on
+  the glibc the container takes from outside it (`/run/parent/usr/lib/x86_64-linux-gnu/libc.so.6`
+  in its `/proc/<pid>/maps`), and the build needing 2.38 loaded (2026-11-18). That the container
+  takes the newer of the runtime's and the host's is assumed (pressure-vessel's documented rule);
+  without Flatpak it is not checked. Checking a local build's versions before a run: "Running it
+  in the game", step 1, above.
+
 ## Building
 
-Windows only: Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or later, with a
+Windows: Visual Studio 2022 or later with the C++ workload, and CMake 3.20 or later, with a
 multi-config generator (the default Visual Studio one; `CMakeLists.txt` refuses single-config
 ones, and another compiler than MSVC). From the repo root:
 
@@ -2190,6 +3069,28 @@ ctest --test-dir native/build -C Release --output-on-failure
 The helper lands in `native/build/Release/zexion_ap.dll` (gitignored), the proxy in
 `native/build/proxy/Release/version.dll`. The C runtime is linked statically, so the helper needs
 nothing the game doesn't already load.
+
+Linux: GCC or Clang, and CMake 3.20 or later (`uv pip install --python .venv cmake` puts one
+in the venv). From the repo root, the same folder, one config:
+
+```sh
+cmake -S native -B native/build
+cmake --build native/build -j
+ctest --test-dir native/build --output-on-failure
+.venv/bin/python -m pytest tests/test_native_linux.py
+```
+
+That builds `native/build/libzexion_ap.so` (the Linux helper), the test build
+`libzexion_ap_hooktest.so`, which serves any program, and the stand-in game `zap_fake_game`, a
+fixed-address executable as the game is, calling `SDL_GL_SwapWindow` from a stand-in
+`libzap_sdl_stub.so`. ctest runs `tests/core_tests.cpp` (build ids, replies);
+`tests/test_native_linux.py` preloads both builds into the stand-in game ("The Linux helper"),
+`zap_newgame_tests` runs the shared new-game logic (`linux/tests/newgame_tests.cpp`), and
+`zap_patch_tests` runs the Linux build's code patches side by side with the game's bytes
+(`linux/tests/patch_tests.cpp`, "The map"), and `zap_translation_tests` the label builder's call
+(`linux/tests/translation_tests.cpp`, "Translations");
+`ZEXION_NATIVE_BUILD` points it at another build folder than `native/build`.
+CI runs all of it on Ubuntu, with `ZEXION_REQUIRE=helper`.
 
 CI builds both, runs the ctest tests, and runs `tests/test_native.py` on Windows, which loads
 the build into a sleeping Python process (no known build, so nothing is hooked) and checks the
@@ -2204,6 +3105,16 @@ configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp
 page of its own, `check_code_patch`, that `game` and `mapmarks` run on theirs); `tests/fake_gl.h` is
 the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe client of `parts`,
 `apply_in_frames` and `unload_under_load`, and the last two's busy threads and wait for an unload.
+A test reads the stand-in's code the helper patches (`.zapcode` in `tests/stand_in.h`, a section
+that is read and execute) only through volatile (`code_byte`, `code_is` in `tests/check.h`),
+never with a plain `memcmp`. The `game` and `offline` tests failed in CI jobs whose MSVC was
+19.52.37029.0, with the same sources passing on 19.51 (four runs: 4a32d47, c5500c7, e9ecd2f,
+9809090); the cause is not reproduced. The working guess is that the optimizer took such an array,
+not writable, as holding its initializer, so a patch the helper made read as not made (the
+text-cut and seen-marker checks inside them). The first guess, the linker folding identical
+code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through volatile, CI runs
+44643254927 (61ecc7c) and 44643374457 (99f12f3) compiled the Windows native job with MSVC
+19.52.37029.0 and passed: that is the evidence for the fix, not a confirmed cause.
 
 - `parts`: the import-table hook and the trampoline (an exception raised behind it caught in
   front), `game_mem.h`'s menu, panel and label readers, its handler-slot swap, its memory check
@@ -2323,11 +3234,21 @@ the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe cli
 | `game_offline.cpp` | `Game`'s offline look, and its watches of this world's own traps and disks by their map cells (`watch_own_traps`, `watch_own_disks`), which run with a client too |
 | `cell_watch.h` | `CellWatch`: a list of map cells looked at every frame, which turned collected or back since the look before, and after how many looks in play (the two watches above share it) |
 | `requests.cpp` | the requests' parsers |
+| `newgame.h`, `newgame.cpp` | new games (`NewGames`: the plan, the seed's placement, the RANDOMIZER route), which `Game` and the Linux helper share |
+| `choice.h`, `choice.cpp` | the ARCHIPELAGO choice on the game-mode panel and its start (`start_archipelago`), shared the same way |
+| `platform.h` | `<windows.h>`, or on Linux the few Windows type names the shared sources use |
 | `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws; the text window's cut patch (`text_cut_patch`) |
-| `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread |
+| `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread (`mailbox_linux.cpp`: the Linux helper's) |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
-| `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access; code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
-| `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: ARCHIPELAGO and the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
+| `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access (`game_mem_linux.cpp`: its Linux parts); code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
+| `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
 `proxy/` is the proxy `version.dll`.
+
+`linux/` is the Linux helper: `src/core.cpp` (the known builds, the build id note, the replies),
+`src/helper.cpp` (the constructor, the socket's thread, the frame call, `config` and the
+requests that act on the game), and in `tests/` the ctest tests, the stand-in game and its
+stand-in SDL. It also builds every source of `src/` but `dllmain.cpp`, `iat.cpp`, `pipe.cpp`,
+`build.cpp` and `mailbox.cpp`, with `game_mem_linux.cpp` and `mailbox_linux.cpp` for the
+Windows parts (`src/platform.h` gives them the few Windows type names they use).

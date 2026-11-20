@@ -6,11 +6,15 @@
 // put back once no AP save is loaded and before an unload; the slot stays hooked, passing calls
 // through, while the load test is set. The stub, stand-in and vtable are in two pages never
 // freed: a call still in them after an unload lands in live memory and runs no helper code.
-// docs/re/memory.md, "Feats and achievements"; native/README.md, "Feats and achievements in AP
-// saves".
+// On Linux there is no slot and no stub: the helper exports SteamInternal_ContextInit and
+// feats_context_init decides each call (below; set_switch sets what it reads); the ending is
+// patched the same way over the Linux ending's own first achievement call (setTheAchievement,
+// feats.cpp). docs/re/memory.md, "Feats and achievements"; native/README.md, "Feats and
+// achievements in AP saves".
+
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <set>
@@ -21,6 +25,8 @@
 namespace zap {
 
 constexpr size_t kEndingPatchSize = 12;
+// Linux: the frames between tries of a failed check of Steam's library (hook_steam).
+constexpr int kSteamRetryFrames = 60;
 
 // Under FEATS OF NATU! after an AP save's ending (in capitals in pixel glyphs: text.h).
 inline constexpr char kFeatsNote[] = "Archipelago save: no Feats earned";
@@ -30,6 +36,22 @@ inline constexpr char kFeatsNote[] = "Archipelago save: no Feats earned";
 // note, whole. With the game's hint at the title: FEATS OF NATU! and the note over it, or the
 // hint put back if the label still reads as the helper wrote it. Returns whether the screen is up.
 bool feats_screen_note(const GameAddresses& addresses, bool show);
+
+#ifndef _WIN32
+// The Linux helper's SteamInternal_ContextInit, which it exports in the libsteam_api's place
+// (native/linux/src/helper.cpp; docs/re/linux.md, "Mapped by disassembly: the Feats guard's Steam
+// and load test"): for the stats context while the guard blocks, the stand-in's holder (an
+// interface whose every method returns 0); any other call `real(context)`. Any thread, no lock.
+void* feats_context_init(void* context);
+// The game's SteamUserStats() context, from its own symbols; before any thread runs.
+void set_feats_stats_context(const void* context);
+// The helper's own exported SteamInternal_ContextInit: the guard holds only if the game's call
+// binds to it (check_steam), and it is never taken for libsteam_api's; at start.
+void set_feats_export(const void* export_fn);
+// The game's setTheAchievement(int), from its own symbols: the ending's call must reach it
+// (FeatsGuard's patch on Linux); at start.
+void set_feats_achievement_fn(const void* fn);
+#endif
 
 class FeatsGuard {
 public:
@@ -80,6 +102,7 @@ private:
     BYTE written_[kEndingPatchSize] = {};
     std::string ending_error_;
     bool steam_checked_ = false;
+    int steam_wait_ = 0;  // Linux: frames before a failed check_steam is tried again
     std::string steam_error_;       // check_steam's
     std::string steam_slot_error_;  // the last hook's
     void* real_ = nullptr;          // steam_api64's SteamInternal_ContextInit

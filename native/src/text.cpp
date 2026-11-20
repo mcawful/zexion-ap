@@ -140,6 +140,7 @@ void fit_notice_box(BYTE* message, const std::string& text, int per_line) {
 
 namespace {
 
+#ifdef _WIN32
 // The game's top cut (B1, 0xA85E3; listing in docs/re/memory.md), esi the glyph's row, ebp the
 // window's top edge, r13w the cut glyph's draw (31):
 //   mov eax, ebp; mov [rcx+0x1A0], r13w; and eax, 0x80000007; jge +7; dec eax; or eax, -8;
@@ -165,6 +166,27 @@ bool text_cut_patch(const BYTE (&game)[kTextCutSize], BYTE (&out)[kTextCutSize])
                 sizeof(kTextCutTail));
     return true;
 }
+#else
+// The Linux build's top cut (B1, setGameMessageStringClipping 0x569617; docs/re/linux.md,
+// `text_cut_code`), the window's top edge at [rbp-0x1c], the row's 10 x row at [rbp-0xc] (set
+// once a glyph, 0x5690DE), taken only while the edge is within the row's 7 (0x56954D):
+//   mov eax, [rbp-0x1c]; cdq; shr edx, 29; add eax, edx; and eax, 7; sub eax, edx
+//   (eax: the edge mod 8, signed; edx is loaded again before it is read, at 0x56962B)
+constexpr BYTE kTextCutGame[kTextCutSize] = {0x8B, 0x45, 0xE4, 0x99, 0xC1, 0xEA, 0x1D,
+                                             0x01, 0xD0, 0x83, 0xE0, 0x07, 0x29, 0xD0};
+// Ours: the edge less the row's 10 x row, which is the cut there (1 to 7):
+//   mov eax, [rbp-0x1c]; sub eax, [rbp-0xc]; and eax, 7; nop (5 bytes)
+constexpr BYTE kTextCutOurs[kTextCutSize] = {0x8B, 0x45, 0xE4, 0x2B, 0x45, 0xF4, 0x83,
+                                             0xE0, 0x07, 0x0F, 0x1F, 0x44, 0x00, 0x00};
+
+}  // namespace
+
+bool text_cut_patch(const BYTE (&game)[kTextCutSize], BYTE (&out)[kTextCutSize]) {
+    if (std::memcmp(game, kTextCutGame, sizeof(kTextCutGame)) != 0) return false;
+    std::memcpy(out, kTextCutOurs, sizeof(kTextCutOurs));
+    return true;
+}
+#endif
 
 std::string in_capitals(std::string text) {
     for (char& c : text) c = capital(c);

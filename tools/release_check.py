@@ -5,8 +5,10 @@ and the version has its notes for players.
     .venv/Scripts/python tools/release_check.py --base origin/main --above v0.28.0 v0.29.0
                                                                         # fail unless higher
 
-The version is the one number the client, the helper and the world share
-(``client/native.py`` ``VERSION``; ``tools/build_apworld.py`` refuses a release where they
+The version is the one number the client, the helpers and the world share: ``client/native.py``
+``VERSION``, ``kVersion`` in ``native/src/dllmain.cpp`` and in ``native/linux/src/core.h``, and
+``world_version`` in ``worlds/zexion/archipelago.json`` (``tests/test_cross_checks.py`` checks
+all four; ``tools/build_apworld.py`` refuses a release where the first, second and fourth
 differ). CI passes every release's tag as ``--above`` (none before the first release), and
 ``--base`` names main as fetched: the version must be above the highest release and above the
 version on main. Main always holds the last release's version or one still waiting for approval,
@@ -63,7 +65,8 @@ def version_at(ref: str, repo: Path = ROOT) -> str:
 def _refuse(version: str, what: str) -> int:
     print(
         f"version {version} is not above {what}: raise VERSION (client/native.py), kVersion "
-        "(native/src/dllmain.cpp) and world_version (worlds/zexion/archipelago.json) together",
+        "(native/src/dllmain.cpp and native/linux/src/core.h) and world_version "
+        "(worlds/zexion/archipelago.json) together",
         file=sys.stderr,
     )
     return 1

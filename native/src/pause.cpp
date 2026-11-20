@@ -38,8 +38,13 @@ const char kDiscRows[kDiscSize][kDiscSize + 1] = {
 
 namespace {
 
-// The branch: `jne` over the row (+0x2E), as the game has it, and `jmp` while on.
+// The branch: `jne` over the row (+0x2E), as the game has it, and `jmp` while on. The Linux
+// build's is `jne +0x3C` (PauseGame, 0x618A7E: docs/re/linux.md, `keys_branch`).
+#ifdef _WIN32
 constexpr BYTE kGameBranch[2] = {0x75, 0x2E}, kOurBranch[2] = {0xEB, 0x2E};
+#else
+constexpr BYTE kGameBranch[2] = {0x75, 0x3C}, kOurBranch[2] = {0xEB, 0x3C};
+#endif
 // The KEYS row's panel: its sprites and their count, at the offsets a widget uses for its label
 // and record (docs/re/memory.md, "The pause screen's KEYS row"; B1).
 constexpr ptrdiff_t kPanelSprites = 0x1F0, kPanelSpriteCount = 0x1F8;
@@ -161,7 +166,7 @@ bool PauseDiskRow::show_disc(BYTE* s) {
         BYTE copy[sprite::kFrameSize];
         if (!safe_read(list + kDiskIcon * sprite::kFrameSize, copy, sizeof(copy))) return false;
         auto* page = static_cast<BYTE*>(
-            VirtualAlloc(nullptr, sprite::kFrameSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+            alloc_pages(sprite::kFrameSize));
         if (page == nullptr) return false;
         std::memcpy(page, copy, sizeof(copy));
         std::memcpy(game_rect_, copy, sizeof(game_rect_));

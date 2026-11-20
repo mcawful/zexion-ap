@@ -3,7 +3,7 @@
 // headers and code, patched and put back (CodePatch). Layouts are in game_layout.h.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <cstring>
@@ -134,6 +134,21 @@ bool glyphs_show(BYTE* const* glyphs, std::string_view text);
 // Drawn as `like` is: its palette, style and tint copied (both checked writable by the caller).
 void look_like(BYTE* sprite, const BYTE* like);
 
+// Reads the glyph pointers of a live label of N glyphs, each writable, or returns false.
+template <int N>
+inline bool glyphs_of(BYTE* child, BYTE* (&glyphs)[N]) {
+    if (!label_glyphs(pointer_at(child, widget::kLabel), N, glyphs)) return false;
+    for (BYTE* g : glyphs) {
+        int32_t released = 1;
+        if (!read(g, sprite::kReleased, released) || released != 0 ||
+            frame_list(g, 'Z') == nullptr || !writable(g, sprite::kSize)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+#ifdef _WIN32
 // The NT headers of a loaded image, or null if `module` does not start with a PE's headers.
 const IMAGE_NT_HEADERS64* nt_headers(HMODULE module);
 // The RVA just past a section, as loaded; the section of `module` holding `rva`, or null.
@@ -141,6 +156,15 @@ uint64_t section_end(const IMAGE_SECTION_HEADER* section);
 const IMAGE_SECTION_HEADER* section_of(HMODULE module, uint64_t rva);
 // Whether `p` lies in an executable section of the loaded image `image`.
 bool in_image_code(HMODULE image, const void* p);
+#else
+// Whether `p` lies in the main program's code (an executable PT_LOAD segment of the game's
+// binary, game_mem_linux.cpp).
+bool in_image_code(const void* p);
+// The Windows form's, for the shared sources: the image is always the main binary.
+inline bool in_image_code(HMODULE, const void* p) { return in_image_code(p); }
+// A handle that stands for the main binary, for parts that hold one (mission.h's set_image).
+HMODULE main_image();
+#endif
 // Writes `size` bytes over code at `at`, its page made writable for the write and then put back
 // as it was, and flushes them from the instruction cache: false, nothing written, if the page
 // could not be made writable. Game thread, so the game is not running the code meanwhile.

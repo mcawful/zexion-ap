@@ -10,7 +10,7 @@
 // screen's KEYS row"; native/README.md, "The OS Install Disks goal").
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <string>

@@ -1,7 +1,8 @@
 # Working in zexion-ap
 
 Archipelago (AP) multiworld support for **Zexion** (Gallant Leaf, Steam app 3392510), a native
-x64 exe on SDL2 and FMOD with no modding API: its mod folders are for sprites and translations
+x64 exe on SDL2 and FMOD with no modding API (it also has a Linux build, not yet supported:
+[`docs/re/linux.md`](docs/re/linux.md)): its mod folders are for sprites and translations
 only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
 Everything here comes from reverse engineering, hence the evidence rules below.
 
@@ -17,10 +18,11 @@ Where things are:
 - The in-game helper: [`native/README.md`](native/README.md).
 - What has been measured, and how: [`docs/re/README.md`](docs/re/README.md).
 - When the game is patched: [`docs/re/new-build.md`](docs/re/new-build.md).
-- The long ones (`docs/re/memory.md`, `save-format.md`, `randocells.md`, `locations.md` and
-  `native/README.md`) are read by section, not whole: search for `^##` to find the heading
-  (`native/README.md`'s sections are `###`; memory.md's "Lookup: targets" maps each target to
-  its heading), then read just that range. memory.md alone is tens of thousands of tokens.
+- The long ones (`docs/re/memory.md`, `save-format.md`, `randocells.md`, `locations.md`,
+  `linux.md` and `native/README.md`) are read by section, not whole: search for `^##` to find the
+  heading (`native/README.md`'s sections are `###`; memory.md's "Lookup: targets" maps each target
+  to its heading, and linux.md's names the section in its "How" column where there is one), then
+  read just that range. memory.md alone is tens of thousands of tokens.
 
 ## Rules
 
@@ -32,13 +34,20 @@ Where things are:
 - **No hard-coded addresses.** ASLR is on and the game is still patched. Live addresses come
   only from byte patterns checked to match exactly once. Struct offsets, and per-build offsets
   into an exe copy read offline, are allowed when `docs/re/memory.md` records them for that
-  build. `Target.rvas` in `client/patterns.py` is for checks only.
+  build. `Target.rvas` in `client/patterns.py` is for checks only. The Linux build is a
+  fixed-address executable that keeps its symbol table (`docs/re/builds.md`, "B1 on Linux"):
+  there, live addresses come from that table, by name, once the binary's GNU build id matches a
+  known build, plus offsets `docs/re/linux.md` records for that build; an address read from the
+  table is never written into code (the owner's decision, 2026-11-18), except `LinuxTarget.b1`
+  in `client/linux_targets.py`, which is for checks only, as `Target.rvas` is: tests compare the
+  resolved addresses with it and nothing live uses it.
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
-  its `install` (an empty slot, after a verified backup) and `restore` write the save folder.
-  The client never writes it. The same hooks block writes to the mod's offline files,
-  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts): only the helper writes
-  them, and they change what the mod does with no client running.
+  its `install` (an empty slot, after a verified backup) and `restore` write the save folder. The
+  client never writes it. The same hooks block writes to the mod's offline files,
+  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts; on Linux the seeds' files and
+  the helper's socket token, in `$XDG_DATA_HOME/ZexionAP`, else `~/.local/share/ZexionAP`): only
+  the helper writes them, and they change what the mod does with no client running.
 - **Ask first, every time,** before anything that changes the running game or the saves:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run (it may load
   the helper, and with or without it writes the game's map: "The client"), the client's
@@ -64,9 +73,20 @@ Where things are:
 ## Setup
 
 Windows, Linux or macOS, with git and uv. Commands here are for a POSIX shell: bash or zsh, Git
-Bash on Windows (PowerShell differs only in `VAR=value command`). `.venv/Scripts/` is the
-venv's folder on Windows; on Linux and macOS it is `.venv/bin/`, in every command in this file.
-The game, the client against it, the live tools and the helper are Windows-only
+Bash on Windows (PowerShell differs only in `VAR=value command`). `.venv/Scripts/` is the venv's
+folder on Windows; on Linux and macOS it is `.venv/bin/`, in every command in this file. The game
+the mod supports, the helper, `client/process.py` (the Windows API) and the live tools
+`memscan.py` and `helper.py load` and `unload` are Windows-only. The client also runs against the
+game's Linux build, which has a helper of its own that runs every part of the Windows helper's but
+unloading (run in the game, on Flatpak Steam on one PC, 2026-11-19: new games, grants with their
+popups, received traps, Energy Shields, checks, Intel Chips, popups in English(HD) and Japanese,
+the OS Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an
+ending, tall popups' text, the title screen's lines, the file select's AP logo, disk counts and
+ITEMS row and the look without the client; this world's own traps, and its own disks with no
+client, not yet; these runs predate the socket's token, the client's keep-alive and let-go, and
+the review's later fixes to the helper and client (`native/README.md`, "The Linux helper", lists
+them), which have run on stand-ins only: the next in-game run re-checks the attach), and so do
+`grant.py`, `check_patterns.py --live` and `helper.py status`
 ([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
 
 uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
@@ -86,7 +106,7 @@ uv pip install --python .venv -r requirements-dev.txt
 ## Checks
 
 CI runs all four on every push to and pull request into `develop` or `main` (ruff and pytest
-on Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native build below. A pull
+on Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native builds below. A pull
 request into `main` also runs the release gate (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
@@ -105,6 +125,16 @@ later; CMake's default Visual Studio generator). CI's native job runs these, the
 cmake -S native -B native/build -A x64
 cmake --build native/build --config Release
 ctest --test-dir native/build -C Release --output-on-failure
+```
+
+The Linux helper, on Linux (GCC or Clang, and CMake 3.20 or later:
+`uv pip install --python .venv cmake`). CI's `native-linux` job runs these:
+
+```sh
+.venv/bin/cmake -S native -B native/build
+.venv/bin/cmake --build native/build -j
+.venv/bin/ctest --test-dir native/build --output-on-failure
+.venv/bin/python -m pytest tests/test_native_linux.py
 ```
 
 Nothing in `tests/` needs the game, and CI never runs it.
@@ -127,12 +157,31 @@ Nothing in `tests/` needs the game, and CI never runs it.
   collected in the game's memory (the cell's item state and its map cell), with the helper or
   without: [`native/README.md`](native/README.md), "Other players' items", "Kept collected".
 - On attaching it uses or loads the helper (which one: [`native/README.md`](native/README.md),
-  "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written
-  directly with no popup and no seed can be started. `/reload_mod` unloads it and loads it
-  again a few seconds later (for a misbehaving mod; popups still queued are lost).
+  "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written directly
+  with no popup and no seed can be started. On Linux it attaches to the game's Linux build through
+  the Linux helper (preloaded by the game's launch options) and runs that way, as without a helper
+  but for new games, which the Linux helper starts (ARCHIPELAGO or RANDOMIZER), items, which it
+  gives with their popups, traps, scrap's drops and Energy Shields, DeathLink's deaths, Intel
+  Chips, the ASSIST lock, other players' items, which it shows as Archipelago items, on the map
+  too, translations, the OS Install Disks goal, AP saves' look without the client, the file
+  select's AP logo, disk counts and ITEMS row, the title screen's lines, Feats and Steam
+  achievements kept out of AP saves and tall popups' text repaired (run in the game, on Flatpak
+  Steam on one PC, 2026-11-19, for new games, grants with their popups, received traps, Energy
+  Shields, checks, Intel Chips, popups in English(HD) and Japanese, the OS Install Disks goal with
+  RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending, tall popups' text, the
+  title screen's lines, the file select's AP logo, disk counts and ITEMS row and the look without
+  the client; this world's own traps, and its own disks with no client, not yet; these runs
+  predate the socket's token, the client's keep-alive and let-go, and the review's later fixes to
+  the helper and client (`native/README.md`, "The Linux helper", lists them), which have run on
+  stand-ins only: the next in-game run re-checks the attach):
+  [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and loads it
+  again a few seconds later (for a misbehaving mod; popups still queued are lost); on Linux, where
+  the Linux helper stays for the game's run, it says to restart Zexion instead.
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper, and the client says so (its own build, `native/build` or
-  `ZEXION_DLL`, still loads).
+  `ZEXION_DLL`, still loads). On Linux a `zexion_ap.disabled` beside `libzexion_ap.so` turns the
+  preloaded helper off, and the client then says only that it found no helper in Zexion and asks
+  whether `libzexion_ap.so` is in the game's launch options.
 
 ### Tools
 
@@ -148,7 +197,7 @@ game or save folders.
 | `memscan.py write ADDR HEX --yes` | write live memory | **yes: ask** |
 | `grant.py show`, `watch` | the live inventory by name | no |
 | `grant.py set ITEM VALUE --expect N --yes` | grant by hand (inventory byte only; logs to `lab/grants.jsonl`) | **yes: ask** |
-| `helper.py status` | is the helper loaded; its frame rate | no |
+| `helper.py status` | is the helper loaded; its frame rate (on Linux, the Linux helper's, and whether the game's memory reads through it) | no |
 | `helper.py load --yes`, `unload --yes` | load or unload the helper (logs to `lab/helper.jsonl`) | **yes: ask** |
 | `check_patterns.py EXE` or `--live` | `client/patterns.py` against an exe copy or the running game | no |
 | `game_data.py NAMES --exe` | copy game data into `lab/data/<exe-hash-12>/` | no |
@@ -160,11 +209,17 @@ game or save folders.
 | `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF`, and its notes are written | no |
 | `release_notes.py [VERSION] [--previous TAG] [--notes FILE] [--out FILE]` | the release's message, to check before it is published | no |
 
-The tools find the game through Steam's library list (on Windows, from the registry) and the
-saves through `%APPDATA%`. `ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR`
+The tools find the game through Steam's library list (on Windows, from the registry; on Linux,
+from a native, Flatpak or Snap Steam's folder) and the saves through `%APPDATA%` (on Linux,
+SDL's folder for the game or Flatpak Steam's: `docs/DEVELOPING.md`, "Platforms").
+`ZEXION_GAME_DIR` (or `build_id.py --game-dir`), `ZEXION_SAVE_DIR`
 (or `save_lab.py --save-dir`) and `ZEXION_LAB_DIR` point them elsewhere; the tests use the
 last two. `memscan.py`, `grant.py`, `helper.py` and `check_patterns.py --live` work on the
-running game, so on Windows only; the rest run anywhere given those folders.
+running game. `memscan.py` and `helper.py load` and `unload` are Windows-only (the Windows API);
+`grant.py` and `check_patterns.py --live` attach as the client does (`game.Game.attach`), so on
+Linux they read the game's Linux build, and `grant.py set` writes it, through the Linux helper
+(no such run recorded yet), and `helper.py status` runs there too; the rest run anywhere given
+those folders.
 
 ## Releases and versions
 
@@ -184,10 +239,11 @@ players: the version's notes, `docs/releases/<version>.md`, then the install gui
 published messages; `tests/test_release_footer.py` that the files the guide names are the
 release's.
 
-- **The release version** is one number in three places: `VERSION` in `client/native.py`,
-  `kVersion` in `native/src/dllmain.cpp` and `world_version` in
-  `worlds/zexion/archipelago.json`. Raise all three together before a release:
-  `tests/test_cross_checks.py` and `build_apworld.py` check they match, and the release gate
+- **The release version** is one number in four places: `VERSION` in `client/native.py`,
+  `kVersion` in `native/src/dllmain.cpp` and in `native/linux/src/core.h`, and `world_version`
+  in `worlds/zexion/archipelago.json`. Raise all four together before a release:
+  `tests/test_cross_checks.py` checks they match (`build_apworld.py` checks all but the Linux
+  helper's, which a release does not yet carry), and the release gate
   (`tools/release_check.py`, in `.github/workflows/release-gate.yml`) that it is above the last
   release and the version on `main`. The helper shows it on the title screen. The sample YAMLs name
   it too: run `tools/gen_sample_yamls.py` after raising it (the world test and `build_apworld.py`
@@ -230,6 +286,10 @@ release's.
   | `patterns.py` | byte patterns per target; known builds; `Target.rvas` |
   | `process.py` | another process's memory through the Windows API |
   | `pe.py` | the PE header fields the client and tools read |
+  | `elf.py` | the ELF fields and symbols of the game's Linux build |
+  | `procfs.py` | Linux processes by name, through `/proc` |
+  | `linux_helper.py` | the Linux game and its helper's socket; reads and writes through it |
+  | `linux_targets.py` | the client's targets on the Linux build: symbol and offset |
   | `ids.py` | item and location codes; the game's sizes |
   | `save_patch.py` | the seed's plan from slot data; the save's layout |
   | `native.py` | load the helper and talk to it over its pipe |
@@ -241,8 +301,13 @@ release's.
   | `shields.py` | received Energy Shields (`shield`) |
   | `offline.py` | `offline_put`: files for AP saves without the client |
 
-- `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`:
-  [`native/README.md`](native/README.md).
+- `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`; in `linux/`,
+  the Linux helper `libzexion_ap.so`, which also builds the sources of `src/` it shares (`Game`,
+  through `src/platform.h`; it runs new games, grants with their popups, scrap's drops and Energy
+  Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, other players' items, traps,
+  translations, the OS Install Disks goal, AP saves' look without the client, the file select's AP
+  logo, disk counts and ITEMS row, the title screen's lines, Feats and Steam achievements kept out
+  of AP saves and tall popups' text repaired): [`native/README.md`](native/README.md).
 - `samples/`: the release's sample YAMLs, one per mode: Archipelago's template of each of the
   world's presets (`web_world.py`, `options_presets`), Easy's, Standard's and OHKO's without
   Custom mode's own options, written by `tools/gen_sample_yamls.py`;
@@ -252,12 +317,12 @@ release's.
   defines the protected folders (for the tools and the write guard) and `append_log`.
 - `docs/re/`: the reverse-engineering record.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
-- `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
-  a fresh save). `test_cross_checks.py` reads `native/src` for what the client and the helper
-  must agree on (version, builds, `config` keys, the request names and the replies the client
-  branches on, the offline seed's header and keys, the label separator, the font's punctuation,
-  the item record count, the flags and layouts both read), and the world's `world_version`.
-  `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
+- `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan, a
+  fresh save). `test_cross_checks.py` reads `native/src` and `native/linux/src` for what the
+  client and the helpers must agree on (version, builds, `config` keys, the request names and the
+  replies the client branches on, the offline seed's header and keys, the label separator, the
+  font's punctuation, the item record count, the flags and layouts both read), and the world's
+  `world_version`. `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
   `test_release_notes.py` and `test_release_footer.py` test the release builder, the data
   generator, the release gate, the release's message and the install guide in it.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not
@@ -269,7 +334,7 @@ Committed under `.claude/`, so they apply to anyone working here:
 
 - `.claude/settings.json`: the hook `guard_protected.py` blocks writes into the game install,
   the save folder, Steam's cloud cache for the game and the mod's offline files
-  (`%LOCALAPPDATA%\ZexionAP`) (rules: its docstring; cases:
+  (`%LOCALAPPDATA%\ZexionAP`, and Linux's) (rules: its docstring; cases:
   `tests/test_guard_hook.py`). The guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.

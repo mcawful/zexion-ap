@@ -53,6 +53,21 @@ void put(BYTE* p, ptrdiff_t offset, T value) {
 inline unsigned char code_byte(const unsigned char* code, int i) {
     return static_cast<const volatile unsigned char*>(code)[i];
 }
+// Whether the `n` bytes of code at `code` (a stand-in's, in .zapcode: stand_in.h) are `bytes`,
+// each read through volatile as code_byte does. A plain memcmp of such an array against a
+// constant of the same bytes may be folded to "equal" (MSVC 19.52's optimizer: the array's
+// section is not writable, so its initializer is taken as its value), so the helper's patch
+// would read as not made.
+inline bool code_is(const unsigned char* code, const unsigned char* bytes, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        if (static_cast<const volatile unsigned char*>(code)[i] != bytes[i]) return false;
+    }
+    return true;
+}
+template <size_t N>
+bool code_is(const unsigned char* code, const unsigned char (&bytes)[N]) {
+    return code_is(code, bytes, N);
+}
 inline void set_code_byte(unsigned char* code, int i, unsigned char value) {
     DWORD old = 0;
     VirtualProtect(code + i, 1, PAGE_EXECUTE_READWRITE, &old);

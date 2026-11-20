@@ -6,7 +6,7 @@
 // back.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <functional>
@@ -51,8 +51,17 @@ uint8_t minor_value(uint8_t value, Obscure obscure, bool ended);
 
 // The item update's write of the square under an item on screen in a randomizer game (0x19E5A5
 // on B1, each frame the item is in view), which would undo mark_important's raise of item 48.
+// On the Linux build, its two tests of the item's ID in PowerUpMoveProc (0x53DB6C and 0x53DC7E,
+// one for each base of the square), each patched on its own (docs/re/linux.md,
+// `seen_marker_code`): the code between them is never written nor held.
+#ifdef _WIN32
 constexpr size_t kSeenMarkerSize = 50;
+#else
+constexpr size_t kSeenTestSize = 23;
+constexpr size_t kSeenSecondTest = 0x112;  // the second test, from the first
+#endif
 
+#ifdef _WIN32
 // That write with ID 48 a major too, built from the game's bytes `game` (its store copied as is):
 // false if they are not the write as traced on B1. It reads only the registers the game's does,
 // leaves them as the game's does, and calls nothing.
@@ -62,6 +71,32 @@ bool seen_marker_patch(const BYTE (&game)[kSeenMarkerSize], BYTE (&out)[kSeenMar
 // helper's, so one left behind cannot crash the game; but a plain randomizer game's Scrap Chunks
 // would show as majors, so an unload refuses while it is not put back.
 using SeenMarker = CodePatch<kSeenMarkerSize, seen_marker_patch>;
+#else
+// Each of the Linux build's two tests with ID 48 a major too, built from the game's bytes
+// `game`: false if they are not the test as traced on B1. Each leaves eax as the game's code
+// after it does not read it (both branches reload rax), and calls nothing.
+bool seen_first_test_patch(const BYTE (&game)[kSeenTestSize], BYTE (&out)[kSeenTestSize]);
+bool seen_second_test_patch(const BYTE (&game)[kSeenTestSize], BYTE (&out)[kSeenTestSize]);
+
+// The write patched while the labels' seed's save is loaded: its two tests, at `site` and
+// kSeenSecondTest past it, each held and put back on its own, as Windows' one patch is.
+class SeenMarker {
+public:
+    void watch(BYTE* site) {
+        first_.watch(site);
+        second_.watch(site != nullptr ? site + kSeenSecondTest : nullptr);
+    }
+    void restore() {
+        first_.restore();
+        second_.restore();
+    }
+    bool patched() const { return first_.patched() || second_.patched(); }
+
+private:
+    CodePatch<kSeenTestSize, seen_first_test_patch> first_;
+    CodePatch<kSeenTestSize, seen_second_test_patch> second_;
+};
+#endif
 
 // A label (text.h) as the map cursor's name: its first line's text only (what the item is),
 // in capitals, cut at kMapNameMax.

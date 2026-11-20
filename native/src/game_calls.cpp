@@ -5,7 +5,9 @@
 #include <cstring>
 #include <utility>
 
+#ifdef _WIN32
 #include "iat.h"
+#endif
 
 namespace zap {
 
@@ -44,7 +46,13 @@ constexpr int32_t kNameRoom = 64;
 using MessageFn = void* (*)(const char* text, int per_line, int x, int y, int, int, int frames);
 using SoundFn = void (*)(void* system, short id, float x, float y, float volume, float pitch,
                          short, short category);
+#ifdef _WIN32
 using HudNumberFn = void (*)(void* hud_object, double value);
+#else
+// updateNumberDisplay(NumberDisplay*, double, bool): the game passes 1 (docs/re/linux.md, "Mapped
+// by disassembly: HUD, items, sound, popups, deaths").
+using HudNumberFn = void (*)(void* hud_object, double value, bool);
+#endif
 using PlayerFn = void (*)(void* player);
 using EnergyHudFn = void (*)(void* player, char force);
 using SuitColorFn = void (*)(int slot, short palette);
@@ -105,6 +113,7 @@ constexpr uint64_t kTrapSettledMs = 250;
 // "DeathLink").
 using DeathFn = void (*)(void* player, char kind);
 
+#ifdef _WIN32  // the Linux helper resolves and checks its own (native/linux/src/helper.cpp)
 // The config keys (client/patterns.py target names), in checking order, each with the member it
 // fills. Each lies in the image with kKeyBytes there (the offline cache checks a function's first
 // 16): functions in code, data in writable data, the CRT's import slots (only read) outside code.
@@ -218,30 +227,11 @@ std::string check_key(HMODULE image, uint64_t image_size, const ConfigKey& key, 
     }
     return "";
 }
-
-// A section offset as a reply names it: "0x6CC".
-std::string hex_offset(unsigned offset) {
-    char text[16];
-    std::snprintf(text, sizeof(text), "0x%X", offset);
-    return text;
-}
-
-// The offset of the first of `edits` that `block` does not hold, or -1.
-int first_difference(const BYTE* block, const std::vector<SectionBytes>& edits) {
-    for (const SectionBytes& e : edits) {
-        if (std::memcmp(block + e.offset, e.bytes.data(), e.bytes.size()) != 0) return e.offset;
-    }
-    return -1;
-}
-
-void write_edits(BYTE* block, const std::vector<SectionBytes>& edits) {
-    for (const SectionBytes& e : edits) {
-        std::memcpy(block + e.offset, e.bytes.data(), e.bytes.size());
-    }
-}
+#endif
 
 }  // namespace
 
+#ifdef _WIN32
 std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                             bool active) {
     const IMAGE_NT_HEADERS64* nt = nt_headers(image);
@@ -268,6 +258,19 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
     feats_.set_image(image,
                      find_import_slot(image, "steam_api64.dll", "SteamInternal_ContextInit"));
     mission_.set_image(image);
+    gl_ = load_gl();
+    return use(found, active);
+}
+#else
+std::string Game::configure(GameAddresses found, bool active) {
+    found.hooks = at_.hooks;
+    gl_ = load_gl();
+    mission_.set_image(main_image());  // its handlers checked to be in the game's code
+    return use(found, active);
+}
+#endif
+
+std::string Game::use(const GameAddresses& found, bool active) {
     // A client's config: the offline look put back with its own addresses, and the last client's
     // notices withdrawn; the not-connected warning comes again if this client goes this load
     // (as CLIENT CONNECTED. does each time one comes back).
@@ -277,7 +280,17 @@ std::string Game::configure(HMODULE image, const std::map<std::string, uint64_t>
         offline_warned_ = false;
     }
     at_ = found;
-    gl_ = load_gl();
+    newgame_at_ = {.rando_blob = at_.rando_blob,
+                   .randomizer_menu = at_.randomizer_menu,
+                   .transition_fn = at_.transition_fn,
+                   .transition_timer = at_.transition_timer,
+                   .newgame_fn = at_.newgame_fn,
+                   .placement_fn = at_.placement_fn,
+                   .rando_marker = at_.rando_marker,
+                   .current_slot = at_.current_slot,
+                   .start_count = at_.start_count,
+                   .start_cells = at_.start_cells,
+                   .start_flags = at_.start_flags};
     configured_ = true;
     active_ = active;
     return "";
@@ -315,8 +328,15 @@ BYTE* Game::record(uint8_t item) const {
 
 void Game::refresh_hud() {
     BYTE* p = player();
-    reinterpret_cast<HudNumberFn>(at_.hud_number_fn)(p + kHudMissiles, at<int16_t>(p, kMissiles));
-    reinterpret_cast<HudNumberFn>(at_.hud_number_fn)(p + kHudBombs, at<int16_t>(p, kBombs));
+    auto number = [this](BYTE* hud, int16_t value) {
+#ifdef _WIN32
+        reinterpret_cast<HudNumberFn>(at_.hud_number_fn)(hud, value);
+#else
+        reinterpret_cast<HudNumberFn>(at_.hud_number_fn)(hud, value, true);
+#endif
+    };
+    number(p + kHudMissiles, at<int16_t>(p, kMissiles));
+    number(p + kHudBombs, at<int16_t>(p, kBombs));
     reinterpret_cast<PlayerFn>(at_.hud_layout_fn)(p);
     reinterpret_cast<EnergyHudFn>(at_.energy_hud_fn)(p, 1);
     if (*at_.weapon_strip_gate != 0 && at<int16_t>(p, kWeaponStripTimer) > 0) {
@@ -472,7 +492,7 @@ bool Game::show_popup(std::deque<Popup>::iterator next) {
     int32_t seq_before = 0;
     last_message(last_before, seq_before);
     void* message = reinterpret_cast<MessageFn>(at_.message_fn)(
-        text.c_str(), per_line, kPopupX, kPopupY, 0, 0, kPopupFrames);
+        text.c_str(), per_line, kPopupX, kPopupY, kPopupStepX, kPopupStepY, kPopupFrames);
     if (message == nullptr) return false;  // all four slots busy: try again next frame
     if (popup.bare) fit_notice_box(static_cast<BYTE*>(message), text, per_line);
     // The translation's font; failing that, the pixel text, the slot's last translated mark
@@ -870,61 +890,24 @@ std::string Game::item_event_ready(uint8_t item, BYTE*& ev, BYTE*& handler) {
 
 bool Game::arm_newgame(NewGamePlan plan) {
     if (!configured_) return false;
-    newgame_ = std::move(plan);
-    newgame_armed_ = true;
-    newgame_status_ = "armed";
+    newgames_.arm(std::move(plan));
     return true;
 }
 
-void Game::disarm_newgame() {
-    newgame_armed_ = false;
-    newgame_ = {};
-    starting_ = false;
-    if (newgame_status_ == "armed") newgame_status_ = "idle";
-}
+void Game::disarm_newgame() { newgames_.disarm(); }
 
-std::string Game::newgame_status() const { return newgame_status_; }
+void Game::refuse_newgame(const std::string& why) { newgames_.refuse(why); }
+
+std::string Game::newgame_status() const { return newgames_.status(); }
 
 void Game::watch_newgame() {
-    if (!configured_ || !newgame_armed_) return;
-    if (!newgame_queued()) return;
-    if (at<int32_t>(at_.transition_timer, 0) <= 1) return;  // too close to being built
-    if (at<uint16_t>(at_.rando_marker, 0) != 1) return;     // a normal new game: not ours
-    // From ARCHIPELAGO (starting_): placed and checked already. From RANDOMIZER: it must hold
-    // the seed text, then is placed again as the seed.
-    if (!starting_) {
-        int differs = first_difference(at_.rando_blob, newgame_.identify);
-        if (differs >= 0) {
-            newgame_status_ = "refused the new game is not this seed (section +" +
-                              hex_offset(differs) + " differs)";
-            disarm_newgame();
-            return;
-        }
-        // The player's own placement, put back if the seed's is refused (or throws).
-        std::vector<BYTE> players(at_.rando_blob, at_.rando_blob + kSectionSize);
-        std::string why;
-        try {
-            why = place_seed();
-        } catch (...) {
-            std::memcpy(at_.rando_blob, players.data(), kSectionSize);
-            disarm_newgame();
-            throw;
-        }
-        if (!why.empty()) {
-            std::memcpy(at_.rando_blob, players.data(), kSectionSize);
-            newgame_status_ = "refused " + why;
-            disarm_newgame();
-            return;
-        }
-    }
-    write_edits(at_.rando_blob, newgame_.write);
-    newgame_status_ = "applied slot " + std::to_string(at<int32_t>(at_.current_slot, 0) + 1);
-    disarm_newgame();
+    if (!configured_) return;
+    newgames_.watch(newgame_at_);
 }
 
 void Game::watch_menu(WidgetCallback callback) {
     if (!configured_) return;
-    if (newgame_armed_ && newgame_.choice && !starting_) {
+    if (newgames_.armed() && newgames_.plan().choice && !newgames_.starting()) {
         choice_.install(at_, callback);
         if (choice_.installed()) choice_.fit_border(at_);
     } else if (choice_.installed() || choice_.holds_hook()) {
@@ -952,12 +935,12 @@ void Game::watch_all(WidgetCallback callback) {
     watch_own_traps();  // before pump_traps: one picked up this frame goes off this frame
     watch_own_disks();
     watch_translation();
-    text_cut_.watch(at_.text_cut_code);  // tall popups' lines cut right (text.h)
+    watch_text_cut();
     watch_trap_patches();                 // AILMENTS left out while a trap runs (trap.h)
 }
 
 void Game::watch_pickups() {
-    if (!in_play() || !ap_save_loaded()) return;
+    if (!configured_ || !in_play() || !ap_save_loaded()) return;
     BYTE* list = at_.pickup_list;
     BYTE* records = pointer_at(at_.item_records);
     if (records == nullptr) return;
@@ -978,8 +961,9 @@ void Game::watch_pickups() {
 void Game::watch_translation() {
     const std::optional<Loaded> now = loaded_translation(at_);
     popup_areas_.watch(now);
-    // The helper's icons in the translation's icon sheets while its text shows (apitem.h).
-    if (now && now->on) {
+    // The helper's icons in the translation's icon sheets while its text shows (apitem.h); none
+    // while their definitions are not known to be the sheets (hold_icon_sheets).
+    if (now && now->on && !icon_sheets_held_) {
         icon_sheets_.paint(at_.sprite_templates, gl_);
     } else if (icon_sheets_.painted()) {
         icon_sheets_.clear(at_.sprite_templates, gl_);
@@ -1054,110 +1038,9 @@ void Game::restore_assists() {
     lock_glyph_.clear(at_.sprite_texture, gl_, texture_check_);
 }
 
-std::string Game::ensure_start_table() {
-    // Over a RANDOMIZER game, the game's own table, as START GAME used it (the client's fallback).
-    static const std::vector<StartRoom> kNone;
-    const std::vector<StartRoom>& rooms = starting_ ? newgame_.start_table : kNone;
-    int16_t count = at<int16_t>(at_.start_count, 0);
-    // The second target (+0x6CC) is a room's index, whose flag the placement reads: it must be in
-    // the table used.
-    const size_t rooms_in_table = !rooms.empty() ? rooms.size() : static_cast<size_t>(count);
-    constexpr uint16_t kSecondTarget = 0x6CC;
-    for (const SectionBytes& e : newgame_.write) {
-        if ((!rooms.empty() || count > 0) && e.offset == kSecondTarget && e.bytes.size() >= 2) {
-            int16_t index;
-            std::memcpy(&index, e.bytes.data(), sizeof(index));
-            if (index < 0 || static_cast<size_t>(index) >= rooms_in_table) {
-                return rooms.empty() ? "the second start is not a room of the game's own table"
-                                     : "the second start is outside the start table";
-            }
-        }
-    }
-    if (rooms.empty()) return "";
-    if (count == 0) {
-        // The menu never opened this run: built as it would, count last. rooms.size() <=
-        // kStartTableMax (parse_newgame), the room configure checked.
-        for (size_t i = 0; i < rooms.size(); ++i) {
-            at<int16_t>(at_.start_cells, static_cast<ptrdiff_t>(4 * i)) = rooms[i].x;
-            at<int16_t>(at_.start_cells, static_cast<ptrdiff_t>(4 * i + 2)) = rooms[i].y;
-            at<uint8_t>(at_.start_flags, static_cast<ptrdiff_t>(i)) = rooms[i].flag;
-        }
-        at<int16_t>(at_.start_count, 0) = static_cast<int16_t>(rooms.size());
-        return "";
-    }
-    if (static_cast<size_t>(count) != rooms.size()) {
-        return "the game's start table has " + std::to_string(count) + " rooms, the seed's " +
-               std::to_string(rooms.size());
-    }
-    for (size_t i = 0; i < rooms.size(); ++i) {
-        if (at<int16_t>(at_.start_cells, static_cast<ptrdiff_t>(4 * i)) != rooms[i].x ||
-            at<int16_t>(at_.start_cells, static_cast<ptrdiff_t>(4 * i + 2)) != rooms[i].y ||
-            at<uint8_t>(at_.start_flags, static_cast<ptrdiff_t>(i)) != rooms[i].flag) {
-            return "the game's start table differs from the seed's at room " + std::to_string(i);
-        }
-    }
-    return "";
-}
-
 void Game::start_archipelago(WidgetCallback callback) {
-    // Once per press; nothing after the plan was dropped or while a new game is queued.
-    if (!configured_ || !newgame_armed_ || !newgame_.choice || starting_) {
-        return;
-    }
-    if (newgame_queued()) return;
-    starting_ = true;
-    // Refused: RANDOMIZER back, the plan dropped, nothing queued.
-    auto refuse = [&](const std::string& why) {
-        newgame_status_ = "refused " + why;
-        choice_.restore(at_, callback);
-        disarm_newgame();
-    };
-    try {
-        std::string why = place_seed();
-        if (!why.empty()) return refuse(why);
-        // Queued as the play-anyway path does; watch_newgame reports it next frame.
-        reinterpret_cast<void (*)()>(at_.rando_newgame_fn)();
-        if (!newgame_queued()) {
-            return refuse("the game did not queue a new game (is the slot empty?)");
-        }
-        // ARCHIPELAGO stays through the fade; only RANDOMIZER's callback goes back.
-        choice_.release(at_, callback);
-    } catch (...) {
-        choice_.restore(at_, callback);
-        disarm_newgame();
-        throw;
-    }
-}
-
-std::string Game::place_seed() {
-    std::string table = ensure_start_table();
-    if (!table.empty()) return table;
-    // The menu's state is the player's (kept in the preferences): put back however it ends.
-    struct MenuBack {
-        BYTE* menu;
-        BYTE saved[kMenuSize];
-        explicit MenuBack(BYTE* m) : menu(m) { std::memcpy(saved, menu, kMenuSize); }
-        ~MenuBack() { std::memcpy(menu, saved, kMenuSize); }
-        MenuBack(const MenuBack&) = delete;
-        MenuBack& operator=(const MenuBack&) = delete;
-    };
-    int differs;
-    {
-        MenuBack back(at_.randomizer_menu);
-        write_edits(at_.randomizer_menu, newgame_.menu);
-        // The plan in place of START GAME's first step (the start), then the placement
-        // (docs/re/memory.md, "Starting a new game"). No winnability check: the AP generator made
-        // the seed beatable.
-        write_edits(at_.rando_blob, newgame_.write);
-        reinterpret_cast<void (*)()>(at_.placement_fn)();
-        differs = first_difference(at_.rando_blob, newgame_.expect);
-    }
-    if (differs >= 0) {
-        return "the placement is not the seed's (section +" + hex_offset(differs) + " differs)";
-    }
-    // The seed over the placement now, even if the plan is dropped before the next frame.
-    write_edits(at_.rando_blob, newgame_.write);
-    return "";
+    if (!configured_) return;
+    zap::start_archipelago(newgames_, choice_, at_, newgame_at_, callback);
 }
 
 void Game::set_discs(int count, int required, std::string scan_line, bool told) {
@@ -1248,6 +1131,7 @@ void Game::watch_mission() {
 }
 
 void Game::watch_files() {
+    if (!configured_) return;
     // The AP saves' slots every 16th frame call: a copy or a delete shows on the next look.
     if (file_slot_frames_-- <= 0) {
         file_slot_frames_ = kFileSlotFrames;
@@ -1332,7 +1216,20 @@ void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
 void Game::watch_feats() {
     // A load writes the section and the marker in one game call, so a frame call sees both or
     // neither (docs/re/memory.md, "The loaded save's randomizer section is at +0xCDD6D0").
-    const bool on = ap_save_loaded();
+    bool on = ap_save_loaded();
+#ifndef _WIN32
+    // An AP ending the patch did not jump over (it could not be made: feats_state says why)
+    // earns this run's Feats, and the Feats of Natu screen after it (no save loaded) sets the
+    // flashing ones' achievements: then Steam stays blocked from that ending until a save is
+    // loaded again (the title's own achievements meanwhile with it).
+    if (*at_.save_loaded != kNoSaveLoaded) {
+        feats_ending_hold_ = false;
+    } else if (feats_.on() && !on && at_.flags[flag::kEnding] != 0 &&
+               at_.flags[flag::kFeat] != 0) {
+        feats_ending_hold_ = true;  // left an AP save whose ending set its Feats (flag 251)
+    }
+    on = on || feats_ending_hold_;
+#endif
     // The AP saves' slots for the stub's load test (feats.h): looked for with no save loaded,
     // kept while one loads, dropped once a frame call finds another save.
     if (*at_.save_loaded == kNoSaveLoaded) {
@@ -1439,7 +1336,7 @@ void Game::watch_map_marks() {
 
 void Game::watch_title() {
     // Only with no save loaded (the title, the file select): in play the draw list is long.
-    if (*at_.save_loaded != kNoSaveLoaded) return;
+    if (!configured_ || *at_.save_loaded != kNoSaveLoaded) return;
     std::string why = title_.watch(at_, active_, mixed_case(at_));
     if (!why.empty()) title_error_ = why;
     if (title_.shown()) title_error_.clear();
@@ -1450,6 +1347,9 @@ void Game::hide_title() {
 }
 
 std::string Game::title_state() const {
+    // Before set_title_version has run (it runs before the hook and the pipe, so a `hello` never
+    // sees this): no line.
+    if (!title_.has_version()) return "no version";
     if (!title_error_.empty()) return title_error_;
     return title_.shown() ? "1" : "0";
 }
@@ -1553,12 +1453,18 @@ void Game::set_popup_width(int width) {
     if (at_.popup_width_code == nullptr) return;
     if (width < 1 || width > kGamePopupWidth) width = kGamePopupWidth;
     if (width == popup_width_) return;  // already so (popup_width_ starts unknown: -1)
-    // B1's `mov edx, imm32`, holding 24 or a width a helper wrote. Anything else is not the code
-    // traced: left alone, not ours to put back.
+    // B1's `mov edx, imm32` (`mov esi, imm32` on Linux: docs/re/linux.md, `popup_width_code`),
+    // holding 24 or a width a helper wrote. Anything else is not the code traced: left alone, not
+    // ours to put back.
+#ifdef _WIN32
+    constexpr uint8_t kWidthOpcode = 0xBA;
+#else
+    constexpr uint8_t kWidthOpcode = 0xBE;
+#endif
     uint8_t opcode = 0;
     int32_t imm = 0;
     if (!read(at_.popup_width_code, 0, opcode) || !read(at_.popup_width_code, 1, imm) ||
-        opcode != 0xBA || imm < 1 || imm > kGamePopupWidth) {
+        opcode != kWidthOpcode || imm < 1 || imm > kGamePopupWidth) {
         popup_width_ = kGamePopupWidth;
         at_.popup_width_code = nullptr;
         return;
@@ -1581,12 +1487,20 @@ void Game::watch_ap_items() {
     // Restyled only in the world: menus show the records too (the equipment screen Scrap Chunk's
     // frame, the map cursor a name), and nothing is picked up in a menu.
     bool world = *at_.save_loaded != kNoSaveLoaded && *at_.menu_state == 0;
+    bool restyle = world;
+#ifndef _WIN32
+    // On Linux the painting is not proven (docs/re/linux.md, "Mapped by disassembly: item looks",
+    // OpenGL): the records are restyled only while the logos are in the texture the game draws
+    // from (painted below, a frame call before), else the stand-ins would draw their frames,
+    // empty in the game's art. Unpainted, they look and read as the game's own.
+    restyle = world && ap_items_.logo_shown(at_.sprite_texture);
+#endif
     // One read of the item pool a frame, shared by naming and dressing (world only).
     BYTE* base = ItemLooks::item_frame_base(at_);
     const BYTE* pool = world ? read_item_pool() : nullptr;
     // The cell whose label sets the popup's width: the player's, or the touched stand-in's.
     int width_cell = cell;
-    if (world) {
+    if (restyle) {
         // Each stand-in named by its object's cell (a drop lands where its enemy died; apitem.h).
         int cells[kStandInCount];
         int touching = name_cells(stand_ins_seen(pool, base), at<double>(player(), kX),
@@ -1626,7 +1540,7 @@ void Game::watch_ap_items() {
         ap_items_.release(at_.item_records);
         for (std::wstring& name : stand_in_hd_) name.clear();
     }
-    ap_items_.paint(at_.sprite_texture, gl_, texture_check_, GetTickCount64(), world);
+    ap_items_.paint(at_.sprite_texture, gl_, texture_check_, ticks_ms(), world);
     // The pickup popup as wide as width_cell's label while the stand-ins are ours, else 24; from
     // the frame call, so the game is not running the instruction while it changes.
     auto it = ap_items_.labels().find(width_cell);
@@ -1725,15 +1639,21 @@ void Game::drop_save_look() {
     restore_discs();
 }
 
+void Game::restore_translation() {
+    if (!configured_) return;
+    // The translation's entries back; the popup areas emptied once free (unload waits).
+    const std::optional<Loaded> now = loaded_translation(at_);
+    tr_entries_.restore(now);
+    for (NameHold& h : name_holds_) h = {};  // nothing held to write back after
+    popup_areas_.restore(now);
+    icon_sheets_.clear(at_.sprite_templates, gl_);
+}
+
 void Game::put_back_game(WidgetCallback callback) {
     // A prompt asked for or opening, asked for again once put back (not a NO's closed one).
     const bool prompt = mission_.on_its_way();
     put_back_save_look();
-    if (configured_) {
-        mission_.restore(at_);
-        map_names_.restore(at_);
-        choice_.restore(at_, callback);
-    }
+    put_back_client_menus(callback);
     put_back_files();
     leave_offline();
     text_cut_.restore();
@@ -1741,14 +1661,16 @@ void Game::put_back_game(WidgetCallback callback) {
     // queued popups do; an unload is refused while one is held (unload_refusal), then puts them
     // back (put_back_traps).
     if (configured_) {
-        // The translation's entries back; the popup areas emptied once free (unload waits).
-        const std::optional<Loaded> now = loaded_translation(at_);
-        tr_entries_.restore(now);
-        for (NameHold& h : name_holds_) h = {};  // nothing held to write back after
-        popup_areas_.restore(now);
-        icon_sheets_.clear(at_.sprite_templates, gl_);
+        restore_translation();
         if (prompt) mission_.request();
     }
+}
+
+void Game::put_back_client_menus(WidgetCallback callback) {
+    if (!configured_) return;
+    mission_.restore(at_);
+    map_names_.restore(at_);
+    choice_.restore(at_, callback);
 }
 
 void Game::forget_client() {

@@ -15,12 +15,22 @@ item"); client/session.py gives again what a reload took, and marks again. ``sta
 IN_PLAY mid-load (the load sets two of its three values before restoring the inventory), so
 writers use ``settled_state()`` and re-check after writing (docs/re/memory.md, "Telling play
 from menus, the title screen and death").
+
+On Linux ``attach`` attaches to the game's Linux build (``attach_linux``): a known build by
+its binary's build id and hash, its targets (client/linux_targets.py, the ones this module
+reads and writes) from the binary's symbol table, and every read and write through the Linux
+helper in the game (client/linux_helper.py), which must be loaded by the game's launch options.
+``base`` is 0 there and ``rva`` holds the targets' addresses. The Windows helper's own targets and
+``code_checks`` are Windows-only: with the Linux build native.attach refuses the Windows helper,
+and the Linux helper gives the items with their popups and shows other players' items
+(linux_helper.LinuxMod).
 """
 
 from __future__ import annotations
 
 import re
 import struct
+import sys
 import time
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
@@ -286,6 +296,11 @@ class Game:
     rva: dict[str, int]
     pid: int
     build: Build
+    platform: str = "windows"  # "linux": the Linux build, through its helper
+    # On Linux: where the player state's pointer is and what it must hold (checked by state()),
+    # and the targets docs/re/linux.md has only assumed, which nothing writes through.
+    linux_player: tuple[int, int] | None = None
+    unwritable: frozenset[str] = frozenset()
 
     @classmethod
     def attach(
@@ -294,6 +309,8 @@ class Game:
         """Attach to the running game and locate ``targets`` (the client's by default). The
         targets named in ``optional`` (for the client's: patterns.CLIENT_ONLY_TARGETS; none
         for another list) may be missing: a read or write of one then raises PatternError."""
+        if sys.platform.startswith("linux"):
+            return cls.attach_linux()
         if optional is None:
             optional = CLIENT_ONLY_TARGETS if targets is CLIENT_TARGETS else ()
         try:
@@ -322,6 +339,61 @@ class Game:
             pm.close_process()
             raise GameError(f"attaching to {PROCESS} failed: {exc}") from exc
 
+    @classmethod
+    def attach_linux(cls) -> Game:
+        """Attach to the game's Linux build through its helper (client/linux_helper.py), its
+        targets from the binary's symbol table (client/linux_targets.py). It refuses an unknown
+        build, a binary lacking a target's symbol, no helper, and a player state that is not
+        where the layout puts it, or not set yet (docs/re/linux.md, "Read from the running
+        game"): an attach a moment later may then succeed."""
+        from . import elf, linux_helper, linux_targets, procfs
+
+        try:
+            found = linux_helper.find_game()
+        except procfs.ProcessError as exc:
+            raise GameError(f"finding Zexion failed: {exc}") from exc
+        except linux_helper.GameNotFound as exc:
+            raise GameNotRunning(str(exc)) from exc
+        except linux_helper.UnknownLinuxBuild as exc:
+            raise UnknownBuild(str(exc)) from exc
+        except linux_helper.LinuxHelperError as exc:
+            raise GameError(str(exc)) from exc
+        try:
+            rva = linux_targets.resolve(found.image)
+            holder, expected = linux_targets.player_state(found.image)
+        except (linux_targets.TargetError, elf.ELFError) as exc:
+            raise GameError(f"Zexion's binary lacks a target: {exc}") from exc
+        try:
+            pm = linux_helper.LinuxProcess(found)
+        except linux_helper.LinuxHelperError as exc:
+            raise GameError(str(exc)) from exc
+        game = cls(pm, 0, rva, found.pid, found.build)
+        game.platform = "linux"
+        game.linux_player = (holder, expected)
+        game.unwritable = frozenset(t.name for t in linux_targets.TARGETS if not t.measured)
+        try:
+            game._check_player_state()
+        except GameError:
+            pm.close_process()
+            raise
+        return game
+
+    def _check_player_state(self) -> None:
+        """On Linux: the player state is where the layout puts it, which the fixed addresses of
+        the inventory and its neighbors assume. GameError when its pointer is not set yet or is
+        elsewhere."""
+        if self.linux_player is None:
+            return
+        holder, expected = self.linux_player
+        pointer = struct.unpack("<Q", self._read_pointer(holder, 8))[0]
+        if pointer == 0:
+            raise GameError("the game has not set up its player state yet")
+        if pointer != expected:
+            raise GameError(
+                f"the player state is at {pointer:#x}, not {expected:#x} where this build's "
+                "layout puts it: not using it"
+            )
+
     def _alive(self) -> bool:
         return self.pm.alive()
 
@@ -337,7 +409,9 @@ class Game:
     def code_checks(self, keys: Iterable[str], size: int) -> dict[str, bytes]:
         """The first ``size`` bytes of each located target among ``keys`` that lies in the
         game's code (.text), as the game holds them: what the helper compares before it uses
-        cached addresses (client/offline.py)."""
+        cached addresses (client/offline.py). Windows-only: the Linux build has no such cache."""
+        if self.platform != "windows":
+            raise GameError("code_checks is for the Windows build's helper")
         start, length = code_section(self._read_pointer(self.base, 0x1000))
         out = {}
         for key in keys:
@@ -369,6 +443,8 @@ class Game:
 
     def _write(self, target: str, offset: int, data: bytes) -> None:
         self._check_alive()
+        if target in self.unwritable:
+            raise GameError(f"{target} is not yet measured on this build: nothing is written to it")
         address = self._at(target) + offset
         try:
             self.pm.write_bytes(address, data)
@@ -526,6 +602,7 @@ class Game:
             return MENU
         if (self.energy() if energy is None else energy) <= 0:
             return DEAD
+        self._check_player_state()  # on Linux: the state to write in rests on it
         return IN_PLAY
 
     def player_state(self) -> PlayerState:

@@ -24,7 +24,12 @@ around the change.
    once, plus arithmetic documented in `docs/re/memory.md`. A struct field offset, or a
    per-build offset into an exe copy read offline (`tools/gen_world_data.py`, `PRESETS`), is
    acceptable only when `docs/re/memory.md` records it for that build; name the entry or say it
-   is missing. `Target.rvas` in `client/patterns.py` is for checks only: flag any live use.
+   is missing. `Target.rvas` in `client/patterns.py` is for checks only: flag any live use. On
+   the Linux build, an address may instead come from the binary's symbol table by name, once its
+   GNU build id matches a known build, plus offsets `docs/re/linux.md` records (`CLAUDE.md`,
+   "Rules"); flag a symbol's address written into code, or a symbol used without the build check.
+   `LinuxTarget.b1` in `client/linux_targets.py` is for checks only, as `Target.rvas` is: flag any
+   live use of it.
 2. **Unchecked memory access.** A read or write that does not handle: the process having exited
    or restarted (a stale handle, a new base address); a pattern that matched zero or several
    times; a null or out-of-range pointer in a chain; the game being on a build not in
@@ -85,7 +90,8 @@ around the change.
    never re-sent after a disconnect.
 7. **Writes to protected folders.** Anything in `client/` or `tools/` that opens the game
    install, the save folder, Steam's cloud cache or the mod's offline files
-   (`%LOCALAPPDATA%\ZexionAP`; only the helper writes them) for writing, other than
+   (`%LOCALAPPDATA%\ZexionAP`, on Linux `$XDG_DATA_HOME/ZexionAP`, else under
+   `~/.local/share`; only the helper writes them) for writing, other than
    `save_lab.py install` and `restore` (the client writes neither of the first two). The tools'
    paths must go through `tools/protected.py` (`assert_writable`). Also flag any new path around the
    backup checks in those two.
@@ -98,7 +104,29 @@ around the change.
    work on the game thread that can block (pipe I/O, locks held by another thread) or throw
    past the hook; game functions called from any thread but the game's; buffers or messages
    from the pipe trusted without length checks; a change to the game not put back when a
-   client goes away or on unload (`native/README.md`, "Parts").
+   client goes away or on unload (`native/README.md`, "Parts"). The Linux helper
+   (`native/linux/`) is preloaded into every program the game's launch starts, so also check:
+   that what it does at load is safe in each of them (the game is one process among them); that
+   it exports only `SDL_GL_SwapWindow` and `SteamInternal_ContextInit` (`linux/exports.map`) and
+   no C++ runtime symbol that could stand in for the game's own; that its abstract socket stays
+   gated by `SO_PEERCRED` (only its own user) and the token: 32 random bytes as 64 hex digits in
+   `ZexionAP/token` of the data folder (file 0600, folder 0700, never through a link), compared
+   without an early exit, a connection served nothing but `hello` (answered once) until
+   `auth TOKEN` passes, one 5 s deadline from the accept to present it, and the client sending the
+   token only after `hello` showed the server is the game's own process (trying each token it
+   finds, newest first, one connection each); that writes into the game go through
+   `process_vm_writev`, limited to the game's `.bss` and, inside it, to an allow-list of the
+   ranges the client writes (the player's inventory bytes, each of its six supply numbers by
+   its own two bytes, the map cells' whole 9-byte records, the map grid: offsets from `gGameState`,
+   built by `keep_ranges` and checked against `client/game.py` by tests, the helper saying on
+   stderr how many it keeps), so a new write target in the client needs its range added there.
+   The function-pointer tables and each sprite record's move procedure are outside it; what
+   stays writable (the player record's supply and inventory fields) is not shown to hold
+   anything but numbers, which is not a proof, so a widened range is a finding. Code is patched
+   only by the shared layer through `mprotect`; that anything a connection set (`config`, discs,
+   assists, intel and the rest) is put back when it goes, and one that only looks (`status`, a
+   probe) changes nothing; and that it never unloads, so nothing may
+   wait on an unload to undo a change (a patch with a timer puts itself back).
 
 ## Method
 

@@ -61,7 +61,7 @@ class MODULEINFO(ctypes.Structure):
 @functools.cache
 def kernel32():
     """kernel32, with the argument and result types of every function the client calls."""
-    if sys.platform != "win32":  # pragma: no cover - the client runs on Windows only
+    if sys.platform != "win32":  # pragma: no cover - only Windows reads processes this way
         raise ProcessError("reading another process needs Windows")
     k = ctypes.WinDLL("kernel32", use_last_error=True)
     h, b, d, p, s = wintypes.HANDLE, wintypes.BOOL, wintypes.DWORD, ctypes.c_void_p, ctypes.c_size_t

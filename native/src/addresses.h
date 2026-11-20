@@ -3,13 +3,13 @@
 // traced in docs/re/memory.md, "Game functions the helper calls"; each part's header says more.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 namespace zap {
 
 // The helper's wrappers the game is pointed at while a part is on (dllmain.cpp).
 struct Hooks {
-    void* panel = nullptr;            // the game-mode panel's handler (menu.h)
+    void* panel = nullptr;            // the game-mode panel's handler (choice.h)
     void* equipment = nullptr;        // EQUIPMENT's callback (equip.h)
     void* equipment_panel = nullptr;  // the Energy Tank panel's handler (equip.h)
     void* mission_open = nullptr;     // the mission prompt's opener, no arguments (mission.h)
@@ -110,7 +110,7 @@ struct GameAddresses {
     BYTE* draw_layer = nullptr;    // holds the draw list new screen objects join
     BYTE* map_handler = nullptr;   // holds the map's per-frame handler (mapmarks.h)
     BYTE* seen_marker_code = nullptr;  // the write of an on-screen item's square (mapmarks.h)
-    BYTE* text_cut_code = nullptr;  // the text window's top cut, 24 bytes (text.h, TextCut)
+    BYTE* text_cut_code = nullptr;  // the text window's top cut, 24 bytes (14 on Linux: text.h)
     // Feats and achievements (feats.h).
     BYTE* ending_unlocks = nullptr;     // the ending's first Steam call (6 bytes)
     BYTE* ending_join = nullptr;        // where it goes on, just before it sets flag 250

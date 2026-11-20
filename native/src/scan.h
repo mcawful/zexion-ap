@@ -4,7 +4,7 @@
 // off and before an unload; a reloaded table is written again by the watch.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <string>

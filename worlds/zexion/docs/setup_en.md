@@ -3,7 +3,8 @@
 ## What you need
 
 - Zexion on Steam (Windows), Steam build 23943567: the only version of the game this release
-  supports. The client tells you if yours isn't supported.
+  supports. The client tells you if yours isn't supported. Not Linux or the Steam Deck: see
+  "Linux and Steam Deck" below.
 - Archipelago 0.6.8 or newer.
 - The latest release of this world, from the
   [Releases page](https://github.com/mcawful/zexion-ap/releases): `zexion.apworld`,
@@ -79,6 +80,29 @@ Archipelago logo beside the file number.
   game page); your normal saves earn them as usual.
 
 Goals, options and what's changed in the game: see the game page (`zexion-game-page.md`).
+
+## Linux and Steam Deck
+
+**Not supported.** The mod and the client are made for Zexion's Windows version, and this
+release has no mod for the Linux one. The developer has run a mod for the Linux version in the
+game, on one setup (Steam installed with Flatpak), but it is not released, so nothing here has
+been tried on your setup.
+
+- Zexion on Steam has a Linux version of its own. On a Steam Deck or a Linux PC, Steam should run
+  that one unless you force a compatibility tool (Proton) in the game's Properties, Compatibility. A
+  Steam Deck with Zexion's default settings said it runs in "Steam Linux Runtime 3.0", the
+  Linux version's runtime (2026-11-16). `zexion_ap.dll` and `version.dll` are Windows files and
+  can't load into the Linux version, and this release has no mod for it, so with the Linux
+  version there is no ARCHIPELAGO choice and no seed can be played: the client says "Can't
+  reach the running game; trying again (details in the log)." and its log asks whether the
+  mod is in the game's launch options. A mod for the Linux version is in the works, and no release
+  carries it yet.
+- Playing the Windows version under Proton, with the mod and the Windows version of
+  Archipelago inside Zexion's Proton folder, is **not tried**: nobody has run the game that way
+  with this world yet. If you try it, a report at
+  [github.com/mcawful/zexion-ap/issues](https://github.com/mcawful/zexion-ap/issues) helps,
+  with the Proton version, your device and what the client said. Steam's Cloud may sync saves
+  between the Windows version and the Linux one: keep a copy of your saves first.
 
 ## Languages
 

@@ -3,7 +3,7 @@
 // reading as the game's or the helper's is written; put back when off and before an unload.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 

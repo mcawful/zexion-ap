@@ -3,10 +3,14 @@
 Four places are protected:
 
 - the game install (any ``steamapps/common/Zexion``, in any Steam library),
-- the real save folder (``%APPDATA%/Gallant Leaf/Zexion``),
+- the real save folder (``%APPDATA%/Gallant Leaf/Zexion``; on Linux SDL's, under
+  ``~/.local/share``, or Flatpak Steam's: any ``Gallant Leaf/Zexion``),
 - Steam's cloud cache for the game (``Steam/userdata/<account>/3392510``),
 - the mod's offline files (``%LOCALAPPDATA%/ZexionAP``: the seed list, labels and disk counts
-  the helper keeps for play without the client). Only the helper writes them.
+  the helper keeps for play without the client; on Linux the seeds' files and the helper's socket
+  token, in ``$XDG_DATA_HOME/ZexionAP``, else ``~/.local/share/ZexionAP``, as the game's saves
+  are, so under Flatpak Steam's home too; ``.var/app/com.valvesoftware.Steam/data``, Flatpak's own
+  default ``XDG_DATA_HOME``, is covered as well). Only the helper writes them.
 
 Matching is by pattern rather than by this machine's paths, so the same rules hold on any PC.
 The write-guard hook (``.claude/hooks/guard_protected.py``) and the tools in this folder share
@@ -41,6 +45,12 @@ _PROTECTED = [
     re.compile(
         r"(?:appdata\W{0,8}local|local(?:app(?:lication)?)?data)\W{0,8}zexionap(?![\w-]|\.\w)"
     ),
+    # On Linux: ``ZexionAP`` after ``.local/share`` (Snap's ``…/common/.local/share`` too),
+    # ``XDG_DATA_HOME`` (unexpanded, or not set here) or Flatpak Steam's ``…Steam/data``.
+    re.compile(
+        r"(?:\.local\W{0,8}share|xdg_data_home|com\.valvesoftware\.steam\W{0,8}data)"
+        r"\W{0,8}zexionap(?![\w-]|\.\w)"
+    ),
 ]
 # The same folders as path components, for ``word_may_name_protected``. ``_DIGITS`` stands for
 # the Steam account id.
@@ -51,6 +61,9 @@ _PROTECTED_PARTS: list[tuple] = [
     ("userdata", _DIGITS, str(STEAM_APP_ID)),
     ("appdata", "local", "zexionap"),
     ("localappdata", "zexionap"),  # the variable left unexpanded (``$env:LOCALAPPDATA``)
+    (".local", "share", "zexionap"),  # Linux: the data folder SDL and the helper use
+    ("xdg_data_home", "zexionap"),  # the variable left unexpanded (``$XDG_DATA_HOME``)
+    ("com.valvesoftware.steam", "data", "zexionap"),  # Flatpak Steam's XDG_DATA_HOME
 ]
 
 # Environment variables that commonly prefix a path to the saves or the Steam library.
@@ -59,6 +72,7 @@ _ENV_NAMES = (
     "LOCALAPPDATA",
     "USERPROFILE",
     "HOME",
+    "XDG_DATA_HOME",  # Linux: ``$XDG_DATA_HOME/ZexionAP`` is the offline folder
     "TEMP",  # %LOCALAPPDATA%\Temp: ``$TEMP/../ZexionAP`` is the offline folder
     "TMP",
     "PROGRAMFILES(X86)",
@@ -99,22 +113,30 @@ def _local_appdata() -> str:
     return normalize(os.environ.get("LOCALAPPDATA") or "").rstrip("/")
 
 
+def _offline_bases() -> list[str]:
+    """The folders this machine's environment puts the offline folder in, read as ``normalize``
+    reads a path: ``LOCALAPPDATA`` and, on Linux, ``XDG_DATA_HOME``, each when set."""
+    data_home = normalize(os.environ.get("XDG_DATA_HOME") or "").rstrip("/")
+    return [base for base in (_local_appdata(), data_home) if base]
+
+
 def _offline_patterns() -> list[re.Pattern]:
-    """The offline folder where this machine's ``LOCALAPPDATA`` puts it, for a value that is
-    not the usual ``AppData/Local`` (the fixed pattern in ``_PROTECTED`` covers that and the
-    unexpanded variable)."""
-    base = _local_appdata()
-    if not base:
-        return []
-    return [re.compile(re.escape(base + "/zexionap") + r"(?![\w-]|\.\w)")]
+    """The offline folder where this machine's ``LOCALAPPDATA`` or ``XDG_DATA_HOME`` puts it,
+    for a value that is not the usual ``AppData/Local`` or ``~/.local/share`` (the fixed
+    patterns in ``_PROTECTED`` cover those and the unexpanded variables)."""
+    return [
+        re.compile(re.escape(base + "/zexionap") + r"(?![\w-]|\.\w)") for base in _offline_bases()
+    ]
 
 
 def _offline_parts() -> list[tuple]:
-    """The same folder as path components, for ``word_may_name_protected``."""
-    parts = _path_parts(_local_appdata())
-    if not parts or any(re.search(r"[*?\[{]", p) for p in parts):
-        return []
-    return [(*parts, "zexionap")]
+    """The same folders as path components, for ``word_may_name_protected``."""
+    found = []
+    for base in _offline_bases():
+        parts = _path_parts(base)
+        if parts and not any(re.search(r"[*?\[{]", p) for p in parts):
+            found.append((*parts, "zexionap"))
+    return found
 
 
 def _plain(text: str) -> str:
@@ -322,50 +344,129 @@ def append_log(path: str | os.PathLike[str], entry: dict) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
+# The game's file in its install: the Windows exe, and the Linux build's binary
+# (``docs/re/builds.md``, "B1 on Linux").
+GAME_FILES = ("Zexion.exe", "Zexion")
+# Flatpak's Steam keeps its home, Steam and the game's saves under this folder of the real home.
+FLATPAK_STEAM_HOME = Path(".var", "app", "com.valvesoftware.Steam")
+
+
+SAVE_FOLDER = ("Gallant Leaf", "Zexion")
+# Where Proton keeps a Windows game's %APPDATA%, inside a library (assumed: Proton's layout,
+# not seen with this game).
+PROTON_APPDATA = ("steamapps", "compatdata", str(STEAM_APP_ID), "pfx", "drive_c", "users",
+                  "steamuser", "AppData", "Roaming")  # fmt: skip
+
+
+def _linux_save_dirs(home: Path, env: dict[str, str], libs: list[Path]) -> list[Path]:
+    """Where the game's saves can be on Linux: SDL's preference folder (``$XDG_DATA_HOME``, else
+    ``~/.local/share``) for Steam installed natively, Flatpak Steam's home and Snap Steam's
+    (assumed: Snap's layout, not seen), and the Windows build's under Proton in each library."""
+    data_home = env.get("XDG_DATA_HOME") or str(home / ".local" / "share")
+    found = [
+        Path(data_home).joinpath(*SAVE_FOLDER),
+        home.joinpath(FLATPAK_STEAM_HOME, ".local", "share", *SAVE_FOLDER),
+        home.joinpath("snap", "steam", "common", ".local", "share", *SAVE_FOLDER),
+    ]
+    found += [library.joinpath(*PROTON_APPDATA, *SAVE_FOLDER) for library in libs]
+    return found
+
+
+def _one(found: list[Path], what: str, setting: str) -> Path:
+    """The one folder of ``found`` (links and repeats counted once), else an error."""
+    unique: list[Path] = []
+    for path in found:
+        with contextlib.suppress(OSError):
+            if path.resolve() not in {u.resolve() for u in unique}:
+                unique.append(path)
+    if len(unique) == 1:
+        return unique[0]
+    if not unique:
+        raise RuntimeError(f"{what} not found; set {setting} to it")
+    raise RuntimeError(
+        f"{what} in {len(unique)} places ({', '.join(map(str, unique))}); set {setting} to the "
+        "one the game uses"
+    )
+
+
 def save_dir() -> Path:
-    """The real save folder. ``ZEXION_SAVE_DIR`` overrides it (tests use this)."""
+    """The real save folder. ``ZEXION_SAVE_DIR`` overrides it (tests use this). On Linux it is
+    the one of ``_linux_save_dirs`` that exists, and an error when none or several do."""
     override = os.environ.get("ZEXION_SAVE_DIR")
     if override:
         return Path(override)
-    appdata = os.environ.get("APPDATA")
-    if not appdata:
-        raise RuntimeError("APPDATA is not set; set ZEXION_SAVE_DIR to the save folder")
-    return Path(appdata) / "Gallant Leaf" / "Zexion"
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA")
+        if not appdata:
+            raise RuntimeError("APPDATA is not set; set ZEXION_SAVE_DIR to the save folder")
+        return Path(appdata).joinpath(*SAVE_FOLDER)
+    candidates = _linux_save_dirs(Path.home(), dict(os.environ), libraries(_steam_roots()))
+    return _one([p for p in candidates if p.is_dir()], "Zexion's save folder", "ZEXION_SAVE_DIR")
 
 
-def _steam_root() -> Path | None:
-    if sys.platform != "win32":
-        return None
-    import winreg
+def _steam_roots() -> list[Path]:
+    """Steam's own folders: the registry's on Windows; elsewhere the usual places of a native,
+    Flatpak or Snap Steam, those that exist (a link to another counts once)."""
+    if sys.platform == "win32":
+        import winreg
 
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
-            value, _ = winreg.QueryValueEx(key, "SteamPath")
-    except OSError:
-        return None
-    return Path(value)
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
+                value, _ = winreg.QueryValueEx(key, "SteamPath")
+        except OSError:
+            return []
+        return [Path(value)]
+    home = Path.home()
+    candidates = [
+        home / ".steam" / "steam",
+        home / ".local" / "share" / "Steam",
+        home / FLATPAK_STEAM_HOME / ".local" / "share" / "Steam",
+        home / "snap" / "steam" / "common" / ".local" / "share" / "Steam",
+    ]
+    roots: list[Path] = []
+    for candidate in candidates:
+        with contextlib.suppress(OSError):
+            if candidate.is_dir() and candidate.resolve() not in {r.resolve() for r in roots}:
+                roots.append(candidate)
+    return roots
 
 
-def game_dir() -> Path:
-    """The game install. ``ZEXION_GAME_DIR`` overrides it; otherwise Steam's libraries are tried."""
-    override = os.environ.get("ZEXION_GAME_DIR")
-    if override:
-        return Path(override)
-    root = _steam_root()
-    libraries: list[Path] = []
-    if root is not None:
-        libraries.append(root)
+def libraries(roots: list[Path]) -> list[Path]:
+    """Each root and the libraries its ``libraryfolders.vdf`` lists, in that order."""
+    found: list[Path] = []
+    for root in roots:
+        found.append(root)
         vdf = root / "steamapps" / "libraryfolders.vdf"
         if vdf.is_file():
             text = vdf.read_text(encoding="utf-8", errors="replace")
             for match in re.finditer(r'"path"\s+"([^"]+)"', text):
-                libraries.append(Path(match.group(1).replace("\\\\", "\\")))
-    for library in libraries:
+                found.append(Path(match.group(1).replace("\\\\", "\\")))
+    return found
+
+
+def game_file(install: Path) -> Path:
+    """The game's exe or Linux binary in ``install`` (``GAME_FILES``, the first that is there)."""
+    for name in GAME_FILES:
+        if (install / name).is_file():
+            return install / name
+    raise RuntimeError(f"no {' or '.join(GAME_FILES)} in {install}")
+
+
+def game_dir() -> Path:
+    """The game install. ``ZEXION_GAME_DIR`` overrides it; otherwise Steam's libraries are tried,
+    and two installs (a native and a Flatpak Steam's, say) are an error, not a guess."""
+    override = os.environ.get("ZEXION_GAME_DIR")
+    if override:
+        return Path(override)
+    found = []
+    for library in libraries(_steam_roots()):
         candidate = library / "steamapps" / "common" / "Zexion"
-        if (candidate / "Zexion.exe").is_file():
-            return candidate
-    raise RuntimeError(
-        "Zexion install not found; set ZEXION_GAME_DIR to the folder with Zexion.exe"
+        if any((candidate / name).is_file() for name in GAME_FILES):
+            found.append(candidate)
+    return _one(
+        found,
+        "Zexion's install (the folder with Zexion.exe or, on Linux, the Zexion binary)",
+        "ZEXION_GAME_DIR",
     )
 
 

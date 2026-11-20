@@ -15,6 +15,8 @@ namespace zap {
 const char kMissionQuestion[] = "Return home with the disks?";
 constexpr float kQuestionCenterBy = -4.0f;
 const char kEndingStarted[] = "ending started";
+const char kPutBack[] = "put back: the prompt was up, YES is NO";
+const char kYesDropped[] = "put back: YES was pressed, the ending had not started";
 
 namespace {
 
@@ -403,6 +405,8 @@ bool MissionPrompt::ending_queued(const GameAddresses& a) const {
 }
 
 void MissionPrompt::cancel(const GameAddresses& a) {
+    // A YES not yet followed by the ending (set when the game is idle) is dropped by this.
+    const bool dropped_yes = ending_ && !started_;
     requested_ = false;
     ending_ = false;
     end_dark(a, "ended: canceled, faded back in");  // no ending to come: out of the black
@@ -415,7 +419,11 @@ void MissionPrompt::cancel(const GameAddresses& a) {
         }
     }
     // An ending started stays said (the client reads it) until another save is loaded.
-    if (!armed_ && yes_child_ == nullptr && !started_) status_ = "not asked";
+    // Said apart from "not asked" for a YES the player pressed (the client may have read only
+    // "shown" before it), which is not a NO: the prompt is offered again.
+    if (!armed_ && yes_child_ == nullptr && !started_) {
+        status_ = dropped_yes ? kYesDropped : "not asked";
+    }
 }
 
 void MissionPrompt::restore(const GameAddresses& a) {
@@ -436,13 +444,19 @@ void MissionPrompt::restore(const GameAddresses& a) {
             queued_ = false;  // the game's routine set: the ending runs, not asked again
         }
     }
+    bool put_back = false;
     if (yes_child_ != nullptr && is_open(a.current_menu, menu_) &&
-        pointer_at(yes_child_, widget::kCallback) == a.hooks.mission_yes &&
-        !swap_pointer(yes_child_, widget::kCallback, a.hooks.mission_yes, no_fn_)) {
-        return;  // still the helper's: kept, so an unload refuses
+        pointer_at(yes_child_, widget::kCallback) == a.hooks.mission_yes) {
+        if (!swap_pointer(yes_child_, widget::kCallback, a.hooks.mission_yes, no_fn_)) {
+            return;  // still the helper's: kept, so an unload refuses
+        }
+        put_back = true;
     }
     yes_child_ = nullptr;
     menu_ = nullptr;
+    // A prompt left open with YES now NO's: the status no longer says "shown" (which a NO the
+    // player pressed leaves too), so the client can offer it again (client/discs.py, PUT_BACK).
+    if (put_back) status_ = kPutBack;
 }
 
 }  // namespace zap
