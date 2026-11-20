@@ -358,3 +358,20 @@ def test_a_socket_that_cant_be_made_again_says_the_request_never_went_out(monkey
     monkeypatch.setattr(linux_helper.LinuxHelper, "__enter__", no_files)
     with pytest.raises(linux_helper.LinuxHelperError, match="connecting to the helper again"):
         process.request("die")
+
+
+def test_disconnect_lets_go_and_the_next_request_connects_again(monkeypatch) -> None:
+    closed = []
+    helper = types.SimpleNamespace(connected=True, __exit__=lambda *_: closed.append(1))
+    helper.__exit__ = lambda *_: (closed.append(1), setattr(helper, "connected", False))
+    process = object.__new__(linux_helper.LinuxProcess)
+    process.game, process._timeout, process._closed = None, 0.2, False
+    process._lock, process.connection, process._helper = threading.Lock(), 1, helper
+    process.disconnect()
+    assert closed == [1] and not process.connected
+    process.disconnect()  # already closed: nothing
+    assert closed == [1]
+    process._closed = True
+    helper.connected = True
+    process.disconnect()  # the process is closed for good: left to close_process
+    assert closed == [1]

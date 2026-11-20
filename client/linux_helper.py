@@ -478,6 +478,15 @@ class LinuxProcess:
         """The game's pid still names the process attached to, and it has not exited."""
         return running(self.game.pid, self.game.started, self._proc)
 
+    def disconnect(self) -> None:
+        """Let go of the helper for now: close the connection (the helper puts back what a client
+        that sent ``config`` set, as when it goes), if one is open. Not ``close_process``: the
+        next read, write or request connects again, as after a dropped connection. Nothing if it
+        is already closed, or the process is."""
+        with self._lock:
+            if not self._closed and self._helper.connected:
+                self._helper.__exit__()
+
     def close_process(self) -> None:
         with self._lock:
             self._closed = True
