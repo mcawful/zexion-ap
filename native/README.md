@@ -194,8 +194,9 @@ with one atomic exchange, and only one thread at a time does the work.
 When the pipe's client disconnects (the client exited or crashed, let the helper go while it
 had no server connection, or `tools/helper.py` was done), the next frame call, before it serves
 any request, puts back everything the parts below set in the game's memory and drops what the
-client asked for (`Game::client_gone`: `put_back_game`, then `forget_client`, in
-`src/game_calls.cpp`). A change held by a menu no longer open is gone with it. A running trap's
+client asked for (`Game::client_gone`: `put_back_game`, then `forget_client`, and
+`forget_client_seed`, which closes the look's gate until the next client has put its
+seed, in `src/game_calls.cpp`). A change held by a menu no longer open is gone with it. A running trap's
 AILMENTS patch stays, as the trap does ("Traps"). It goes inactive
 until a client sends `config` again (the client resends every request after it attaches). The
 client's popups not shown yet stay queued and still show ("Popups"): their items are already
@@ -2297,8 +2298,10 @@ Both runs predate the socket's token, the client's keep-alive and let-go, and th
 that followed: the put-back of whatever a connection set when it goes, `write` taking only the
 ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map
 cache, the Steam check's retry, the client's settings sent only on the configured connection,
-and a RETURN HOME prompt put back being offered again. Those have run on stand-ins only; the next
-in-game run re-checks the attach as a whole.
+a RETURN HOME prompt put back being offered again, and the look's gate on the seed the client
+put (`offline_put`: Intel Chips, the ASSIST lock and the disks' count only in that seed's
+save, #162). Those have run on stand-ins only; the next in-game run re-checks the attach as a
+whole.
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
@@ -2520,7 +2523,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     `ap_newgame`, `ap_labels`, `discs`, `mission_prompt`, `other_save`, `client_back`, `assists`,
     `intel` and `offline_put`, which a client sends after its `config`, but a connection made again
     in the middle of a poll may send before it): the helper's plan, labels, Intel Chips, ASSIST
-    lock and disk count, and the seed files read again.
+    lock and disk count, the client's seed (`forget_client_seed`), and the seed files read
+    again.
     It is put back at the next frame call or before the next request's work on the game thread
     (`client_gone_if_left`), whichever comes first, and the serving thread marks the client gone
     before it takes the next one: so a client that comes back at once (a request with no reply
@@ -2730,15 +2734,18 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     on Windows: "Intel Chips"), which on Linux is the seed the client put with `offline_put`
     (`take_offline` notes the last one put, on the game thread, as `note_client_seed`; the
     client-gone work forgets it, `forget_client_seed`, for any connection that set something,
-    `sets_client_state`, offline_put among them; one that only looks leaves it alone).
+    `sets_client_state`, offline_put among them; one that only looks leaves it alone). Until
+    the client has put its seed, which on Linux is from the connection's first poll
+    (`ticks.linux_seed_tick`), the count is hidden in the seed's own save too.
 
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`, in the client's
   seed's save: `put_clients_seed`): `discs` writes
   the scanner's Text entry as the client's line in capitals and makes the stand-in's KEYS branch a
   `jmp`, both put back once the client goes. The equipment screen and the pause row: built only
   (the stand-in has no menus), and in a translation assumed ("Translations", above). The pause row
-  and the count notices run in the game, 2026-11-19 ("The Linux helper", above: run 2); the
-  scanner's line and the equipment screen not reached.
+  and the count notices run in the game, 2026-11-19 ("The Linux helper", above: run 2), which
+  predates the gate on the client's seed: the count's gate has run on stand-ins only, not in
+  the game; the scanner's line and the equipment screen not reached.
 - **This world's own disks, counted at their pickup.** `Game::watch_own_disks` runs at each frame
   call as on Windows ("The OS Install Disks goal", "The count follows the save"): in a known disk
   seed's save, an own disk's cell turning collected after two frames in play queues "OS Install
@@ -2854,10 +2861,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   (`Game::seed_look_loaded`, "Intel Chips", above): on Linux the seed a client put (`offline_put`,
   noted by `take_offline`, forgotten by the client-gone work, as for the disks' count). Nothing
   else differs on Linux: the game loads the `Objects` records as they are, and the installed
-  file's record 49 reads as
-  `kAreaMap` (whether anything writes the records after the load is not swept: the check before
-  each write leaves one that reads otherwise alone) (`docs/re/linux.md`, "Mapped by disassembly:
-  Intel Chips"). A received one's popup and its name in a translation were shared already ("Grants
+  file's record 49 reads as `kAreaMap` (whether anything writes the records after the load is
+  not swept: the check before each write leaves one that reads otherwise alone)
+  (`docs/re/linux.md`, "Mapped by disassembly: Intel Chips"). A received one's popup and its name in a translation were shared already ("Grants
   and popups", "Translations"). The client sends it through `LinuxMod` (`ticks.linux_intel_tick`);
   a Linux helper of this version built before Intel Chips refuses it, which the client asks again
   every few seconds, saying nothing. Tested on the stand-in game through the socket
@@ -2901,7 +2907,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   saying on stderr a
   file it could not read; the same folder holds the client's `token` ("Who may connect"), which
   the seed reader ignores (it reads `seeds/` alone); the next frame call takes them, in place of the
-  last ones with no client and added to them with one (`Game::set_offline`, `merge_offline`). A
+  last ones with no client and added to them with one (`Game::set_offline`, `merge_offline`); with a
+  client, the last one put is also its seed for the look (`note_client_seed`, as on Windows: "AP
+  saves without the client"). A
   seed taken but not kept (`error too large`, a write that failed: the client takes each for
   taken, and puts it again only when it changes; `error no folder` is not reached on Linux, where
   a helper with no data folder has nowhere for its token and serves no one) stays the helper's

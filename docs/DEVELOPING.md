@@ -267,8 +267,8 @@ The mod is for the game's Windows build. Zexion also has a native Linux build (b
 helper of its own that runs every part of the Windows helper's but unloading, run in the game on
 2026-11-18 and 2026-11-19 (what ran, and what has not yet: below; these runs predate the socket's
 token, the client's keep-alive and let-go, and the review's later fixes to the helper and client
-(`native/README.md`, "The Linux helper", lists them), which have run on stand-ins only: the next
-in-game run re-checks the attach); the client attaches to either build. Everything else runs on
+(`native/README.md`, "The Linux helper", lists them, the look's gate on the client's seed
+among them), which have run on stand-ins only: the next in-game run re-checks the attach); the client attaches to either build. Everything else runs on
 Windows, Linux and macOS, and CI runs ruff and pytest on all three.
 
 Windows only:
@@ -327,7 +327,7 @@ What there is:
   helper and client (the put-back of whatever a connection set, `write` taking only the ranges the
   client writes, the auth deadline, the token candidates, the narrower map cache, the Steam
   check's retry, the settings sent only on the configured connection, a RETURN HOME prompt put
-  back offered again), which have run on stand-ins only (the next run re-checks the attach). How
+  back offered again, the look's gate on the seed the client put), which have run on stand-ins only (the next run re-checks the attach). How
   to run it in the game, and what to try first: `native/README.md`, "Running it in the game".
   `menu_state` is the game's cursor mode on Linux (`gCursorMode`), which the mouse may set to 1,
   but only in menus: in play it stays 0 (read live, 2026-11-19: `re/linux.md`, `menu_state`).
