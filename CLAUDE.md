@@ -32,7 +32,10 @@ Where things are:
   measured. Nothing is "working in game" until it has run in the real game, with the date and
   build recorded.
 - **No hard-coded addresses.** ASLR is on and the game is still patched. Live addresses come
-  only from byte patterns checked to match exactly once. Struct offsets, and per-build offsets
+  only from byte patterns checked to match exactly once: the client's, and the Windows helper's own
+  scan of the game with the same patterns (`client/patterns.py`, generated into
+  `native/src/findaddr_patterns.h` by `tools/gen_native_patterns.py`: never typed twice, never an
+  address in it). Struct offsets, and per-build offsets
   into an exe copy read offline, are allowed when `docs/re/memory.md` records them for that
   build. `Target.rvas` in `client/patterns.py` is for checks only. The Linux build is a
   fixed-address executable that keeps its symbol table (`docs/re/builds.md`, "B1 on Linux"):
@@ -216,6 +219,7 @@ game or save folders.
 | `make_pattern.py EXE RVA` | candidate byte patterns | no |
 | `randocells.py SAVE --fresh` | reachable locations of a new seed | no |
 | `gen_world_data.py` | regenerate `worlds/zexion/data.py` | no |
+| `gen_native_patterns.py [--check]` | regenerate `native/src/findaddr_patterns.h` from `client/patterns.py` (after any change to it) | no |
 | `gen_sample_yamls.py` | regenerate `samples/` (needs `.ap/`) | no |
 | `build_apworld.py` | a release into `dist/` | no |
 | `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF`, and its notes are written | no |
@@ -321,7 +325,9 @@ the release's.
   | `shields.py` | received Energy Shields (`shield`) |
   | `offline.py` | `offline_put`: files for AP saves without the client |
 
-- `native/`: the helper `zexion_ap.dll` and, in `proxy/`, the proxy `version.dll`; in `linux/`,
+- `native/`: the helper `zexion_ap.dll` (which finds the game's addresses itself at start, so it
+  works with no client on a first launch: `src/findaddr.cpp`) and, in `proxy/`, the proxy
+  `version.dll`; in `linux/`,
   the Linux helper `libzexion_ap.so`, which also builds the sources of `src/` it shares (`Game`,
   through `src/platform.h`; it runs new games, grants with their popups, scrap's drops and Energy
   Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, other players' items, traps,
@@ -342,7 +348,9 @@ the release's.
   client and the helpers must agree on (version, builds, `config` keys, the request names and the
   replies the client branches on, the offline seed's header and keys, the label separator, the
   font's punctuation, the item record count, the flags and layouts both read), and the world's
-  `world_version`. `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
+  `world_version`. `test_gen_native_patterns.py` fails while `native/src/findaddr_patterns.h` is out of
+  date; `test_native_scan.py` (with `ZEXION_EXE`, locally) compares the helper's own scan of an exe
+  copy with the client's. `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
   `test_release_notes.py` and `test_release_footer.py` test the release builder, the data
   generator, the release gate, the release's message and the install guide in it.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not

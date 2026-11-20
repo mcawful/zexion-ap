@@ -55,7 +55,7 @@ public:
     // Game thread. Checks each required kConfigKeys entry is present (an optional one may be
     // missing, its member left null) and each given one in the right kind of section, with the
     // room it needs (game_calls.cpp, check_key), then keeps the addresses. "" or an error.
-    // `active`: false for the offline cache (no client there yet).
+    // `active`: false for the helper's own scan or the offline cache (no client there yet).
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                           bool active = true);
 #else
@@ -64,7 +64,7 @@ public:
     // and so are the parts that would read them (it runs only the ported parts). The hooks are
     // set_hooks'. Always "".
     // `active`: a client's config (false: the Linux helper's own, from the game's symbols, with
-    // no client: only what runs with none uses it, as the Windows helper's cached one).
+    // no client: only what runs with none uses it, as the Windows helper's own scan's or its cache's).
     std::string configure(GameAddresses found, bool active = true);
 #endif
     bool configured() const { return configured_; }

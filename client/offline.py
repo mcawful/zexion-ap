@@ -4,7 +4,9 @@ The client sends the helper two kinds of file (``offline_put``), which it writes
 ``%LOCALAPPDATA%\\ZexionAP`` (the Linux helper the seeds alone, under ``$XDG_DATA_HOME``) and
 reads when no client runs: ``config-<build>.txt``, the
 ``config`` addresses plus the first bytes of each function among them (``check KEY HEX``, used
-only if the game still holds them), and ``seeds/<seed>-<team>-<slot>.txt`` in the format
+only if the game still holds them: since the helper finds the addresses itself by the same
+patterns, it falls back to this file only if its own scan failed), and
+``seeds/<seed>-<team>-<slot>.txt`` in the format
 native/src/offline.h describes. The helper writes them, not the client: a client run from a
 packaged (MSIX) app has its AppData writes redirected where the game does not see them
 (docs/re/memory.md, "AP saves without the client"). Pure functions; client/ticks.py

@@ -5,11 +5,12 @@ runs every part of it but unloading: "The Linux helper", below) and does what th
 outside: work on the game's own thread, between frames. It gets in two ways: **the proxy**
 `version.dll` in the game's folder loads it as the game starts, or the client loads it on
 attaching (`client/native.py`; `tools/helper.py` too, for tests). The client talks to it over a
-named pipe. With no client it changes the title screen, the look of AP saves (the file select's
-disk count too) and, in every save, how the game's text window cuts tall text ("Popups"); it sets
-this world's own traps off at their pickup ("Traps") and shows an own OS Install Disk's count
-popup at its pickup ("The OS Install Disks goal"); and it keeps Feats and Steam achievements out
-of AP saves.
+named pipe. It finds the game's addresses itself ("Finding its own addresses"), so with no client,
+from the first start on a PC no client has ever run on, it changes the title screen, the look of AP
+saves (the file select's disk count too) and, in every save, how the game's text window cuts tall
+text ("Popups"); it sets this world's own traps off at their pickup ("Traps") and shows an own OS
+Install Disk's count popup at its pickup ("The OS Install Disks goal"); and it keeps Feats and
+Steam achievements out of AP saves (stand-in tests; not yet run in the game from a first start).
 
 An **AP save** is a randomizer save whose item table and start match a seed a client has
 played (and its location list's size: 154, or 155 with Secret Shuffle, `src/game_layout.h`,
@@ -90,6 +91,72 @@ The helper reads the game's PE header and hooks nothing unless the build is one 
 (`src/build.cpp`, kept in step with `KNOWN_BUILDS` in `client/patterns.py`;
 `tests/test_cross_checks.py` checks them).
 
+### Finding its own addresses
+
+`src/findaddr.cpp`; the patterns are `client/patterns.py`'s, written into `src/findaddr_patterns.h`
+by `tools/gen_native_patterns.py` (never typed by hand; `tests/test_gen_native_patterns.py` fails
+while the header is out of date: run the tool after any change to `client/patterns.py`, and for a
+new build, `docs/re/new-build.md`). So the helper needs no client, and no file a client left, to
+know where the game's state and functions are.
+
+- **When:** on the helper's own thread, right after it hooks the game and before it reads the
+  offline files and serves the pipe, so before any frame call takes its result and before a
+  client can ask. Never in `DllMain`: that only starts the thread, which runs after the loader
+  lock is released. Only in a build the helper knows (`identify_build`): in another it scans
+  nothing and hooks nothing.
+- **How:** the client's rules (`client/game.py`, `locate_all`), on a copy of the image's `.text`
+  read fault-safe: each pattern of a target must match exactly once (overlapping matches count),
+  every pattern must lead to the same address (`kAt`: the match plus the addend; `kRip`: the end
+  of the referring instruction plus its 32-bit field plus the addend), and a target one pattern
+  of which fails is not found. All of `client/patterns.py`'s targets the helper takes
+  (`CONFIG_KEYS`: all but `cell_state` and `pickup_counter`, which only the client reads) are
+  found this way: every one is a pattern's match, a followed `rip` field or a function start with
+  an addend, none needs more.
+- **What then:** with no client yet, the first frame call after the files are read configures
+  the helper from the scan, inactive as the cache did (only what runs with no client uses it).
+  `Game::configure` gives the same checks to these addresses as to a client's: each lies where
+  its key must (a function in code with 16 bytes of room, data in writable data, an import slot
+  outside code, room for what is read there: `kConfigKeys`). A scan that missed a required key,
+  or whose addresses fail those checks, configures nothing: the helper then tries the offline
+  cache ("AP saves without the client", "The pipe"), and then waits for a client. Missing only
+  an optional key (`text_cut_code`, the AILMENTS keys) it configures without it, as the cache
+  did.
+- **A client's `config` still takes over,** with its own addresses, as before. If they differ
+  from the scan's for any key (or the scan lacks one the client sent, or the reverse), the reply
+  is `ok differs KEY,KEY…` instead of `ok`: the helper took them all the same, and the client
+  logs a warning naming the keys. Both find them by the same patterns, so a difference is a bug
+  in one of the two scans (the client keeps its own: it reads and writes the game itself, and runs
+  with no helper). When the scan did not run (the hook-test build, a build the helper does not
+  know), the reply is always `ok`.
+- **Why it did not work, in `hello`:** `scan=` is `-` before it ran; `ok`; `ok_without_NAME,NAME`
+  (only optional keys not found: configured without them); `refused_<why>` (it did not configure:
+  `refused_NAME:_pattern_2_matched_0_times`, `refused_NAME:_patterns_disagree_(...)`, or the
+  check of an address `configure` made); `failed_NAME:_<why>` (a target was not found, and
+  nothing has tried to configure from the scan yet, or a client's `config` came first); or why
+  it did not run (`not_a_build_the_helper_knows`). `addresses=` is `-` while not configured,
+  then where the configuration came from: `scan`, `cache` or `client`. The client logs a
+  warning when it attaches to a helper whose scan did not find everything and configure
+  (`client/native.py`, `attach`).
+- **The Linux helper does not scan:** it already finds each address by name in the game's symbol
+  table at start, after the binary's GNU build id matched a known build (`configure_self`,
+  `read_own_symbols` in `linux/src/helper.cpp`; "The Linux helper"), and refuses a client's
+  `config` that gives any key another address (`parse_config`), so a mismatch there is an
+  error, not a warning. It differs from the Windows helper in one rule: it configures only once a
+  seed file has been read (a first start on a PC no client has run on stays unconfigured, so no
+  title lines, until one has), and once the game's player pointer reads the player state.
+- **Cost:** the scan of a copy of B1's `.text` (2026-11-20) took 201 ms in a Release build, 248
+  patterns, on the development PC.
+
+Evidence, on build B1 only: the helper's scanner, run in `tests/findaddr_tests.cpp` on a copy of
+the exe's `.text`, finds all 95 addresses, at the RVAs the client's `locate_all` finds
+(`tests/test_native_scan.py`, with `ZEXION_EXE` naming the copy: skipped where there is none, so
+never in CI), and the rules' cases run on synthetic code in CI: exactly once, none, overlapping
+matches, wildcards, both kinds, the addend, disagreeing patterns, the ends of the code, texts the
+helper cannot read, an unknown build. **Not run in the game**: the helper configuring itself from
+its scan on a PC with no client's files, and the title lines, the text window's repair, the
+Feats guard and the map markers running from it, are stand-in tests only (the hook-test build
+checks `hello`'s fields).
+
 ### The frame call
 
 The game calls `SDL_GL_SwapWindow` only through its import-table slot, once per frame, on its
@@ -118,9 +185,9 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 
 | Request | Reply | Part |
 |---|---|---|
-| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S>` (flags 0 or 1), then ` read_error=<why>` after a failed read | below |
+| `hello` | `zexion-ap <version> build=<B1\|unknown> hooked= configured= feats=<off\|on\|on:why> folder= offline=<-\|N[:FILE]> active= title=<0\|1\|why> lang=<-\|NAME\|?> reads=<R/S> scan=<-\|ok\|why> addresses=<-\|scan\|cache\|client>` (flags 0 or 1), then ` read_error=<why>` after a failed read | below |
 | `ping` | `pong frames=<calls since load>` | |
-| `config name=rva …` (frame) | `ok`, or `error <why>` | below |
+| `config name=rva …` (frame) | `ok`, `ok differs KEY,KEY…` (taken; the helper's own scan found other addresses for those keys), or `error <why>` | below; "Finding its own addresses" |
 | `offline_put config` or `offline_put seed NAME`, a newline, the file | `stored`, `unchanged`, `error <why>` | AP saves without the client |
 | `apply` and lines `cas ITEM EXPECTED VALUE` (inventory bytes 0 to 49), `refresh`, `intel`, `popup ITEM SUFFIX` (ITEM a record, 0 to 50, or a trap, 102 or 103), `notice ITEM TEXT` (frame) | `applied`, or `refused <why>` with nothing written | Grants; Popups; Traps |
 | `ap_newgame` and lines `identify`, `expect`, `write` or `menu OFFSET HEX`, `start_table HEX`, `choice` (frame; a plan needs `write`, `menu` and `identify` lines) | `armed`, `refused <why>`, `error <why>` | New games |
@@ -151,19 +218,22 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
   (not configured, or nothing readable; and with no frame). The
   client warns in any translation but English(HD) (`client/ticks.py`, `language_tick`).
 - `reads`: the reads a frame has taken, and the seeds the last one found.
+- `scan`, `addresses`: the helper's own scan of the game, and where the addresses it is
+  configured with came from ("Finding its own addresses").
 
 `config` carries the addresses the client resolved by byte pattern (`CONFIG_KEYS` in
 `client/native.py`). The whole configuration is refused unless:
 
-- every name is there, from a client's `config` or from the offline cache a client wrote ("AP
-  saves without the client"), which holds them all, but `text_cut_code` and the three AILMENTS
-  keys (below). A cache lacking one is refused (`read_error=cache:_missing_NAME`) until a client
-  has run once and rewritten it. A release that adds a key decides for that key alone: accept
-  that, with everything the helper does without a client off until the player's first client run
-  after updating (the offline look of AP saves, the file select's AP logo and disk counts, the map
-  markers, the pause row from the seed file, the major-item list, the title lines, the Feats
-  guard, the ASSIST lock and Intel Chips), or let the helper configure without that key, with a
-  null check where it is read. 1.1.0's `text_cut_code` is the second kind (`optional` in
+- every name is there, from a client's `config`, from the helper's own scan ("Finding its own
+  addresses"), or from the offline cache a client wrote ("AP saves without the client"), which
+  holds them all, but `text_cut_code` and the three AILMENTS keys (below). A cache lacking one is
+  refused (`read_error=cache:_missing_NAME`) until a client has run once and rewritten it; that
+  matters only when the scan found nothing, since the scan holds every key of this release. A
+  release that adds a key adds its patterns to `client/patterns.py` and regenerates the header, and
+  decides for that key alone whether a cache written before it is refused (with everything
+  the helper does without a client off until the player's first client run after updating, were
+  the scan to fail there too) or lets the helper configure without that key, with a null check
+  where it is read. 1.1.0's `text_cut_code` is the second kind (`optional` in
   `kConfigKeys`, `src/game_calls.cpp`): without it the rest configures (`hello` `configured=1`, no
   `read_error`) and the text window's cut stays the game's ("Popups", "Tall text") until a
   client's config, which holds it (stand-in tests, `tests/offline_tests.cpp`). `ailments`,
@@ -341,7 +411,7 @@ are what the helper adds. It leaves out what the new game started with (the sect
 start-with array, `rando::started_with`), as the game does (Standard's Machine Gun); and an
 older save's items, owned before this helper, go in by item ID, not in the order they came. So an AP save's row fills as items arrive, and an
 older one's the first time it is played with this helper; it shows on the file select once the
-game saves. It runs without a client too, from the offline cache. The list is
+game saves. It runs without a client too (the helper's own addresses, "Finding its own addresses"). The list is
 the game's own data, so a client going away or an unload leaves it (`docs/re/memory.md`, "The
 pickup record holds the major-item list").
 
@@ -744,7 +814,7 @@ dealt on the next load ("DeathLink").
   respawn behind its menu, so none of them has such a stretch; room changes leave the timer alone
   (the same heading). A cutscene other than the ending's is not told apart from play either: none
   was measured. Without the AILMENTS keys (an offline cache written before the traps, configuring a
-  helper that a client has not configured since), a trap runs with AILMENTS as the game applies it.
+  helper whose own scan failed, that a client has not configured since), a trap runs with AILMENTS as the game applies it.
 - **Once:** a received trap rides on its popup: the client hands each received item's popup over
   once (its count in the server's data storage), and the helper queues the popup as the `apply`
   takes it and runs the trap once, in the frame it shows the popup and takes it off the queue. So
@@ -1724,10 +1794,12 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   (`Game::merge_offline`: a seed already there takes its old record's place, unless a save of it
   is dressed), so another seed's save started earlier in the same client run is known as one
   (`other_save`). The last seed a client puts is also its look's seed ("Intel Chips"). With no
-  client yet, the cached addresses configure it if the cache is for its build and holds every
-  required key ("The pipe"), and the game holds every checked function's bytes. So the offline
-  look, the map markers, the title lines and the text window's repair (with `text_cut_code` in
-  the cache) all run with no client once the cache checks out.
+  client yet, the helper's own scan configures it ("Finding its own addresses"); only if that
+  finds no address does the cache, if it is for its build and holds every required key ("The
+  pipe") and the game holds every checked function's bytes. So the offline look, the map
+  markers, the title lines and the text window's repair all run with no client from the first
+  start, before the client has ever sent a file (stand-in tests; not yet in the game from a first
+  start), and with a cache alone only while the scan fails.
 - **The look:** with no client, or a client that said the loaded save is another seed's
   (`other_save`), every 16th frame call a save of one of the seeds is dressed as the client would,
   once it has been in play since it loaded (a menu or a death later keeps the same save, so it is
@@ -1865,7 +1937,7 @@ border did not flash.
   copyright line, and above them, only while no client is active, START THE AP CLIENT TO PLAY A
   SEED (`src/title.cpp`). It makes them with the game's own text functions in that line's
   palette and style, and the game frees them with the title.
-- **When:** while configured (by a client or from the cache) and no save is loaded, every 9th
+- **When:** while configured (by a client, the helper's own scan or the cache) and no save is loaded, every 9th
   frame call (every one in English(HD), and at once when the language changes) it looks through
   the game's draw list for the copyright line without the helper's lines, and makes them only
   while no menu is open (`menu_state` 0): made under one (a client configuring the helper with
@@ -3060,7 +3132,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   player pointer (`gMainCharacterSpriteP`) reads the player state the config's `inventory` lies
   in, as the client checks before it attaches. With a disk seed's file, the pause screen's disk
   row shows its save's count with no client, and in a translation the helper's icons are painted
-  into the icon sheets in any save, as on Windows with its cached config. The guard hook and
+  into the icon sheets in any save, as on Windows with its own addresses. The guard hook and
   `tools/protected.py` protect the folder as they do the Windows one. Tested on the stand-in game
   through the socket (`tests/test_native_linux.py`: a seed put stored in the stand-in's own data
   folder, `unchanged` the second time; with a seed file at start and no client, an own trap going
@@ -3126,7 +3198,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   while no menu is open, and in English(HD) in the translation's font through the shared label
   builder (`docs/re/linux.md`, "Mapped by disassembly: the title screen's lines"). Configured from
   the game's symbols with no client (a seed file read), the lines show with the hint as they do on
-  Windows with its cached config, while the game's player pointer reads the player state the
+  Windows with its own addresses (found by its scan, "Finding its own addresses"), while the game's player pointer reads the player state the
   config's `inventory` lies in ("Seed files."): it did at the title screen before any save, and in
   play (`docs/re/linux.md`, "Read from the running game"), so from the first title; with no seed
   file and no client, the helper is not configured, so no line shows until a client configures. If
@@ -3430,6 +3502,14 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
   with a client, the AP saves' slots, and the file select's logo through the frame call: painted,
   whitened through a new game's fade, and cleared by `put_back_files`, and a cache missing a key
   refused).
+- `findaddr`: the helper's own address scan ("Finding its own addresses") on synthetic code: both
+  kinds, the addend, exactly once (none, twice, overlapping matches), wildcards, the ends of the
+  code, patterns that disagree, texts it cannot read, the generated table's patterns all readable
+  and its names once each, the comparison of a client's addresses with the scan's, and an unknown
+  build refused. With `ZEXION_EXE` naming a copy of the game's exe, it also scans that exe's
+  `.text` and fails unless every target is found (`tests/test_native_scan.py` compares the
+  addresses with the client's); it skips that without one, so never in CI. `apply_in_frames`
+  checks `hello`'s `scan` and `addresses` in a stand-in game, which no scan can read.
 - `translation`: the translations, on a stand-in English(HD) (its tables as the game's parser leaves
   them): the text helpers, the tables' entries and their room, the popups in the borrowed areas
   (taking turns, waiting, emptying, the whole run, too long for it: the pixel text and the slot's
@@ -3493,6 +3573,7 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
 | `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread (`mailbox_linux.cpp`: the Linux helper's) |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
+| `findaddr.h`, `findaddr.cpp`, `findaddr_patterns.h` | the helper's own address scan: the rules, and `client/patterns.py`'s patterns as C++ (generated by `tools/gen_native_patterns.py`; never edit it) |
 | `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access (`game_mem_linux.cpp`: its Linux parts); code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
 | `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
@@ -3502,5 +3583,5 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
 `src/helper.cpp` (the constructor, the socket's thread, the frame call, `config` and the
 requests that act on the game), and in `tests/` the ctest tests, the stand-in game and its
 stand-in SDL. It also builds every source of `src/` but `dllmain.cpp`, `iat.cpp`, `pipe.cpp`,
-`build.cpp` and `mailbox.cpp`, with `game_mem_linux.cpp` and `mailbox_linux.cpp` for the
+`build.cpp`, `findaddr.cpp` and `mailbox.cpp`, with `game_mem_linux.cpp` and `mailbox_linux.cpp` for the
 Windows parts (`src/platform.h` gives them the few Windows type names they use).

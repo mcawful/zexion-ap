@@ -30,11 +30,17 @@ DISABLED_NAME = "zexion_ap.disabled"
 VERSION = "1.2.0"  # the helper's, in its hello (native/src/dllmain.cpp)
 # The addresses the helper needs: every target the client locates (patterns.CLIENT_TARGETS)
 # but those it alone uses (patterns.CLIENT_ONLY_TARGETS; native/src/game_calls.cpp, kConfigKeys;
-# it takes them in any order). A key added later makes the offline cache written before it
-# refused until the client runs: native/README.md, "The pipe".
+# it takes them in any order). The helper finds the same addresses itself, by the same patterns
+# (native/README.md, "Finding its own addresses"), and says in its reply if the ones sent here
+# differ. A key added later makes the offline cache written before it refused until the client
+# runs: native/README.md, "The pipe".
 CONFIG_KEYS = tuple(
     t.name for t in patterns.CLIENT_TARGETS if t.name not in patterns.CLIENT_ONLY_TARGETS
 )
+# What the helper's reply to ``config`` starts with when the addresses it found itself differ
+# from the client's, then the keys, comma-separated (native/src/dllmain.cpp, ``config``). The
+# helper took the client's all the same.
+DIFFERS = "ok differs "
 APPLY_SECONDS = 3.0  # longer than the 1 s the helper waits for a frame to take a request
 ROOT = Path(__file__).resolve().parent.parent
 REPLY_SECONDS = 2.0
@@ -363,7 +369,7 @@ class Helper:
 
     def hello(self) -> dict[str, str]:
         """The helper's hello as fields: version, build, hooked, configured, feats, folder,
-        offline, active, title, lang, reads, and read_error after a failed read
+        offline, active, title, lang, reads, scan, addresses, and read_error after a failed read
         (native/README.md). One this client can't read: UnreadableHello."""
         try:
             words = self.request("hello").split()
@@ -406,7 +412,16 @@ class Helper:
                     "client doesn't send"
                 ) from exc
             raise
-        if reply != "ok":
+        if reply.startswith(DIFFERS):
+            # The helper took these addresses, and found others of its own by the same patterns
+            # for the keys listed: one of the two scans is wrong (a bug to report).
+            keys = reply.removeprefix(DIFFERS)
+            log.warning(
+                f"The mod's own scan of the game found other addresses than this client's for: "
+                f"{keys}. Using this client's. This is a bug: please report it, with the game's "
+                "build (tools/build_id.py) and these names."
+            )
+        elif reply != "ok":
             raise HelperError(f"configuring failed: {reply}")
 
     def apply(self, text: str) -> str:
@@ -639,6 +654,15 @@ def _attach(g, dll: Path, notes: list[str] | None, unloaded: list[bool]) -> Help
                     "the mod doesn't know this version of Zexion, which the client does"
                 )
             raise HelperError(f"the helper did not hook the game: {hello}")
+        scan = hello.get("scan", "")
+        if scan not in ("", "-") and not scan.startswith("ok"):
+            # The mod finds the addresses it needs itself, by this client's patterns, and works
+            # with no client; this one's take over now, but a start with none would not work.
+            log.warning(
+                f"The mod could not find the game's addresses by itself ({scan}), so it works "
+                "only while this client runs. This is a bug: please report it, with the "
+                "game's build (tools/build_id.py)."
+            )
         helper.configure(dict(g.rva))
     except BaseException:
         helper.close()

@@ -104,7 +104,7 @@ def test_load_talk_and_unload_in_a_stand_in_process(stand_in) -> None:
     with native.Helper(process.pid) as helper:
         assert helper.request("hello").endswith(
             "build=unknown hooked=0 configured=0 feats=off folder=0 offline=- active=0 title=0 "
-            "lang=? reads=0/-1"
+            "lang=? reads=0/-1 scan=- addresses=-"
         )
         assert helper.request("ping") == "pong frames=0"
         with pytest.raises(native.ModMismatch, match="doesn.t know the request nonsense"):
@@ -172,6 +172,7 @@ class _Game:
     file_version: str = "0.0.1"  # what the built file loads as
     folder: str = "0"
     build: str = "B1"  # the build the helper knows the game as
+    scan: str | None = None  # the hello's scan field (the helper's own address scan), if any
     stays: bool = False  # the helper refuses to unload
     loads: int = 0
     unloads: int = 0
@@ -208,6 +209,8 @@ def stand_in_attach(monkeypatch, **fields) -> _Game:
                 "hooked": hooked,
                 "lang": "-",
             }
+            if game.scan is not None:
+                out["scan"] = game.scan
             return out
 
         def request(self, text: str, *args: object) -> str:
@@ -531,6 +534,53 @@ def test_an_address_the_mod_needs_and_the_client_lacks_is_another_build(monkeypa
     with pytest.raises(native.HelperError) as caught:
         helper.configure(rvas)
     assert not isinstance(caught.value, native.ModMismatch)
+
+
+@pytest.mark.parametrize(
+    ("scan", "warned"),
+    [
+        (None, False),  # a mod from before the scan
+        ("-", False),
+        ("ok", False),
+        ("ok_without_text_cut_code", False),
+        ("failed_map_grid:_pattern_2_matched_0_times", True),
+        ("refused_missing_flags", True),
+    ],
+)
+def test_a_mod_that_could_not_find_its_addresses_says_so_when_attached(
+    monkeypatch, tmp_path, caplog, scan, warned
+) -> None:
+    built = tmp_path / "zexion_ap.dll"
+    built.write_bytes(b"")
+    game = stand_in_attach(monkeypatch, loaded=native.VERSION, file_version=native.VERSION)
+    game.scan = scan
+    with caplog.at_level("WARNING", logger="Zexion"):
+        native.attach(game, built)
+    assert ("could not find the game's addresses by itself" in caplog.text) is warned
+    if warned:
+        assert scan in caplog.text
+
+
+def test_addresses_the_mod_found_differently_are_said_and_the_clients_are_used(
+    monkeypatch, caplog
+) -> None:
+    rvas = dict.fromkeys(native.CONFIG_KEYS, 0x1000)
+    sent: list[bytes] = []
+
+    def reply(data: bytes, seconds: float) -> bytes:
+        sent.append(data)
+        return b"ok differs map_grid,flags"
+
+    helper, _ = piped_helper(monkeypatch, reply)
+    with caplog.at_level("WARNING", logger="Zexion"):
+        helper.configure(rvas)  # taken: no error
+    assert sent and sent[0].startswith(b"config ")
+    assert "map_grid,flags" in caplog.text and "bug" in caplog.text
+    caplog.clear()
+    helper, _ = piped_helper(monkeypatch, lambda data, seconds: b"ok")
+    with caplog.at_level("WARNING", logger="Zexion"):
+        helper.configure(rvas)
+    assert not caplog.text  # agreeing is not said
 
 
 @pytest.mark.parametrize(

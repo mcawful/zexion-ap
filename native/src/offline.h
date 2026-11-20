@@ -73,7 +73,8 @@ OfflineSeed offline_seed_of(const uint8_t* section);
 // The disk count with the map `grid` (54 * 54 cells) as it is.
 int offline_disk_count(const OfflineSeed& seed, const uint8_t* grid);
 
-// What the client left for the helper: the addresses for this build, and the seeds.
+// What the client left for the helper: the addresses for this build (the fallback should the
+// helper's own scan, findaddr.h, find none), and the seeds.
 struct OfflineFiles {
     std::map<std::string, uint64_t> config;  // empty: none for this build
     // The first bytes of each game function the client found, as it read them ("check KEY HEX"

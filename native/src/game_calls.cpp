@@ -117,9 +117,11 @@ using DeathFn = void (*)(void* player, char kind);
 // The config keys (client/patterns.py target names), in checking order, each with the member it
 // fills. Each lies in the image with kKeyBytes there (the offline cache checks a function's first
 // 16): functions in code, data in writable data, the CRT's import slots (only read) outside code.
-// Every key is required, from a client's config or the offline cache it wrote, but text_cut_code:
-// a 1.0.0 cache lacks it, and without it only the cut stays the game's (null: TextCut never
-// patches). What adding a key costs a cache written before it: native/README.md, "The pipe".
+// Every key is required, from a client's config, the helper's own scan (findaddr.h) or the offline
+// cache a client wrote, but text_cut_code and the AILMENTS keys: a 1.0.0 cache lacks the first,
+// and without it only the cut stays the game's (null: TextCut never patches). What adding a key
+// costs a cache written before it: native/README.md, "The pipe". findaddr_patterns.h holds these
+// keys' patterns, in client/native.py's CONFIG_KEYS order (tests/test_cross_checks.py).
 constexpr uint64_t kKeyBytes = 16;
 enum class Held { kCode, kData, kImportSlot };
 using Member = BYTE* GameAddresses::*;

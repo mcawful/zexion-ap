@@ -99,20 +99,29 @@ worlds/zexion/ → generation → slot data → client
   game loads it as it starts; it passes every call on to Windows' own `version.dll` and loads
   the helper. A `zexion_ap.disabled` file beside them turns off the game folder's copy: neither
   the proxy nor the client loads it (a client run from source still loads its own build).
-- **The offline cache.** The client sends the helper a small file per seed it connects to and
-  the addresses it found for this build; the helper keeps them in `%LOCALAPPDATA%\ZexionAP` (the
-  Linux helper the seeds alone, under `$XDG_DATA_HOME`: `native/README.md`, "The Linux helper").
-  With no client, the helper uses them to give AP saves their look. With or without a client,
-  they also tell it which saves are AP saves, which earn no Feats or Steam achievements.
-  Deleting the folder is safe: the client sends the files again the next time it attaches to
-  the game.
+- **The helper's own addresses.** The Windows helper finds the game's addresses itself when it
+  starts, by the byte patterns the client uses (`client/patterns.py`, written into
+  `native/src/findaddr_patterns.h` by `tools/gen_native_patterns.py`; `native/README.md`,
+  "Finding its own addresses"), so what it does with no client (the title screen's lines, the
+  text window's repair, the Feats guard, the map markers) works on a first start, before any
+  client has run. A client's `config` still takes over, and the helper says so in its reply if
+  the addresses differ from its own (the client logs a warning: a bug in one of the scans). The
+  Linux helper configures itself from the game's symbols instead, with a seed file to work from.
+  Stand-in tests only: not yet run in the game from a first start.
+- **The offline files.** The client sends the helper a small file per seed it connects to (and,
+  as a fallback should the helper's own scan fail, the addresses it found for this build); the
+  helper keeps them in `%LOCALAPPDATA%\ZexionAP` (the Linux helper the seeds alone, under
+  `$XDG_DATA_HOME`: `native/README.md`, "The Linux helper"). With no client, the helper uses the
+  seeds' files to give AP saves their look. With or without a client, they also tell it which
+  saves are AP saves, which earn no Feats or Steam achievements. Deleting the folder is safe: the
+  client sends the files again the next time it attaches to the game.
 
 How the helper works: [`native/README.md`](../native/README.md).
 
 ## Glossary
 
 - **AP save**: a randomizer save holding a seed a client has played. The helper recognizes one
-  by its item table and start room, matched against the seed files in the offline cache.
+  by its item table and start room, matched against the seed files in the offline folder.
   **This seed's save** is an AP save of the seed the connected client plays.
 - **The helper**: `zexion_ap.dll`, built from `native/`, for the game's Windows build. **The
   proxy**: `version.dll`, built from `native/proxy/`. Players call the two together "the mod".

@@ -40,6 +40,16 @@ the same heading with the new build, beside the old one, never in its place.
    change (`.venv/Scripts/python tests/test_patterns.py` prints it). A target added here also
    needs its row in `linux.md`'s Lookup (its Linux counterpart, or that it is not found yet);
    `tests/test_patterns.py` fails without it.
+   **Regenerate the helper's copy of the patterns** in the same change:
+   `.venv/Scripts/python tools/gen_native_patterns.py` writes `native/src/findaddr_patterns.h`,
+   which the helper scans the game with to find its own addresses (`native/README.md`, "Finding
+   its own addresses"); `tests/test_gen_native_patterns.py` fails while it is out of date. A
+   target that is new or renamed also needs its key in `kConfigKeys`
+   (`native/src/game_calls.cpp`) and `CONFIG_KEYS` follows the patterns, as
+   `tests/test_cross_checks.py` checks. Then build `native/` and check the helper's own scan
+   finds what the client's does on the new exe: `ZEXION_EXE=lab/data/<exe-hash-12>/Zexion.exe
+   .venv/Scripts/python -m pytest tests/test_native_scan.py` (the native tests built first;
+   it skips without the variable), which runs `findaddr`'s real-exe check too.
 5. **Record the new build:**
    - each target's RVA on it in `Target.rvas` (`client/patterns.py`), which
      `check_patterns.py` then compares;
@@ -75,8 +85,8 @@ the same heading with the new build, beside the old one, never in its place.
 10. **Run every check:** ruff, pytest and AP's world tests (`/preflight`), and the native
     build and its tests (`CLAUDE.md`, "Checks").
 11. **Live-test in the game** on the new build before calling anything working: the client
-    attaching, `check_patterns.py --live`, the helper loading and hooking (`helper.py status`),
-    a grant with its popup, a new game from ARCHIPELAGO, and each feature in
+    attaching, `check_patterns.py --live`, the helper loading and hooking (`helper.py status`:
+    with no client, `scan=ok addresses=scan` and the title screen's lines), a grant with its popup, a new game from ARCHIPELAGO, and each feature in
     [`docs/DEVELOPING.md`](../DEVELOPING.md) as it is touched. Record each run with its date and
     the build.
 12. **Release it:** raise the version and release
