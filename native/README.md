@@ -2857,13 +2857,21 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   before the respawn: "A save at the Landing Pod" in `docs/re/memory.md`, not seen live).
   **On the Linux build that the record's field is written so, and when, is assumed and
   untraced** (`docs/re/linux.md` records the live counter `+0xAD4` only), and so is that one
-  death with its respawn adds exactly one (on Windows B1 the respawn routines `0x9F3B0` and
-  `0xA2E50`, which adds at `0xA2EBB`, are not traced for it). **If either is wrong, the lost
-  reply's death can be echoed to the other players, or dealt twice**, as it could before the
-  count was used. On Windows B1 RELOAD FROM CHECKPOINT (not RELOAD FROM SAVE) and the player's own
-  death raise the count too: one in the gap is taken for the dealt one, so a death the helper
-  never got can go undealt, and a rise of two read in play (a dealt death and a reload) is not
-  sent. With no count to go by, a first read more than `LOST_SECONDS` after the loss leaves it
+  death with its respawn adds exactly one (on Windows B1 `docs/re/memory.md` records that
+  `0xA2E50` adds one, at `0xA2EBB`, and not traced is whether it runs after the kind-0 death that
+  `die` deals; the respawn routine `0x9F3B0` is not traced for an add). **If either is wrong,
+  the lost reply's death can be echoed to the other players, or dealt twice**, as it could
+  before the count was used. On Windows B1 RELOAD FROM CHECKPOINT (not RELOAD FROM SAVE) and the
+  player's own death raise the count too, with these limits, all rare and with no cheap fix:
+  - one in the gap is taken for the dealt one, so a death the helper never got can go undealt;
+  - a rise of two read in play is not sent, whether it is a dealt death and a reload, or a dealt
+    death and a death of the player's own that they already respawned from (that death is not
+    sent);
+  - a dealt death, then a RELOAD FROM CHECKPOINT, then the player's own death read during its
+    animation, sends two deaths for one (the first rise is settled as the dealt death, the second
+    is taken for the player's own, though the reload caused it).
+
+  With no count to go by, a first read more than `LOST_SECONDS` after the loss leaves it
   queued, as no death seen is told from the player's own by then. One that never went out stays
   queued, and a Linux helper of this version from before deaths is said once, the deaths waiting
   for a newer one; the Linux helper is dropped (`linux_mod_lost`) either way. Tested on the

@@ -27,10 +27,10 @@ DEALT_SECONDS = 5.0
 # before the respawn (docs/re/memory.md, "A save at the Landing Pod", by disassembly). On the Linux
 # build, where this runs, that the record's field is written so, and when, is assumed and not
 # traced (docs/re/linux.md records only the live counter, ``gGameState+0xAD4``). So is that one
-# death with its respawn adds exactly one (on Windows B1 the respawn routines ``0x9F3B0`` and
-# ``0xA2E50``, which adds at ``0xA2EBB``, are not traced for it). If either is wrong, a lost
-# reply's death can be echoed to the other players or dealt twice, as it could before the count
-# was used.
+# death with its respawn adds exactly one (on Windows B1 docs/re/memory.md records that
+# ``0xA2E50`` adds one, at ``0xA2EBB``; not traced is whether it runs after the kind-0 death that
+# ``die`` deals, and ``0x9F3B0`` is not traced for an add). If either is wrong, a lost reply's
+# death can be echoed to the other players or dealt twice, as it could before the count was used.
 LOST_SECONDS = 45.0
 
 
