@@ -1214,6 +1214,156 @@ def test_assert_writable_refuses_the_offline_folder() -> None:
     assert protected.assert_writable(f"{LOCAL}/Temp/x.txt") == Path(f"{LOCAL}/Temp/x.txt")
 
 
+# A folder named only by its own name, from wherever the search starts (#172): the command names
+# neither the parent path nor the data-home variable. ``find``'s name predicates and PowerShell's
+# -Filter and -Include count when what the command does with the matches can write.
+BY_NAME_BLOCKED = [
+    ("Bash", "find ~ -name ZexionAP -delete"),
+    ("Bash", 'find ~ -name "ZexionAP" -exec rm -r {} +'),
+    ("Bash", "find ~ -type d -name ZexionAP -execdir rm -rf {} +"),
+    ("Bash", "find ~ -name ZexionAP -ok rm -r {} \\;"),
+    ("Bash", "find ~ -name ZexionAP -okdir rm -r {} \\;"),
+    ("Bash", "find ~ -name ZexionAP -fprint /tmp/x"),
+    ("Bash", "find ~ -name ZexionAP -a -type d -delete"),
+    ("Bash", "find ~ ! -name x -name ZexionAP -delete"),
+    ("Bash", "cd ~ && find . -name ZexionAP -delete"),
+    # The other names: the save folder's parent and its own, the cloud cache's, the library's.
+    ("Bash", 'find / -name "Gallant Leaf" -exec rm -r {} +'),
+    ("Bash", "find / -name Gallant\\ Leaf -delete"),
+    ("Bash", "find / -name Zexion -exec rm -r {} +"),
+    ("Bash", "find / -name 3392510 -delete"),
+    ("Bash", "find ~ -type d -name steamapps -exec rm -rf {} +"),
+    ("Bash", "find ~ -type d -name userdata -delete"),
+    # Case, wildcards and characters classes, and quotes that split the name.
+    ("Bash", "find ~ -iname '*zexionap*' -delete"),
+    ("Bash", "find ~ -type d -name ZEXIONAP -exec rm -r {} +"),
+    ("Bash", "find ~ -name 'Zexion*' -exec rm -rf {} \\;"),
+    ("Bash", "find ~ -name 'Z*AP' -delete"),
+    ("Bash", "find ~ -name 'Z?xionAP' -delete"),
+    ("Bash", "find ~ -name 'ZexionA[P]' -delete"),
+    ("Bash", "find ~ -name 'Gall*' -delete"),
+    ("Bash", 'find ~ -name "Zexion"AP -delete'),
+    ("Bash", "find ~ -name 'Zex''ionAP' -delete"),
+    # Path and regular-expression predicates.
+    ("Bash", "find ~ -path '*/ZexionAP' -delete"),
+    ("Bash", "find ~ -ipath '*/zexionap/*' -delete"),
+    ("Bash", "find ~ -wholename '*/ZexionAP' -delete"),
+    ("Bash", "find ~ -path '*/Gallant Leaf/*' -delete"),
+    ("Bash", "find ~ -regex '.*/ZexionAP' -delete"),
+    ("Bash", "find ~ -iregex '.*/zexion.*' -delete"),
+    ("Bash", "find ~ -regex '.*/(foo|ZexionAP)$' -delete"),
+    ("Bash", "find ~ -regex '.*/Zexion.P' -delete"),
+    # What it finds handed to another command.
+    ("Bash", "find ~ -name ZexionAP -print0 | xargs -0 rm -rf"),
+    ("Bash", "find ~ -name ZexionAP | xargs rm -r"),
+    ("Bash", 'find ~ -name ZexionAP | while read d; do rm -r "$d"; done'),
+    # Inside another command's word, or behind a prefix.
+    ("Bash", 'sh -c "find ~ -name ZexionAP -delete"'),
+    ("Bash", "bash -c 'find ~ -name ZexionAP -exec rm -r {} +'"),
+    ("Bash", 'eval "find ~ -name ZexionAP -delete"'),
+    ("Bash", "sudo find ~ -name ZexionAP -delete"),
+    ("Bash", "env find ~ -name ZexionAP -delete"),
+    ("Bash", "xargs find ~ -name ZexionAP -delete"),
+    # PowerShell: Get-ChildItem's name filters, in full or abbreviated.
+    ("PowerShell", "Get-ChildItem -Recurse -Filter ZexionAP | Remove-Item -Recurse -Force"),
+    ("PowerShell", "gci ~ -r -Include ZexionAP | Remove-Item -Recurse"),
+    ("PowerShell", "Get-ChildItem -Recurse -Filter 'Gallant Leaf' | Remove-Item -Recurse"),
+    ("PowerShell", "gci -r -fi Zexion* | rm -r -fo"),
+    ("PowerShell", "Get-ChildItem -Recurse -Include '*zexionap*' | Remove-Item -Recurse -Force"),
+    (
+        "PowerShell",
+        "Get-ChildItem -Recurse -Filter ZexionAP | ForEach-Object { Remove-Item -Recurse $_ }",
+    ),
+]
+BY_NAME_ALLOWED = [
+    # Looking: nothing here can write.
+    ("Bash", "find ~ -name ZexionAP"),
+    ("Bash", "find ~ -name ZexionAP -print"),
+    ("Bash", "find ~ -iname '*zexionap*' -print"),
+    ("Bash", 'find ~ -name "Gallant Leaf" -ls'),
+    ("Bash", "find / -name 3392510 -type d -print"),
+    ("Bash", "find ~ -path '*/ZexionAP/*' -print"),
+    ("Bash", "find ~ -regex '.*/ZexionAP' -ls"),
+    ("Bash", "find ~ -name ZexionAP -type d -printf '%p\\n'"),
+    ("Bash", "find ~ -name ZexionAP -prune -o -name x -print"),
+    ("Bash", "find ~ -name ZexionAP | wc -l"),
+    ("Bash", "find ~ -name ZexionAP | head"),
+    ("Bash", "find / -name userdata 2>/dev/null"),
+    ("PowerShell", "Get-ChildItem -Recurse -Filter ZexionAP | Select-Object FullName"),
+    # Other names, wherever they are deleted: this repo's own work.
+    ("Bash", "find . -name '*.pyc' -delete"),
+    ("Bash", "find . -name __pycache__ -exec rm -r {} +"),
+    ("Bash", "find lab -name '*.sav' -delete"),
+    ("Bash", "find . -name '*' -delete"),
+    ("Bash", "find . -name 'zexion*.py' -delete"),
+    ("Bash", "find . -name 'zx*.py' -delete"),
+    ("Bash", "find . -iname '*.log' -exec rm {} +"),
+    ("Bash", "find . -path './build/*' -delete"),
+    ("Bash", "find . -regex '.*\\.py[co]' -delete"),
+    ("Bash", "find ~/AppData/Local/Temp -path '*/AppData/Local/Temp/x' -delete"),
+    ("Bash", "find . -name 'test*' -exec ls {} \\;"),
+    ("PowerShell", "Get-ChildItem -Recurse -Filter '*.pyc' | Remove-Item"),
+    ("PowerShell", 'Set-Content -Path "$env:LOCALAPPDATA\\Temp\\x" -Value 1'),
+    # The folders' names are text in a message, not a command.
+    ("Bash", 'git commit -m "find ~ -name ZexionAP -delete"'),
+    ("Bash", 'gh pr create --title "find -name ZexionAP -delete" --body "x"'),
+    ("Bash", "grep -rn 'find -name ZexionAP -delete' docs"),
+]
+
+
+@pytest.mark.parametrize(("tool", "command"), BY_NAME_BLOCKED)
+def test_a_deletion_by_a_protected_folders_bare_name_blocked(tool: str, command: str) -> None:
+    assert run(tool, command=command), command
+
+
+@pytest.mark.parametrize(("tool", "command"), BY_NAME_ALLOWED)
+def test_reads_by_a_protected_folders_bare_name_and_other_names_allowed(
+    tool: str, command: str
+) -> None:
+    assert run(tool, command=command) is None, command
+
+
+@pytest.mark.parametrize(
+    ("pattern", "regex", "expected"),
+    [
+        ("ZexionAP", False, True),
+        ("zexionap", False, True),
+        ("Zexion", False, True),
+        ("3392510", False, True),
+        ("Gallant Leaf", False, True),
+        ("Gallant\\ Leaf", False, True),
+        ("steamapps", False, True),
+        ("userdata", False, True),
+        ("Zexion*", False, True),
+        ("*zexionap*", False, True),
+        ("Z*AP", False, True),
+        ("Zexion[AB]P", False, True),
+        ("GALLAN~1", False, True),
+        ("*/ZexionAP/*", False, True),
+        ("*/Gallant Leaf/*", False, True),
+        ("*/steamapps/common/Zexion", False, True),
+        (".*/ZexionAP$", True, True),
+        (".*/(a|ZexionAP)", True, True),
+        (".*/Zexion.P", True, True),
+        (r".*/Zexion\.AP", True, False),
+        # Too little of a name, or another name.
+        ("*", False, False),
+        ("*.py", False, False),
+        ("Z*", False, False),
+        ("zexion*.py", False, False),
+        ("zexion_client.py", False, False),
+        ("ZexionAP-notes", False, False),
+        ("common", False, False),
+        ("*/AppData/Local/Temp/x", False, False),
+        ("./build/*", False, False),
+        (r".*\.py[co]", True, False),
+        ("", False, False),
+    ],
+)
+def test_pattern_may_name_protected(pattern: str, regex: bool, expected: bool) -> None:
+    assert protected.pattern_may_name_protected(pattern, regex=regex) is expected
+
+
 TERMINAL = "mcp__terminal__run_in_terminal"
 SLOTS_PS = f'.venv\\Scripts\\python.exe tools\\save_lab.py slots --save-dir "{SAVES}"'
 

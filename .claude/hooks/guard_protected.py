@@ -43,9 +43,18 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     wherever it leads, while reads and a redirect's target resolve to where they lead
     (``/proc/self`` is the shell's own; quotes, ``//`` and ``/./`` don't hide it, and a ``proc``
     piece with a view's name anywhere in the command counts too, for a path built from pieces:
-    ``_through_proc``); or when it runs in or changes
-    directory to a folder in a protected one or a parent of one. Other names in the folder's
-    path don't count, so a worktree named ``steam-achievements`` works as any other.
+    ``_through_proc``); when a name predicate of ``find`` (``-name``, ``-iname``, ``-path``,
+    ``-regex``, …) or PowerShell's ``-Filter`` or ``-Include`` takes a pattern that may match
+    the name of a protected folder or one above it, wherever the search starts, with the name
+    alone (``find ~ -name ZexionAP -delete``: ``_selects_protected_name``,
+    ``protected.pattern_may_name_protected``; a name pattern of fewer than three characters
+    that are not wildcards, ``Z*`` or ``*.py``, is no name), also inside a word that holds
+    the command (``sh -c``, ``eval``), so ``-print`` and the reads pass while ``-delete``,
+    ``-exec``, ``-fprint`` and an ``xargs rm`` after it do not (so ``find . -iname '*zexion*'
+    -delete`` in this repo blocks too: it can't be told from the real folders); or when it runs
+    in or changes directory to a folder in a protected one or a parent of one. Other names in
+    the folder's path don't count, so a worktree named ``steam-achievements`` works as any
+    other.
   - *Read-only* means the verb is on a short list and nothing in its arguments makes it write
     (``_bash_args_write``: ``find -delete``, ``sort -o``, ``sed -i`` and the like); ``git
     diff``, ``log`` and ``show`` count unless an argument starts with ``--output``,
@@ -66,7 +75,10 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
 This is a tripwire against mistakes, not a sandbox. It can't see a path assembled entirely from
 variables or string arithmetic, a link to a parent folder made outside the command, the
 folder behind a ``cd`` into a variable, a Steam library folder by its own name (only its
-``steamapps`` and what is below), or what a script file does when it runs (the file's
+``steamapps`` and what is below), a name picked by another tool than ``find`` and
+PowerShell's ``-Filter`` and ``-Include`` (``locate``, ``fd``, ``Where-Object Name -like``), a
+name from a variable (``find -name "$n"``) or a regular expression's quantifier (``-regex
+'Zex(ion)?AP'``), or what a script file does when it runs (the file's
 contents are not read). A scratch script written by a heredoc and run in the same command is
 code, like ``python - <<'EOF'``, so it is blocked when it names the saves, even to read them
 or in a comment; but the run is tied to the heredoc only by the file's name, so ``sh *.sh``
@@ -185,6 +197,17 @@ LINK_WORDS = {"mklink", "ln", "junction", "symboliclink", "hardlink"}
 PREFIX_WORDS = {"do", "then", "else", "elif", "if", "while", "until", "!", "{", "}", "time"}
 FIND_WRITE_FLAGS = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0",
                     "-fprintf", "-fls"}  # fmt: skip
+# ``find``'s predicates that select by name: the name alone (``-name``), the path (``-path``,
+# ``-wholename``), and a regular expression over the path (``-regex``); ``-lname`` selects by
+# what a link leads to. PowerShell's ``-Filter`` and ``-Include`` (``Get-ChildItem``'s, any
+# unique abbreviation) take a name pattern too.
+FIND_NAME_PREDICATES = {"-name", "-iname", "-lname", "-ilname"}
+FIND_PATH_PREDICATES = {"-path", "-ipath", "-wholename", "-iwholename"}
+FIND_REGEX_PREDICATES = {"-regex", "-iregex"}
+_PS_NAME_PARAM = re.compile(r"-(?:fi(?:l(?:t(?:e(?:r)?)?)?)?|inc(?:l(?:u(?:d(?:e)?)?)?)?)")
+_NAME_PREDICATE_IN_TEXT = re.compile(
+    r"\s-(?:i?(?:name|path|wholename|regex)|i?lname|fi(?:l|lt|lte|lter)?|inc\w*)\s", re.I
+)
 # Options that take the next word as their value, so it is not a file operand.
 UNIQ_VALUED = {"-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"}
 XXD_VALUED = {"-c", "-cols", "-g", "-groupsize", "-l", "-len", "-n", "-name", "-o", "-offset",
@@ -1060,12 +1083,42 @@ def _through_proc(text: str) -> bool:
     return _PROC_PIECE.search(plain) is not None and _VIEW_PIECE.search(plain) is not None
 
 
+def _selects_protected_name(words: list[str], protected, depth: int = 0) -> bool:
+    """Whether a name predicate of ``find`` (``-name``, ``-iname``, ``-path``, ``-regex``, …) or
+    PowerShell's ``-Filter`` or ``-Include`` in the command takes a pattern that may match the
+    name of a protected folder or one above it (``protected.pattern_may_name_protected``): a
+    command that names it only by that name, from any folder, does not mention the folder's
+    path (``find ~ -name ZexionAP -delete``). Whatever the command does with what it finds is
+    judged after: ``-print`` and the reads pass, ``-delete``, ``-exec`` and an ``xargs rm`` after
+    it do not. Words with a predicate in them (``sh -c 'find …'``, ``eval``) are read again."""
+    for i, word in enumerate(words):
+        flag = word.lower()
+        if i + 1 < len(words) and (
+            flag in FIND_NAME_PREDICATES
+            or flag in FIND_PATH_PREDICATES
+            or flag in FIND_REGEX_PREDICATES
+            or _PS_NAME_PARAM.fullmatch(flag)
+        ):
+            if protected.pattern_may_name_protected(
+                words[i + 1], regex=flag in FIND_REGEX_PREDICATES
+            ):
+                return True
+        elif depth < 3 and _NAME_PREDICATE_IN_TEXT.search(word):
+            inner = [w for s in lex(word, False)[0] for w in s] + [
+                w for s in lex(word, True)[0] for w in s
+            ]
+            if _selects_protected_name(inner, protected, depth + 1):
+                return True
+    return False
+
+
 def _may_reach_protected(text, words, targets, folders, protected) -> bool:
     """``folders``: where the command runs (the ``cwd``) and its ``cd`` targets."""
     every = words + targets
     links = any(w.lower() in LINK_WORDS for w in words)
     return (
         protected.mentions_protected(text)
+        or _selects_protected_name(words, protected)
         or _through_proc(text)
         or any(_folder_is_suspect(f, protected) for f in folders)
         or any(protected.word_may_name_protected(w) for w in every)

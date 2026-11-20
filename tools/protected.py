@@ -239,6 +239,58 @@ def may_be_above_protected(path: str) -> bool:
     return False
 
 
+def _regex_as_glob(pattern: str) -> str:
+    """A regular expression read as a path glob, as far as a few common forms go: ``.*`` and
+    ``.+`` become ``*``, a lone ``.`` ``?``, an escaped character itself, and anchors, groups and
+    alternation ``/`` (so each alternative is read as its own name). Any other quantifier is left
+    as it is, which then names nothing: ``Z.*AP`` is read, ``Zex(ion)?AP`` is not."""
+    out, i = [], 0
+    while i < len(pattern):
+        c = pattern[i]
+        if c == "\\" and i + 1 < len(pattern):
+            i += 1
+            out.append(pattern[i])
+        elif c == "." and pattern[i + 1 : i + 2] in ("*", "+"):
+            out.append("*")
+            i += 1
+        elif c == ".":
+            out.append("?")
+        elif c in "^$|()":
+            out.append("/")
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def pattern_may_name_protected(pattern: str, regex: bool = False) -> bool:
+    """True when a name pattern, such as a ``find`` predicate's (``-name``, ``-path``,
+    ``-regex``), could match the name of a protected folder or of one above it: the last name
+    of each protected folder (``Zexion``, ``ZexionAP``, the app id) or a folder that may hold
+    one (``may_be_above_protected``: ``Gallant Leaf``, ``steamapps``, ``userdata``, …), each
+    component of a path pattern on its own, with wildcards (a character class counts as one
+    character) and 8.3 short names read as ``word_may_name_protected`` reads them.
+
+    A component with fewer than three characters that are not wildcards is no name: ``*`` or
+    ``*.py`` stands for too many others to tell. A folder above a protected one counts only as
+    the pattern's last name (``*/Gallant Leaf/*``, not ``*/AppData/Local/Temp/x``). The match is
+    by name alone, so ``-name Zexion`` counts wherever the search starts. ``regex`` reads the
+    pattern as a regular expression (``_regex_as_glob``).
+    """
+    if regex:
+        pattern = _regex_as_glob(pattern)
+    leaves = [names[-1] for names in _PROTECTED_PARTS + _offline_parts()]
+    parts = [p for p in _path_parts(pattern) if len(re.sub(r"\[[^\]]*\]|[*?]", "", p)) >= 3]
+    for i, part in enumerate(parts):
+        # A folder above a protected one counts only as the last name: ``*/AppData/Local/Temp/x``
+        # is below it, not it.
+        if (i == len(parts) - 1 and may_be_above_protected(part)) or any(
+            _part_matches(part, name, first=False, last=False) for name in leaves
+        ):
+            return True
+    return False
+
+
 def _path_parts(word: str) -> list[str]:
     """A path's components: normalized, ``.`` and ``..`` resolved, trailing dots and spaces
     dropped, and a ``{...}`` brace read as ``*``."""
