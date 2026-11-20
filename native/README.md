@@ -2321,7 +2321,7 @@ What to try first, each before the next:
    `serving build B1` and no `no token`; `helper.py status` printing the game, the helper and
    `memory: readable`; `ls -l` of the folder holding `token` showing the file `-rw-------` and
    the folder `drwx------`; and another connection (`python3 -c` with a socket to
-   ` zexion-ap-<inner pid>` sending `read 0x400000 16`) refused with `error auth required`.
+   `\0zexion-ap-<inner pid>` sending `read 0x400000 16`) refused with `error auth required`.
 5. A grant with its popup, in a lab slot: an item received in play, its popup, sound and HUD
    ("Grants and popups", below).
 6. Then the rest, each part's bullet below saying what it does.
@@ -2495,7 +2495,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   ranges the client writes (`client_write_ranges`, `src/core.cpp`: offsets from `gGameState`; the
   player's inventory bytes 0 to 49 and its six supply numbers, the map cells' item states and the
   map grid; `tests/test_linux_helper.py` checks them against `client/game.py`'s own), any other
-  `error not_in_what_the_client_writes`. The game calls procedures through pointers all over its
+  `error not_in_what_the_client_writes`. At start-up it says on stderr how many ranges it keeps and,
+  for each one of them that is outside `gGameState`'s recorded extent or the game's data (the game
+  not as recorded), which: `write: 5 ranges, 29222 bytes allowed`, `write: 0x... is outside
+  gGameState ...: the client's writes there are refused`. The game calls procedures through pointers all over its
   `.bss` (`gExitActionP` and its table, the move, area-event, enemy-action and sprite-draw
   tables, each sprite record's move procedure at `+0x168`), so a list of those to leave alone
   could not be known whole; this one keeps a client, or whoever got past its token, from turning

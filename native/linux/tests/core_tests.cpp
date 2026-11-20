@@ -154,13 +154,22 @@ void test_gate() {
 void test_write_ranges() {
     const uint64_t g = 0x1000000;
     auto ranges = client_write_ranges(g);
-    check(ranges.size() == 4, "four ranges");
+    check(ranges.size() == 5, "five ranges: two runs of supply numbers, items, cells, grid");
     check(within_ranges(ranges, g + 0x1CD50 + 0x108E, 1), "the first inventory byte");
     check(within_ranges(ranges, g + 0x1CD50 + 0x108E + 49, 1), "the last writable item");
     check(!within_ranges(ranges, g + 0x1CD50 + 0x108E + 50, 1), "not past the items");
     check(!within_ranges(ranges, g + 0x1CD50 + 0x108E + 49, 2), "not across the end");
-    check(within_ranges(ranges, g + 0x1CD50 + 0xCBC, 0x32), "the supplies, all six");
-    check(!within_ranges(ranges, g + 0x1CD50 + 0xCBB, 2), "not before them");
+    const uint64_t p = g + 0x1CD50;
+    for (uint64_t field : {0xCBC, 0xCBE, 0xCC0, 0xCC2, 0xCEA, 0xCEC}) {
+        check(within_ranges(ranges, p + field, 2), "a supply number", std::to_string(field));
+    }
+    check(within_ranges(ranges, p + 0xCBC, 8) && within_ranges(ranges, p + 0xCEA, 4),
+          "the runs of neighbors");
+    check(!within_ranges(ranges, p + 0xCBB, 2), "not before the first");
+    check(!within_ranges(ranges, p + 0xCC4, 2) && !within_ranges(ranges, p + 0xCD0, 8) &&
+              !within_ranges(ranges, p + 0xCE8, 2) && !within_ranges(ranges, p + 0xCC2, 4),
+          "not the unrecorded fields between the numbers");
+    check(!within_ranges(ranges, p + 0xCEE, 2), "not past the last");
     check(!within_ranges(ranges, g + 0x1CD50 + 0x168, 8), "not the player's move procedure");
     check(!within_ranges(ranges, g + 0x1CD50 + 0xFE8, 8), "not the player's shield link");
     check(within_ranges(ranges, g + 0x15B61 + 8, 1), "a cell's item state");
@@ -170,6 +179,32 @@ void test_write_ranges() {
     check(!within_ranges(ranges, g, 1), "not gGameState's start");
     check(!within_ranges(ranges, g + 0x1CD50 + 0x108E, 0), "an empty write");
     check(!within_ranges(ranges, UINT64_MAX, 2), "a wrapping write");
+}
+
+// The filter that builds the real list (helper.cpp, set_client_writes) against the layout
+// docs/re/linux.md records for B1: gGameState at 0x9E7840, 0x8CCCF8 bytes, in .bss.
+void test_keeping_ranges() {
+    const SymbolSpan state{0x9E7840, 0x8CCCF8};
+    auto in_bss = [](uint64_t at, uint64_t size) {
+        return at >= 0x9E7000 && at + size <= 0x9E7840 + 0x8CCCF8 + 0x1000;
+    };
+    std::vector<Range> dropped;
+    auto kept = keep_ranges(client_write_ranges(state.value), state, in_bss, dropped);
+    check(kept.size() == 5 && dropped.empty(), "the recorded layout keeps all five");
+    check(within_ranges(kept, 0x9E7840 + 0x1CD50 + 0x108E, 1), "an item byte, as B1's address");
+    check(within_ranges(kept, 0x9FC83D, 1) && within_ranges(kept, 0x9FD3A1, 1),
+          "the map grid's and the cell states' first bytes, as the client's targets record them");
+    dropped.clear();
+    kept = keep_ranges(client_write_ranges(state.value), {state.value, 0x1000}, in_bss,
+                       dropped);
+    check(kept.empty() && dropped.size() == 5, "a symbol too short for them keeps none");
+    dropped.clear();
+    kept = keep_ranges(client_write_ranges(state.value), {state.value, 0}, in_bss, dropped);
+    check(kept.size() == 5, "a symbol with no size is not a reason to drop");
+    dropped.clear();
+    kept = keep_ranges(client_write_ranges(0x400000), {0x400000, 0x8CCCF8},
+                       [](uint64_t, uint64_t) { return false; }, dropped);
+    check(kept.empty() && dropped.size() == 5, "none outside the game's data");
 }
 
 void test_replies() {
@@ -242,6 +277,7 @@ int main() {
     test_replies();
     test_gate();
     test_write_ranges();
+    test_keeping_ranges();
     test_reads();
     test_writes();
     test_own_symbols();

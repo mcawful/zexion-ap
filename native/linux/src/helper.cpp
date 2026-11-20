@@ -558,13 +558,25 @@ void set_client_writes(const zap::linux_helper::SymbolSpan& base) {
         }
     }
 #else
-    for (const Range& range : client_write_ranges(base.value)) {
-        if (in_game_data(range.start, range.end - range.start) &&
-            (base.size == 0 || range.end <= base.value + base.size)) {
-            g_client_writes->push_back(range);
+    const std::vector<Range> wanted = client_write_ranges(base.value);
+    std::vector<Range> dropped;
+    *g_client_writes = keep_ranges(wanted, base, in_game_data, dropped);
+    if (!dropped.empty()) {  // the game is not as recorded: every write there is refused
+        for (const Range& range : dropped) {
+            std::fprintf(stderr,
+                         "zexion-ap %s: write: %#llx-%#llx is outside gGameState (%#llx, %#llx "
+                         "bytes) or the game's data: the client's writes there are refused\n",
+                         kVersion, static_cast<unsigned long long>(range.start),
+                         static_cast<unsigned long long>(range.end),
+                         static_cast<unsigned long long>(base.value),
+                         static_cast<unsigned long long>(base.size));
         }
     }
 #endif
+    uint64_t bytes = 0;
+    for (const Range& range : *g_client_writes) bytes += range.end - range.start;
+    std::fprintf(stderr, "zexion-ap %s: write: %zu ranges, %llu bytes allowed\n", kVersion,
+                 g_client_writes->size(), static_cast<unsigned long long>(bytes));
 }
 
 // Each key's address by the game's own symbols (kConfigKeys), read from its binary at start-up:

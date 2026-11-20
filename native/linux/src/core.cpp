@@ -161,22 +161,45 @@ Gate gate(std::string_view request, std::string_view token, const State& state) 
     return out;
 }
 
-// client/game.py's writes: its INVENTORY_IN_PLAYER_STATE and SUPPLY_FIELDS (from 0xCBC to 0xCEC's
-// two bytes) in the player state at gGameState + 0x1CD50, WRITABLE_ITEMS (50 bytes), and the map's
+// client/game.py's writes: its INVENTORY_IN_PLAYER_STATE and SUPPLY_FIELDS (six 16-bit numbers,
+// each by its own two bytes) in the player state at gGameState + 0x1CD50, WRITABLE_ITEMS (50 bytes), and the map's
 // cells (54 by 54: the item state in 9-byte records at +0x15B61, the grid's bytes at +0x14FFD).
 constexpr uint64_t kPlayerState = 0x1CD50;
-constexpr uint64_t kSuppliesFrom = 0xCBC, kSuppliesTo = 0xCEE;
+constexpr uint64_t kSupplyFields[] = {0xCBC, 0xCBE, 0xCC0, 0xCC2, 0xCEA, 0xCEC};
 constexpr uint64_t kInventoryAt = 0x108E, kWritableItems = 50;
 constexpr uint64_t kCellStates = 0x15B61, kCellStride = 9, kMapGrid = 0x14FFD, kMapCells = 54 * 54;
 
 std::vector<Range> client_write_ranges(uint64_t game_state) {
-    return {
-        {game_state + kPlayerState + kSuppliesFrom, game_state + kPlayerState + kSuppliesTo},
-        {game_state + kPlayerState + kInventoryAt,
-         game_state + kPlayerState + kInventoryAt + kWritableItems},
-        {game_state + kCellStates, game_state + kCellStates + kMapCells * kCellStride},
-        {game_state + kMapGrid, game_state + kMapGrid + kMapCells},
-    };
+    std::vector<Range> ranges;
+    for (uint64_t field : kSupplyFields) {  // the six 16-bit numbers alone: +0xCC4 to +0xCE9 is
+        const uint64_t at = game_state + kPlayerState + field;  // not recorded, and not written
+        if (!ranges.empty() && ranges.back().end == at) {
+            ranges.back().end = at + 2;  // one run of neighbors
+        } else {
+            ranges.push_back({at, at + 2});
+        }
+    }
+    ranges.push_back({game_state + kPlayerState + kInventoryAt,
+                      game_state + kPlayerState + kInventoryAt + kWritableItems});
+    ranges.push_back({game_state + kCellStates, game_state + kCellStates + kMapCells * kCellStride});
+    ranges.push_back({game_state + kMapGrid, game_state + kMapGrid + kMapCells});
+    return ranges;
+}
+
+std::vector<Range> keep_ranges(const std::vector<Range>& wanted, const SymbolSpan& base,
+                               const std::function<bool(uint64_t, uint64_t)>& in_data,
+                               std::vector<Range>& dropped) {
+    std::vector<Range> kept;
+    for (const Range& range : wanted) {
+        const bool in_symbol = range.start >= base.value && range.end >= range.start &&
+                               (base.size == 0 || range.end <= base.value + base.size);
+        if (in_symbol && in_data(range.start, range.end - range.start)) {
+            kept.push_back(range);
+        } else {
+            dropped.push_back(range);
+        }
+    }
+    return kept;
 }
 
 bool within_ranges(const std::vector<Range>& ranges, uint64_t address, uint64_t size) {

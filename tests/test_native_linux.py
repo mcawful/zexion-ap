@@ -146,6 +146,7 @@ def test_the_helper_serves_counts_frames_and_passes_them_on(game: Game) -> None:
     swaps, _, err = game.stop()
     assert swaps >= later  # every frame call reached SDL
     assert "serving build test" in err
+    assert re.search(r"write: \d+ ranges, \d+ bytes allowed", err)  # what write may change
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

@@ -53,7 +53,8 @@ struct State;
 Gate gate(std::string_view request, std::string_view token, const State& state);
 
 // Where `write` may change the game when a client does: what client/game.py writes and no more
-// (its inventory bytes, its six supply numbers, a map cell's item state, the map grid), as
+// (its inventory bytes, its six supply numbers each by its own two bytes, a map cell's item
+// state, the map grid), as
 // offsets from gGameState (docs/re/linux.md, "Lookup: targets"). Not the sprite records around
 // them, whose fields hold procedures the game calls (the player's is at gGameState + 0x1CD50).
 // tests/test_linux_helper.py checks these against client/game.py's own.
@@ -77,6 +78,14 @@ struct SymbolSpan {
     uint64_t value = 0;
     uint64_t size = 0;
 };
+
+// The ranges of `wanted` to keep: each wholly inside the symbol `base` (its extent, when it has
+// one) and where `in_data` says the game's writable data is. The others are put in `dropped`,
+// for the helper to say so: a range the client needs that is dropped makes every write there
+// refused. helper.cpp's set_client_writes calls this with the game's own symbol and segments.
+std::vector<Range> keep_ranges(const std::vector<Range>& wanted, const SymbolSpan& base,
+                               const std::function<bool(uint64_t, uint64_t)>& in_data,
+                               std::vector<Range>& dropped);
 
 // `names`' symbols in the 64-bit little-endian ELF file `elf` (the game's own binary, read from
 // /proc/self/exe): each found once, defined, with one value; a name missing or found with two

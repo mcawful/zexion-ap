@@ -413,8 +413,11 @@ def test_the_ranges_the_helper_lets_a_client_write_are_the_ones_the_client_write
     assert constant("kInventoryAt") == client_game.INVENTORY_IN_PLAYER_STATE
     assert targets["inventory"].offset == state + constant("kInventoryAt")
     assert constant("kWritableItems") == len(ids.WRITABLE_ITEMS)
-    assert constant("kSuppliesFrom") == min(client_game.SUPPLY_FIELDS)
-    assert constant("kSuppliesTo") == max(client_game.SUPPLY_FIELDS) + 2
+    fields = re.search(r"kSupplyFields\[\] = \{([^}]*)\}", source)
+    assert fields
+    assert sorted(int(f, 16) for f in fields.group(1).split(",")) == sorted(
+        client_game.SUPPLY_FIELDS
+    )
     assert constant("kCellStates") == targets["cell_state"].offset
     assert constant("kCellStride") == client_game.CELL_STRIDE
     assert client_game.CELL_ITEM < client_game.CELL_STRIDE
