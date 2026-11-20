@@ -4,9 +4,10 @@ name: Release
 # the release: the helper and proxy built here, the Linux helper built in the Steam Runtime's
 # SDK (the linux-helper job), the apworld, the player guides and the sample YAMLs, under the
 # tag v<VERSION>. A version already released from this same commit is skipped (a re-run); one
-# released from another commit, or left as a draft, fails the job instead. The first job runs in
-# the "release" environment, which waits for the owner's approval in GitHub before anything is
-# built or published; the release job runs after it.
+# released from another commit, or left as a draft, fails the job instead. The release job runs
+# in the "release" environment, which waits for the owner's approval in GitHub before anything is
+# tagged or published, each attempt again (a re-run too); the linux-helper job before it only
+# builds, with a read-only token, and publishes nothing.
 on:
   push:
     branches: [main]
@@ -20,17 +21,21 @@ concurrency:
 
 jobs:
   # The Linux helper, built as ci.yml's native-linux-runtime job builds it, in the same pinned
-  # Steam Runtime SDK, after the owner's approval; handed to the release job as an artifact.
+  # Steam Runtime SDK, with a read-only token (the image is a third party's); handed to the
+  # release job as an artifact, which tools/build_apworld.py checks before it packs it.
   linux-helper:
     name: Linux helper (Steam Runtime)
     runs-on: ubuntu-latest
-    environment: release
-    container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:3.0.20261021.266025
+    permissions:
+      contents: read
+    container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:3.0.20261021.266025@sha256:bb30053d3cd19d35c76ae69b2790dbaa1430448006f8240cb6d7e723f2d1940e
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build
         run: |
-          cmake -S native -B native/build -G Ninja -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
+          cmake -S native -B native/build -G Ninja -DCMAKE_CXX_COMPILER=g++-14
           cmake --build native/build
       - name: Native tests
         run: ctest --test-dir native/build --output-on-failure
@@ -44,6 +49,7 @@ jobs:
     name: build and publish
     runs-on: windows-latest
     needs: linux-helper
+    environment: release
     steps:
       - uses: actions/checkout@v7
       # Into native/build, where tools/build_apworld.py takes it (LINUX_HELPER), and checks it

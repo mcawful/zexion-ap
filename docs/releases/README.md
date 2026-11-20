@@ -52,7 +52,7 @@ malformed (not a list of steps, or more than one) or not from the last release.
 - **Sections:** "What's new" for things a player can now do or will notice, "Fixes" for what
   was broken. Leave out a section with nothing in it.
 - **"Updating from <previous>" only when a player must do something** beyond the install
-  guide's steps (it already says to finish the seed first, replace all three files together and
+  guide's steps (it already says to finish the seed first, replace the files together and
   connect the client once). It is a list of those steps only, and the gate checks it names the
   last release.
 - American English.

@@ -38,7 +38,10 @@ Archipelago Mod and Start the AP client to play a seed).
    in each, into `Players/Templates/Presets` in your Archipelago folder (`Zexion - Easy.yaml`
    and so on), and a plain `Zexion.yaml` into `Players/Templates`.
 2. Copy it into `Players`, then set your `name` (your player name) and any options you want to
-   change (see the game page, `zexion-game-page.md`).
+   change (see the game page, `zexion-game-page.md`). On Linux, with Archipelago's AppImage,
+   your Archipelago folder (`Players`, `output` and `logs`) is `~/.local/share/Archipelago`
+   (or `Archipelago` in `$XDG_DATA_HOME`, if you set that); with the `.tar.gz`, it is the
+   `Archipelago` folder it unpacks to (or the AppImage's, if you can't write there).
 
 ## Generate and host
 
@@ -86,12 +89,19 @@ Goals, options and what's changed in the game: see the game page (`zexion-game-p
 Zexion's Linux version, which Steam runs on Linux and the Steam Deck, takes the mod as
 `libzexion_ap.so`, loaded by a launch option.
 
-1. Install Archipelago for Linux, then `zexion.apworld` (Install, above).
+1. Install Archipelago for Linux, 0.6.8 or newer: from Archipelago's
+   [releases page](https://github.com/ArchipelagoMW/Archipelago/releases), download the Linux
+   build, either the `.AppImage` (then make it executable: in its Properties, or `chmod +x`) or
+   the `.tar.gz` (then unpack it). Start the Launcher from it: the AppImage itself, or
+   `ArchipelagoLauncher` in the unpacked folder. Then install `zexion.apworld` (Install, above).
 2. Close Zexion. Copy `libzexion_ap.so` into Zexion's folder: in Steam, right-click Zexion,
-   Manage, Browse local files. Note the folder's full path; it is usually
-   `/home/YOU/.local/share/Steam/steamapps/common/Zexion` (on the Steam Deck,
-   `/home/deck/.local/share/Steam/steamapps/common/Zexion`), and with Steam installed from
-   Flathub `/home/YOU/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Zexion`.
+   Manage, Browse local files. Note the folder's full path: copy it from the file manager's
+   address bar. It is usually `/home/YOU/.local/share/Steam/steamapps/common/Zexion` (on the
+   Steam Deck, `/home/deck/.local/share/Steam/steamapps/common/Zexion`), and with Steam installed
+   from Flathub
+   `/home/YOU/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Zexion`. If
+   Zexion is on an SD card or another drive, as is common on the Steam Deck, the path is
+   different (an SD card's starts with `/run/media/`).
 3. In Steam, right-click Zexion, Properties, General, and set its **Launch Options** to this
    line, with your folder's full path in it:
 
@@ -99,9 +109,10 @@ Zexion's Linux version, which Steam runs on Linux and the Steam Deck, takes the 
    LD_PRELOAD="/home/YOU/.local/share/Steam/steamapps/common/Zexion/libzexion_ap.so:$LD_PRELOAD" %command%
    ```
 
-   Keep `:$LD_PRELOAD` and `%command%` as they are: without them, the game or Steam's overlay
-   won't start right. With other launch options (MangoHud, say), keep this one first.
-4. Start Zexion, then open **Zexion Client** from the Launcher, as in "Start playing" below. Run
+   Keep `:$LD_PRELOAD` and `%command%` as they are: `%command%` is where Steam puts the game,
+   and `:$LD_PRELOAD` keeps anything else that is preloaded, such as Steam's overlay, loading
+   too. If you add other launch options, keep this one first.
+4. Start Zexion, then open **Zexion Client** from the Launcher, as in "Start playing" above. Run
    the client as your own user, not inside Steam (not as a non-Steam game).
 
 On the Steam Deck, play in **Desktop Mode**, where the Launcher and the client run next to the
@@ -110,8 +121,8 @@ connected, as on Windows. If the client says "Can't reach the running game", che
 option and that `libzexion_ap.so` is in the folder it names (Troubleshooting, below).
 
 The mod's small files for playing without the client are in `~/.local/share/ZexionAP` (with
-Flathub's Steam, `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP`). Playing the
-Windows version under Proton instead is not supported: use the Linux version.
+Flathub's Steam, usually `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP`). Playing
+the Windows version under Proton instead is not tried and not supported: use the Linux version.
 
 ## Languages
 
@@ -121,8 +132,9 @@ items) shows in the game's HD font, in mixed case, and its disk, padlock and Arc
 in HD art. In the other languages the mod's text shows in that language's font, but in English
 and in capitals (another Zexion player's items by that language's own names), and some of it
 may not show (a font without Latin letters, say); the client
-says so when it sees one. Received items were seen working in French and Japanese, and the
-mod's text in French. If something
+says so when it sees one. On Windows, received items were seen working in French and Japanese,
+and the mod's text in French; on Linux, received items' popups in English(HD) and Japanese. If
+something
 shows wrong or not at all, switch to the default English and please report it (below).
 
 ## Playing without the client
@@ -169,10 +181,14 @@ play as normal.
 - **Turn it off for a while:** close Zexion, then create an empty file named `zexion_ap.disabled`
   next to the mod's files (on Linux, next to `libzexion_ap.so`). Windows may hide the end of file
   names, so check it isn't called `zexion_ap.disabled.txt` (in File Explorer: View, then turn on
-  File name extensions). While it is there, neither Zexion nor the client loads the mod (the
-  client says so). Your saves of a seed still play with the client, but items arrive without
-  popups, you can't start a new game of a seed, and they can earn Feats and Steam achievements.
-  Delete the file to turn the mod back on.
+  File name extensions). On Windows, while it is there, neither Zexion nor the client loads the
+  mod (the client says so). Your saves of a seed still play with the client, but items arrive
+  without popups, you can't start a new game of a seed, and they can earn Feats and Steam
+  achievements.
+  On Linux it is different: the client can't reach the game at all while the mod is off. It says
+  only "Can't reach the running game; trying again (details in the log).", nothing is sent or
+  received, and your saves of a seed play as if the mod were removed (next item). Delete the
+  file to turn the mod back on.
 - **Remove it:** close Zexion and delete `zexion_ap.dll` and `version.dll` from its folder (on
   Linux, delete `libzexion_ap.so` and clear the launch option). Your
   saves of a seed still load, as plain randomizer games (other players' items, OS Install Disks
@@ -190,11 +206,10 @@ play as normal.
 | The client says Zexion is running as administrator. | Start Zexion normally, or run the Archipelago Launcher as administrator too. |
 | The client says the Zexion mod and the client don't match. | The mod's two files and `zexion.apworld` are from different releases; the client's message names both versions. Close Zexion and copy `zexion_ap.dll` and `version.dll` from the release of your `zexion.apworld` into its folder. If the message says the mod is the newer one, you can instead install that release's `zexion.apworld`. |
 | The client says the mod isn't installed. | Close Zexion and copy this release's `zexion_ap.dll` and `version.dll` into its folder again. |
-| On Linux, the client says "Can't reach the running game". | The mod isn't loaded: check that `libzexion_ap.so` is in Zexion's folder and that the launch option names that folder's full path, with `:$LD_PRELOAD" %command%` after it ("Linux and Steam Deck"). The client's log asks the same. Close Zexion and start it again after a change. |
-| On Linux, the client says the Zexion mod and the client don't match. | Close Zexion and copy `libzexion_ap.so` from the release of your `zexion.apworld` into its folder, then start Zexion again. |
-| The client says the mod didn't start. | Restart Zexion. If it keeps happening, copy the two files again as in the row above. |
+| On Linux, the client says "Can't reach the running game". | The mod isn't loaded, or is from another release. Check that `libzexion_ap.so` is in the folder the launch option names; that the launch option is as in "Linux and Steam Deck" (that folder's full path, with `:$LD_PRELOAD" %command%` after it); that no `zexion_ap.disabled` is beside it; and that it is from the same release as your `zexion.apworld` (when they differ, the client's log names both versions: copy that release's `libzexion_ap.so` into the folder). Close Zexion and start it again after a change. |
+| The client says the mod didn't start. | Restart Zexion. If it keeps happening, copy the two files again as in the "mod isn't installed" row above. |
 | The mod misbehaves: popups, labels or menus look wrong while the client is connected. | On Linux, restart Zexion (the mod can't be reloaded there). On Windows, type `/reload_mod` in the client. It reloads the mod in a few seconds; popups still waiting are lost, and so are traps waiting for a save that isn't loaded; items are not. For those seconds Steam achievements are not stopped in an Archipelago save, so stand still and pick nothing up. If it says it can't now, close any menu or the map, or let a trap end, and try again. |
-| The client says the mod is turned off. | Delete `zexion_ap.disabled` from Zexion's folder. |
+| On Windows, the client says the mod is turned off. | Delete `zexion_ap.disabled` from Zexion's folder. |
 | There is no ARCHIPELAGO choice. | Connect the client first, and pick an empty save slot. If the client says something about the mod, see the rows above. If the client is connected and the game still offers RANDOMIZER, start the seed from RANDOMIZER (next row): the client's line on how to play says so too. |
 | The client says to start the seed from RANDOMIZER. | In an empty save slot, choose RANDOMIZER, enter the 16-character seed the client's message gives, and choose START GAME. The menu's other settings don't matter: the game gets your seed's own. If the game says it couldn't generate a winnable seed and asks whether to play anyway, choose YES. When the client also offers ARCHIPELAGO, it shows the seed on a line of its own: you can try clicking that line in the client to copy it, then the menu's Paste; if that doesn't work, type the 16 characters. |
 | The client says that new game isn't this seed. | The game was started from RANDOMIZER with another seed in the menu, so it is an ordinary randomizer game, not your Archipelago one. Start again in an empty save slot as the client's message says, with your seed's 16 characters. |
@@ -211,5 +226,6 @@ play as normal.
 ## Reporting a bug
 
 Report it at [github.com/mcawful/zexion-ap/issues](https://github.com/mcawful/zexion-ap/issues),
-and attach the client's log: in your Archipelago folder, the `logs` folder has one file per
-client run, named `ZexionClient_` and the date and time it started.
+and attach the client's log: in your Archipelago folder (on Linux, see "Make your YAML"), the
+`logs` folder has one file per client run, named `ZexionClient_` and the date and time it
+started.

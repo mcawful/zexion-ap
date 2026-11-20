@@ -15,9 +15,12 @@ from fakes import verneed_image
 import build_apworld as bap
 from protected import ProtectedPathError
 
-# What a Steam Runtime build of the Linux helper needs: glibc's own versions, none past 2.31.
+# What a Steam Runtime build of the Linux helper needs: glibc's own versions, none past 2.31,
+# with dl and pthread still their own libraries there (merged into libc from 2.34).
 RUNTIME_NEEDS = [
     ("libm.so.6", ["GLIBC_2.2.5"]),
+    ("libdl.so.2", ["GLIBC_2.2.5"]),
+    ("libpthread.so.0", ["GLIBC_2.2.5", "GLIBC_2.3.2"]),
     ("libc.so.6", ["GLIBC_2.2.5", "GLIBC_2.4", "GLIBC_2.31"]),
     ("ld-linux-x86-64.so.2", ["GLIBC_2.3"]),
 ]
@@ -216,7 +219,7 @@ def test_a_linux_helper_needing_libstdc_versions_is_refused(tmp_path: Path, dlls
     # Its C++ runtime not linked in: the game's container may hold an older libstdc++.
     dynamic = [*RUNTIME_NEEDS, ("libstdc++.so.6", ["GLIBCXX_3.4.29"])]
     stub_linux_helper(bap.LINUX_HELPER, bap.client_version(), dynamic)
-    refused(tmp_path, "needs versions of libstdc\\+\\+.so.6")
+    refused(tmp_path, "needs versions of libstdc\\+\\+.so.6, which are not glibc's")
 
 
 def test_a_linux_helper_that_is_no_elf_file_is_refused(tmp_path: Path, dlls) -> None:
@@ -235,3 +238,35 @@ def test_a_linux_helper_older_than_its_sources_is_stale(tmp_path: Path, monkeypa
     os.utime(newer, (later, later))
     monkeypatch.setattr(bap, "LINUX_SOURCES", (linux_src,))
     refused(tmp_path, "libzexion_ap.so is older than")
+
+
+@pytest.mark.parametrize("version", ["GLIBC_PRIVATE", "GLIBC_ABI_DT_RELR"])
+def test_a_linux_helper_needing_an_unnumbered_glibc_version_is_refused(
+    tmp_path: Path, dlls, version: str
+) -> None:
+    needs = [*RUNTIME_NEEDS[:-1], ("libc.so.6", ["GLIBC_2.2.5", version])]
+    stub_linux_helper(bap.LINUX_HELPER, bap.client_version(), needs)
+    refused(tmp_path, f"needs {version}, which no numbered glibc version covers")
+
+
+def test_a_version_inside_a_glibc_symbol_version_does_not_count(tmp_path: Path) -> None:
+    # A Linux helper's .dynstr holds GLIBC_2.2.5: not its own version 2.2.5.
+    so = stub_linux_helper(tmp_path / "libzexion_ap.so", "1.2.0", RUNTIME_NEEDS)
+    assert bap.helper_has_version(so, "1.2.0")
+    assert not bap.helper_has_version(so, "2.2.5")
+
+
+def test_the_linux_helper_alone_is_checked_as_the_build_would(tmp_path: Path, capsys) -> None:
+    good = stub_linux_helper(tmp_path / "good.so", bap.client_version())
+    assert bap.main(["--check-linux-helper", str(good)]) == 0
+    assert "loads in the Steam Runtime" in capsys.readouterr().out
+    newer = [("libc.so.6", ["GLIBC_2.38"])]
+    bad = stub_linux_helper(tmp_path / "bad.so", bap.client_version(), newer)
+    with pytest.raises(SystemExit, match="bad.so: it would not load in the Steam Runtime"):
+        bap.main(["--check-linux-helper", str(bad)])
+    other = stub_linux_helper(tmp_path / "other.so", "0.9.0")
+    with pytest.raises(SystemExit, match="other.so: it is not version"):
+        bap.main(["--check-linux-helper", str(other)])
+    with pytest.raises(SystemExit, match="is missing"):
+        bap.main(["--check-linux-helper", str(tmp_path / "none.so")])
+    assert not (tmp_path / "dist").exists()

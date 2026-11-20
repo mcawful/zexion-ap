@@ -1,8 +1,8 @@
 # Working in zexion-ap
 
 Archipelago (AP) multiworld support for **Zexion** (Gallant Leaf, Steam app 3392510), a native
-x64 exe on SDL2 and FMOD with no modding API (it also has a Linux build, not yet supported:
-[`docs/re/linux.md`](docs/re/linux.md)): its mod folders are for sprites and translations
+x64 exe on SDL2 and FMOD with no modding API (it also has a Linux build, which the mod supports
+too: [`docs/re/linux.md`](docs/re/linux.md)): its mod folders are for sprites and translations
 only, and build B1 does not read the sprite ones ([`docs/re/builds.md`](docs/re/builds.md)).
 Everything here comes from reverse engineering, hence the evidence rules below.
 
@@ -57,9 +57,11 @@ Where things are:
   release. Work on a short-lived topic branch cut from `develop`, merged into `develop` by pull
   request, then deleted. `develop` and `main` take changes only through pull requests with every CI
   check passing. **Only the owner merges `develop` into `main` (with a merge commit, the only method
-  `main` allows); Claude never merges into `main`.** That merge starts the release, which waits for
-  the owner's approval in GitHub before anything is built, tagged or published. Before opening the
-  pull request into `main`, raise the version ("Releases and versions"). The flow:
+  `main` allows); Claude never merges into `main`.** That merge starts the release: the Linux
+  helper is built first, with a read-only token, and the release job then waits for the owner's
+  approval in GitHub, each attempt (a re-run too), before it builds the Windows helper or tags or
+  publishes anything. Before opening the pull request into `main`, raise the version ("Releases
+  and versions"). The flow:
   [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Branches and releases".
 - **This repo is public.** Never commit game files, exe or memory dumps, saves (real or
   patched), Steam account ids, or anything from `lab/` or `private/`. Facts go in `docs/re/`;
@@ -74,10 +76,11 @@ Where things are:
 
 Windows, Linux or macOS, with git and uv. Commands here are for a POSIX shell: bash or zsh, Git
 Bash on Windows (PowerShell differs only in `VAR=value command`). `.venv/Scripts/` is the venv's
-folder on Windows; on Linux and macOS it is `.venv/bin/`, in every command in this file. The game
-the mod supports, the helper, `client/process.py` (the Windows API) and the live tools
-`memscan.py` and `helper.py load` and `unload` are Windows-only. The client also runs against the
-game's Linux build, which has a helper of its own that runs every part of the Windows helper's but
+folder on Windows; on Linux and macOS it is `.venv/bin/`, in every command in this file. The mod
+supports the game's Windows and Linux builds. The Windows helper, `client/process.py` (the Windows
+API) and the live tools `memscan.py` and `helper.py load` and `unload` are Windows-only. The
+client also runs against the game's Linux build, which has a helper of its own that runs every
+part of the Windows helper's but
 unloading (run in the game, on Flatpak Steam on one PC, 2026-11-19: new games, grants with their
 popups, received traps, Energy Shields, checks, Intel Chips, popups in English(HD) and Japanese,
 the OS Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an
@@ -107,8 +110,11 @@ uv pip install --python .venv -r requirements-dev.txt
 
 CI runs all four on every push to and pull request into `develop` or `main` (ruff and pytest on
 Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native builds below, the Linux
-helper also in the Steam Runtime's SDK (`native-linux-runtime`: it must load on glibc 2.31). A
-pull request into `main` also runs the release gate (`.github/workflows/release-gate.yml`).
+helper also built and tested in the Steam Runtime's SDK (`native-linux-runtime`, "Linux helper
+(Steam Runtime)": it must load on glibc 2.31) and that build then checked as a release checks it
+(`native-linux-runtime-check`, "Linux helper (Steam Runtime) loads": `tools/build_apworld.py
+--check-linux-helper`). A pull request into `main` also runs the release gate
+(`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
 ```sh
@@ -181,8 +187,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper, and the client says so (its own build, `native/build` or
   `ZEXION_DLL`, still loads). On Linux a `zexion_ap.disabled` beside `libzexion_ap.so` turns the
-  preloaded helper off, and the client then says only that it found no helper in Zexion and asks
-  whether `libzexion_ap.so` is in the game's launch options.
+  preloaded helper off, and the client then can't reach the game: it says only "Can't reach the
+  running game", and its log that it found no helper in Zexion, asking whether `libzexion_ap.so`
+  is in the game's launch options.
 
 ### Tools
 
@@ -230,12 +237,19 @@ helper, as the release workflow builds it in the Steam Runtime's SDK), and the p
 `zexion-setup-guide.md` and `zexion-game-page.md` (copies of `worlds/zexion/docs/setup_en.md` and
 `en_Zexion.md`, which name each other by those names), and the sample YAMLs from `samples/`, one
 per mode. It packs only git-tracked files and refuses missing, stale or mismatched DLLs or Linux
-helper, a Linux helper that needs a glibc newer than the Steam Runtime's 2.31 or any libstdc++ (so
-a local build on a newer distribution is refused: the release builds it in the runtime's SDK), a
-mismatched `world_version`, and samples that are missing, untracked or for another version (its
-docstring): rebuild `native/` first. The packaged client has no build of its own, so it uses the
-helper in the game's folder. On GitHub, `.github/workflows/release.yml` builds the release and
-publishes it once the owner approves (`docs/DEVELOPING.md`, "Branches and releases"). The
+helper, a Linux helper that would not load in the Steam Runtime (a glibc symbol version newer
+than its 2.31, an unnumbered one such as `GLIBC_PRIVATE`, or a version of any library but glibc's:
+`libc`, `libm`, `ld-linux`, and `libdl`, `libpthread` and `librt`, which 2.31 keeps out of `libc`;
+so no libstdc++, whose runtime is linked in), a mismatched `world_version`, and samples that are
+missing, untracked or for another version (its docstring): rebuild `native/` first.
+`--check-linux-helper PATH` checks one Linux helper alone, as the build would, and builds nothing.
+Run locally, the builder needs a Linux helper it accepts: Windows can't build one, and a build on
+a newer distribution is refused when it asks for a newer glibc (one on glibc 2.44 asked for 2.38),
+so put the `libzexion_ap-runtime` artifact of CI's `native-linux-runtime` job in `native/build`,
+or build it in the SDK's container (the image `ci.yml` pins). The packaged client has no build of
+its own, so it uses the helper in the game's folder. On GitHub, `.github/workflows/release.yml`
+builds the release and publishes it once the owner approves (`docs/DEVELOPING.md`, "Branches and
+releases"). The
 release's message is written for players: the version's notes, `docs/releases/<version>.md`, then
 the install guide in `.github/release-footer.md`, then the compare link from the previous release,
 put together by `tools/release_notes.py`. `tests/test_release_notes.py` checks the notes here

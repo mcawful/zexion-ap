@@ -2373,8 +2373,10 @@ its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
    native/build/libzexion_ap.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1` prints that
    version. Under Flatpak's Steam the game ran on the Flatpak runtime's glibc, 2.44 on the test
    PC (`org.freedesktop.Platform` 26.08, 2026-11-18; not the host's), and a build asking for up
-   to `GLIBC_2.38` loaded; without Flatpak the Steam Runtime's is 2.31 ("Its own runtime",
-   below). A newer version than the game's: it does not load (step 4).
+   to `GLIBC_2.38` loaded; the runtime the game asks for has 2.31, which a newer host glibc may
+   stand in for (assumed without Flatpak: "Its own runtime", below). A newer version than the
+   game's: it does not load (step 4). A release's build, made in the Steam Runtime's SDK, asks for
+   2.31 at most (`tools/build_apworld.py --check-linux-helper` checks a file).
 2. The owner closes the game, then copies `libzexion_ap.so` into the game's folder (the guard
    hook blocks Claude's writes into the install); under Flatpak's Steam on the test PC,
    `~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Zexion`
@@ -3247,19 +3249,31 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   world's own Disorient Trap goes off at its pickup, its timer at 660 with sound 82, from a seed
   the helper took). Both received traps run in the game, 2026-11-19 ("The Linux helper", above);
   this world's own not.
-- **Its own runtime.** The C++ runtime is linked in, so it needs only glibc (with `ld-linux`, its
-  dynamic loader) from the game's container, which may be older than the one it was built with. A
+- **Its own runtime.** The C++ runtime is linked in, so it needs only glibc from the game's
+  container, which may be older than the one it was built with: `libc`, `libm` and `ld-linux`
+  (its dynamic loader), and on a glibc before 2.34, which keeps them out of `libc`, `libdl` and
+  `libpthread` too (`CMakeLists.txt` links both; `tools/build_apworld.py` also allows `librt`). A
   build on a newer glibc asks for its newer symbol versions and would fail to load under an older
-  one, so a release builds it in the Steam Runtime's SDK, sniper
-  (`registry.gitlab.steamos.cloud/steamrt/sniper/sdk`, snapshot 3.0.20261021.266025, glibc 2.31,
-  GCC 14 and CMake 3.25 by its package list, read 2026-11-20), in CI too (`native-linux-runtime`),
-  and `tools/build_apworld.py` refuses one that needs a newer glibc or any libstdc++ (its versions
-  read from `.gnu.version_r`, `client/elf.py`). That build is not run in the game yet. Read on the
+  one, so a release builds it in the Steam Runtime's SDK, sniper, the runtime the game asks Steam
+  for (`docs/re/builds.md`, "B1 on Linux"), in CI too (`native-linux-runtime`, then
+  `native-linux-runtime-check`), and `tools/build_apworld.py` refuses one that needs a glibc
+  newer than 2.31, a glibc version with no number (`GLIBC_PRIVATE`), or a version of any library
+  but glibc's, libstdc++'s among them (its versions read from `.gnu.version_r`, `client/elf.py`).
+  The SDK is the image `registry.gitlab.steamos.cloud/steamrt/sniper/sdk:3.0.20261021.266025`,
+  pinned by its digest
+  `sha256:bb30053d3cd19d35c76ae69b2790dbaa1430448006f8240cb6d7e723f2d1940e` (the registry's
+  `Docker-Content-Digest` for that tag, read 2026-11-20). Its versions are the snapshot's
+  published package list, `com.valvesoftware.SteamRuntime.Sdk-amd64,i386-sniper.manifest.dpkg`
+  in <https://repo.steampowered.com/steamrt-images-sniper/snapshots/3.0.20261021.266025/> (read
+  2026-11-20): `libc6` 2.31-13+deb11u14, `gcc-14` and `g++-14` 14.2.0-19~steamrt3.1, `cmake`
+  3.25.1-1~bpo11+1+bsrt3.1 and `ninja-build` 1.10.1-1. **A build made there has not run in the
+  game yet**: every in-game run was of a build made on the test PC. Read on the
   test PC, 2026-11-18: the Steam Runtime installed there (sniper 3.0.20261021) ships glibc 2.31
   (its `usr-mtree.txt.gz` lists `libc-2.31.so`); Flatpak's Steam runs on the Flatpak runtime
   `org.freedesktop.Platform` 26.08, whose glibc is 2.44 (`strings` of its `libc.so.6`); a build
   there on glibc 2.44 asks for up to `GLIBC_2.38` (`objdump -T`) and nothing from libstdc++
-  (`readelf -d`: `libc`, `libm` and `ld-linux` only). Under Flatpak's Steam the game ran on the
+  (`readelf -d`: `libc`, `libm` and `ld-linux` only, glibc 2.44 having `libdl` and `libpthread`
+  in `libc`). Under Flatpak's Steam the game ran on the
   glibc the container takes from outside it (`/run/parent/usr/lib/x86_64-linux-gnu/libc.so.6` in
   its `/proc/<pid>/maps`), and the build needing 2.38 loaded (2026-11-18). That the container
   takes the newer of the runtime's and the host's is assumed (pressure-vessel's documented rule);

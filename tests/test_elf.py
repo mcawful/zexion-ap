@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 import sys
 from pathlib import Path
 
@@ -147,3 +148,21 @@ def test_the_running_pythons_glibc_needs_are_read() -> None:
     image = elf.parse(Path(sys.executable).resolve().read_bytes())
     needs = image.version_needs()
     assert any(v.startswith("GLIBC_") for vs in needs.values() for v in vs)
+
+
+def test_a_version_chain_that_steps_back_is_refused() -> None:
+    # vna_next of 8: entries overlapping, as no linker writes them.
+    data = bytearray(verneed_image([("libc.so.6", ["GLIBC_2.4", "GLIBC_2.31"])]))
+    image = elf.parse(bytes(data))
+    section = image.section(".gnu.version_r")
+    struct.pack_into("<I", data, section.offset + 16 + 12, 8)
+    with pytest.raises(elf.ELFError, match="damaged chain"):
+        elf.parse(bytes(data)).version_needs()
+
+
+def test_a_version_record_of_another_version_is_refused() -> None:
+    data = bytearray(verneed_image([("libc.so.6", ["GLIBC_2.4"])]))
+    section = elf.parse(bytes(data)).section(".gnu.version_r")
+    struct.pack_into("<H", data, section.offset, 2)
+    with pytest.raises(elf.ELFError, match="of version 2, not 1"):
+        elf.parse(bytes(data)).version_needs()

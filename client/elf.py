@@ -20,6 +20,7 @@ ET_EXEC = 2  # a fixed-address executable
 ET_DYN = 3  # a shared object, or a position-independent executable
 EM_X86_64 = 62
 SHT_SYMTAB = 2
+SHT_STRTAB = 3
 SHT_NOTE = 7
 SHT_NOBITS = 8
 SHT_DYNSYM = 11
@@ -132,20 +133,25 @@ class Image:
             if section.link >= len(self.sections):
                 raise ELFError(f"{section.name} names no string table")
             strings = self.sections[section.link]
+            if strings.type != SHT_STRTAB:
+                raise ELFError(f"{section.name} names a section that is no string table")
             names = self.data[strings.offset : strings.offset + strings.size]
-            start, end = section.offset, section.offset + section.size
-            at, seen = start, 0
-            while seen < 4096:  # a chain longer than any linker writes is a damaged file
-                seen += 1
-                if at + 16 > min(end, len(self.data)):
+            end = min(section.offset + section.size, len(self.data))
+            at = section.offset
+            # Each record and entry 16 bytes, after the last: a chain that steps back or overlaps,
+            # or longer than the section holds, is a damaged file, refused.
+            for _ in range(section.size // 16 + 1):
+                if at + 16 > end:
                     raise ELFError(f"{section.name} runs past its end")
-                _version, count, file_at, aux, following = struct.unpack_from(
+                version, count, file_at, aux, following = struct.unpack_from(
                     "<HHIII", self.data, at
                 )
+                if version != 1:
+                    raise ELFError(f"{section.name} is of version {version}, not 1")
                 versions = needs.setdefault(_string(names, file_at, section.name), set())
                 entry = at + aux
-                for _ in range(count):
-                    if entry + 16 > min(end, len(self.data)):
+                for i in range(count):
+                    if aux < 16 or entry + 16 > end:
                         raise ELFError(f"{section.name} runs past its end")
                     _hash, _flags, _other, name_at, after = struct.unpack_from(
                         "<IHHII", self.data, entry
@@ -153,10 +159,16 @@ class Image:
                     versions.add(_string(names, name_at, section.name))
                     if not after:
                         break
+                    if after < 16 or i == count - 1:
+                        raise ELFError(f"{section.name} has a damaged chain")
                     entry += after
                 if not following:
                     break
+                if following < 16:
+                    raise ELFError(f"{section.name} has a damaged chain")
                 at += following
+            else:
+                raise ELFError(f"{section.name} has a damaged chain")
         return needs
 
     def function_at(self, addr: int) -> tuple[Symbol, int] | None:

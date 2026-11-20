@@ -16,9 +16,12 @@ in `.venv/bin/`, not `.venv/Scripts/`, here and below.
 
 `.github/workflows/ci.yml` runs these three on Windows, Ubuntu and macOS, a `world` job with
 Archipelago's world tests (below, on Ubuntu), a Windows `native` job (the CMake build of `native/`, its ctest tests, and
-`tests/test_native.py` against the built DLL) and an Ubuntu `native-linux` job (the Linux
-helper's build, its ctest tests, and `tests/test_native_linux.py` against it) that preflight
-does not run. Locally, `tests/test_native_linux.py` skips unless `native/build/` holds
+`tests/test_native.py` against the built DLL), an Ubuntu `native-linux` job (the Linux
+helper's build, its ctest tests, and `tests/test_native_linux.py` against it), a
+`native-linux-runtime` job (the Linux helper built and its ctest tests run in the Steam Runtime's
+SDK, as a release builds it) and a `native-linux-runtime-check` job (that build checked as a
+release checks it, `tools/build_apworld.py --check-linux-helper`) that preflight does not run.
+Locally, `tests/test_native_linux.py` skips unless `native/build/` holds
 `libzexion_ap.so`, `libzexion_ap_hooktest.so` and `zap_fake_game` (or `ZEXION_NATIVE_BUILD`
 names another build folder); build them as `CLAUDE.md` ("Checks") shows when `native/linux/` or
 `client/linux_helper.py` changed. Also locally,

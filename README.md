@@ -11,12 +11,13 @@ you need your own copy of Zexion. The code is under the [MIT license](LICENSE).
 ## Download
 
 Get the latest release from the [Releases page](https://github.com/mcawful/zexion-ap/releases).
-It has `zexion.apworld`, `zexion_ap.dll`, `version.dll`, the two player guides and a sample
+It has `zexion.apworld`, `zexion_ap.dll` and `version.dll` (the mod for Windows),
+`libzexion_ap.so` (the mod for Linux and the Steam Deck), the two player guides and a sample
 YAML for each mode (Easy, Standard, OHKO and Custom).
 
 Seeds have been played start to finish in testing.
-It supports one version of Zexion, Steam build 23943567; if Steam updates the game, the client
-tells you when your version isn't supported.
+It supports one version of Zexion, Steam build 23943567, on Windows, Linux and the Steam Deck; if
+Steam updates the game, the client tells you when your version isn't supported.
 
 ## Features
 
@@ -44,7 +45,9 @@ tells you when your version isn't supported.
    and download the latest release of this project (above).
 2. In the Archipelago Launcher, choose Install APWorld and pick `zexion.apworld`.
 3. Install the mod: with Zexion closed, copy `zexion_ap.dll` and `version.dll` into Zexion's
-   folder (in Steam: right-click Zexion, Manage, Browse local files). The mod is required.
+   folder (in Steam: right-click Zexion, Manage, Browse local files). The mod is required. On
+   Linux or the Steam Deck, copy `libzexion_ap.so` there instead and set Zexion's launch option,
+   as the setup guide's "Linux and Steam Deck" says.
 4. Make your YAML (start from the release's sample for your mode), then generate and host the
    game. To join someone else's game, send them
    your YAML: they need `zexion.apworld` from the same release to generate it.

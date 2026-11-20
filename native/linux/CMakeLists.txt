@@ -35,9 +35,13 @@ add_library(zap_shared STATIC
             ../src/game_mem.cpp ../src/game_mem_linux.cpp ../src/mailbox_linux.cpp)
 target_include_directories(zap_shared PUBLIC ../src)
 target_compile_options(zap_shared PRIVATE -Wno-missing-field-initializers)
+# dlsym and dlopen (apitem.cpp, feats.cpp), std::call_once and threads: on a glibc before 2.34,
+# the Steam Runtime's 2.31 among them, those are libdl's and libpthread's, not libc's.
+target_link_libraries(zap_shared PUBLIC ${CMAKE_DL_LIBS} pthread)
 
 # The C++ runtime linked in: the game runs in Steam's runtime container, whose libstdc++ may be
-# older than the one it was built with. Only glibc and libdl are needed from the container.
+# older than the one it was built with. Only glibc is needed from the container (libdl and
+# libpthread, glibc's own libraries before 2.34, among it).
 # Only SDL_GL_SwapWindow and SteamInternal_ContextInit, the calls it stands in for, are exported
 # (exports.map): the runtime's own symbols, operator new and
 # __cxa_* among them, would otherwise stand in for the game's libstdc++ in every process the
