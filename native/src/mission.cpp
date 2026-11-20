@@ -16,6 +16,7 @@ const char kMissionQuestion[] = "Return home with the disks?";
 constexpr float kQuestionCenterBy = -4.0f;
 const char kEndingStarted[] = "ending started";
 const char kPutBack[] = "put back: the prompt was up, YES is NO";
+const char kYesDropped[] = "put back: YES was pressed, the ending had not started";
 
 namespace {
 
@@ -404,6 +405,8 @@ bool MissionPrompt::ending_queued(const GameAddresses& a) const {
 }
 
 void MissionPrompt::cancel(const GameAddresses& a) {
+    // A YES not yet followed by the ending (set when the game is idle) is dropped by this.
+    const bool dropped_yes = ending_ && !started_;
     requested_ = false;
     ending_ = false;
     end_dark(a, "ended: canceled, faded back in");  // no ending to come: out of the black
@@ -416,7 +419,11 @@ void MissionPrompt::cancel(const GameAddresses& a) {
         }
     }
     // An ending started stays said (the client reads it) until another save is loaded.
-    if (!armed_ && yes_child_ == nullptr && !started_) status_ = "not asked";
+    // Said apart from "not asked" for a YES the player pressed (the client may have read only
+    // "shown" before it), which is not a NO: the prompt is offered again.
+    if (!armed_ && yes_child_ == nullptr && !started_) {
+        status_ = dropped_yes ? kYesDropped : "not asked";
+    }
 }
 
 void MissionPrompt::restore(const GameAddresses& a) {

@@ -1699,6 +1699,38 @@ def test_on_linux_a_shown_prompt_put_back_by_a_closed_connection_is_offered_agai
     assert home.offer and not home.queued
 
 
+@pytest.mark.parametrize(
+    "status",
+    [
+        "put back: the prompt was up, YES is NO",  # still up when the connection closed
+        "put back: YES was pressed, the ending had not started",  # YES, dropped before the ending
+    ],
+)
+def test_on_linux_a_shown_prompt_dropped_up_or_after_yes_is_offered_again(
+    monkeypatch, status
+) -> None:
+    # Read as "shown" on one connection, so no longer asked about there: a YES pressed meanwhile
+    # whose connection closed before the ending started reads "put back", not "not asked".
+    ctx = context(connection(), linux_game({"config": "ok", "mission_status": "shown"}))
+    pm = ctx.game_conn.pm
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+
+    async def nothing(*args) -> None:
+        return None
+
+    monkeypatch.setattr(ticks, "followups_tick", nothing)
+    monkeypatch.setattr(ticks, "mission_tick", nothing)
+    home = ctx.load.return_home
+    home.queued = True
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert home.queued and home.shown_on is not None
+    pm.connection = 2
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+    pm.replies["mission_status"] = status
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert home.offer and not home.queued
+
+
 def test_on_linux_a_prompt_answered_no_is_not_offered_again_by_a_new_connection(
     monkeypatch,
 ) -> None:
