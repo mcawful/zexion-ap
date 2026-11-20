@@ -338,8 +338,21 @@ Committed under `.claude/`, so they apply to anyone working here:
   `tests/test_guard_hook.py`). The guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
-  `deny` rules for Edit and Write back it up for the save folder, the game install and the cloud
-  cache (not the offline files); only the game-install one has been seen to fire.
+  The hook has a 120 s timeout in `settings.json`, a backstop: a hook that times out lets the
+  call through, so the guard's own protection is its deadline of about a second, which blocks
+  when it runs out. It answers within about a second (two at most: one read, the lexing of one
+  word and the scan for heredocs are not interrupted): a command
+  over 100,000 characters is blocked unread; one over a size budget (many different words,
+  counting a word with a wildcard and each redirect target for more, many commands, or many
+  different folders a `cd` goes to) counts as reaching a protected folder, so only a read-only
+  one passes; and one that takes over a second to read is blocked (the lexer, the heredoc pass
+  and each read of a word or pattern look at the clock). A long commit message or PR body is
+  one word to it, a script counts its different words against the budget (a word with a
+  wildcard for more, at most 125), and long text goes to a file with the Write tool. More than
+  32 heredocs, or a heredoc saved to or copied to more than 64 files, count as code (they are
+  not cut out as data). `deny` rules for Edit and Write back it up for the save folder, the
+  game install and the cloud cache (not the offline files); only the game-install one has been
+  seen to fire.
   `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist runs `git status`, `diff`,
   `log` and `show`, the read-only forms of `git branch` (bare, `-a`, `-r`, `-v`, `-vv`,
   `--show-current`, `--list`), `ruff check`, `ruff format --check`, pytest, `build_id.py` and

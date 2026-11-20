@@ -73,7 +73,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PROJECT_DIR}/.claude/hooks/run_python.sh\" guard_protected.py"
+            "command": "sh \"${CLAUDE_PROJECT_DIR}/.claude/hooks/run_python.sh\" guard_protected.py",
+            "timeout": 120
           }
         ]
       }

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
+import functools
 import json
 import os
 import re
@@ -84,18 +85,32 @@ class ProtectedPathError(RuntimeError):
     """Raised when a tool is asked to write into a protected folder."""
 
 
+# %NAME%, $env:NAME, ${env:NAME}, ${NAME}, $NAME, per variable
+_ENV_SPELLINGS = [
+    (
+        name,
+        re.compile(
+            rf"%{re.escape(name)}%|\$env:{re.escape(name)}(?!\w)|\$\{{env:{re.escape(name)}\}}"
+            rf"|\$\{{{re.escape(name)}\}}|\${re.escape(name)}(?!\w)",
+            re.IGNORECASE,
+        ),
+    )
+    for name in _ENV_NAMES
+]
+_TILDE = re.compile(r"(^|[\s\"'=])~(?=[/\\])")
+
+
 def _expand(text: str) -> str:
     """Expand the env-var spellings of cmd, PowerShell and sh, and a leading ``~``."""
-    for name in _ENV_NAMES:
+    if not re.search(r"[$%~]", text):
+        return text
+    for name, spellings in _ENV_SPELLINGS:
         value = os.environ.get(name)
-        if not value:
-            continue
-        esc = re.escape(name)
-        # %NAME%, $env:NAME, ${env:NAME}, ${NAME}, $NAME
-        spellings = rf"%{esc}%|\$env:{esc}(?!\w)|\$\{{env:{esc}\}}|\$\{{{esc}\}}|\${esc}(?!\w)"
-        text = re.sub(spellings, lambda _m, v=value: v, text, flags=re.IGNORECASE)
-    home = os.path.expanduser("~")
-    text = re.sub(r"(^|[\s\"'=])~(?=[/\\])", lambda m: m.group(1) + home, text)
+        if value:
+            text = spellings.sub(lambda _m, v=value: v, text)
+    if "~" in text:
+        home = os.path.expanduser("~")
+        text = _TILDE.sub(lambda m: m.group(1) + home, text)
     return text
 
 
@@ -108,12 +123,30 @@ def normalize(text: str, fold: bool = True) -> str:
     return text.lower() if fold else text
 
 
+def _by_env(fn):
+    """Cache a function of the environment alone for as long as the variables it reads
+    (``_ENV_NAMES``, the home folder) stay the same: the guard asks for the offline folders once
+    per word of a command."""
+    cache: dict[tuple, object] = {}
+
+    @functools.wraps(fn)
+    def wrapper():
+        key = (*(os.environ.get(name) for name in _ENV_NAMES), os.path.expanduser("~"))
+        if key not in cache:
+            cache.clear()  # only the current environment is kept
+            cache[key] = fn()
+        return cache[key]
+
+    return wrapper
+
+
 def _local_appdata() -> str:
     """``LOCALAPPDATA`` as ``normalize`` reads a path, without a trailing slash. "" when it is
     not set (Linux and macOS), so nothing more is protected there and nothing fails."""
     return normalize(os.environ.get("LOCALAPPDATA") or "").rstrip("/")
 
 
+@_by_env
 def _offline_bases() -> list[str]:
     """The folders this machine's environment puts the offline folder in, read as ``normalize``
     reads a path: ``LOCALAPPDATA`` and, on Linux, ``XDG_DATA_HOME``, each when set."""
@@ -121,6 +154,7 @@ def _offline_bases() -> list[str]:
     return [base for base in (_local_appdata(), data_home) if base]
 
 
+@_by_env
 def _offline_patterns() -> list[re.Pattern]:
     """The offline folder where this machine's ``LOCALAPPDATA`` or ``XDG_DATA_HOME`` puts it,
     for a value that is not the usual ``AppData/Local`` or ``~/.local/share`` (the fixed
@@ -130,6 +164,7 @@ def _offline_patterns() -> list[re.Pattern]:
     ]
 
 
+@_by_env
 def _offline_parts() -> list[tuple]:
     """The same folders as path components, for ``word_may_name_protected``."""
     found = []
@@ -205,7 +240,15 @@ def word_may_name_protected(word: str) -> bool:
     also match another folder.
     """
     parts = _path_parts(word)
+    # Without a wildcard or a short name's ``~`` a name must be there as it is: a word that
+    # lacks one of a folder's names is not read against it (a long word has many components).
+    joined = "/".join(parts)
+    exact = re.search(r"[*?\[]", joined) is None and not any(
+        _SHORT_NAME.fullmatch(p) for p in parts
+    )
     for names in _PROTECTED_PARTS + _offline_parts():
+        if exact and any(isinstance(n, str) and n not in joined for n in names):
+            continue
         last = len(names) - 1
         for start in range(len(parts) - last):
             if all(
@@ -247,6 +290,22 @@ _CLASS = re.compile(
     r"\[[!^]?(?:\]|\[:\w{1,16}:\]|[^\]\[]|\[(?!:\w{1,16}:\]))"
     r"(?:\[:\w{1,16}:\]|[^\]\[]|\[(?!:\w{1,16}:\])){0,63}\]"
 )
+
+
+def _class_at(text: str, i: int) -> re.Match | None:
+    """The bracket expression that starts at ``text[i]``, if any. A ``[`` with no ``]`` within
+    reach (``_CLASS`` is at most 1283 characters long) starts none: a run of ``[`` is then read
+    in linear time."""
+    if text.find("]", i + 1, i + 1284) < 0:
+        return None
+    return _CLASS.match(text, i)
+
+
+def _sub_classes(repl, text: str) -> str:
+    """``text`` with ``repl`` applied to each bracket expression in it."""
+    return _CLASS.sub(repl, text) if "]" in text else text
+
+
 # A class of letters and digits only (``[Zz]``) stands for one fixed character.
 _PLAIN_CLASS = re.compile(r"\[[A-Za-z0-9]+\]")
 # The two protected names that are also the repo's own (``worlds/zexion``, ``zexion*.py``) as they
@@ -269,7 +328,7 @@ def _regex_as_glob(pattern: str, groups: bool = True) -> str:
     paren = "/" if groups else ""
     while i < len(pattern):
         c = pattern[i]
-        cls = _CLASS.match(pattern, i) if c == "[" else None
+        cls = _class_at(pattern, i) if c == "[" else None
         if cls:
             out.append("?" if cls.group()[1] in "^!" else cls.group())
             i = cls.end()
@@ -312,7 +371,7 @@ def _braces(pattern: str, limit: int = 32) -> list[str]:
 def _literal_len(part: str) -> int:
     """How many characters of a name pattern are fixed: not a wildcard, and not a class but a
     plain one of letters and digits (``[Zz]``), which counts as one."""
-    part = _CLASS.sub(lambda m: "x" if _PLAIN_CLASS.fullmatch(m.group()) else "", part)
+    part = _sub_classes(lambda m: "x" if _PLAIN_CLASS.fullmatch(m.group()) else "", part)
     return len(re.sub(r"[*?]", "", part))
 
 
@@ -351,7 +410,7 @@ def pattern_may_name_protected(pattern: str, kind: str = "name", ignore_case: bo
     )
     readings = []
     for text in texts:
-        text = _CLASS.sub(lambda m: "?" if "/" in m.group() else m.group(), text)
+        text = _sub_classes(lambda m: "?" if "/" in m.group() else m.group(), text)
         readings.append(text)
         if kind != "name":
             readings += [text.replace("*", "/"), text.replace("?", "/")]
@@ -390,20 +449,22 @@ def _path_parts(word: str, fold: bool = True) -> list[str]:
     return parts
 
 
+_SHORT_NAME = re.compile(r"([^~*?\[]{1,6})~\d+")  # an 8.3 short name: ``GALLAN~1``
 _ANY = "?"  # one wildcard character; "*" is a run of them; anything else is itself
 
 
-def _wildcard_tokens(part: str) -> list[str]:
+@functools.lru_cache(maxsize=1024)  # a part is read against every name, in every reading
+def _wildcard_tokens(part: str) -> tuple[str, ...]:
     tokens, i = [], 0
     while i < len(part):
-        cls = _CLASS.match(part, i) if part[i] == "[" else None
+        cls = _class_at(part, i) if part[i] == "[" else None
         if cls:  # a character class: read as any one character
             tokens.append(_ANY)
             i = cls.end()
         else:
             tokens.append(part[i])
             i += 1
-    return tokens
+    return tuple(tokens)
 
 
 def _part_matches(part: str, name: object, first: bool, last: bool) -> bool:
@@ -416,7 +477,7 @@ def _part_matches(part: str, name: object, first: bool, last: bool) -> bool:
     if name is _DIGITS:
         return bool(tokens) and all(t in "*?" or t.isdigit() for t in tokens)
     assert isinstance(name, str)
-    short = re.fullmatch(r"([^~*?\[]{1,6})~\d+", part)
+    short = _SHORT_NAME.fullmatch(part)
     if short:
         return name.replace(" ", "").startswith(short.group(1))
     n = len(name)
@@ -448,12 +509,34 @@ def _part_matches(part: str, name: object, first: bool, last: bool) -> bool:
     return n in states or after in states
 
 
+# A UNC path: two separators and a server. Not the extended-length and device forms of a local
+# path (``//?/C:/x``, ``//./C:/x``), which ``//?/UNC/server/share`` makes a network path again.
+_UNC = re.compile(r"[\\/]{2}(?:(?![?.][\\/])|[?.][\\/]UNC[\\/])", re.IGNORECASE)
+
+
+def _on_windows() -> bool:
+    return sys.platform == "win32"
+
+
+def is_network_path(path: str) -> bool:
+    """True, on Windows, for a UNC path (``//server/share``, written with backslashes as well,
+    or ``//?/UNC/server/share``). Windows resolves one over the network, seconds for each
+    server, so nothing asks the file system about it. A local path with the extended-length or
+    device prefix (``//?/C:/x``, ``//./C:/x``) is not one, and neither is ``//x`` on Linux and
+    macOS."""
+    return _on_windows() and _UNC.match(path) is not None
+
+
 def is_protected_path(path: str | os.PathLike[str]) -> bool:
-    """True when ``path`` is inside a protected folder, before or after resolving links."""
+    """True when ``path`` is inside a protected folder, before or after resolving links. Not
+    resolved (judged by its text alone) is a UNC path (``is_network_path``), where resolving
+    asks the network."""
     raw = os.fspath(path)
     candidates = [raw]
-    with contextlib.suppress(OSError, ValueError):
-        candidates.append(os.path.realpath(_expand(raw)))
+    expanded = _expand(raw)
+    if not is_network_path(expanded):
+        with contextlib.suppress(OSError, ValueError):
+            candidates.append(os.path.realpath(expanded))
     return any(mentions_protected(c + "/") or word_may_name_protected(c) for c in candidates)
 
 
