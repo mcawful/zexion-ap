@@ -1,7 +1,8 @@
 """PreToolUse hook: block writes into the game install, the real saves, Steam's cloud cache for
 the game, and the mod's offline files (``%LOCALAPPDATA%\\ZexionAP``: the seed list, labels and
-disk counts the helper keeps; on Linux the seeds' files, in ``$XDG_DATA_HOME/ZexionAP``, else
-``~/.local/share/ZexionAP``, and Flatpak's default data folder; only the helper writes them).
+disk counts the helper keeps; on Linux the seeds' files and the helper's socket token, in
+``$XDG_DATA_HOME/ZexionAP``, else ``~/.local/share/ZexionAP``, and Flatpak's default data
+folder; only the helper writes them).
 
 Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows stderr to Claude.
 

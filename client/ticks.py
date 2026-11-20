@@ -9,7 +9,8 @@ told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs 
 ``poll``, through ``side_tick``, so a failing one never stops items or checks), only while a
 helper is attached, except offline_tick, shields_tick (run with the Windows helper or the Linux
 one: zexion_client.shields_due) and deathlink_tick (either helper), which check, and the linux_
-ticks, which run while none is attached (through the Linux helper, with the game's Linux build).
+ticks, which run while none is attached (through the Linux helper, with the game's Linux build),
+except linux_keepalive_tick, which zexion_client's ``keepalive_loop`` runs as a task of its own.
 """
 
 from __future__ import annotations

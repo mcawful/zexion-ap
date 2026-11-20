@@ -7,9 +7,9 @@ Four places are protected:
   ``~/.local/share``, or Flatpak Steam's: any ``Gallant Leaf/Zexion``),
 - Steam's cloud cache for the game (``Steam/userdata/<account>/3392510``),
 - the mod's offline files (``%LOCALAPPDATA%/ZexionAP``: the seed list, labels and disk counts
-  the helper keeps for play without the client; on Linux the seeds' files, in
-  ``$XDG_DATA_HOME/ZexionAP``, else ``~/.local/share/ZexionAP``, as the game's saves are, so
-  under Flatpak Steam's home too; ``.var/app/com.valvesoftware.Steam/data``, Flatpak's own
+  the helper keeps for play without the client; on Linux the seeds' files and the helper's socket
+  token, in ``$XDG_DATA_HOME/ZexionAP``, else ``~/.local/share/ZexionAP``, as the game's saves
+  are, so under Flatpak Steam's home too; ``.var/app/com.valvesoftware.Steam/data``, Flatpak's own
   default ``XDG_DATA_HOME``, is covered as well). Only the helper writes them.
 
 Matching is by pattern rather than by this machine's paths, so the same rules hold on any PC.
