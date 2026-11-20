@@ -344,10 +344,12 @@ Committed under `.claude/`, so they apply to anyone working here:
   over 100,000 characters is blocked unread; one over a size budget (many different words,
   counting a word with a wildcard and each redirect target for more, many commands, or many
   different folders a `cd` goes to) counts as reaching a protected folder, so only a read-only
-  one passes; and one that takes over a second to read is blocked. A long commit message or PR
-  body is one word to it, a script counts its different words against the budget, and long text
-  goes to a file with the Write tool. More than 32 heredocs are no longer cut out as data (each
-  body is judged as code). `deny` rules for Edit and Write back it up for the save folder, the
+  one passes; and one that takes over a second to read is blocked (the lexer, the heredoc pass
+  and each read of a word or pattern look at the clock). A long commit message or PR body is
+  one word to it, a script counts its different words against the budget (a word with a
+  wildcard for more, at most 125), and long text goes to a file with the Write tool. More than
+  32 heredocs, or a heredoc saved to or copied to more than 64 files, count as code (they are
+  not cut out as data). `deny` rules for Edit and Write back it up for the save folder, the
   game install and the cloud cache (not the offline files); only the game-install one has been
   seen to fire.
   `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist runs `git status`, `diff`,

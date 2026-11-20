@@ -1670,6 +1670,13 @@ def _generous_deadline(monkeypatch) -> None:
 
 
 HOSTILE = {
+    "a heredoc saved, copied 2000 times, then a write": (
+        "Bash",
+        "cat <<E > f.sh\nx\nE\n" * 4
+        + "cp f.sh g0.sh; "
+        + "".join(f"cp g{i}.sh g{i + 1}.sh; " for i in range(2000))
+        + f"rm -rf ~/AppData/Local/{Z_AP}",
+    ),
     "regex name patterns": (
         "Bash",
         "find ~ " + " -o ".join(f"-regex '{CLASSES}q{i}'" for i in range(96)) + " -delete",
@@ -1896,15 +1903,69 @@ def test_a_slow_command_is_blocked_at_the_deadline(monkeypatch) -> None:
     assert run("PowerShell", command="gci lab | ri")
 
 
-def test_the_clock_is_read_for_every_word_not_remembered(monkeypatch) -> None:
-    ticks = iter(range(10_000))
+def test_the_clock_is_read_before_the_first_word_is_read_as_a_path(monkeypatch) -> None:
+    # The lexer, the heredoc pass and each word's reading look at it, not only ``protected``.
+    ticks = iter(range(100_000))
     monkeypatch.setattr(guard_protected.time, "monotonic", lambda: next(ticks) / 1000)
     monkeypatch.setattr(guard_protected, "DEADLINE", 0.5)  # 500 reads of the clock
-    words = " ".join(f"w{i}" for i in range(2000))  # each is read once: over the deadline
+    words = " ".join(f"w{i}" for i in range(2000))
     assert "reading it took over" in (run("Bash", command=f"ls {words}") or "")
-    ticks = iter(range(10_000))
-    again = " ".join("w" for _ in range(2000))  # the same word again is remembered
-    assert run("Bash", command=f"ls {again}") is None
+    ticks = iter(range(100_000))
+    assert run("Bash", command="ls lab tools") is None
+    monkeypatch.setattr(guard_protected, "_due", 0.0)  # time's up before the pass starts
+    for stage in (
+        lambda: guard_protected._cut_heredocs("cat <<E > f.sh\nx\nE\nwc f.sh\n"),
+        lambda: guard_protected.lex("ls a b", False),
+    ):
+        with pytest.raises(guard_protected._OutOfTime):
+            stage()
+
+
+def _copy_chain(n: int, heredocs: int, tail: str, body: str = "x") -> str:
+    saved = f"cat <<E > f.sh\n{body}\nE\n" * heredocs
+    chain = "cp f.sh g0.sh; " + "".join(f"cp g{i}.sh g{i + 1}.sh; " for i in range(n))
+    return saved + chain + tail
+
+
+RM_OFFLINE = "rm -rf ~/AppData/Local/ZexionAP"
+
+
+@pytest.mark.parametrize(("n", "heredocs"), [(100, 1), (1000, 1), (2000, 4), (1000, 8)])
+def test_a_chain_of_copies_of_a_saved_heredoc_is_read_quickly(n: int, heredocs: int) -> None:
+    # Each copy used to rebuild a pattern of every name so far, before any clock was read.
+    for command in (
+        _copy_chain(n, heredocs, RM_OFFLINE),  # a write after the chain
+        _copy_chain(n, heredocs, "wc g0.sh", body=RM_OFFLINE),  # a body that is a write
+    ):
+        started = time.monotonic()
+        assert run("Bash", command=command)
+        assert time.monotonic() - started < SLOW
+
+
+def test_a_heredoc_copied_to_a_few_files_is_followed_as_before() -> None:
+    body = RM_OFFLINE
+    assert run("Bash", command=_copy_chain(3, 1, "sh g3.sh", body))  # run after the copies: code
+    assert run("Bash", command=_copy_chain(3, 1, "wc g3.sh", body)) is None  # only read
+
+
+def test_normal_long_commands_pass_under_the_real_deadline(monkeypatch) -> None:
+    monkeypatch.setattr(guard_protected, "DEADLINE", 1.0)  # the one the hook runs with
+    script = "x = a[0] + b['k'] * 2  # fix {y} ?\nfor i in range(9): print(i)\n" * 300
+    for command in (
+        "git commit -F - <<'EOF'\n" + "Fix the save in Gallant Leaf/Zexion [a] * ?\n" * 500 + "EOF",
+        'gh pr create --title t --body "' + "ZexionAP, Gallant Leaf/Zexion, [a] * ?. " * 500 + '"',
+        "python - <<'EOF'\n" + script + "EOF",
+        "python -c '" + "{" + ", ".join(f"'k{i}': [{i}]" for i in range(1500)) + "}'",
+    ):
+        assert run("Bash", command=command) is None, command[:80]
+
+
+def test_a_long_quoted_word_costs_the_budget_a_bounded_amount() -> None:
+    word = "x[0]" * 22000  # 88,000 characters, one quoted word
+    assert guard_protected._work(word) == guard_protected.MAX_NAME_TEXT // 8
+    assert guard_protected._work("plain") == 1
+    assert guard_protected._work("a*") == 8
+    assert run("Bash", command=f"python -c '{word}'") is None
 
 
 @pytest.mark.parametrize(

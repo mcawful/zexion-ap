@@ -94,13 +94,19 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     ``tools/`` scripts and ``git`` and ``gh`` commands that are trusted otherwise are blocked:
     ``Too long or too complex to check``). The budget: ``MAX_WORK`` (the different words, 1
     each, and for a word with a wildcard, which is read as a pattern, 8 or an eighth of its
-    length if more; 8 for each redirect target; message text is no word), ``MAX_SEGMENTS`` and
-    ``MAX_FOLDERS`` (different folders a ``cd`` goes to). ``MAX_HEREDOCS`` is no part of it:
-    past it no heredoc is cut out as data, so each body is judged as code. A command over
-    ``MAX_COMMAND`` (100 000 characters) is blocked unread: write long text to a file with the
-    Write tool. A commit message or a PR body is one word to it, and a script's words count
-    once each. Past ``DEADLINE`` (one second) of reading, whatever the budget says, the command
-    is blocked too (``_Memo``: every read of a word or a name pattern looks at the clock).
+    length if more, at most an eighth of ``MAX_NAME_TEXT``; 8 for each redirect target;
+    message text is no word), ``MAX_SEGMENTS`` and ``MAX_FOLDERS`` (different folders a ``cd``
+    goes to). Two limits do not make a command count as reaching a folder, they make a
+    heredoc count as code: more than ``MAX_HEREDOCS`` of them (none is cut out as data), and a
+    heredoc saved to, or copied to, more than ``MAX_SAVED_NAMES`` files (it may be run later).
+    A command over ``MAX_COMMAND`` (100 000 characters) is blocked unread: write long text to
+    a file with the Write tool. A commit message or a PR body is one word to it, and a
+    script's words count once each. Past ``DEADLINE`` (one second) of reading, whatever the
+    budget says, the command is blocked too: the lexer (per word), the heredoc pass (per
+    heredoc and per saved file's later commands), the final pass (per command) and each read
+    of a word or name pattern that ``protected`` has not already answered (``_Memo``) look at
+    the clock (``_tick``). One read is not interrupted, and the lexer and the scan for
+    heredocs, linear in the length, run to the end: the answer is "about" a second.
     Nothing asks the file system about a UNC path on Windows (``protected.is_network_path``:
     ``//host/x`` is resolved over the network, seconds a host), so a link in one is not
     followed; ``//?/C:/x`` and ``//./C:/x`` are local paths and are.
@@ -143,6 +149,20 @@ import warnings
 from pathlib import Path
 
 _TOOLS_DIR = Path(__file__).resolve().parent.parent.parent / "tools"
+
+
+class _OutOfTime(Exception):
+    """Reading a command took longer than ``DEADLINE``."""
+
+
+_due = float("inf")  # when reading the command in hand must stop (``check`` sets it)
+
+
+def _tick() -> None:
+    """Raise ``_OutOfTime`` when the time for the command in hand is up."""
+    if time.monotonic() > _due:
+        raise _OutOfTime
+
 
 BLOCK_HINT = (
     "Blocked by .claude/hooks/guard_protected.py: this would write into the Zexion install, the "
@@ -353,6 +373,7 @@ def lex(command: str, powershell: bool) -> tuple[list[list[Word]], list[Word]]:
         nonlocal text, expect_target
         if text is None:
             return
+        _tick()
         w = _word(text, bare, start, end)
         if expect_target:
             targets.append(w)
@@ -644,6 +665,8 @@ def _saved_and_used(command: str, doc: Heredoc, piece: str, reader: str) -> bool
     names = {n for n in names if n.lower() not in HARMLESS_TARGETS}
     if not names:
         return False
+    if len(names) > MAX_SAVED_NAMES:  # too many to follow: the body may be run
+        return True
 
     def pattern(names: set[str]) -> re.Pattern:
         alts = "|".join(rf"(?<![\w.-]){re.escape(n)}(?![\w.-])" for n in sorted(names))
@@ -655,12 +678,15 @@ def _saved_and_used(command: str, doc: Heredoc, piece: str, reader: str) -> bool
         return False
     segments, _ = lex(later, False)
     for k, words in enumerate(segments):
+        _tick()
         mentions = [w for w in words if named.search(w)]
         if not mentions:
             continue
         stripped = _strip_prefix(words, False)
         if stripped and _verb(stripped[0]) in COPY_VERBS:  # cp x.sh y.sh: follow y.sh too
             names |= {_base_name(w) for w in stripped[1:] if not w.startswith("-")} - {""}
+            if len(names) > MAX_SAVED_NAMES:  # a chain of copies: each is a new pattern to build
+                return True
             named = pattern(names)
         if not _handles_without_running(words) or any(re.search(r"\$\(|`", w) for w in mentions):
             return True
@@ -737,6 +763,7 @@ def _cut_heredocs(command: str) -> str:
     if len(docs) > MAX_HEREDOCS:  # each one is read against the rest of the command
         return command
     for doc in docs:
+        _tick()
         if _heredoc_is_data(command, doc):
             out.append(command[pos : doc.body_start])
             pos = doc.after
@@ -972,7 +999,7 @@ def _dir_is_suspect(text: str, protected) -> bool:
 
 
 def _is_absolute(path: str) -> bool:
-    return os.path.isabs(path) or re.match(r"[A-Za-z]:", path) is not None
+    return os.path.isabs(path) or re.match(r"[A-Za-z]:|\\\\", path) is not None
 
 
 def _cd_targets(segments: list[list[Word]], cwd: str, code: str, protected) -> list[str | None]:
@@ -1472,6 +1499,7 @@ MAX_SEGMENTS = 8000  # simple commands
 MAX_WORK = 6000  # over the different words (``_work``) and redirect targets (8 each)
 MAX_FOLDERS = 16  # different folders the command's ``cd`` goes to
 MAX_HEREDOCS = 32  # Bash heredocs; with more, none is cut out as data
+MAX_SAVED_NAMES = 64  # files a heredoc is saved to and copied to; with more it counts as code
 DEADLINE = 1.0  # seconds; a command whose reading takes longer is blocked
 
 
@@ -1483,28 +1511,23 @@ _WILDCARD = re.compile(r"[*?\[{~]")  # what makes a word cost much more to read 
 
 def _work(word: str) -> int:
     """What reading a word costs the budget: 1; a word with a wildcard is read as a pattern, 8
-    and an eighth of its length if that is more (a name pattern is read in every reading)."""
-    return max(8, len(word) // 8) if _WILDCARD.search(word) else 1
-
-
-class _OutOfTime(Exception):
-    """Reading a command took longer than ``DEADLINE``."""
+    and an eighth of its length, at most that of ``MAX_NAME_TEXT``, if that is more (a name pattern
+    is read in every reading)."""
+    return max(8, min(len(word), MAX_NAME_TEXT) // 8) if _WILDCARD.search(word) else 1
 
 
 class _Memo:
     """``protected`` with its functions of one string remembered for one command, so a word
     that comes up again (``cd a; cd a``) is not read again. Each one that is not remembered
-    first looks at the clock: past ``due`` (a ``time.monotonic()``) it raises ``_OutOfTime``.
-    ``__getattr__`` hands out the others as they are."""
+    first looks at the clock (``_tick``). ``__getattr__`` hands out the others as they are."""
 
     PURE = frozenset({
         "normalize", "_expand", "mentions_protected", "word_may_name_protected",
         "may_be_above_protected", "pattern_may_name_protected", "is_protected_path",
     })  # fmt: skip
 
-    def __init__(self, module, due: float) -> None:
+    def __init__(self, module) -> None:
         self._module = module
-        self._due = due
         self._seen: dict[tuple, object] = {}
 
     def __getattr__(self, name: str):
@@ -1516,8 +1539,7 @@ class _Memo:
         def remembered(*args):
             key = (name, *args)
             if key not in seen:
-                if time.monotonic() > self._due:
-                    raise _OutOfTime
+                _tick()
                 seen[key] = attr(*args)
             return seen[key]
 
@@ -1531,14 +1553,17 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     ``session_cwd`` is the payload's top-level ``cwd``: where a shell tool without its own
     ``cwd`` runs. A command that takes longer than ``DEADLINE`` to read is blocked.
     """
-    due = time.monotonic() + DEADLINE
+    global _due
+    _due = time.monotonic() + DEADLINE
     try:
-        return _check(tool_name, tool_input, protected, session_cwd, due)
+        return _check(tool_name, tool_input, protected, session_cwd)
     except _OutOfTime:
         return f"{BLOCK_HINT}\nToo long or too complex to check: reading it took over {DEADLINE} s."
+    finally:
+        _due = float("inf")
 
 
-def _check(tool_name: str, tool_input: dict, protected, session_cwd: str, due: float):
+def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
     if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"}:
         path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
         if path and protected.is_protected_path(path):
@@ -1551,7 +1576,7 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str, due: f
     command = str(tool_input.get("command") or "")
     if len(command) > MAX_COMMAND:
         return f"{BLOCK_HINT}\nA command of {len(command):,} characters is too long to check."
-    protected = _Memo(protected, due)
+    protected = _Memo(protected)
     cwd = str(tool_input.get("cwd") or session_cwd or "")
     code = _here_strings_to_quotes(command) if powershell else _cut_heredocs(command)
     segments, targets = lex(code, powershell)
@@ -1625,6 +1650,7 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str, due: f
     # After a cd, tools/ is the repo's own only in a checkout of the repo.
     repo_tools = all(_repo_checkout(f, protected) for f in cds)
     for words in segments:
+        _tick()
         if not powershell and (program := _sets_program(words)):
             return block(f"An environment prefix that names a program: {program}")
         if _segment_is_read_only(words, powershell):
