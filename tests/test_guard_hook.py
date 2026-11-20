@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -1235,7 +1236,7 @@ BY_NAME_BLOCKED = [
     ("Bash", "find ~ -type d -name userdata -delete"),
     # Case, wildcards and characters classes, and quotes that split the name.
     ("Bash", "find ~ -iname '*zexionap*' -delete"),
-    ("Bash", "find ~ -type d -name ZEXIONAP -exec rm -r {} +"),
+    ("Bash", "find ~ -type d -iname ZEXIONAP -exec rm -r {} +"),
     ("Bash", "find ~ -name 'Zexion*' -exec rm -rf {} \\;"),
     ("Bash", "find ~ -name 'Z*AP' -delete"),
     ("Bash", "find ~ -name 'Z?xionAP' -delete"),
@@ -1297,6 +1298,33 @@ BY_NAME_BLOCKED = [
     ("PowerShell", "gci ~ ZexionAP -r | Remove-Item -Recurse"),
     ("PowerShell", "gci -Path ~ ZexionAP -r | Remove-Item -Recurse"),
     ("PowerShell", "gci -Path ~ -Recurse –Filter ZexionAP | Remove-Item -Recurse"),
+    # Round 3 of the review: ``Zexion`` is the install and the real saves as written, and the
+    # repo's own folder in lower case; a PowerShell list; groups, braces; the positional filter.
+    ("Bash", "find / -name Zexion -exec rm -rf {} +"),
+    ("Bash", "find ~ -name Zexion -type d -delete"),
+    ("Bash", "find / -iname zexion -exec rm -rf {} +"),
+    ("Bash", "find / -ipath '*/zexion' -exec rm -rf {} +"),
+    ("PowerShell", "gci $env:APPDATA -r -Filter Zexion | ri -r"),
+    ("PowerShell", "gci C:\\ -r -Filter zexion -Directory | ri -r"),
+    ("PowerShell", "gci ~ -r -Include foo,ZexionAP | ri -r"),
+    ("PowerShell", "gci ~ -r -Include 'ZexionAP','x' | ri -r"),
+    ("PowerShell", "gci ~ -r -Include:foo,ZexionAP | ri -r"),
+    ("PowerShell", "gci ~ -r -Include @('x','ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ foo,ZexionAP -r | ri -r"),
+    ("PowerShell", "gci -Path:~ ZexionAP -r | ri -r"),
+    ("PowerShell", "gci ~ -ErrorAction SilentlyContinue ZexionAP -r | ri -r"),
+    ("PowerShell", "gci -ea 0 ~ ZexionAP -r | ri -r"),
+    ("PowerShell", "gci \u2013Path ~ ZexionAP -r | ri -r"),
+    ("PowerShell", ". gci ~ ZexionAP -r | ri -r"),
+    ("Bash", 'pwsh -c "gci ~ ZexionAP -r | ri -r"'),
+    ("Bash", "find ~ -regex '.*/Zexio\\(n\\)AP' -delete"),
+    ("Bash", "find ~ -regextype posix-extended -regex '.*/(Zexion)AP' -delete"),
+    ("Bash", "find ~ -regex '.*/Z(exionAP)' -delete"),
+    ("Bash", "find ~ -name {ZexionAP,} -delete"),
+    ("Bash", "rm -rf `find ~ -name ZexionAP`/x"),
+    ("Bash", "rm -rf $(find ~ -name ZexionAP)/x"),
+    ("Bash", "ls `find ~ -name ZexionAP -delete`"),
+    ("Bash", 'ls "$(find ~ -name ZexionAP -delete)"'),
 ]
 BY_NAME_ALLOWED = [
     # Looking: nothing here can write.
@@ -1337,6 +1365,21 @@ BY_NAME_ALLOWED = [
     ("PowerShell", "Get-ChildItem -Recurse -Filter:'*.pyc' | Remove-Item"),
     ("Bash", "find . -regex '.*/[^/]*\\.pyc' -delete"),
     ("Bash", "find . -name '[0-9].tmp' -delete"),
+    # Round 3: the repo's lower-case names, which case-comparing predicates can't match.
+    ("Bash", "find dist -name 'zexion*' -delete"),
+    ("Bash", "find lab -name 'zexion*' -delete"),
+    ("Bash", "find . -path '*zexion*.pyc' -delete"),
+    ("Bash", "find . -regex '.*zexion.*\\.pyc' -delete"),
+    ("Bash", "find . -path '*zexion*' -name '*.pyc' -delete"),
+    ("Bash", "find . -path './worlds/zexion*' -name '*.pyc' -delete"),
+    ("Bash", "find worlds -name zexion -type d -exec rm -rf {} +"),
+    ("PowerShell", "gci . '*.pyc',*.pyo -r | Remove-Item"),
+    ("PowerShell", "gci worlds\\zexion -Filter *.pyc | Remove-Item"),
+    ("PowerShell", "Get-ChildItem -Recurse -Include *.pyc,*.pyo | Remove-Item"),
+    # A substitution that only reads, in a command that only reads.
+    ("Bash", "ls -ld $(find ~ -name ZexionAP)"),
+    ("Bash", "ls -ld `find ~ -name ZexionAP`"),
+    ("Bash", 'du -sh "$(find ~ -name ZexionAP -print)"'),
     # The folders' names are text in a message, not a command.
     ("Bash", 'git commit -m "find ~ -name ZexionAP -delete"'),
     ("Bash", 'gh pr create --title "find -name ZexionAP -delete" --body "x"'),
@@ -1360,14 +1403,15 @@ def test_reads_by_a_protected_folders_bare_name_and_other_names_allowed(
     ("pattern", "kind", "expected"),
     [
         ("ZexionAP", "name", True),
-        ("zexionap", "name", True),
+        ("ZexionAP", "name", True),
+        ("Zexion", "name", True),
         ("3392510", "name", True),
         ("Gallant Leaf", "name", True),
         ("Gallant\\ Leaf", "name", True),
         ("steamapps", "name", True),
         ("userdata", "name", True),
         ("Zexion*", "name", True),
-        ("*zexionap*", "name", True),
+        ("*ZexionAP*", "name", True),
         ("Z*AP", "name", True),
         ("Zexion[AB]P", "name", True),
         ("[Zz]exionAP", "name", True),
@@ -1387,8 +1431,11 @@ def test_reads_by_a_protected_folders_bare_name_and_other_names_allowed(
         (".*Local.ZexionAP", "regex", True),
         (".*/Gallant\\sLeaf", "regex", True),
         # Too little of a name, or another name. ``Zexion`` alone is the world's own folder too.
-        ("Zexion", "name", False),
         ("zexion", "path", False),
+        ("zexion*", "name", False),
+        ("*zexionap*", "name", False),
+        ("*zexion*.pyc", "path", False),
+        (".*zexion.*\\.pyc", "regex", False),
         ("*zexion", "name", False),
         ("*", "name", False),
         ("Z*", "name", False),
@@ -1410,6 +1457,47 @@ def test_reads_by_a_protected_folders_bare_name_and_other_names_allowed(
 )
 def test_pattern_may_name_protected(pattern: str, kind: str, expected: bool) -> None:
     assert protected.pattern_may_name_protected(pattern, kind) is expected
+
+
+@pytest.mark.parametrize(
+    ("pattern", "kind", "ignore_case", "expected"),
+    [
+        ("zexion", "name", False, False),  # worlds/zexion
+        ("zexion", "name", True, True),  # -iname: any case
+        ("zexion*", "name", False, False),
+        ("zexion*", "name", True, True),
+        ("zexionap", "name", False, False),
+        ("zexionap", "name", True, True),
+        ("Zexion", "name", False, True),  # the install and the saves
+        ("zexion", "ps", False, True),  # PowerShell ignores case, whatever is asked
+        ("*/zexion", "path", True, True),
+        (".*/zexion", "regex", True, True),
+        ("worlds/zexion", "path", False, False),
+        ("Gallant Leaf", "name", False, True),  # no other name is case-compared
+        ("gallant leaf", "name", False, True),
+        ("GALLAN~1", "name", False, True),
+    ],
+)
+def test_the_repos_own_names_are_matched_by_case(
+    pattern: str, kind: str, ignore_case: bool, expected: bool
+) -> None:
+    assert protected.pattern_may_name_protected(pattern, kind, ignore_case) is expected
+
+
+@pytest.mark.parametrize("kind", ["name", "path", "regex", "ps"])
+@pytest.mark.parametrize("piece", ["[[:a:", "[", "[[", "[a", "*[", "\\(", "(["])
+def test_a_long_pattern_is_read_quickly(kind: str, piece: str) -> None:
+    started = time.monotonic()
+    for length in (200, 2000, 10000):
+        protected.pattern_may_name_protected(piece * (length // len(piece)) + "x", kind)
+    assert time.monotonic() - started < 2
+
+
+def test_a_long_pattern_in_a_command_is_read_quickly() -> None:
+    started = time.monotonic()
+    run("Bash", command="find ~ -name '" + "[[:a:" * 2000 + "x' -delete")
+    run("PowerShell", command="gci ~ -Filter '" + "[[:a:" * 2000 + "x' | ri")
+    assert time.monotonic() - started < 2
 
 
 TERMINAL = "mcp__terminal__run_in_terminal"
