@@ -178,7 +178,15 @@ int wmain(int argc, wchar_t** argv) {
     check(reply == "queued 0; last set 102", "the trap ran once", reply);
     stand_in::g_map_grid[5] = 0;
 
-    check(zap_test::ask(pipe, "unload") == "bye", "unload");
+    // The trap's AILMENTS patch goes back on a frame after it ran out, and a code patch's put-back
+    // may be a frame behind the busy threads: a refusal is asked again (a few times, with a short
+    // sleep), and a real blocker still fails the check, named by its reply.
+    reply = "";
+    for (int i = 0; i < 100 && reply != "bye"; ++i) {
+        reply = zap_test::ask(pipe, "unload");
+        if (reply != "bye") Sleep(10);
+    }
+    check(reply == "bye", "unload", reply);
     CloseHandle(pipe);
     check(zap_test::unloaded(L"zexion_ap_hooktest.dll"), "unloaded");
     g_stop = true;

@@ -1165,7 +1165,11 @@ std::set<int> Game::ap_file_slots() const {
 }
 
 const BYTE* Game::slot_section(int n) const {
-    // Valid only for a randomizer save in use (docs/re/memory.md, "The file select").
+    // Valid only for a randomizer save in use (docs/re/memory.md, "The file select"), and not the
+    // slot a new game is starting in: that slot's empty mark is 0 for the new game's fade (Linux
+    // B1, docs/re/linux.md; Windows not checked), while a deleted save there keeps its marker
+    // word and section, which would show its AP logo and count on the entry.
+    if (newgame_queued() && n - 1 == at<int32_t>(at_.current_slot, 0)) return nullptr;
     const BYTE* block = at_.slot_array + static_cast<ptrdiff_t>(n - 1) * slot::kStride;
     if (block[slot::kEmpty] == slot::kEmptyMark ||
         field<uint16_t>(block, slot::kRandoMarker) != 1) {

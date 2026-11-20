@@ -14,6 +14,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "addresses.h"
 #include "apitem.h"
@@ -47,11 +48,25 @@ constexpr int new_game_white(bool queued, int32_t left) {
 // The count under DISK: two digits ("03"), 0 to 99.
 std::string file_disk_digits(int value);
 
+// A save's disk count as an entry shows it (offline.h, offline_disk_count): `base`, the disks the
+// seed's file counts for every save, and one more for each of `cells` (map grid indices of this
+// player's own disks) that the map of the block the entry holds reads collected. The map is read
+// from the entry's own block, which is the checkpoint record while that is in use on the Linux
+// build (docs/re/linux.md, "Mapped by disassembly: the file select's AP logo and disk counts"),
+// so the count is the one of the record whose ITEMS and time the entry shows.
+struct DiskCount {
+    DiskCount(int base_ = 0, std::vector<int> cells_ = {})
+        : base(base_), cells(std::move(cells_)) {}
+    int base = 0;
+    std::vector<int> cells;
+    bool operator==(const DiskCount&) const = default;
+};
+
 class FileEntries {
 public:
-    // Game thread: what to show, a count by slot (none turns the count off): the client's for the
-    // slots holding its seed, and each known seed's save its own (offline.h).
-    void set_counts(std::map<int, int> counts) { counts_ = std::move(counts); }
+    // Game thread: what to show, a count by slot (none turns the count off): each known seed's
+    // save its own (offline.h), with a client or none.
+    void set_counts(std::map<int, DiskCount> counts) { counts_ = std::move(counts); }
     // Game thread: the slots holding AP saves (a seed the helper knows), which get the logo.
     void set_ap_slots(std::set<int> slots) { ap_slots_ = std::move(slots); }
     bool on() const { return disks_on() || marks_on(); }
@@ -73,7 +88,7 @@ public:
     void restore(const GameAddresses& addresses);
     bool holds_hook() const { return !wrapped_.empty(); }
 
-    const std::map<int, int>& counts() const { return counts_; }
+    const std::map<int, DiskCount>& counts() const { return counts_; }
     const std::set<int>& ap_slots() const { return ap_slots_; }
 
 private:
@@ -96,7 +111,7 @@ private:
     bool mark(BYTE* entry, int32_t slot, BYTE* (&glyphs)[145], Wrapped& w);
     void unmark(BYTE* (&glyphs)[145], Wrapped& w);
     std::map<BYTE*, Wrapped> wrapped_;  // entry -> its menu and the game's handler
-    std::map<int, int> counts_;  // slot -> the count it shows
+    std::map<int, DiskCount> counts_;  // slot -> the count it shows
     std::set<int> ap_slots_;  // the slots that get the logo
 };
 

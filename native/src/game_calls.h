@@ -199,7 +199,7 @@ public:
         return nullptr;
     }
     // The file select (files.h): the counts by slot are each save's own, from its seed's file
-    // and its map (watch_offline); the entries' wrapper calls the game's (file_entry_original),
+    // and the map of the block each entry shows (watch_offline, DiskCount); the entries' wrapper calls the game's (file_entry_original),
     // then file_event.
     void* file_entry_original(void* widget) const { return files_.original(widget); }
     const FileEntries& files() const { return files_; }
@@ -524,8 +524,9 @@ private:
     bool other_save_ = false;     // a client said the loaded save is not its seed's
     bool other_warned_ = false;   // this load's other-seed notice queued
     bool section_is(const OfflineSeed& seed, const BYTE* section) const;
-    // Slot n's copy of its randomizer section, if it holds a randomizer save (else null); and
-    // whether a section is a known seed's (the labels' or known_seeds_).
+    // Slot n's copy of its randomizer section, if it holds a randomizer save (else null, and for
+    // the slot a new game is being started in); and whether a section is a known seed's (the
+    // labels' or known_seeds_).
     const BYTE* slot_section(int n) const;
     bool known_section(const BYTE* section) const;
     // The index of the known seed whose save is loaded, or -1.
@@ -537,9 +538,8 @@ private:
     int offline_count_ = -1, offline_told_ = -1;
     int offline_frames_ = 0;
     bool offline_settled_ = false;  // the loaded save in play since it loaded
-    // The file select's counts, each save's own (offline.h, offline_disk_count), with a client
-    // or none.
-    std::map<int, int> offline_file_counts_;
+    // The file select's counts, each save's own (files.h, DiskCount), with a client or none.
+    std::map<int, DiskCount> offline_file_counts_;
     std::deque<Popup> popups_;
     uint32_t batches_ = 0;  // the last `apply`'s number (Popup::batch)
     // Received scraps whose popup has shown, their drop not spawned yet (pump_drops), each with
