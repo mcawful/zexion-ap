@@ -36,8 +36,13 @@ add_library(zap_shared STATIC
 target_include_directories(zap_shared PUBLIC ../src)
 target_compile_options(zap_shared PRIVATE -Wno-missing-field-initializers)
 # dlsym and dlopen (apitem.cpp, feats.cpp), std::call_once and threads: on a glibc before 2.34,
-# the Steam Runtime's 2.31 among them, those are libdl's and libpthread's, not libc's.
-target_link_libraries(zap_shared PUBLIC ${CMAKE_DL_LIBS} pthread)
+# the Steam Runtime's 2.31 among them, those are libdl's and libpthread's, not libc's. -pthread
+# (Threads, preferring the flag) keeps libpthread linked into a program that calls none of its
+# functions itself: named as a plain library, the linker may drop it, and std::call_once then
+# finds no threads and throws (system_error -1, seen in the SDK's build, 2026-11-20).
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+target_link_libraries(zap_shared PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
 
 # The C++ runtime linked in: the game runs in Steam's runtime container, whose libstdc++ may be
 # older than the one it was built with. Only glibc is needed from the container (libdl and
