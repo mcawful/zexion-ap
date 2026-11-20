@@ -239,17 +239,33 @@ def may_be_above_protected(path: str) -> bool:
     return False
 
 
+# A bracket expression: ``[abc]``, ``[!a-z]``, ``[]x]``, ``[[:upper:]]``.
+_CLASS = re.compile(r"\[[!^]?(?:\]|\[:\w+:\]|[^\]])(?:\[:\w+:\]|[^\]])*\]")
+# A class of letters and digits only (``[Zz]``) stands for one fixed character.
+_PLAIN_CLASS = re.compile(r"\[[A-Za-z0-9]+\]")
+# ``Zexion`` alone is no name: it is also the world's own folder (``worlds/zexion``).
+_NOT_A_NAME = {"zexion"}
+
+
 def _regex_as_glob(pattern: str) -> str:
     """A regular expression read as a path glob, as far as a few common forms go: ``.*`` and
-    ``.+`` become ``*``, a lone ``.`` ``?``, an escaped character itself, and anchors, groups and
-    alternation ``/`` (so each alternative is read as its own name). Any other quantifier is left
-    as it is, which then names nothing: ``Z.*AP`` is read, ``Zex(ion)?AP`` is not."""
+    ``.+`` become ``*``, a lone ``.`` ``?``, an escaped character itself (``\\s``, ``\\w`` and
+    ``\\d`` any one character), anchors, groups and alternation ``/`` (so each alternative is read
+    as its own name; ``find``'s default syntax writes them ``\\(``, ``\\)`` and ``\\|``), and a
+    negated class ``?``. Any other quantifier is left as it is, which then names nothing:
+    ``Z.*AP`` is read, ``Zex(ion)?AP`` is not."""
     out, i = [], 0
     while i < len(pattern):
         c = pattern[i]
+        cls = _CLASS.match(pattern, i) if c == "[" else None
+        if cls:
+            out.append("?" if cls.group()[1] in "^!" else cls.group())
+            i = cls.end()
+            continue
         if c == "\\" and i + 1 < len(pattern):
             i += 1
-            out.append(pattern[i])
+            e = pattern[i]
+            out.append("/" if e in "()|" else "?" if e in "sSwWdD" else e)
         elif c == "." and pattern[i + 1 : i + 2] in ("*", "+"):
             out.append("*")
             i += 1
@@ -263,31 +279,48 @@ def _regex_as_glob(pattern: str) -> str:
     return "".join(out)
 
 
-def pattern_may_name_protected(pattern: str, regex: bool = False) -> bool:
+def _literal_len(part: str) -> int:
+    """How many characters of a name pattern are fixed: not a wildcard, and not a class but a
+    plain one of letters and digits (``[Zz]``), which counts as one."""
+    part = _CLASS.sub(lambda m: "x" if _PLAIN_CLASS.fullmatch(m.group()) else "", part)
+    return len(re.sub(r"[*?]", "", part))
+
+
+def pattern_may_name_protected(pattern: str, kind: str = "name") -> bool:
     """True when a name pattern, such as a ``find`` predicate's (``-name``, ``-path``,
     ``-regex``), could match the name of a protected folder or of one above it: the last name
-    of each protected folder (``Zexion``, ``ZexionAP``, the app id) or a folder that may hold
-    one (``may_be_above_protected``: ``Gallant Leaf``, ``steamapps``, ``userdata``, …), each
-    component of a path pattern on its own, with wildcards (a character class counts as one
-    character) and 8.3 short names read as ``word_may_name_protected`` reads them.
+    of each protected folder (``ZexionAP``, the app id; ``Zexion`` alone is no name, as it is
+    also the world's own folder) or a folder that may hold one (``may_be_above_protected``:
+    ``Gallant Leaf``, ``steamapps``, ``userdata``, …), each component of a path pattern on its
+    own, with wildcards and 8.3 short names read as ``word_may_name_protected`` reads them.
+    ``kind`` is ``"name"`` (``-name``), ``"path"`` (``-path``) or ``"regex"`` (``-regex``, read
+    as ``_regex_as_glob`` reads it). A backslash escapes the character after it, as in ``find``.
 
-    A component with fewer than three characters that are not wildcards is no name: ``*`` or
-    ``*.py`` stands for too many others to tell. A folder above a protected one counts only as
-    the pattern's last name (``*/Gallant Leaf/*``, not ``*/AppData/Local/Temp/x``). The match is
-    by name alone, so ``-name Zexion`` counts wherever the search starts. ``regex`` reads the
-    pattern as a regular expression (``_regex_as_glob``).
+    A component with fewer than three fixed characters is no name: ``*`` or ``Z*`` stands for
+    too many others to tell (``_literal_len``). A folder above a protected one counts only as
+    the pattern's last name (``*/Gallant Leaf/*``, not ``*/AppData/Local/Temp/x``). In a path
+    or a regex a ``*`` (a ``.``, a ``?``) may match a ``/`` too, so the pieces around one are
+    read as names also. The match is by name alone, so ``-name ZexionAP`` counts wherever the
+    search starts.
     """
-    if regex:
-        pattern = _regex_as_glob(pattern)
+    if kind != "regex" and word_may_name_protected(pattern):
+        return True
+    pattern = _regex_as_glob(pattern) if kind == "regex" else re.sub(r"\\(.)", r"\1", pattern)
+    pattern = _CLASS.sub(lambda m: "?" if "/" in m.group() else m.group(), pattern)
+    readings = [pattern]
+    if kind != "name":
+        readings += [pattern.replace("*", "*/*"), pattern.replace("?", "/")]
     leaves = [names[-1] for names in _PROTECTED_PARTS + _offline_parts()]
-    parts = [p for p in _path_parts(pattern) if len(re.sub(r"\[[^\]]*\]|[*?]", "", p)) >= 3]
-    for i, part in enumerate(parts):
-        # A folder above a protected one counts only as the last name: ``*/AppData/Local/Temp/x``
-        # is below it, not it.
-        if (i == len(parts) - 1 and may_be_above_protected(part)) or any(
-            _part_matches(part, name, first=False, last=False) for name in leaves
-        ):
-            return True
+    leaves = [name for name in leaves if name not in _NOT_A_NAME]
+    for reading in readings:
+        parts = [p for p in _path_parts(reading) if _literal_len(p) >= 3]
+        for i, part in enumerate(parts):
+            # A folder above a protected one counts only as the last name: ``*/AppData/Local/
+            # Temp/x`` is below it, not it.
+            if (i == len(parts) - 1 and may_be_above_protected(part)) or any(
+                _part_matches(part, name, first=False, last=False) for name in leaves
+            ):
+                return True
     return False
 
 
@@ -312,12 +345,13 @@ _ANY = "?"  # one wildcard character; "*" is a run of them; anything else is its
 def _wildcard_tokens(part: str) -> list[str]:
     tokens, i = [], 0
     while i < len(part):
-        if part[i] == "[" and "]" in part[i + 2 :]:
-            i = part.index("]", i + 2)  # a character class: read as any one character
+        cls = _CLASS.match(part, i) if part[i] == "[" else None
+        if cls:  # a character class: read as any one character
             tokens.append(_ANY)
+            i = cls.end()
         else:
             tokens.append(part[i])
-        i += 1
+            i += 1
     return tokens
 
 
