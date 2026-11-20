@@ -260,8 +260,8 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
 
 The mod is for the game's Windows build. Zexion also has a native Linux build (below), with a
 helper of its own that runs every part of the Windows helper's but unloading, run in the game on
-2026-11-18 and 2026-11-19 (what ran, and what has not yet: below); the client attaches to either
-build. Everything else runs on Windows, Linux and macOS, and CI runs ruff and pytest on
+2026-11-18 and 2026-11-19 (what ran, and what has not yet: below; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (the put-back of only a client that sent `config`, `write` refusing the function tables, the narrower map cache, the Steam check's retry), which have run on stand-ins only: the next in-game run re-checks the attach); the client
+attaches to either build. Everything else runs on Windows, Linux and macOS, and CI runs ruff and pytest on
 all three.
 
 Windows only:
@@ -313,9 +313,12 @@ What there is:
   `menu_state` read in play with the mouse used; and in run 2, the OS Install Disks goal (received
   and own disks counted, the pause row, the file select's counts, RETURN HOME and its ending),
   DeathLink both ways, scrap's drops, the Feats guard at an AP ending (no Feats, no achievement,
-  its note) and tall popups' text (`native/README.md`, "The Linux helper"); this world's own traps
+  its note) and tall popups' text (`native/README.md`, "The Linux helper"); this world's own
   traps (with or without a client) and its own disks with no client are not run in the game yet
-  (the client's lines said the ASSIST lock and the labels were set; not looked at). How to run it in the game, and what to try first:
+  (the client's lines said the ASSIST lock and the labels were set; not looked at); those runs
+  predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes,
+  which have run on stand-ins only (the next run re-checks the attach). How to run it in the game,
+  and what to try first:
   `native/README.md`, "Running it in the game". `menu_state` is the game's cursor mode on Linux
   (`gCursorMode`), which the mouse may set to 1, but only in menus: in play it stays 0 (read live,
   2026-11-19: `re/linux.md`, `menu_state`). `tools/helper.py status` finds the game, checks its
@@ -328,7 +331,11 @@ What there is:
   targets from the binary's symbol table (`client/linux_targets.py`, the ones `game.py` reads and
   writes), every read and write through the helper, one request at a time, connecting again once a
   connection drops (a request with no reply closes it, so a late reply is never read as the next
-  one's). It writes nothing through a target `re/linux.md` only assumes (every one is measured
+  one's); every connection must first show the helper's token (`find_token`, `auth`, in
+  `LinuxHelper._check_server`: read only after `hello` has shown the server is the game's own
+  process, a failure naming the places it looked), and a second task, `keepalive_loop`, pings the
+  configured connection every 10 s so the helper's 30 s of silence never closes it while the game
+  loop is busy. It writes nothing through a target `re/linux.md` only assumes (every one is measured
   now; `Game.unwritable` stays for any later one), and reports play only while the player state is
   where the layout puts it. The Linux helper is configured once an attach, and again once the
   client's connection to it was made again (`ticks.linux_newgame_tick`,
@@ -344,7 +351,9 @@ What there is:
   and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step back until
   the Linux helper is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll), so no step
   meanwhile writes the items owed with no popup or drops a waiting trap. One lost after it was
-  configured holds the step back for 30 s too (`ticks.linux_mod_lost`), then the items are written
+  configured holds the step back for 30 s too (`ticks.linux_mod_lost`), as does one let go of with
+  no server connection (`LinuxProcess.disconnect`, `linux_back_by`: the poll waits for it to be
+  configured again, up to 30 s), then the items are written
   directly with no popup until it is back; one that failed two steps running has the next step's
   written directly. A Linux helper of this version built before traps, which answers `trap_status`
   with `error unknown request` (`linux_helper.HelperTooOld`), holds nothing back: items are
@@ -354,7 +363,7 @@ What there is:
   said: the Linux helper runs every part); checks, the goal, DeathLink's deaths out and marking
   other players' items collected go on. Tested against stand-ins; run in the game for the attach,
   the seed's new game and grants (2026-11-19: `native/README.md`, "The Linux helper"), the rest
-  not yet;
+  not yet, and the token, the keep-alive and the let-go not at all;
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak
   (`~/.var/app/com.valvesoftware.Steam/.local/share/Steam`) or Snap Steam, and for the saves in
