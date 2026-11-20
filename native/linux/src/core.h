@@ -52,6 +52,20 @@ struct Gate {
 struct State;
 Gate gate(std::string_view request, std::string_view token, const State& state);
 
+// Where `write` may change the game when a client does: what client/game.py writes and no more
+// (its inventory bytes, its six supply numbers, a map cell's item state, the map grid), as
+// offsets from gGameState (docs/re/linux.md, "Lookup: targets"). Not the sprite records around
+// them, whose fields hold procedures the game calls (the player's is at gGameState + 0x1CD50).
+// tests/test_linux_helper.py checks these against client/game.py's own.
+struct Range {
+    uint64_t start = 0;
+    uint64_t end = 0;  // one past
+};
+std::vector<Range> client_write_ranges(uint64_t game_state);
+
+// Whether [address, address + size) lies wholly in one of `ranges`.
+bool within_ranges(const std::vector<Range>& ranges, uint64_t address, uint64_t size);
+
 // The build a GNU build id (hex) is, or nullptr for one not known.
 const char* identify_build(std::string_view build_id_hex);
 

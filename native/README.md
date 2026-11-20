@@ -2400,7 +2400,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   | `ping` | `pong frames=<calls since load>` |
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
-  | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it, `error not_in_the_game's_function_tables` over the tables of function pointers "Reading and writing the game" lists) |
+  | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it, `error not_in_what_the_client_writes` inside it, outside the ranges the client writes ("Reading and writing the game")) |
   | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 90 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
@@ -2440,27 +2440,38 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   - The first request of a connection is `hello` (answered: the build and the version, so a
     client can tell a helper of another version from a wrong token) or `auth TOKEN`; anything
     else, and a token that is not the helper's, is answered `error auth required` or
-    `error auth refused` and the connection is closed, and a connection that sends neither in 5 s
-    is closed (after the token, the 30 s of silence above). The comparison does not stop at the
-    first byte that differs. The serving thread serves one connection at a time, so a process that
-    connects and says nothing holds it up to 5 s: a nuisance, not a way in.
-  - The client (`client/linux_helper.py`, `find_token`) reads the token after `hello` has shown the
+    `error auth refused` and the connection is closed. `hello` is answered once: a second before
+    the token closes the connection too. The token must come within 5 s of the connection being
+    accepted, one deadline whatever is sent meanwhile (after the token, the 30 s of silence
+    above). The comparison does not stop at the first byte that differs. The serving thread serves
+    one connection at a time, so a process that connects, says nothing and connects again holds it
+    up to 5 s at a turn, and the client's connection waits behind it (its first request then goes
+    unanswered, and it says the helper is busy, as it does behind another client): a nuisance, not
+    a way in.
+  - The client (`client/linux_helper.py`, `find_tokens`) reads the token after `hello` has shown the
     server is the game's own process of its user and the right build and version, and sends it to
     that process only. It looks in the game's own view first: `/proc/<pid>/root` and the game's
     `XDG_DATA_HOME` or `HOME` from `/proc/<pid>/environ` (a process of the same user may follow
     both, as it reads `/proc/<pid>/exe`), which is the sandbox's folder under Flatpak's Steam;
     then the host's own `$XDG_DATA_HOME` or `~/.local/share`, and Flatpak Steam's
     `~/.var/app/com.valvesoftware.Steam/.local/share` and `.../data`. It uses only a plain file
-    (not a link) that no one but its user can read, holding exactly 64 lower-case hex digits; when
-    none does, its error names the places it looked.
-  - Only a client that sent `config` (the one `LinuxMod` is) is put back when it goes: the
-    helper's plan, labels, Intel Chips, ASSIST lock and disk count, and the seed files read again.
+    (not a link) that no one but its user can read, holding exactly 64 lower-case hex digits. It
+    tries each token it finds, the most recently written first (the helper writes its own when the
+    game starts, so a stale one, from an earlier run in another data folder, is older), on a
+    connection of its own, since the helper closes one that shows a wrong token; when none is
+    taken, its error names the files the helper refused, or, with none found, the places it looked.
+  - A connection that set something is put back when it goes (`sets_client_state`: `config`,
+    `ap_newgame`, `ap_labels`, `discs`, `mission_prompt`, `other_save`, `client_back`, `assists`,
+    `intel` and `offline_put`, which a client sends after its `config`, but a connection made again
+    in the middle of a poll may send before it): the helper's plan, labels, Intel Chips, ASSIST
+    lock and disk count, and the seed files read again.
     It is put back at the next frame call or before the next request's work on the game thread
     (`client_gone_if_left`), whichever comes first, and the serving thread marks the client gone
     before it takes the next one: so a client that comes back at once (a request with no reply
     ends a connection and the client makes another) never has its `config` followed by the last
-    one's clean-up. A connection that never did (`tools/helper.py status`, a probe) leaves nothing to put back,
-    and its closing changes nothing in the game or in the look of an AP save with no client.
+    one's clean-up. A connection that set nothing (`tools/helper.py status`, a probe: `hello`,
+    `ping`, `callers`, `read`, the `*_status` requests, `lang`) leaves nothing to put back, and
+    its closing changes nothing in the game or in the look of an AP save with no client.
   - Not run in the game yet: the stand-in tests cover the handshake, the refusals, the file's
     modes and a client reading it through `/proc/<pid>/root`, not Flatpak's Steam
     (`docs/re/linux.md`, "Read from the running game": what the owner checks).
@@ -2471,15 +2482,17 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `p_filesz` to `p_memsz` of each `PT_LOAD` with `PF_W`, read at start-up), where `gGameState`
   and the other state the client writes live: never its code, its constants, its initialized
   data (`.data`'s function pointers) or its import slots (`.got.plt`, writable in a binary
-  without `BIND_NOW`, as B1's is), nor a library's memory, and not the `.bss` tables of function
-  pointers the game calls through, by their symbols' extents: `gExitActionP` (`updateGame` calls
-  it), `gExitActions`, `gMoveProcs`, `gAreaEventProcs` and `gSpriteDrawProcs` (the config's
-  `transition_fn`, `routine_table`, `map_handler`'s table, `event_handlers` and `palette_table`),
-  so a client, or whoever got past its token, can't turn a write into a call
-  (`error not_in_the_game's_function_tables`). Nothing the client writes is among them (its
-  `inventory`, `cell_state` and `map_grid` are in `gGameState`); the helper's own parts write them
-  directly and are not asked. The list is the five the review of this port found, not a proof
-  that no other `.bss` object holds a pointer the game calls. The client's
+  without `BIND_NOW`, as B1's is), nor a library's memory, and within that `.bss` only the
+  ranges the client writes (`client_write_ranges`, `src/core.cpp`: offsets from `gGameState`; the
+  player's inventory bytes 0 to 49 and its six supply numbers, the map cells' item states and the
+  map grid; `tests/test_linux_helper.py` checks them against `client/game.py`'s own), any other
+  `error not_in_what_the_client_writes`. The game calls procedures through pointers all over its
+  `.bss` (`gExitActionP` and its table, the move, area-event, enemy-action and sprite-draw
+  tables, each sprite record's move procedure at `+0x168`), so a list of those to leave alone
+  could not be known whole; this one keeps a client, or whoever got past its token, from turning
+  a write into a call except through what the player's record's supply and inventory fields
+  hold (numbers, not shown to hold anything else). The helper's own parts write the game
+  directly and are not asked. The client's
   `game.Game` reads and writes through these (`Game.attach_linux`, `client/linux_helper.py`'s
   `LinuxProcess`), reading back every write as on Windows. It never opens the game's memory
   to another process through the kernel (no `prctl(PR_SET_PTRACER)`), whatever the kernel's ptrace

@@ -150,6 +150,28 @@ void test_gate() {
     }
 }
 
+// The ranges a client may write (core.h): offsets from gGameState, whole or not at all.
+void test_write_ranges() {
+    const uint64_t g = 0x1000000;
+    auto ranges = client_write_ranges(g);
+    check(ranges.size() == 4, "four ranges");
+    check(within_ranges(ranges, g + 0x1CD50 + 0x108E, 1), "the first inventory byte");
+    check(within_ranges(ranges, g + 0x1CD50 + 0x108E + 49, 1), "the last writable item");
+    check(!within_ranges(ranges, g + 0x1CD50 + 0x108E + 50, 1), "not past the items");
+    check(!within_ranges(ranges, g + 0x1CD50 + 0x108E + 49, 2), "not across the end");
+    check(within_ranges(ranges, g + 0x1CD50 + 0xCBC, 0x32), "the supplies, all six");
+    check(!within_ranges(ranges, g + 0x1CD50 + 0xCBB, 2), "not before them");
+    check(!within_ranges(ranges, g + 0x1CD50 + 0x168, 8), "not the player's move procedure");
+    check(!within_ranges(ranges, g + 0x1CD50 + 0xFE8, 8), "not the player's shield link");
+    check(within_ranges(ranges, g + 0x15B61 + 8, 1), "a cell's item state");
+    check(within_ranges(ranges, g + 0x14FFD + 54 * 54 - 1, 1), "the grid's last byte");
+    check(!within_ranges(ranges, g + 0x14FFD - 1, 1), "not before the grid");
+    check(!within_ranges(ranges, g + 0x15B61 + 54 * 54 * 9, 1), "not past the cell states");
+    check(!within_ranges(ranges, g, 1), "not gGameState's start");
+    check(!within_ranges(ranges, g + 0x1CD50 + 0x108E, 0), "an empty write");
+    check(!within_ranges(ranges, UINT64_MAX, 2), "a wrapping write");
+}
+
 void test_replies() {
     State s;
     check(reply_("hello", s, fake_read) ==
@@ -219,6 +241,7 @@ int main() {
     test_notes();
     test_replies();
     test_gate();
+    test_write_ranges();
     test_reads();
     test_writes();
     test_own_symbols();

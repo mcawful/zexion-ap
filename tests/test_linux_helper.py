@@ -4,6 +4,7 @@ and the reads run against the stand-in game in tests/test_native_linux.py)."""
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import socket
 import sys
@@ -246,7 +247,7 @@ def test_no_token_says_where_it_looked_and_what_to_do(tmp_path: Path) -> None:
         linux_helper.find_token(game, proc, {"XDG_DATA_HOME": "/host/data"}, tmp_path / "home")
     message = str(raised.value)
     assert "/host/data/ZexionAP/token" in message and "com.valvesoftware.Steam" in message
-    assert "start the game again" in message
+    assert "can't read" in message and "no token" in message
 
 
 def test_the_linux_config_leaves_null_only_what_the_windows_build_alone_reads() -> None:
@@ -375,3 +376,47 @@ def test_disconnect_lets_go_and_the_next_request_connects_again(monkeypatch) -> 
     helper.connected = True
     process.disconnect()  # the process is closed for good: left to close_process
     assert closed == [1]
+
+
+@linux_only
+def test_the_newest_token_is_tried_first_and_none_twice(tmp_path: Path) -> None:
+    proc = _proc(tmp_path)
+    game = linux_helper.find_game(proc)
+    home = tmp_path / "home"
+    old = _token_at(home, ".local", "share", text="a" * 64)
+    os.utime(old, (1_000_000_000, 1_000_000_000))
+    flatpak = home / ".var/app/com.valvesoftware.Steam"
+    _token_at(flatpak, ".local", "share", text="b" * 64)
+    _token_at(flatpak, "data", text="b" * 64)  # the same token again: once
+    found = linux_helper.find_tokens(game, proc, {}, home)
+    assert [token for _, token in found] == ["b" * 64, "a" * 64]
+    assert linux_helper.find_token(game, proc, {}, home) == "b" * 64
+
+
+def test_the_ranges_the_helper_lets_a_client_write_are_the_ones_the_client_writes() -> None:
+    # native/linux/src/core.cpp, client_write_ranges: offsets from gGameState, by hand from
+    # client/game.py's writes (set_item, set_supplies, set_item_collected, set_map_collected).
+    from client import game as client_game
+    from client import ids, linux_targets
+
+    root = Path(__file__).resolve().parent.parent
+    source = (root / "native/linux/src/core.cpp").read_text(encoding="utf-8")
+
+    def constant(name: str) -> int:
+        match = re.search(rf"{name} = ([0-9a-fA-Fx* ]+?)[,;]", source)
+        assert match, name
+        return eval(match.group(1))  # noqa: S307 (a number or a product of two, from our own source)
+
+    targets = {t.name: t for t in linux_targets.TARGETS}
+    state = linux_targets.PLAYER_STATE[1]
+    assert constant("kPlayerState") == state
+    assert constant("kInventoryAt") == client_game.INVENTORY_IN_PLAYER_STATE
+    assert targets["inventory"].offset == state + constant("kInventoryAt")
+    assert constant("kWritableItems") == len(ids.WRITABLE_ITEMS)
+    assert constant("kSuppliesFrom") == min(client_game.SUPPLY_FIELDS)
+    assert constant("kSuppliesTo") == max(client_game.SUPPLY_FIELDS) + 2
+    assert constant("kCellStates") == targets["cell_state"].offset
+    assert constant("kCellStride") == client_game.CELL_STRIDE
+    assert client_game.CELL_ITEM < client_game.CELL_STRIDE
+    assert constant("kMapGrid") == targets["map_grid"].offset
+    assert constant("kMapCells") == client_game.MAP_SIZE * client_game.MAP_SIZE

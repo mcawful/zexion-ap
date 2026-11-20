@@ -161,6 +161,32 @@ Gate gate(std::string_view request, std::string_view token, const State& state) 
     return out;
 }
 
+// client/game.py's writes: its INVENTORY_IN_PLAYER_STATE and SUPPLY_FIELDS (from 0xCBC to 0xCEC's
+// two bytes) in the player state at gGameState + 0x1CD50, WRITABLE_ITEMS (50 bytes), and the map's
+// cells (54 by 54: the item state in 9-byte records at +0x15B61, the grid's bytes at +0x14FFD).
+constexpr uint64_t kPlayerState = 0x1CD50;
+constexpr uint64_t kSuppliesFrom = 0xCBC, kSuppliesTo = 0xCEE;
+constexpr uint64_t kInventoryAt = 0x108E, kWritableItems = 50;
+constexpr uint64_t kCellStates = 0x15B61, kCellStride = 9, kMapGrid = 0x14FFD, kMapCells = 54 * 54;
+
+std::vector<Range> client_write_ranges(uint64_t game_state) {
+    return {
+        {game_state + kPlayerState + kSuppliesFrom, game_state + kPlayerState + kSuppliesTo},
+        {game_state + kPlayerState + kInventoryAt,
+         game_state + kPlayerState + kInventoryAt + kWritableItems},
+        {game_state + kCellStates, game_state + kCellStates + kMapCells * kCellStride},
+        {game_state + kMapGrid, game_state + kMapGrid + kMapCells},
+    };
+}
+
+bool within_ranges(const std::vector<Range>& ranges, uint64_t address, uint64_t size) {
+    if (size == 0 || address + size < address) return false;
+    for (const Range& range : ranges) {
+        if (address >= range.start && address + size <= range.end) return true;
+    }
+    return false;
+}
+
 const char* identify_build(std::string_view build_id_hex) {
     for (const auto& build : kKnownBuilds) {
         if (build_id_hex == build.build_id) return build.name;
