@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -1212,6 +1213,324 @@ def test_assert_writable_refuses_the_offline_folder() -> None:
     with pytest.raises(protected.ProtectedPathError):
         protected.assert_writable(f"{OFFLINE}/seeds/x.txt")
     assert protected.assert_writable(f"{LOCAL}/Temp/x.txt") == Path(f"{LOCAL}/Temp/x.txt")
+
+
+# A folder named only by its own name, from wherever the search starts (#172): the command names
+# neither the parent path nor the data-home variable. ``find``'s name predicates and PowerShell's
+# -Filter and -Include count when what the command does with the matches can write.
+BY_NAME_BLOCKED = [
+    ("Bash", "find ~ -name ZexionAP -delete"),
+    ("Bash", 'find ~ -name "ZexionAP" -exec rm -r {} +'),
+    ("Bash", "find ~ -type d -name ZexionAP -execdir rm -rf {} +"),
+    ("Bash", "find ~ -name ZexionAP -ok rm -r {} \\;"),
+    ("Bash", "find ~ -name ZexionAP -okdir rm -r {} \\;"),
+    ("Bash", "find ~ -name ZexionAP -fprint /tmp/x"),
+    ("Bash", "find ~ -name ZexionAP -a -type d -delete"),
+    ("Bash", "find ~ ! -name x -name ZexionAP -delete"),
+    ("Bash", "cd ~ && find . -name ZexionAP -delete"),
+    # The other names: the save folder's parent and its own, the cloud cache's, the library's.
+    ("Bash", 'find / -name "Gallant Leaf" -exec rm -r {} +'),
+    ("Bash", "find / -name Gallant\\ Leaf -delete"),
+    ("Bash", "find / -name 3392510 -delete"),
+    ("Bash", "find ~ -type d -name steamapps -exec rm -rf {} +"),
+    ("Bash", "find ~ -type d -name userdata -delete"),
+    # Case, wildcards and characters classes, and quotes that split the name.
+    ("Bash", "find ~ -iname '*zexionap*' -delete"),
+    ("Bash", "find ~ -type d -iname ZEXIONAP -exec rm -r {} +"),
+    ("Bash", "find ~ -name 'Zexion*' -exec rm -rf {} \\;"),
+    ("Bash", "find ~ -name 'Z*AP' -delete"),
+    ("Bash", "find ~ -name 'Z?xionAP' -delete"),
+    ("Bash", "find ~ -name 'ZexionA[P]' -delete"),
+    ("Bash", "find ~ -name 'Gall*' -delete"),
+    ("Bash", 'find ~ -name "Zexion"AP -delete'),
+    ("Bash", "find ~ -name 'Zex''ionAP' -delete"),
+    # Path and regular-expression predicates.
+    ("Bash", "find ~ -path '*/ZexionAP' -delete"),
+    ("Bash", "find ~ -ipath '*/zexionap/*' -delete"),
+    ("Bash", "find ~ -wholename '*/ZexionAP' -delete"),
+    ("Bash", "find ~ -path '*/Gallant Leaf/*' -delete"),
+    ("Bash", "find ~ -regex '.*/ZexionAP' -delete"),
+    ("Bash", "find ~ -iregex '.*/zexion.*' -delete"),
+    ("Bash", "find ~ -regex '.*/(foo|ZexionAP)$' -delete"),
+    ("Bash", "find ~ -regex '.*/Zexion.P' -delete"),
+    # What it finds handed to another command.
+    ("Bash", "find ~ -name ZexionAP -print0 | xargs -0 rm -rf"),
+    ("Bash", "find ~ -name ZexionAP | xargs rm -r"),
+    ("Bash", 'find ~ -name ZexionAP | while read d; do rm -r "$d"; done'),
+    # Inside another command's word, or behind a prefix.
+    ("Bash", 'sh -c "find ~ -name ZexionAP -delete"'),
+    ("Bash", "bash -c 'find ~ -name ZexionAP -exec rm -r {} +'"),
+    ("Bash", 'eval "find ~ -name ZexionAP -delete"'),
+    ("Bash", "sudo find ~ -name ZexionAP -delete"),
+    ("Bash", "env find ~ -name ZexionAP -delete"),
+    ("Bash", "xargs find ~ -name ZexionAP -delete"),
+    # PowerShell: Get-ChildItem's name filters, in full or abbreviated.
+    ("PowerShell", "Get-ChildItem -Recurse -Filter ZexionAP | Remove-Item -Recurse -Force"),
+    ("PowerShell", "gci ~ -r -Include ZexionAP | Remove-Item -Recurse"),
+    ("PowerShell", "Get-ChildItem -Recurse -Filter 'Gallant Leaf' | Remove-Item -Recurse"),
+    ("PowerShell", "gci -r -fi Zexion* | rm -r -fo"),
+    ("PowerShell", "Get-ChildItem -Recurse -Include '*zexionap*' | Remove-Item -Recurse -Force"),
+    (
+        "PowerShell",
+        "Get-ChildItem -Recurse -Filter ZexionAP | ForEach-Object { Remove-Item -Recurse $_ }",
+    ),
+    # What the first version of the fix missed (review of #178): find's default regular
+    # expression syntax, a substitution's backticks, PowerShell's ``-Param:value`` and
+    # positional filter, escapes, classes of letters, and a ``*`` that spans folders.
+    ("Bash", "find ~ -regex '.*/\\(foo\\|ZexionAP\\)' -delete"),
+    ("Bash", "find ~ -regex '.*/[^/]*nAP' -delete"),
+    ("Bash", "find ~ -regex '.*/Gallant\\sLeaf' -exec rm -rf {} +"),
+    ("Bash", "find ~ -regex '.*Local.ZexionAP' -delete"),
+    ("Bash", "rm -rf `find ~ -name ZexionAP`"),
+    ("Bash", "rm -rf `find ~ -name ZexionAP -print`"),
+    ("Bash", "find ~ -name 'Zexi\\onAP' -delete"),
+    ("Bash", "find ~ -name $'ZexionAP' -delete"),
+    ("Bash", "find ~ -name '[Z][e][x][i][o][n][A][P]' -delete"),
+    ("Bash", "find ~ -name '[Zz]exionAP' -delete"),
+    ("Bash", "find ~ -name '[[:upper:]]exionAP' -delete"),
+    ("Bash", "find ~ -path '*Local*ZexionAP*' -delete"),
+    ("PowerShell", "gci ~ -r -Filter:ZexionAP | ri -r"),
+    ("PowerShell", "gci ~ -r -Include:'ZexionAP' | ri -r"),
+    (
+        "PowerShell",
+        "pwsh -Command 'Get-ChildItem -Recurse -Filter:ZexionAP | Remove-Item -Recurse'",
+    ),
+    ("PowerShell", "gci ~ ZexionAP -r | Remove-Item -Recurse"),
+    ("PowerShell", "gci -Path ~ ZexionAP -r | Remove-Item -Recurse"),
+    ("PowerShell", "gci -Path ~ -Recurse –Filter ZexionAP | Remove-Item -Recurse"),
+    # Round 3 of the review: ``Zexion`` is the install and the real saves as written, and the
+    # repo's own folder in lower case; a PowerShell list; groups, braces; the positional filter.
+    ("Bash", "find / -name Zexion -exec rm -rf {} +"),
+    ("Bash", "find ~ -name Zexion -type d -delete"),
+    ("Bash", "find / -iname zexion -exec rm -rf {} +"),
+    ("Bash", "find / -ipath '*/zexion' -exec rm -rf {} +"),
+    ("PowerShell", "gci $env:APPDATA -r -Filter Zexion | ri -r"),
+    ("PowerShell", "gci C:\\ -r -Filter zexion -Directory | ri -r"),
+    ("PowerShell", "gci ~ -r -Include foo,ZexionAP | ri -r"),
+    ("PowerShell", "gci ~ -r -Include 'ZexionAP','x' | ri -r"),
+    ("PowerShell", "gci ~ -r -Include:foo,ZexionAP | ri -r"),
+    ("PowerShell", "gci ~ -r -Include @('x','ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ foo,ZexionAP -r | ri -r"),
+    ("PowerShell", "gci -Path:~ ZexionAP -r | ri -r"),
+    ("PowerShell", "gci ~ -ErrorAction SilentlyContinue ZexionAP -r | ri -r"),
+    ("PowerShell", "gci -ea 0 ~ ZexionAP -r | ri -r"),
+    ("PowerShell", "gci \u2013Path ~ ZexionAP -r | ri -r"),
+    ("PowerShell", ". gci ~ ZexionAP -r | ri -r"),
+    ("Bash", 'pwsh -c "gci ~ ZexionAP -r | ri -r"'),
+    ("Bash", "find ~ -regex '.*/Zexio\\(n\\)AP' -delete"),
+    ("Bash", "find ~ -regextype posix-extended -regex '.*/(Zexion)AP' -delete"),
+    ("Bash", "find ~ -regex '.*/Z(exionAP)' -delete"),
+    ("Bash", "find ~ -name {ZexionAP,} -delete"),
+    ("Bash", "rm -rf `find ~ -name ZexionAP`/x"),
+    ("Bash", "rm -rf $(find ~ -name ZexionAP)/x"),
+    ("Bash", "ls `find ~ -name ZexionAP -delete`"),
+    ("Bash", 'ls "$(find ~ -name ZexionAP -delete)"'),
+    # Round 4: a command that runs in the folder a substitution found by name, a substitution
+    # split by quotes, and PowerShell lists with spaces, parentheses or a continued line.
+    ("Bash", 'cd "$(find ~ -name ZexionAP)" && git init -q && git clean -fdx'),
+    ("Bash", "cd $(find ~ -name ZexionAP); git clean -fdx"),
+    ("Bash", "cd `find ~ -name ZexionAP` && git checkout -- ."),
+    ("Bash", 'pushd "$(find ~ -name ZexionAP)" && git clean -fdx'),
+    ("Bash", 'git -C "$(find ~ -name ZexionAP)" init'),
+    ("Bash", 'git --git-dir=/tmp/g --work-tree="$(find ~ -name ZexionAP)" clean -fdx'),
+    ("Bash", 'cd "$(find / -name Zexion -type d -print -quit)" && git init -q && git clean -fdx'),
+    ("PowerShell", "cd $(gci ~ -r -Filter ZexionAP); git init; git clean -fdx"),
+    ("Bash", "x=$'a[\\x24(find ~ -name ZexionAP -delete)]'; echo ${s:x}"),
+    ("Bash", "x='a[$''(find ~ -name ZexionAP -delete)]'; echo $[x]"),
+    ("Bash", 'x="a[\\`find ~ -name ZexionAP -delete\\`]"; echo $[x]'),
+    ("Bash", 'x="a[\\$(find ~ -name ZexionAP -delete)]"; echo $[x]'),
+    ("PowerShell", "Remove-Item ~\\* -Recurse -Include x, ZexionAP"),
+    ("PowerShell", "Get-Item ~\\* -Include 'x', 'ZexionAP' | Remove-Item -Recurse"),
+    ("PowerShell", "Move-Item ~\\* -Include x, ZexionAP C:\\tmp\\x"),
+    ("PowerShell", "gci ~ -r -Include @('x', 'ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ -r -Include ('x', 'ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ -r -Include:@('x','ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ -r -Include x,@('ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ -r -Include x,`\nZexionAP | ri -r"),
+    ("PowerShell", "gci ~ ('ZexionAP') -r | ri -r"),
+    ("PowerShell", 'pwsh -c "Remove-Item ~\\* -Include x, ZexionAP"'),
+]
+BY_NAME_ALLOWED = [
+    # Looking: nothing here can write.
+    ("Bash", "find ~ -name ZexionAP"),
+    ("Bash", "find ~ -name ZexionAP -print"),
+    ("Bash", "find ~ -iname '*zexionap*' -print"),
+    ("Bash", 'find ~ -name "Gallant Leaf" -ls'),
+    ("Bash", "find / -name 3392510 -type d -print"),
+    ("Bash", "find ~ -path '*/ZexionAP/*' -print"),
+    ("Bash", "find ~ -regex '.*/ZexionAP' -ls"),
+    ("Bash", "find ~ -name ZexionAP -type d -printf '%p\\n'"),
+    ("Bash", "find ~ -name ZexionAP -prune -o -name x -print"),
+    ("Bash", "find ~ -name ZexionAP | wc -l"),
+    ("Bash", "find ~ -name ZexionAP | head"),
+    ("Bash", "find / -name userdata 2>/dev/null"),
+    ("PowerShell", "Get-ChildItem -Recurse -Filter ZexionAP | Select-Object FullName"),
+    # Other names, wherever they are deleted: this repo's own work.
+    ("Bash", "find . -name '*.pyc' -delete"),
+    ("Bash", "find . -name __pycache__ -exec rm -r {} +"),
+    ("Bash", "find lab -name '*.sav' -delete"),
+    ("Bash", "find . -name '*' -delete"),
+    ("Bash", "find . -name 'zexion*.py' -delete"),
+    ("Bash", "find . -name 'zx*.py' -delete"),
+    ("Bash", "find . -iname '*.log' -exec rm {} +"),
+    ("Bash", "find . -path './build/*' -delete"),
+    ("Bash", "find . -regex '.*\\.py[co]' -delete"),
+    ("Bash", "find ~/AppData/Local/Temp -path '*/AppData/Local/Temp/x' -delete"),
+    ("Bash", "find . -name 'test*' -exec ls {} \\;"),
+    ("PowerShell", "Get-ChildItem -Recurse -Filter '*.pyc' | Remove-Item"),
+    ("PowerShell", 'Set-Content -Path "$env:LOCALAPPDATA\\Temp\\x" -Value 1'),
+    # The world's own folder is named like the game's: by itself ``zexion`` is no name (#178).
+    ("Bash", "find . -path './worlds/zexion/*' -name '*.pyc' -delete"),
+    ("Bash", "find . -type d -name zexion -prune -o -name '*.tmp' -delete"),
+    ("Bash", "find .ap -path '*/worlds/zexion' -prune -o -name '*.pyc' -delete"),
+    ("Bash", "find . -name zexion -exec ls -d {} \\;"),
+    ("PowerShell", "gci . ZexionNot -r | Remove-Item"),
+    ("PowerShell", "gci . '*.pyc' -r | Remove-Item"),
+    ("PowerShell", "Get-ChildItem -Recurse -Filter:'*.pyc' | Remove-Item"),
+    ("Bash", "find . -regex '.*/[^/]*\\.pyc' -delete"),
+    ("Bash", "find . -name '[0-9].tmp' -delete"),
+    # Round 3: the repo's lower-case names, which case-comparing predicates can't match.
+    ("Bash", "find dist -name 'zexion*' -delete"),
+    ("Bash", "find lab -name 'zexion*' -delete"),
+    ("Bash", "find . -path '*zexion*.pyc' -delete"),
+    ("Bash", "find . -regex '.*zexion.*\\.pyc' -delete"),
+    ("Bash", "find . -path '*zexion*' -name '*.pyc' -delete"),
+    ("Bash", "find . -path './worlds/zexion*' -name '*.pyc' -delete"),
+    ("Bash", "find worlds -name zexion -type d -exec rm -rf {} +"),
+    ("PowerShell", "gci . '*.pyc',*.pyo -r | Remove-Item"),
+    ("PowerShell", "gci worlds\\zexion -Filter *.pyc | Remove-Item"),
+    ("PowerShell", "Get-ChildItem -Recurse -Include *.pyc,*.pyo | Remove-Item"),
+    # A substitution that only reads, in a command that only reads.
+    ("Bash", "ls -ld $(find ~ -name ZexionAP)"),
+    ("Bash", "ls -ld `find ~ -name ZexionAP`"),
+    ("Bash", 'du -sh "$(find ~ -name ZexionAP -print)"'),
+    # Round 4: reads only, around a substitution that reads.
+    ("Bash", 'cd "$(find ~ -name ZexionAP)" && ls'),
+    ("Bash", "cat $(find ~ -name ZexionAP -type f)"),
+    ("PowerShell", "Get-Item ~\\* -Include '*.pyc', '*.pyo' | Remove-Item"),
+    ("PowerShell", "Remove-Item ~\\lab\\* -Recurse -Include x, y"),
+    ("PowerShell", "gci . ('*.pyc') -r | Remove-Item"),
+    # The folders' names are text in a message, not a command.
+    ("Bash", 'git commit -m "find ~ -name ZexionAP -delete"'),
+    ("Bash", 'gh pr create --title "find -name ZexionAP -delete" --body "x"'),
+    ("Bash", "grep -rn 'find -name ZexionAP -delete' docs"),
+]
+
+
+@pytest.mark.parametrize(("tool", "command"), BY_NAME_BLOCKED)
+def test_a_deletion_by_a_protected_folders_bare_name_blocked(tool: str, command: str) -> None:
+    assert run(tool, command=command), command
+
+
+@pytest.mark.parametrize(("tool", "command"), BY_NAME_ALLOWED)
+def test_reads_by_a_protected_folders_bare_name_and_other_names_allowed(
+    tool: str, command: str
+) -> None:
+    assert run(tool, command=command) is None, command
+
+
+@pytest.mark.parametrize(
+    ("pattern", "kind", "expected"),
+    [
+        ("ZexionAP", "name", True),
+        ("ZexionAP", "name", True),
+        ("Zexion", "name", True),
+        ("3392510", "name", True),
+        ("Gallant Leaf", "name", True),
+        ("Gallant\\ Leaf", "name", True),
+        ("steamapps", "name", True),
+        ("userdata", "name", True),
+        ("Zexion*", "name", True),
+        ("*ZexionAP*", "name", True),
+        ("Z*AP", "name", True),
+        ("Zexion[AB]P", "name", True),
+        ("[Zz]exionAP", "name", True),
+        ("[Z][e][x][i][o][n][A][P]", "name", True),
+        ("[[:upper:]]exionAP", "name", True),
+        ("Zexi\\onAP", "name", True),
+        ("GALLAN~1", "name", True),
+        ("*/ZexionAP/*", "path", True),
+        ("*/Gallant Leaf/*", "path", True),
+        ("*/steamapps/common/Zexion", "path", True),
+        ("*Local*ZexionAP*", "path", True),
+        (".*/ZexionAP$", "regex", True),
+        (".*/(a|ZexionAP)", "regex", True),
+        (".*/\\(a\\|ZexionAP\\)", "regex", True),
+        (".*/Zexion.P", "regex", True),
+        (".*/[^/]*nAP", "regex", True),
+        (".*Local.ZexionAP", "regex", True),
+        (".*/Gallant\\sLeaf", "regex", True),
+        # Too little of a name, or another name. ``Zexion`` alone is the world's own folder too.
+        ("zexion", "path", False),
+        ("zexion*", "name", False),
+        ("*zexionap*", "name", False),
+        ("*zexion*.pyc", "path", False),
+        (".*zexion.*\\.pyc", "regex", False),
+        ("*zexion", "name", False),
+        ("*", "name", False),
+        ("Z*", "name", False),
+        ("*P", "name", False),
+        ("[Z]*", "name", False),
+        ("[A-Z][a-z]*", "name", False),
+        ("*.py", "name", False),
+        ("zexion*.py", "name", False),
+        ("zexion_client.py", "name", False),
+        ("ZexionAP-notes", "name", False),
+        ("common", "name", False),
+        ("*/AppData/Local/Temp/x", "path", False),
+        ("./build/*", "path", False),
+        ("./worlds/zexion/*", "path", False),
+        (r".*/Zexion\.AP", "regex", False),
+        (r".*\.py[co]", "regex", False),
+        ("", "name", False),
+    ],
+)
+def test_pattern_may_name_protected(pattern: str, kind: str, expected: bool) -> None:
+    assert protected.pattern_may_name_protected(pattern, kind) is expected
+
+
+@pytest.mark.parametrize(
+    ("pattern", "kind", "ignore_case", "expected"),
+    [
+        ("zexion", "name", False, False),  # worlds/zexion
+        ("zexion", "name", True, True),  # -iname: any case
+        ("zexion*", "name", False, False),
+        ("zexion*", "name", True, True),
+        ("zexionap", "name", False, False),
+        ("zexionap", "name", True, True),
+        ("Zexion", "name", False, True),  # the install and the saves
+        ("zexion", "ps", False, True),  # PowerShell ignores case, whatever is asked
+        ("*/zexion", "path", True, True),
+        (".*/zexion", "regex", True, True),
+        ("worlds/zexion", "path", False, False),
+        ("Gallant Leaf", "name", False, True),  # no other name is case-compared
+        ("gallant leaf", "name", False, True),
+        ("GALLAN~1", "name", False, True),
+    ],
+)
+def test_the_repos_own_names_are_matched_by_case(
+    pattern: str, kind: str, ignore_case: bool, expected: bool
+) -> None:
+    assert protected.pattern_may_name_protected(pattern, kind, ignore_case) is expected
+
+
+@pytest.mark.parametrize("kind", ["name", "path", "regex", "ps"])
+@pytest.mark.parametrize("piece", ["[[:a:", "[", "[[", "[a", "*[", "\\(", "(["])
+def test_a_long_pattern_is_read_quickly(kind: str, piece: str) -> None:
+    started = time.monotonic()
+    for length in (200, 2000, 10000):
+        protected.pattern_may_name_protected(piece * (length // len(piece)) + "x", kind)
+    assert time.monotonic() - started < 2
+
+
+def test_a_long_pattern_in_a_command_is_read_quickly() -> None:
+    started = time.monotonic()
+    run("PowerShell", command="gci ~ -Include " + "a," * 25000 + "x | ri")
+    run("PowerShell", command="gci ~ " + "a " * 2500 + "| ri")
+    run("PowerShell", command="Remove-Item x -Include " + "('a')," * 800 + "x")
+    run("Bash", command="find ~ -name '" + "[[:a:" * 2000 + "x' -delete")
+    run("PowerShell", command="gci ~ -Filter '" + "[[:a:" * 2000 + "x' | ri")
+    assert time.monotonic() - started < 2
 
 
 TERMINAL = "mcp__terminal__run_in_terminal"

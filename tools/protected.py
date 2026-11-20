@@ -99,12 +99,13 @@ def _expand(text: str) -> str:
     return text
 
 
-def normalize(text: str) -> str:
-    """Lowercase, forward slashes, env vars expanded, ``\\ `` unescaped, repeated slashes merged."""
+def normalize(text: str, fold: bool = True) -> str:
+    """Lowercase (unless ``fold`` is False), forward slashes, env vars expanded, ``\\ ``
+    unescaped, repeated slashes merged."""
     text = _expand(text)
     text = text.replace("\\ ", " ").replace("\\", "/")
     text = re.sub(r"/{2,}", "/", text)
-    return text.lower()
+    return text.lower() if fold else text
 
 
 def _local_appdata() -> str:
@@ -239,10 +240,145 @@ def may_be_above_protected(path: str) -> bool:
     return False
 
 
-def _path_parts(word: str) -> list[str]:
-    """A path's components: normalized, ``.`` and ``..`` resolved, trailing dots and spaces
-    dropped, and a ``{...}`` brace read as ``*``."""
-    norm = re.sub(r"(?<!\$)\{[^{}/]*\}", "*", normalize(word))
+# A bracket expression: ``[abc]``, ``[!a-z]``, ``[]x]``, ``[[:upper:]]``, with at most 64
+# members, so a long run of ``[`` is read in linear time. A ``[`` that starts no POSIX class is a
+# member of its own (``[[]``), which keeps the members from being read two ways.
+_CLASS = re.compile(
+    r"\[[!^]?(?:\]|\[:\w{1,16}:\]|[^\]\[]|\[(?!:\w{1,16}:\]))"
+    r"(?:\[:\w{1,16}:\]|[^\]\[]|\[(?!:\w{1,16}:\])){0,63}\]"
+)
+# A class of letters and digits only (``[Zz]``) stands for one fixed character.
+_PLAIN_CLASS = re.compile(r"\[[A-Za-z0-9]+\]")
+# The two protected names that are also the repo's own (``worlds/zexion``, ``zexion*.py``) as they
+# are on disk. ``find``'s ``-name``, ``-path`` and ``-regex`` compare case, so they match only
+# these; ``-iname`` and PowerShell, which don't, match any case.
+_CASED = {"zexion": "Zexion", "zexionap": "ZexionAP"}
+# The longest pattern read: a name of that length is no folder's.
+_MAX_PATTERN = 1000
+
+
+def _regex_as_glob(pattern: str, groups: bool = True) -> str:
+    """A regular expression read as a path glob, as far as a few common forms go: ``.*`` and
+    ``.+`` become ``*``, a lone ``.`` ``?``, an escaped character itself (``\\s``, ``\\w`` and
+    ``\\d`` any one character), anchors and alternation ``/`` (so each alternative is read as its
+    own name), a negated class ``?``, and a group's parentheses ``/`` too, or with ``groups``
+    False nothing (``Z(exionAP)`` is then ``ZexionAP``). ``find``'s default syntax writes them
+    ``\\(``, ``\\)`` and ``\\|``. Any other quantifier is left as it is, which then names nothing:
+    ``Z.*AP`` is read, ``Zex(ion)?AP`` is not."""
+    out, i = [], 0
+    paren = "/" if groups else ""
+    while i < len(pattern):
+        c = pattern[i]
+        cls = _CLASS.match(pattern, i) if c == "[" else None
+        if cls:
+            out.append("?" if cls.group()[1] in "^!" else cls.group())
+            i = cls.end()
+            continue
+        if c == "\\" and i + 1 < len(pattern):
+            i += 1
+            e = pattern[i]
+            out.append(paren if e in "()" else "/" if e == "|" else "?" if e in "sSwWdD" else e)
+        elif c == "." and pattern[i + 1 : i + 2] in ("*", "+"):
+            out.append("*")
+            i += 1
+        elif c == ".":
+            out.append("?")
+        elif c in "()":
+            out.append(paren)
+        elif c in "^$|":
+            out.append("/")
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _braces(pattern: str, limit: int = 32) -> list[str]:
+    """The pattern with its first ``{a,b}`` brace expansion read out, as Bash does, repeated for
+    the others: ``{ZexionAP,}`` is ``ZexionAP`` and ``''``. At most ``limit`` readings."""
+    found = [pattern]
+    for _ in range(4):
+        grown = []
+        for text in found:
+            m = re.search(r"\{([^{}]*,[^{}]*)\}", text)
+            if m:
+                grown += [text[: m.start()] + a + text[m.end() :] for a in m.group(1).split(",")]
+            else:
+                grown.append(text)
+        found = grown[:limit]
+    return found
+
+
+def _literal_len(part: str) -> int:
+    """How many characters of a name pattern are fixed: not a wildcard, and not a class but a
+    plain one of letters and digits (``[Zz]``), which counts as one."""
+    part = _CLASS.sub(lambda m: "x" if _PLAIN_CLASS.fullmatch(m.group()) else "", part)
+    return len(re.sub(r"[*?]", "", part))
+
+
+def pattern_may_name_protected(pattern: str, kind: str = "name", ignore_case: bool = False) -> bool:
+    """True when a name pattern, such as a ``find`` predicate's (``-name``, ``-path``,
+    ``-regex``), could match the name of a protected folder or of one above it: the last name
+    of each protected folder (``Zexion``, ``ZexionAP``, the app id) or a folder that may hold
+    one (``may_be_above_protected``: ``Gallant Leaf``, ``steamapps``, ``userdata``, …), each
+    component of a path pattern on its own, with wildcards and 8.3 short names read as
+    ``word_may_name_protected`` reads them. ``kind`` is ``"name"`` (``-name``), ``"path"``
+    (``-path``), ``"regex"`` (``-regex``, read as ``_regex_as_glob`` reads it) or ``"ps"``
+    (PowerShell's, where a backslash separates folders and case is ignored). A backslash
+    escapes the character after it, as in ``find``.
+
+    ``Zexion`` and ``ZexionAP`` are also the repo's own names in lower case (``worlds/zexion``,
+    ``zexion*.py``): a predicate that compares case matches them only as written (``_CASED``),
+    unless ``ignore_case`` (``-iname``) says it does not. A component with fewer than three
+    fixed characters is no name: ``*`` or ``Z*`` stands for too many others to tell
+    (``_literal_len``). A folder above a protected one counts only as the pattern's last name
+    (``*/Gallant Leaf/*``, not ``*/AppData/Local/Temp/x``). In a path or a regex a ``*`` (a
+    ``.``, a ``?``) may match a ``/`` too, so the pieces around one are read as names also. A
+    pattern over 1000 characters is read as a name, whatever it is. The match is by name alone,
+    so ``-name ZexionAP`` counts wherever the search starts.
+    """
+    if len(pattern) > _MAX_PATTERN:
+        return True
+    if kind != "regex" and word_may_name_protected(pattern):
+        return True
+    ignore_case = ignore_case or kind == "ps"
+    texts = (
+        [_regex_as_glob(pattern), _regex_as_glob(pattern, groups=False)]
+        if kind == "regex"
+        else [pattern]
+        if kind == "ps"
+        else [re.sub(r"\\(.)", r"\1", p) for p in _braces(pattern)]
+    )
+    readings = []
+    for text in texts:
+        text = _CLASS.sub(lambda m: "?" if "/" in m.group() else m.group(), text)
+        readings.append(text)
+        if kind != "name":
+            readings += [text.replace("*", "/"), text.replace("?", "/")]
+    leaves = [names[-1] for names in _PROTECTED_PARTS + _offline_parts()]
+    for reading in readings:
+        cased = [p for p in _path_parts(reading, fold=False) if _literal_len(p) >= 3]
+        parts = [p.lower() for p in cased]
+        for i, part in enumerate(parts):
+            # A folder above a protected one counts only as the last name: ``*/AppData/Local/
+            # Temp/x`` is below it, not it.
+            if i == len(parts) - 1 and may_be_above_protected(part):
+                return True
+            for name in leaves:
+                exact = _CASED.get(name) if not ignore_case and "~" not in part else None
+                if (
+                    _part_matches(cased[i], exact, first=False, last=False)
+                    if exact
+                    else _part_matches(part, name, first=False, last=False)
+                ):
+                    return True
+    return False
+
+
+def _path_parts(word: str, fold: bool = True) -> list[str]:
+    """A path's components: normalized (``fold`` False keeps the case), ``.`` and ``..``
+    resolved, trailing dots and spaces dropped, and a ``{...}`` brace read as ``*``."""
+    norm = re.sub(r"(?<!\$)\{[^{}/]*\}", "*", normalize(word, fold))
     parts: list[str] = []
     for part in norm.split("/"):
         if part not in (".", ".."):
@@ -260,12 +396,13 @@ _ANY = "?"  # one wildcard character; "*" is a run of them; anything else is its
 def _wildcard_tokens(part: str) -> list[str]:
     tokens, i = [], 0
     while i < len(part):
-        if part[i] == "[" and "]" in part[i + 2 :]:
-            i = part.index("]", i + 2)  # a character class: read as any one character
+        cls = _CLASS.match(part, i) if part[i] == "[" else None
+        if cls:  # a character class: read as any one character
             tokens.append(_ANY)
+            i = cls.end()
         else:
             tokens.append(part[i])
-        i += 1
+            i += 1
     return tokens
 
 
