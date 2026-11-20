@@ -10,13 +10,14 @@ import logging
 import math
 import os
 import sys
+import time
 import types
 from unittest import mock
 
 import pytest
 from fakes import connection, seed_state, slot_data
 
-from client import game, ids, native, patterns, session, state, ticks
+from client import game, ids, linux_helper, native, newgame, patterns, session, state, ticks
 
 
 class CommonContext:
@@ -1194,3 +1195,729 @@ def test_the_popup_count_and_the_hints_are_asked_for_in_one_get(hints, monkeypat
     assert conn.hints_key not in ctx.stored_data
     reread = [conn.announced_key, conn.held_key]
     assert ctx.gets == [reread + ([conn.hints_key] if hints else [])]
+
+
+def test_with_the_linux_build_the_step_goes_on_without_the_helper(monkeypatch, caplog) -> None:
+    """The game's Linux build has no Windows helper: the step is not held for one that won't
+    come, gives what is owed (through the Linux helper, when it is there: the linux_ ticks), and
+    the player is told nothing about it."""
+    ctx, _ = failing_reattach(monkeypatch)
+    ctx.game_conn.platform = "linux"
+    ctx.helper_left = False  # no Windows helper was ever let go (the Linux one: leave_helper_tick)
+    monkeypatch.setattr(zc, "attach_helper", ticks.attach_helper)
+    steps: list[dict] = []
+
+    def step(g, received, **kwargs):
+        steps.append(kwargs)
+        raise game.GameNotRunning("Zexion is not running")
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    with caplog.at_level("WARNING"):
+        asyncio.run(zc.poll(ctx))
+        asyncio.run(zc.poll(ctx))
+    assert steps and steps[0]["helper"] is None and steps[0]["give"]
+    said = [r.getMessage() for r in caplog.records if r.name == "Client"]
+    assert not [line for line in said if "Zexion mod" in line]
+
+
+class LinuxHelperStandIn:
+    """The game's Linux helper connection (linux_helper.LinuxProcess): replies by request."""
+
+    def __init__(self, replies: dict[str, str]) -> None:
+        from test_linux_targets import b1_like
+
+        self.game = types.SimpleNamespace(image=b1_like(extra=True))
+        self.replies = {"trap_status": "queued 0; last none", **replies}
+        self.sent: list[str] = []
+        self.connection = 1  # linux_helper.LinuxProcess's: the connections made
+        self.connected = True
+        self.disconnects = 0
+
+    def disconnect(self) -> None:  # linux_helper.LinuxProcess's: closed, made again on use
+        self.connected = False
+        self.disconnects += 1
+
+    def request(self, text: str) -> str:
+        self.sent.append(text)
+        first = text.split(None, 1)[0]
+        if first in self.replies:
+            reply = self.replies[first]
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+        return "error unknown request"
+
+    def alive(self) -> bool:
+        return True
+
+
+def linux_game(replies: dict[str, str]):
+    g = Running(game.NO_SAVE)
+    g.platform = "linux"
+    g.build = patterns.KNOWN_LINUX_BUILDS[0]
+    g.pm = LinuxHelperStandIn(replies)
+    return g
+
+
+def test_on_linux_the_seed_is_armed_with_archipelago_through_the_linux_helper(caplog) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    with caplog.at_level("INFO"):
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+    sent = ctx.game_conn.pm.sent
+    assert sent[0].startswith("config rando_blob=0x12f6e00 randomizer_menu=0x12f6ce0 ")
+    assert "current_menu=0x12f5700" in sent[0] and "tr_flag=0x12b48d1" in sent[0]
+    assert sent[1] == "trap_status"  # a helper from before the traps is refused
+    assert sent[2].startswith("ap_newgame\n") and sent[2].endswith("\nchoice")  # ARCHIPELAGO
+    assert ctx.conn.newgame is state.NewGame.ARMED
+    assert ctx.conn.newgame_lines == newgame.choice_message(ctx.conn.plan)
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert sum(t.startswith("config ") for t in sent) == 1  # configured once an attach
+
+
+def test_a_linux_build_takes_the_start_table_of_its_windows_build() -> None:
+    linux = types.SimpleNamespace(build=patterns.KNOWN_LINUX_BUILDS[0])
+    windows = types.SimpleNamespace(build=patterns.KNOWN_BUILDS[0])
+    assert ticks.start_table_build(linux) == patterns.KNOWN_BUILDS[0].sha256
+    assert ticks.start_table_build(windows) == patterns.KNOWN_BUILDS[0].sha256
+    assert ticks.start_table_build(None) == ""
+
+
+def test_on_linux_a_helper_that_cant_be_reached_is_told_once_and_armed_again(caplog) -> None:
+    lost = linux_helper.LinuxHelperError("the helper closed its socket")
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": lost}))
+    with caplog.at_level("WARNING"):
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+    said = [r for r in caplog.records if r.name == "Client" and "on Linux" in r.getMessage()]
+    assert len(said) == 1
+    assert ctx.linux_mod is None and ctx.conn.newgame is None
+    ctx.game_conn.pm.replies["ap_newgame"] = "armed"
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.conn.newgame is state.NewGame.ARMED
+
+
+def test_the_linux_helper_takes_an_apply_as_the_windows_helper_does() -> None:
+    pm = LinuxHelperStandIn({"config": "ok", "apply": "applied"})
+    mod = linux_helper.LinuxMod(pm)
+    text = native.batch_text([(17, 0, 1)], [(17, "from Bob")])
+    assert mod.apply(text) == "applied" and pm.sent[-1] == text
+    pm.replies["apply"] = "refused not in play"
+    assert mod.apply(text) == "refused not in play"
+    pm.replies["apply"] = "error something"
+    with pytest.raises(native.HelperError, match="unexpected reply"):
+        mod.apply(text)
+    pm.replies["apply"] = linux_helper.NoReply("the helper closed its socket")
+    with pytest.raises(native.ReplyLost):  # it went out: it may have been applied
+        mod.apply(text)
+    pm.replies["apply"] = linux_helper.LinuxHelperError("the helper's socket failed")
+    with pytest.raises(native.HelperError) as failed:  # never sent: not applied
+        mod.apply(text)
+    assert not isinstance(failed.value, native.ReplyLost)
+
+
+def test_a_linux_helper_that_fails_the_step_is_configured_again(caplog) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.conn.newgame is state.NewGame.ARMED and ctx.linux_mod is not None
+    with caplog.at_level("WARNING"):
+        ticks.linux_mod_lost(ctx, native.ReplyLost("the Linux helper: no reply"))
+    assert ctx.linux_mod is None and ctx.conn.newgame is None  # armed again with it
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert sum(t.startswith("config ") for t in ctx.game_conn.pm.sent) == 2
+    assert ctx.conn.newgame is state.NewGame.ARMED
+
+
+def test_a_linux_helper_lost_once_configured_holds_the_step_a_while() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    ticks.linux_mod_lost(ctx, linux_helper.LinuxHelperError("never configured"))
+    assert ctx.linux_back_by == 0.0, "nothing to wait for: written directly"
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    before = time.monotonic()
+    ticks.linux_mod_lost(ctx, linux_helper.NoReply("no reply"))
+    assert before + ticks.LINUX_HOLD_SECONDS <= ctx.linux_back_by
+    ticks.linux_mod_lost(ctx, linux_helper.NoReply("no reply"))  # still lost: not held longer
+    assert ctx.linux_back_by <= time.monotonic() + ticks.LINUX_HOLD_SECONDS
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is not None and ctx.linux_back_by == 0.0
+
+
+def test_a_linux_helper_connected_again_is_configured_and_armed_again() -> None:
+    # The helper drops a client's plan and labels when its connection closes (a request with no
+    # reply closes it; the next read connects again): told both again.
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    first = ctx.linux_mod
+    ctx.linux_mod.told.labels_for = ctx.seed_state  # labels sent on the old connection
+    ctx.game_conn.pm.connected = False  # closed, not made again yet: as good as gone
+    assert not ctx.linux_mod.current()
+    ctx.game_conn.pm.connected = True
+    ctx.game_conn.pm.connection += 1
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    sent = ctx.game_conn.pm.sent
+    assert sum(t.startswith("config ") for t in sent) == 2
+    assert sum(t.startswith("ap_newgame") for t in sent) == 2
+    assert ctx.linux_mod is not first and ctx.linux_mod.told.labels_for is None
+    assert ctx.conn.newgame is state.NewGame.ARMED
+
+
+def test_on_linux_the_labels_go_through_the_linux_helper() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_labels": "labeled 0"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.seed_state.dressed = False  # not this seed's save: any labels it may hold taken back
+    asyncio.run(ticks.linux_labels_tick(ctx))
+    assert ctx.game_conn.pm.sent[-1] == "ap_labels"
+    assert not ctx.linux_mod.told.labels_held
+    ctx.linux_mod.told.labels_held = True
+    ctx.game_conn.pm.replies["ap_labels"] = linux_helper.NoReply("the helper closed its socket")
+    asyncio.run(ticks.linux_labels_tick(ctx))
+    assert ctx.linux_mod is None, "configured again on a later poll"
+
+
+def test_on_linux_the_seeds_own_traps_are_handed_to_the_linux_helper(monkeypatch) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "stored"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps 100:103")
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: None)  # not known yet
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    sent = ctx.game_conn.pm.sent[-1]
+    assert sent.startswith("offline_put seed ") and sent.endswith("traps 100:103")
+    ctx.linux_mod.told.offline_at = 0.0
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
+    assert puts == [sent], "once a text"
+
+
+@pytest.mark.parametrize(
+    ("reply", "put_again"),
+    [
+        ("unchanged", False),
+        ("error no folder", False),  # taken for this run, not kept: the same would be refused again
+        ("error cannot write, error 28", False),  # its write failed: taken all the same
+        ("error bad name", True),
+    ],
+)
+def test_on_linux_a_seed_not_kept_is_put_again_only_if_it_was_not_taken(
+    monkeypatch, reply, put_again
+) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": reply}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps -")
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: None)  # not known yet
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    ctx.linux_mod.told.offline_at = 0.0
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
+    assert len(puts) == (2 if put_again else 1)
+
+
+def test_on_linux_the_whole_seed_file_is_handed_over_once_known(monkeypatch) -> None:
+    # Its labels, for the look with no client (offline_seed, as on Windows).
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "stored"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps -")
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: "zexion-ap offline 1\nap_labels")
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    assert ctx.game_conn.pm.sent[-1].endswith("\nap_labels")
+
+
+def test_on_linux_the_whole_seed_file_is_never_replaced_by_the_slot_datas(monkeypatch) -> None:
+    # After a reconnect the items are listed afresh: offline_seed is None for a while, and the
+    # slot data's text would replace the file the look dresses saves from.
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "stored"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    full = types.SimpleNamespace(text="zexion-ap offline 1\nap_labels")
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: "zexion-ap offline 1\ntraps -")
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: full.text)
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    full.text = None  # a reconnect: not known again yet
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)  # a new connection: told afresh
+    asyncio.run(ticks.linux_seed_tick(ctx, None))
+    puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
+    assert len(puts) == 1 and puts[0].endswith("\nap_labels")
+
+
+def test_on_linux_client_connected_is_asked_of_the_linux_helper() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "client_back": "shown"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    assert not ctx.linux_mod.told.client_back_sent  # asked on Linux too, now there is a look
+    ctx.load.seed_loaded = ctx.load.in_play = True
+    asyncio.run(ticks.linux_client_back_tick(ctx))
+    asyncio.run(ticks.linux_client_back_tick(ctx))
+    assert ctx.game_conn.pm.sent.count("client_back") == 1
+    assert ctx.linux_mod.told.client_back_sent
+
+
+def test_the_linux_seed_needs_only_the_connection() -> None:
+    # Known from the slot data: no wait for the items or the server's scouts.
+    conn = connection()
+    conn.items_listed = False
+    ctx = context(conn, linux_game({}))
+    text = ticks.linux_seed(ctx, None)
+    assert text is not None and "\ntraps " in text and "\ndiscs -" in text
+
+
+def test_the_linux_seed_carries_the_disks_once_the_items_are_listed() -> None:
+    # The count every save shares and this world's own disks' cells, for the helper's count at
+    # their pickup with no client (Game::watch_own_disks).
+    hunt = dict(goal="os_install_disks", discs_required=3, discs_placed=5, disc_locations=[12])
+    conn = connection(**hunt)
+    conn.items_listed = False
+    ctx = context(conn, linux_game({}))
+    received = types.SimpleNamespace(codes=[44, 44])  # two disks received
+    assert "\ndiscs -" in ticks.linux_seed(ctx, received)
+    conn.items_listed = True
+    lines = ticks.linux_seed(ctx, received).split("\n")
+    discs_line = next(line for line in lines if line.startswith("discs "))
+    assert discs_line.split()[1:3] == ["2", "3"]
+    unfound = next(line for line in lines if line.startswith("unfound "))
+    assert unfound != "unfound -"
+
+
+def test_a_linux_helper_from_before_the_traps_is_told_too_old(caplog) -> None:
+    # Same version, older build: it would refuse every batch with a trap's popup.
+    ctx = context(
+        connection(), linux_game({"config": "ok", "trap_status": "error unknown request"})
+    )
+    with caplog.at_level("WARNING"):
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is None and ctx.linux_back_by == 0.0, "items written directly meanwhile"
+    said = [r for r in caplog.records if r.name == "Client" and "older" in r.getMessage()]
+    assert len(said) == 1
+
+
+def test_on_linux_an_attach_holds_the_step_until_the_linux_helper_is_configured(
+    monkeypatch,
+) -> None:
+    # The Linux helper is configured from the next poll (linux_newgame_tick): the attach's own
+    # step gives nothing, so no item goes without its popup and no waiting trap is dropped.
+    linux = linux_game({"config": "refused no frame"})
+    ctx = context(connection(), linux)
+    ctx.game_conn = None
+    monkeypatch.setattr(game.Game, "attach", classmethod(lambda cls: linux))
+    steps: list[dict] = []
+
+    def step(g, received, **kwargs):
+        steps.append(kwargs)
+        raise game.GameNotRunning("Zexion is not running")
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert steps and not steps[0]["give"]
+    # (The stand-in step said the game closed, which dropped it.) Attached again: held, until a
+    # configuration takes.
+    ctx.game_conn = linux
+    ctx.linux_back_by = time.monotonic() + ticks.LINUX_HOLD_SECONDS
+    asyncio.run(ticks.linux_newgame_tick(ctx))  # no frame yet: still held
+    assert ctx.linux_mod is None and ctx.linux_back_by > time.monotonic()
+    linux.pm.replies["config"] = "ok"
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is not None and ctx.linux_back_by == 0.0
+
+
+def test_a_linux_helper_with_no_frame_for_trap_status_is_not_told_too_old(caplog) -> None:
+    # A frame not come in time (the game in the background) is tried again, as any failed
+    # configuration; only an unknown request is a helper from before the traps.
+    ctx = context(connection(), linux_game({"config": "ok", "trap_status": "refused no frame"}))
+    with caplog.at_level("WARNING"):
+        asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is None
+    said = [r.getMessage() for r in caplog.records if r.name == "Client"]
+    assert said and not [line for line in said if "older" in line]
+
+
+def test_on_linux_the_disks_count_goes_through_the_linux_helper() -> None:
+    from client import discs
+
+    ctx = context(connection(), linux_game({"config": "ok", "discs": "discs off"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.seed_state.dressed = False  # not this seed's save: the count off
+    asyncio.run(ticks.linux_discs_tick(ctx, None))
+    assert ctx.game_conn.pm.sent[-1] == discs.OFF and ctx.linux_mod.told.discs.sent == discs.OFF
+    ctx.linux_mod.told.discs.sent = None
+    ctx.game_conn.pm.replies["discs"] = linux_helper.NoReply("the helper closed its socket")
+    asyncio.run(ticks.linux_discs_tick(ctx, None))
+    assert ctx.linux_mod is None, "configured again on a later poll"
+
+
+def test_on_linux_intel_chips_go_through_the_linux_helper() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "intel": "intel on"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.load.intel_want = True  # this seed's save loaded, its Area Maps Intel Chips
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    assert ctx.game_conn.pm.sent.count("intel on") == 1 and ctx.linux_mod.told.intel.sent is True
+    ctx.game_conn.pm.replies["intel"] = linux_helper.NoReply("the helper closed its socket")
+    ctx.load.intel_want = False
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    assert ctx.linux_mod is None, "configured again on a later poll"
+
+
+def test_on_linux_the_assist_lock_goes_through_the_linux_helper() -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "assists": "locked"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.load.assists_want = True  # this seed's save loaded, assists disallowed
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    sent = ctx.game_conn.pm.sent
+    assert sent.count("assists lock") == 1 and ctx.linux_mod.told.assists.sent is True
+    ctx.game_conn.pm.replies["assists"] = linux_helper.NoReply("the helper closed its socket")
+    ctx.load.assists_want = False
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    assert ctx.linux_mod is None, "configured again on a later poll"
+
+
+def test_on_linux_a_setting_is_sent_only_on_the_connection_that_sent_config() -> None:
+    # A request on a connection made again since (a read in the same poll) would set the ASSIST
+    # lock, the Intel Chip or the disks' count in a helper that keeps it past that connection's
+    # close, as the connection never sent config.
+    ctx = context(
+        connection(),
+        linux_game(
+            {"config": "ok", "assists": "locked", "intel": "intel on", "discs": "discs off"}
+        ),
+    )
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.load.assists_want = ctx.load.intel_want = True
+    ctx.seed_state.dressed = False
+    pm = ctx.game_conn.pm
+    pm.connection = 2
+    sent = len(pm.sent)
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    asyncio.run(ticks.linux_discs_tick(ctx, None))
+    assert len(pm.sent) == sent and ctx.linux_mod is not None
+    pm.connection = 1  # the connection it was configured on
+    asyncio.run(ticks.linux_assists_tick(ctx))
+    asyncio.run(ticks.linux_intel_tick(ctx))
+    assert pm.sent[sent:] == ["assists lock", "intel on"]
+
+
+def test_on_linux_a_connection_made_again_takes_the_saves_disks_for_counted() -> None:
+    # The helper had no client between the two connections, so it counted an own disk picked
+    # up then itself: the client's next look takes the save's disks for counted (no second count
+    # popup), as attach_helper does on Windows. Not after a failure that kept the connection.
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    pm = ctx.game_conn.pm
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    ctx.load.disks_counted = {12}
+    ticks.linux_mod_lost(ctx, linux_helper.LinuxHelperError("the helper refused the addresses"))
+    asyncio.run(ticks.linux_newgame_tick(ctx))  # the same connection: the helper kept its client
+    assert ctx.load.disks_counted == {12}
+    pm.connection = 2  # a request with no reply closed it; the next read made another
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.load.disks_counted is None
+    assert ctx.linux_mod is not None and ctx.linux_mod.current()
+
+
+def test_on_linux_no_follow_up_goes_through_a_connection_made_again(monkeypatch) -> None:
+    ctx = context(connection(), linux_game({"config": "ok"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    ctx.game_conn.pm.connection = 2  # not configured on this one: the helper has no client
+
+    async def refused(*args) -> None:
+        raise AssertionError("no follow-up through it")
+
+    monkeypatch.setattr(ticks, "followups_tick", refused)
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+
+
+def test_on_linux_a_failed_follow_up_drops_the_linux_helper_not_the_windows_one(
+    monkeypatch,
+) -> None:
+    # LinuxMod.apply raises native's errors: still the Linux helper's to drop (linux_mod_lost).
+    ctx = context(connection(), linux_game({"config": "ok"}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+
+    async def lost(*args) -> None:
+        raise native.ReplyLost("the Linux helper: no reply")
+
+    monkeypatch.setattr(ticks, "followups_tick", lost)
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert ctx.linux_mod is None and not ctx.helper_lost
+
+
+@pytest.mark.parametrize(
+    ("status", "offered", "followed"),
+    [
+        ("not asked", True, False),  # dropped before it showed: offered again
+        ("put back: the prompt was up, YES is NO", True, False),  # shown, then put back: again
+        ("asked", False, True),  # still on its way
+        ("opening after the fade", False, True),
+        ("yes: ending when idle (another transition came first)", False, True),
+        ("yes: ending when idle, the screen kept black", False, True),
+        ("ending started", False, False),  # the ending is going: nothing left to drop
+        ("shown", False, True),  # followed once a connection: a put back one is offered again
+        ("lapsed: the player left the landing pod", False, False),
+    ],
+)
+def test_on_linux_a_prompt_dropped_before_it_showed_is_offered_again(
+    monkeypatch, status, offered, followed
+) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "mission_status": status}))
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+
+    async def nothing(*args) -> None:
+        return None
+
+    monkeypatch.setattr(ticks, "followups_tick", nothing)
+    monkeypatch.setattr(ticks, "mission_tick", nothing)
+    home = ctx.load.return_home
+    home.queued = True
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert home.offer is offered and home.queued is followed
+
+
+def test_on_linux_a_shown_prompt_put_back_by_a_closed_connection_is_offered_again(
+    monkeypatch,
+) -> None:
+    # Shown, then the connection closes with the prompt up: the helper puts YES back to NO's
+    # callback (status "put back"), so pressing YES does nothing: asked for again.
+    ctx = context(connection(), linux_game({"config": "ok", "mission_status": "shown"}))
+    pm = ctx.game_conn.pm
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+
+    async def nothing(*args) -> None:
+        return None
+
+    monkeypatch.setattr(ticks, "followups_tick", nothing)
+    monkeypatch.setattr(ticks, "mission_tick", nothing)
+    home = ctx.load.return_home
+    home.queued = True
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert pm.sent.count("mission_status") == 1, "shown: asked once on a connection"
+    assert home.queued and not home.offer
+    pm.connection = 2  # closed and made again; configured again (linux_newgame_tick)
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+    pm.replies["mission_status"] = "put back: the prompt was up, YES is NO"
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert home.offer and not home.queued
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        "put back: the prompt was up, YES is NO",  # still up when the connection closed
+        "put back: YES was pressed, the ending had not started",  # YES, dropped before the ending
+    ],
+)
+def test_on_linux_a_shown_prompt_dropped_up_or_after_yes_is_offered_again(
+    monkeypatch, status
+) -> None:
+    # Read as "shown" on one connection, so no longer asked about there: a YES pressed meanwhile
+    # whose connection closed before the ending started reads "put back", not "not asked".
+    ctx = context(connection(), linux_game({"config": "ok", "mission_status": "shown"}))
+    pm = ctx.game_conn.pm
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+
+    async def nothing(*args) -> None:
+        return None
+
+    monkeypatch.setattr(ticks, "followups_tick", nothing)
+    monkeypatch.setattr(ticks, "mission_tick", nothing)
+    home = ctx.load.return_home
+    home.queued = True
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert home.queued and home.shown_on is not None
+    pm.connection = 2
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+    pm.replies["mission_status"] = status
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert home.offer and not home.queued
+
+
+def test_on_linux_a_prompt_answered_no_is_not_offered_again_by_a_new_connection(
+    monkeypatch,
+) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "mission_status": "shown"}))
+    pm = ctx.game_conn.pm
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+
+    async def nothing(*args) -> None:
+        return None
+
+    monkeypatch.setattr(ticks, "followups_tick", nothing)
+    monkeypatch.setattr(ticks, "mission_tick", nothing)
+    home = ctx.load.return_home
+    home.queued = True
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    pm.connection = 2  # a NO closed it first: its status stays "shown"
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert not home.offer and home.queued and pm.sent.count("mission_status") == 2
+    pm.connection = 3
+    ctx.linux_mod = linux_helper.LinuxMod(pm)
+    pm.replies["mission_status"] = "not asked"  # the NO closed it; the cancel reset the status
+    asyncio.run(ticks.linux_finds_tick(ctx, None, None))
+    assert not home.offer and not home.queued
+
+
+def test_on_linux_the_poll_asks_the_linux_helper_for_shields() -> None:
+    # The Linux build has no Windows helper: the Linux helper's is enough for shields_tick.
+    ctx = context(connection(), linux_game({"config": "ok"}))
+    seed = ctx.seed_state
+    ctx.helper = None
+    assert not zc.shields_due(ctx, seed)  # nothing to spawn with, nothing to look for
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    assert zc.shields_due(ctx, seed)
+
+
+def test_on_linux_a_received_death_is_not_said_to_wait_for_the_mod(caplog, monkeypatch) -> None:
+    # The Linux helper deals it (ticks.deathlink_tick): no "the Zexion mod isn't running".
+    base = zc.ZexionContext.__mro__[1]  # CommonContext's stand-in here
+    monkeypatch.setattr(base, "on_deathlink", lambda self, data: None, raising=False)
+    conn = connection()
+    conn.death_link_on = True
+    ctx = context(conn, linux_game({"config": "ok"}))
+    ctx.helper = None
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    death = {"time": 1.0, "source": "Other", "cause": "Other died."}
+    with caplog.at_level("WARNING"):
+        ctx.on_deathlink(death)
+        assert not any("isn't running" in r.getMessage() for r in caplog.records)
+        ctx.linux_mod = None  # no helper of either kind: said
+        ctx.on_deathlink(dict(death, time=2.0))
+    assert sum("isn't running" in r.getMessage() for r in caplog.records) == 1
+    assert ctx.seed_state.deaths.owed == 2
+
+
+def test_on_windows_the_linux_tick_does_nothing() -> None:
+    ctx = context(connection(), Running(game.NO_SAVE))
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is None
+
+
+def test_on_linux_reload_mod_says_it_cannot_reload() -> None:
+    # The Linux helper is preloaded with the game: /reload_mod says so, and asks for nothing.
+    ctx = context(connection(), linux_game({"config": "ok"}))
+    said: list[str] = []
+    processor = types.SimpleNamespace(ctx=ctx, output=said.append)  # AP's processor is stubbed here
+    assert not zc.ZexionCommandProcessor._cmd_reload_mod(processor)
+    assert said == ["On Linux the Zexion mod can't be reloaded: restart Zexion instead."]
+    assert not ctx.reload_mod_pending
+
+
+def test_on_linux_the_helper_retry_leaves_the_linux_helpers_plan_alone(caplog) -> None:
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.conn.newgame is state.NewGame.ARMED
+    with caplog.at_level("WARNING"):
+        assert not asyncio.run(ticks.attach_helper(ctx))
+        assert not asyncio.run(ticks.attach_helper(ctx))
+    assert ctx.conn.newgame is state.NewGame.ARMED  # not reset as drop_helper would
+    assert not [r for r in caplog.records if r.name == "Client"]  # nothing to say there
+
+
+# --- the Linux helper let go while no connection steps, and kept from going silent --------------
+
+
+def linux_away(shown: str = game.IN_PLAY, replies: dict | None = None) -> zc.ZexionContext:
+    """A dropped connection, the Linux build showing ``shown``, its helper configured."""
+    ctx = context(connection(), linux_game({"config": "ok", **(replies or {})}), dropped=True)
+    ctx.game_conn.shown = shown
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    return ctx
+
+
+def test_on_linux_a_save_loaded_while_dropped_lets_the_linux_helper_go(caplog) -> None:
+    # Its lang every 5 s would keep the helper's client open for good: the helper dresses the save
+    # itself once the connection closes, as the Windows helper does when it is let go.
+    ctx = linux_away()
+    ctx.conn.newgame = state.NewGame.ARMED
+    with caplog.at_level(logging.DEBUG):
+        asyncio.run(zc.leave_helper_tick(ctx))
+    assert ctx.linux_mod is None and ctx.helper_left
+    assert ctx.game_conn.pm.disconnects == 1 and ctx.conn.newgame is None  # armed again later
+    assert any("Not connected" in r.getMessage() for r in caplog.records)
+
+
+def test_on_linux_the_helper_let_go_is_not_configured_while_no_connection_steps() -> None:
+    ctx = linux_away()
+    asyncio.run(zc.leave_helper_tick(ctx))
+    pm = ctx.game_conn.pm
+    sent = len(pm.sent)
+    asyncio.run(ticks.linux_newgame_tick(ctx))  # a poll with no connection: not configured again
+    asyncio.run(zc.leave_helper_tick(ctx))  # nor let go twice
+    assert ctx.linux_mod is None and len(pm.sent) == sent and pm.disconnects == 1
+    ctx.slot = 1  # a connection steps: configured again, before that poll's step
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is not None and pm.sent[sent].startswith("config ")
+
+
+def test_on_linux_a_reconnect_holds_the_step_until_the_helper_is_configured(monkeypatch) -> None:
+    # As after a Windows helper let go (helper_back_by): the step gives nothing with no popup.
+    ctx = linux_away()
+    asyncio.run(zc.leave_helper_tick(ctx))
+    ctx.game_conn.pm.replies["config"] = "refused"  # not taken when the connection comes back
+    ctx.slot = 1
+    steps: list[dict] = []
+
+    def step(g, received, **kwargs):
+        steps.append(kwargs)
+        raise game.GameNotRunning("Zexion is not running")
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    asyncio.run(zc.poll(ctx))
+    assert steps and not steps[0]["give"] and not ctx.helper_left
+
+
+@pytest.mark.parametrize(
+    ("shown", "dressed", "holding"),
+    [(game.NO_SAVE, False, False), (game.IN_PLAY, True, False), (game.IN_PLAY, False, True)],
+)
+def test_on_linux_the_helper_is_kept_where_the_windows_one_is(shown, dressed, holding) -> None:
+    ctx = linux_away(shown)
+    ctx.seed_state.dressed, ctx.seed_state.session.holding = dressed, holding
+    mod = ctx.linux_mod
+    asyncio.run(zc.leave_helper_tick(ctx))
+    assert ctx.linux_mod is mod and not ctx.helper_left and ctx.game_conn.pm.disconnects == 0
+
+
+def test_on_windows_nothing_is_let_go_without_a_helper_or_a_linux_helper() -> None:
+    ctx = context(connection(), Showing(game.IN_PLAY), dropped=True)
+    asyncio.run(zc.leave_helper_tick(ctx))
+    assert not ctx.helper_left
+
+
+def test_on_linux_the_client_pings_the_helper_it_is_attached_to() -> None:
+    # The helper drops a client silent for 30 s: the ping keeps it, whatever the poll waits on.
+    ctx = linux_away(replies={"ping": "pong frames=1"})
+    asyncio.run(ticks.linux_keepalive_tick(ctx))
+    assert ctx.game_conn.pm.sent[-1] == "ping"
+
+
+def test_on_linux_the_ping_is_left_to_a_helper_not_configured_on_this_connection() -> None:
+    ctx = linux_away(replies={"ping": "pong frames=1"})
+    pm = ctx.game_conn.pm
+    sent = len(pm.sent)
+    pm.connection = 2  # made again since: the poll's ticks configure it again
+    asyncio.run(ticks.linux_keepalive_tick(ctx))
+    ctx.linux_mod = None  # let go, or lost
+    asyncio.run(ticks.linux_keepalive_tick(ctx))
+    assert len(pm.sent) == sent
+
+
+def test_a_ping_that_fails_is_left_to_the_poll() -> None:
+    ctx = linux_away(replies={"ping": linux_helper.NoReply("no answer")})
+    asyncio.run(ticks.linux_keepalive_tick(ctx))  # no error; the poll finds the connection closed
+    assert ctx.linux_mod is not None
+
+
+def test_the_ping_is_sent_every_few_seconds_to_stay_inside_the_helpers_30(monkeypatch) -> None:
+    assert ticks.LINUX_KEEPALIVE_SECONDS * 2 < 30
+    ctx = linux_away(replies={"ping": "pong frames=1"})
+    ctx.exit_event = types.SimpleNamespace(is_set=lambda: len(naps) >= 2)
+    naps: list[float] = []
+
+    async def nap(seconds: float) -> None:
+        naps.append(seconds)
+
+    monkeypatch.setattr(zc.asyncio, "sleep", nap)
+    asyncio.run(zc.keepalive_loop(ctx))
+    assert naps == [ticks.LINUX_KEEPALIVE_SECONDS] * 2
+    assert ctx.game_conn.pm.sent.count("ping") == 2

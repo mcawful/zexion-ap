@@ -5,7 +5,9 @@ description: Experiment with Zexion save files safely - pause Steam Cloud, back 
 
 # Save lab
 
-The real saves live in `%APPDATA%\Gallant Leaf\Zexion` and Steam Cloud syncs them. The user has
+The real saves live in `%APPDATA%\Gallant Leaf\Zexion` (on Linux, the folder `save_dir()` in
+`tools/protected.py` finds: SDL's under `~/.local/share`, or Flatpak Steam's) and Steam Cloud
+syncs them, between Windows and Linux too. The user has
 real progress in some slots. Nothing writes there except `tools/save_lab.py install` and
 `restore` (the Archipelago client never does). The write-guard hook blocks every other route
 through Bash, PowerShell, Monitor, the terminal tool and the file tools (`CLAUDE.md`, "Repo
@@ -84,7 +86,9 @@ overwritten, and that the backup keeps it.
 
 It fills either kind of empty slot. It refuses while Zexion is running, or when that can't be
 told, as `restore` does (the game writes its copies of the slots back over an install, and
-presumably over a restore: `save_lab.py --help`), so ask the user to close the game first. It
+presumably over a restore: `save_lab.py --help`), so ask the user to close the game first. On
+Linux the check has found the Linux build running (`docs/DEVELOPING.md`, "Platforms"); under
+Proton it is not yet seen, so there have the user confirm the game is closed. It
 also refuses a slot that is in use, a slot number that doesn't exist, and a missing or stale
 backup. Over a deleted save it names the backup file that now
 holds the old data. It logs to `lab/installs.log`, with `was=template` or `was=deleted` for the

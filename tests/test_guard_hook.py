@@ -882,6 +882,121 @@ def test_reads_of_the_offline_folder_and_other_local_paths_allowed(tool: str, co
     assert run(tool, command=command) is None
 
 
+# On Linux: $XDG_DATA_HOME/ZexionAP, else ~/.local/share/ZexionAP (Snap Steam's too), or Flatpak
+# Steam's, as the Linux helper sees it (native/src/offline.cpp, offline_folder).
+LINUX_HOME = "/home/someone"
+DATA_HOME = f"{LINUX_HOME}/.local/share"
+FLATPAK_DATA = f"{LINUX_HOME}/.var/app/com.valvesoftware.Steam/data"
+LINUX_OFFLINE_FILES = [
+    f"{DATA_HOME}/ZexionAP/seeds/S-0-1.txt",
+    f"{FLATPAK_DATA}/ZexionAP/seeds/S-0-1.txt",
+    f"{LINUX_HOME}/snap/steam/common/.local/share/ZexionAP/x",
+    "$XDG_DATA_HOME/ZexionAP/x",
+    "${XDG_DATA_HOME}/ZexionAP/seeds/x.txt",
+    "/data/someone/ZexionAP/x",  # XDG_DATA_HOME set to a folder of its own (below)
+]
+LINUX_OFFLINE_BLOCKED = [
+    f'rm -rf "{DATA_HOME}/ZexionAP"',
+    f'echo x > "{FLATPAK_DATA}/ZexionAP/seeds/S-0-1.txt"',
+    f'cp lab/a "{DATA_HOME}/ZexionAP/seeds/x.txt"',
+    "rm -rf ~/.local/share/ZexionAP",
+    'rm -rf "$XDG_DATA_HOME/ZexionAP/seeds"',
+    "rm -rf /data/someone/ZexionAP",
+    'python -c "import os; '
+    "open(os.path.join(os.environ['XDG_DATA_HOME'], 'ZexionAP', 'x'), 'w')\"",
+    "python -c \"import os; d = os.path.expanduser('~/.local/share'); "
+    "os.remove(os.path.join(d, 'ZexionAP', 'x'))\"",
+]
+LINUX_OFFLINE_ALLOWED = [
+    f'ls "{DATA_HOME}/ZexionAP"',
+    f'cat "{FLATPAK_DATA}/ZexionAP/seeds/S-0-1.txt"',
+    'cat "$XDG_DATA_HOME/ZexionAP/seeds/x.txt"',
+    f'rm -rf "{DATA_HOME}/uv/x"',
+    f'echo x > "{DATA_HOME}/ZexionAP-notes.md"',
+    f'rm -rf "{FLATPAK_DATA}/other"',
+    'grep -rn "XDG_DATA_HOME/ZexionAP" docs/ native/src',
+]
+
+
+@pytest.fixture
+def xdg_data_home(monkeypatch):
+    """XDG_DATA_HOME set to a folder other than the default, so its expansion is protected too."""
+    monkeypatch.setenv("XDG_DATA_HOME", "/data/someone")
+
+
+@pytest.mark.usefixtures("xdg_data_home")
+@pytest.mark.parametrize("path", LINUX_OFFLINE_FILES)
+def test_file_tools_blocked_in_the_linux_offline_folder(path: str) -> None:
+    for tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+        assert run(tool, file_path=path), (tool, path)
+
+
+@pytest.mark.usefixtures("xdg_data_home")
+@pytest.mark.parametrize("command", LINUX_OFFLINE_BLOCKED)
+def test_writes_into_the_linux_offline_folder_blocked(command: str) -> None:
+    assert run("Bash", command=command)
+
+
+@pytest.mark.usefixtures("xdg_data_home")
+@pytest.mark.parametrize("command", LINUX_OFFLINE_ALLOWED)
+def test_reads_of_the_linux_offline_folder_and_beside_it_allowed(command: str) -> None:
+    assert run("Bash", command=command) is None
+
+
+# Another process's folders through /proc (the game's install is the game's cwd, its saves in its
+# root's view): a command that isn't read-only is blocked, whatever the pid, worked out by the
+# command or not; reads, and the shell's own (/proc/self), are fine.
+PROC_BLOCKED = [
+    "cp native/build/libzexion_ap.so /proc/$(pgrep -x Zexion)/cwd/",
+    "cp x /proc/`pgrep Zexion`/cwd/",
+    "cp x /proc/*/cwd/",
+    'pid=$(pgrep Zexion); cp x "/proc/$pid/cwd/lib.so"',
+    'cp x "/proc/${pid}/root/tmp/x"',
+    "rm -rf /proc/$(pgrep Zexion)/root/home",
+    "ln -s /proc/$(pgrep Zexion)/cwd here",
+    "tee /proc/*/cwd/x < y",
+    "cp x /proc/12345/cwd/y",  # a literal pid's too
+    # The path spelled otherwise, or built from pieces.
+    "cp x /proc//$(pgrep Zexion)/cwd/lib.so",
+    "cp x /proc/./$pid/cwd/",
+    "cp x /proc/1/../$pid/cwd/",
+    "cp x '/proc'/$pid/cwd/y",
+    'cp x "/proc"/$(pgrep Zexion)/cwd/y',
+    "cd /proc && cp x */cwd/",
+    "cd /proc; cp x $(pgrep Zexion)/cwd/y",
+    "P=/proc; cp x $P/$pid/cwd/y",
+    "find /proc -maxdepth 2 -name cwd -exec cp x {} \\;",
+    "python3 -c \"import os,shutil; shutil.copy('x', os.path.join('/proc', pid, 'cwd'))\"",
+]
+PROC_ALLOWED = [
+    "readlink /proc/*/exe",
+    "ls -l /proc/12345/cwd",
+    "cat /proc/self/status",
+    "cp x /proc/self/cwd/y",
+    "cat /proc/cpuinfo",
+    "pid=12; grep zexion /proc/$pid/maps",
+    "ps aux",
+    "echo root > notes.txt",
+]
+
+
+@pytest.mark.parametrize("command", PROC_BLOCKED)
+def test_writes_through_another_processs_proc_view_blocked(command: str) -> None:
+    assert run("Bash", command=command)
+
+
+@pytest.mark.parametrize("command", PROC_ALLOWED)
+def test_reads_through_proc_and_the_shells_own_allowed(command: str) -> None:
+    assert run("Bash", command=command) is None
+
+
+def test_the_linux_offline_folder_is_blocked_with_the_variable_missing(monkeypatch) -> None:
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    assert run("Write", file_path="$XDG_DATA_HOME/ZexionAP/x")
+    assert run("Bash", command='rm -rf "${XDG_DATA_HOME}/ZexionAP"')
+    assert run("Bash", command='ls "$XDG_DATA_HOME/ZexionAP"') is None
+
+
 @pytest.mark.parametrize("spelling", ["%LOCALAPPDATA%", "$env:LOCALAPPDATA", "${LOCALAPPDATA}"])
 def test_the_offline_folder_is_blocked_with_the_variable_missing(
     spelling: str, monkeypatch

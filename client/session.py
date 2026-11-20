@@ -49,7 +49,7 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import astuple, dataclass, field
 
-from . import discs, game, ids, native, offline, reconcile, save_patch
+from . import discs, game, ids, linux_helper, native, offline, reconcile, save_patch
 
 logger = logging.getLogger("Zexion")
 
@@ -402,7 +402,7 @@ class Session:
         gap: float = game.SETTLE_SECONDS,
         senders: list[str] | None = None,
         followups: dict[int, str] | None = None,
-        helper: native.Helper | None = None,
+        helper: native.Helper | linux_helper.LinuxMod | None = None,
         give: bool = True,
         gone: Iterable[int] = (),
     ) -> Step:
@@ -581,7 +581,7 @@ class Session:
         gap: float,
         senders: list[str] | None = None,
         followups: dict[int, str] | None = None,
-        helper: native.Helper | None = None,
+        helper: native.Helper | linux_helper.LinuxMod | None = None,
     ) -> dict[int, int]:
         plan = self.plan
         guns_first = plan.guns_first
@@ -657,7 +657,7 @@ class Session:
 
     def give_through_helper(
         self,
-        helper: native.Helper,
+        helper: native.Helper | linux_helper.LinuxMod,
         snap: Snapshot,
         owed: dict[int, int],
         received: list[int],

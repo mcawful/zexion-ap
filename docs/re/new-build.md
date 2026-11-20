@@ -2,7 +2,11 @@
 
 The client and the helper know game builds by name (B1 so far). A build they do not know is
 refused: the client will not attach (`client/game.py` checks `KNOWN_BUILDS`), `helper.py load`
-refuses it, and the helper hooks nothing (`native/src/build.cpp`). So after a patch nothing
+refuses it, and the helper hooks nothing (`native/src/build.cpp`). The Linux build has a registry
+of its own, by GNU build id: the client will not attach to a Linux binary missing from
+`KNOWN_LINUX_BUILDS` (`client/patterns.py`), and the Linux helper serves nothing in one missing
+from `kKnownBuilds` (`native/linux/src/core.cpp`), saying `zexion-ap <version>: not a known build
+of Zexion (build id <hex>)` on the game's stderr. So after a patch nothing
 works in the game until the steps below are done. Every fact recorded along the way follows
 [`README.md`](README.md): its method, the new build, and its evidence. A new value goes under
 the same heading with the new build, beside the old one, never in its place.
@@ -11,7 +15,11 @@ the same heading with the new build, beside the old one, never in its place.
 
 1. **Identify the build.** `.venv/Scripts/python tools/build_id.py` prints a block for
    [`builds.md`](builds.md). If the exe's SHA-256 differs from every build there, add a new
-   section (B2, and so on) with it, and note which data files changed.
+   section (B2, and so on) with it, and note which data files changed. The Linux build has a
+   hash of its own by design: fingerprint it too, with `build_id.py` on a Linux install, and
+   record it beside the new build ("B1 on Linux" is the example). `linux.md` is pinned to B1's
+   Linux binary: re-check its Lookup, and `gGameState`'s shift, against the new binary's
+   symbols and `LoadGame`. The steps below take the Windows exe.
 2. **Copy the new build's files** into `lab/`: `.venv/Scripts/python tools/game_data.py
    RandoCells MapData Text Objects AreaEvents Enemies Bosses Missiles Sprites Sprites.png Palettes --exe`
    (into `lab/data/<exe-hash-12>/`, the first 12 hex digits of the exe's SHA-256, so builds
@@ -29,13 +37,18 @@ the same heading with the new build, beside the old one, never in its place.
    (the `/find-address` skill, step 4): find the target's new RVA from the old code (its
    references, its function), take candidates, and keep two or more from different code. A
    change to `client/patterns.py` updates the digest in `tests/test_patterns.py` in the same
-   change (`.venv/Scripts/python tests/test_patterns.py` prints it).
+   change (`.venv/Scripts/python tests/test_patterns.py` prints it). A target added here also
+   needs its row in `linux.md`'s Lookup (its Linux counterpart, or that it is not found yet);
+   `tests/test_patterns.py` fails without it.
 5. **Record the new build:**
    - each target's RVA on it in `Target.rvas` (`client/patterns.py`), which
      `check_patterns.py` then compares;
    - the build in `KNOWN_BUILDS` (`client/patterns.py`: name, exe SHA-256, PE timestamp and
      SizeOfImage) and in `kKnownBuilds` (`native/src/build.cpp`: name, timestamp and
      SizeOfImage); `tests/test_cross_checks.py` checks the two agree;
+   - the Linux binary in `KNOWN_LINUX_BUILDS` (`client/patterns.py`: name, SHA-256 and GNU
+     build id) and in `kKnownBuilds` (`native/linux/src/core.cpp`: name and GNU build id), kept
+     in step by `tests/test_cross_checks.py` too;
    - the patterns' state on the new build in `docs/re/memory.md` ("Byte patterns"): which still
      match once, which moved, and which broke and were replaced, with each replacement's source
      instruction in "Pattern sources".

@@ -1,6 +1,8 @@
 """PreToolUse hook: block writes into the game install, the real saves, Steam's cloud cache for
 the game, and the mod's offline files (``%LOCALAPPDATA%\\ZexionAP``: the seed list, labels and
-disk counts the helper keeps; only the helper writes them).
+disk counts the helper keeps; on Linux the seeds' files and the helper's socket token, in
+``$XDG_DATA_HOME/ZexionAP``, else ``~/.local/share/ZexionAP``, and Flatpak's default data
+folder; only the helper writes them).
 
 Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows stderr to Claude.
 
@@ -34,7 +36,14 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     ``protected.may_be_above_protected``, ``_names_parent``), so copying into, moving or
     deleting the parent blocks while reading it does not; when it may build one from pieces
     (``_builds_from_pieces``, the app id as a path component: ``_names_app_id``); when it makes
-    a link next to a folder named like ``gallant`` or ``steam``; or when it runs in or changes
+    a link next to a folder named like ``gallant`` or ``steam``; when it goes through another
+    process's view in ``/proc`` (its ``cwd``, ``root``, ``fd``, ``map_files``, ``exe`` or
+    ``task``), whatever its pid (the game's install is the game's ``cwd``, and a pid the command
+    works out can't be told from the game's), so a command that isn't read-only is blocked
+    wherever it leads, while reads and a redirect's target resolve to where they lead
+    (``/proc/self`` is the shell's own; quotes, ``//`` and ``/./`` don't hide it, and a ``proc``
+    piece with a view's name anywhere in the command counts too, for a path built from pieces:
+    ``_through_proc``); or when it runs in or changes
     directory to a folder in a protected one or a parent of one. Other names in the folder's
     path don't count, so a worktree named ``steam-achievements`` works as any other.
   - *Read-only* means the verb is on a short list and nothing in its arguments makes it write
@@ -86,7 +95,8 @@ _TOOLS_DIR = Path(__file__).resolve().parent.parent.parent / "tools"
 BLOCK_HINT = (
     "Blocked by .claude/hooks/guard_protected.py: this would write into the Zexion install, the "
     "real save folder, Steam's cloud cache for the game, or the mod's offline files "
-    "(%LOCALAPPDATA%\\ZexionAP). Read-only commands are fine. Save experiments go through "
+    "(%LOCALAPPDATA%\\ZexionAP, or on Linux $XDG_DATA_HOME/ZexionAP). Read-only commands are "
+    "fine. Save experiments go through "
     "tools/save_lab.py (see /save-lab), which backs up first."
 )
 
@@ -964,7 +974,8 @@ def _names_app_id(text: str, words: list[Word], protected) -> bool:
 def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     """Whether words may build a protected path from pieces: the app id as a path component
     (``_names_app_id``); a ``ZexionAP`` piece in a command that mentions ``LOCALAPPDATA`` (or
-    ``AppData/Local``, or ``GetFolderPath(28)``), however far apart, or that names ``TEMP`` or
+    ``AppData/Local``, or ``GetFolderPath(28)``; on Linux ``XDG_DATA_HOME``, ``.local/share`` or
+    Flatpak Steam's ``…Steam/data``), however far apart, or that names ``TEMP`` or
     ``TMP`` and takes its parent (a ``..`` piece, ``dirname``, ``Split-Path``, ``.Parent``); or,
     in a command that mentions ``gallant`` or ``steamapps``, a ``Zexion`` piece that starts a word
     or a quoted or comma-separated piece of one, or follows a variable or a ``…Leaf`` or
@@ -981,11 +992,13 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     # ``GetFolderPath(28)`` (or ``0x1c``) is LocalApplicationData by number. The folder counts
     # only where it ends (or a ``..`` follows): ``AppData/Local/Temp/…``, every scratch, TEMP and
     # test-folder path, is not the folder itself, and the word ``ZexionAP`` beside one is no
-    # build of the protected path.
+    # build of the protected path. On Linux the same for ``XDG_DATA_HOME``, the
+    # ``.local/share`` it defaults to, and Flatpak Steam's ``…Steam/data``.
     end = r"(?=/\.\.|(?![/\w]))"
     local = re.search(
         rf"local(?:app(?:lication)?)?data{end}|appdata/local{end}"
-        r"|getfolderpath\([^)]*?\b(?:28|0x1c)\b",
+        r"|getfolderpath\([^)]*?\b(?:28|0x1c)\b"
+        rf"|xdg_data_home{end}|\.local/share{end}|com\.valvesoftware\.steam/data{end}",
         low,
     )
     names_folder = any(c == "zexionap" for p in parts for c in p)
@@ -1018,12 +1031,42 @@ def _builds_from_pieces(text: str, words: list[Word], protected) -> bool:
     return False
 
 
+# Another process's view through /proc: its folder (cwd), its root (a sandbox's whole view), its
+# open files and its map's files lead into wherever it runs, the game's install and saves for the
+# game's. Any pid's counts, a literal one too (a pid the command works out, by a variable, a
+# substitution or a wildcard, can't be told from the game's): a command that isn't read-only is
+# then blocked, while a read and a redirect's target are resolved (realpath) to where they lead.
+# The shell's own (/proc/self) is left alone.
+_PROC_VIEW = re.compile(
+    r"/proc/(?!(?:self|thread-self)/)[^/\s]*/(?:cwd|root|fd|fdinfo|map_files|exe|task)\b"
+)
+# Looser, for a path built from pieces (a variable, a cd into /proc, find's {}, os.path.join): a
+# proc component and a view's name anywhere in the command.
+_PROC_PIECE = re.compile(r"(?<![\w.-])proc(?![\w-])")
+_VIEW_PIECE = re.compile(r"(?<![\w.-])(?:cwd|root|fd|fdinfo|map_files|exe|task)(?![\w.-])")
+_SHELLS_OWN = re.compile(r"/proc/(?:thread-)?self(?:/\S*)?")
+# A pid worked out by a substitution, as one word for the view's test.
+_WORKED_OUT = re.compile(r"\$\([^()]*\)|`[^`]*`")
+
+
+def _through_proc(text: str) -> bool:
+    """Whether the command may go through another process's view in /proc (quotes taken off,
+    substitutions as one word, ``//`` and ``/./`` collapsed; the shell's own left alone)."""
+    plain = _WORKED_OUT.sub("PID", text.replace("'", "").replace('"', ""))
+    plain = re.sub(r"/(?:\.?/)+", "/", plain)
+    if _PROC_VIEW.search(plain) is not None:
+        return True
+    plain = _SHELLS_OWN.sub(" ", plain)
+    return _PROC_PIECE.search(plain) is not None and _VIEW_PIECE.search(plain) is not None
+
+
 def _may_reach_protected(text, words, targets, folders, protected) -> bool:
     """``folders``: where the command runs (the ``cwd``) and its ``cd`` targets."""
     every = words + targets
     links = any(w.lower() in LINK_WORDS for w in words)
     return (
         protected.mentions_protected(text)
+        or _through_proc(text)
         or any(_folder_is_suspect(f, protected) for f in folders)
         or any(protected.word_may_name_protected(w) for w in every)
         or _builds_from_pieces(text, every, protected)

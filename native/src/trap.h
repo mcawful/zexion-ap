@@ -5,7 +5,7 @@
 // 2026-11-11). Offsets are into the player state (game_calls.cpp, player()), B1's.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -58,15 +58,24 @@ constexpr float kPitch = -1.0f;
 // timer counts down as at NORMAL. Two patches, one per timer (`ailments_hit_code` and
 // `ailments_wave_code`), each from its first test's load of the word to its second test's jump.
 // The bytes it checks are B1's but the loads' 32-bit displacements, which the helper checks
-// lead to the configured `ailments` instead (trap.cpp, ailments_reads).
-constexpr size_t kHitPatchSize = 0x2B;   // 0x1CC5C4 to 0x1CC5EE
-constexpr size_t kWavePatchSize = 0x2C;  // 0x1CC62C to 0x1CC657
+// lead to the configured `ailments` instead (trap.cpp, ailments_reads). The Linux build's
+// unoptimized code has the same tests in another shape (`weaponCool`, 0x507FCB and 0x50805B:
+// docs/re/linux.md, `ailments_hit_code`, `ailments_wave_code`).
 struct Jumps {
     size_t first, second;  // the two jne's opcode bytes
-    size_t loads[2];       // each `movzx ecx, word [rip+d]` of AILMENTS (0F B7 0D d32)
+    size_t loads[2];       // each `movzx ecx|eax, word [rip+d]` of AILMENTS (0F B7 0D|05 d32)
 };
+#ifdef _WIN32
+constexpr size_t kHitPatchSize = 0x2B;   // 0x1CC5C4 to 0x1CC5EE
+constexpr size_t kWavePatchSize = 0x2C;  // 0x1CC62C to 0x1CC657
 constexpr Jumps kHitJumps = {0x0B, 0x29, {0x00, 0x1A}};
 constexpr Jumps kWaveJumps = {0x0B, 0x2A, {0x00, 0x1F}};
+#else
+constexpr size_t kHitPatchSize = 0x35;   // 0x507FCB to 0x507FFF
+constexpr size_t kWavePatchSize = 0x38;  // 0x50805B to 0x508092
+constexpr Jumps kHitJumps = {0x0B, 0x33, {0x00, 0x28}};
+constexpr Jumps kWaveJumps = {0x0B, 0x36, {0x00, 0x2B}};
+#endif
 bool hit_patch(const BYTE (&game)[kHitPatchSize], BYTE (&out)[kHitPatchSize]);
 bool wave_patch(const BYTE (&game)[kWavePatchSize], BYTE (&out)[kWavePatchSize]);
 using HitPatch = CodePatch<kHitPatchSize, hit_patch>;

@@ -1,10 +1,16 @@
 # The native helper the AP client loads into the running game, or the proxy version.dll (also
-# built here) loads as the game starts (see native/README.md).
+# built here) loads as the game starts (see native/README.md). On Linux, the Linux helper
+# instead (linux/, "The Linux helper").
 cmake_minimum_required(VERSION 3.20)
 project(zexion_ap LANGUAGES CXX)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  enable_testing()
+  add_subdirectory(linux)
+  return()
+endif()
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-  message(FATAL_ERROR "zexion_ap builds for 64-bit Windows only, like the game")
+  message(FATAL_ERROR "zexion_ap builds for 64-bit Windows, or x86-64 Linux, like the game")
 endif()
 # The flags below are MSVC's, and the client, the release builder and the tests look for the
 # DLLs under native/build/Release, where only a multi-config generator puts them.
@@ -26,7 +32,7 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 add_library(zap_core STATIC
             src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp src/game_mem.cpp
-            src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/text.cpp
+            src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/text.cpp src/newgame.cpp src/choice.cpp
             src/menu.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
             src/files.cpp src/intel.cpp src/offline.cpp src/title.cpp src/mapmarks.cpp src/trap.cpp
             src/apitem.cpp src/looks.cpp src/feats.cpp src/translation.cpp)

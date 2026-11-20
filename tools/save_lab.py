@@ -10,9 +10,9 @@
 
 A save is named by slot number (``2``), ``slot:2``, or a file path. Everything except ``install``
 and ``restore`` only reads the save folder. Both refuse while Zexion is running (looked for on
-Windows, the game's platform), and when the process list can't be read: the game keeps the slots
-in memory, wrote them back over an install (docs/re/memory.md, "Feats and achievements"),
-and would presumably over a restore. ``install`` fills only an empty slot, and
+Windows and Linux, the game's platforms), and when the process list can't be read: the game
+keeps the slots in memory, wrote them back over an install (docs/re/memory.md, "Feats and
+achievements"), and would presumably over a restore. ``install`` fills only an empty slot, and
 only when a backup from the last 12 hours holds that slot as it is now. ``restore`` may
 overwrite slots in use; it refuses a backup of another save folder, checks the backup against
 its manifest, and backs up the present state first.
@@ -47,12 +47,16 @@ from pathlib import Path
 from protected import ROOT, assert_writable, lab_dir, save_dir
 
 sys.path.insert(0, str(ROOT))  # the client package
-from client import process  # noqa: E402
+from client import process, procfs  # noqa: E402
 from client.save_patch import RANDO_MARKER  # noqa: E402
 
 SLOT_NAME = "Save Game {}.sav"
 GAME_EXE = "Zexion.exe"  # client/game.py's PROCESS
-WINDOWS = sys.platform == "win32"  # the game's platform: only there is it looked for
+# On Linux: the Linux build's binary, and the Windows exe under Proton.
+LINUX_NAMES = ("Zexion", GAME_EXE)
+# The game's platforms: only there is it looked for.
+WINDOWS = sys.platform == "win32"
+LINUX = sys.platform.startswith("linux")
 BACKUP_MAX_AGE_HOURS = 12
 # An unused slot is not all zeros: the game writes one fixed template into every unused slot
 # (docs/re/save-format.md, "Unused slots hold a fixed template"). The template is recognized
@@ -363,9 +367,15 @@ def _write_into_save_dir(target: Path, data: bytes) -> None:
 
 
 def game_running() -> bool:
-    """Whether Zexion is running (looked for on Windows only). ProcessError (an OSError) when
-    the process list can't be read."""
-    return WINDOWS and process.find_pid(GAME_EXE) is not None
+    """Whether Zexion is running: on Windows by its exe, on Linux by ``/proc`` (the Linux build,
+    seen running as ``Zexion``, or the Windows one under Proton, assumed to be ``Zexion.exe``).
+    Not looked for elsewhere. ProcessError (an OSError) when the process list can't be
+    read."""
+    if WINDOWS:
+        return process.find_pid(GAME_EXE) is not None
+    if LINUX:
+        return procfs.find_pid(LINUX_NAMES) is not None
+    return False
 
 
 def _refused_while_game_runs(command: str) -> bool:

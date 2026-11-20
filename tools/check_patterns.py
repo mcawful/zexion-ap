@@ -7,7 +7,9 @@ Offline, each target must resolve (every pattern once, all agreeing). On a known
 also land on the address recorded for that build (``Target.rvas`` in client/patterns.py, by the
 build's name); an unknown build's addresses, or ones not yet recorded, are reported for
 docs/re/memory.md. Live, it reads (never writes) the game state, the pickup counter, the inventory,
-the map and the loaded seed's first location cell.
+the map and the loaded seed's first location cell. Against the game's Linux build it attaches
+through the Linux helper (game.Game.attach), its targets from the binary's symbols: base 0, so
+each prints as ``Zexion.exe+`` its link address.
 """
 
 from __future__ import annotations

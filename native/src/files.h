@@ -8,7 +8,7 @@
 // open (docs/re/memory.md, "The file select"; native/README.md, "AP saves on the file select").
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <map>

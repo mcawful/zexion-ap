@@ -4,7 +4,7 @@
 // traced in docs/re/memory.md, "Game functions the helper calls".
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -31,6 +31,7 @@
 #include "requests.h"
 #include "scan.h"
 #include "mapmarks.h"
+#include "newgame.h"
 #include "title.h"
 #include "text.h"
 #include "translation.h"
@@ -50,19 +51,41 @@ inline constexpr char kTrapWaitingRefusal[] = "a trap is waiting to go off";
 
 class Game {
 public:
+#ifdef _WIN32
     // Game thread. Checks each required kConfigKeys entry is present (an optional one may be
     // missing, its member left null) and each given one in the right kind of section, with the
-    // room it needs (game_calls.cpp, check_key), then keeps the addresses. "" or an error. `active`: false for the offline cache (no client there yet).
+    // room it needs (game_calls.cpp, check_key), then keeps the addresses. "" or an error.
+    // `active`: false for the offline cache (no client there yet).
     std::string configure(HMODULE image, const std::map<std::string, uint64_t>& rvas,
                           bool active = true);
+#else
+    // Game thread: the Linux helper's addresses, which it resolved from the game's symbols and
+    // checked against a client's (native/linux/src/helper.cpp); those it does not use are null,
+    // and so are the parts that would read them (it runs only the ported parts). The hooks are
+    // set_hooks'. Always "".
+    // `active`: a client's config (false: the Linux helper's own, from the game's symbols, with
+    // no client: only what runs with none uses it, as the Windows helper's cached one).
+    std::string configure(GameAddresses found, bool active = true);
+#endif
     bool configured() const { return configured_; }
     // Game thread: a save loaded with a menu open (pause, map, equipment screen, quit menu).
     bool menu_open() const;
     // Whether a client is there: set by `config`, cleared when it goes away (client_gone).
     bool active() const { return active_; }
+    // The Linux helper's, when its client goes (client_gone's on Windows, which puts the rest
+    // back): no client attached, so an own disk's count is the helper's to show
+    // (watch_own_disks) until a client configures again.
+    void client_left() { active_ = false; }
+    // Game thread (the Linux helper's, when its client goes): the hooks the client's parts hold
+    // in open menus put back, as put_back_game does on Windows: RETURN HOME's prompt and ending
+    // (its YES no longer the helper's), the map cursor's names, the ARCHIPELAGO choice.
+    void put_back_client_menus(WidgetCallback callback);
+    // A client gone, or a client's config: its notices not shown yet withdrawn, other_save reset
+    // (client_gone's and use's; the Linux helper's when its client goes).
+    void drop_client_notices();
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
-    // After configure (which loads opengl32's): the OpenGL functions to paint with (tests).
+    // After configure (which loads the OpenGL functions): the OpenGL functions to paint with (tests).
     void set_gl(const GlFunctions& gl) { gl_ = gl; }
 
     // Game thread: puts back everything the helper changed in the game's memory (unload, a
@@ -93,6 +116,8 @@ public:
     // Game thread. Arms the AP new game: the next randomizer new game queued gets `plan`, once.
     // False, nothing armed, unless configured.
     bool arm_newgame(NewGamePlan plan);
+    // Game thread: the plan dropped as "refused <why>" (the Linux helper's, when its watch threw).
+    void refuse_newgame(const std::string& why);
     void disarm_newgame();
     // "armed", "idle", or the last outcome: "applied slot N" or "refused ...".
     std::string newgame_status() const;
@@ -189,7 +214,7 @@ public:
     // Game thread: Feats and achievements kept out of AP saves (feats.h; watch_feats).
     // ap_save_loaded: a randomizer save of a seed the helper knows is loaded. restore_feats puts
     // both changes back; release_steam, from the pipe thread once no frame call can watch, puts
-    // back Steam's slot alone.
+    // back Steam's slot alone (on Linux: the export's blocking off).
     bool ap_save_loaded() const;
     void watch_feats();
     void add_known_seeds(const std::vector<OfflineSeed>& seeds);
@@ -223,14 +248,59 @@ public:
     bool client_back();
     bool intel_on() const { return intel_.on(); }
     // Game thread: the title screen's mod lines (title.h), hidden before an unload. title_state,
-    // for `hello`: "1" up, "0" not, else why they could not be made.
+    // for `hello` (and the Linux helper's `title_status`): "1" up, "0" not, else why they could
+    // not be made. set_title_version comes first, before the hook and the pipe (dllmain.cpp's
+    // helper_thread, the Linux helper's start), so no `hello` can ask while there is "no version".
     void set_title_version(const std::string& version) { title_.set_version(version); }
     // Game thread: the map cursor's names for the stand-ins' squares (mapmarks.h); map_after runs
     // from the map handler's wrapper, after the game's handler.
     void map_after();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the map's cursor
+    // names wrapped in while the map is open in the labels' seed's save, and the squares of item
+    // 48 raised with the on-screen write patched (mapmarks.h; native/README.md, "The map").
+    void watch_map_names();
+    void watch_map_marks();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): in a translation, the
+    // helper's names in its tables, its icons in its sheets, the popups' borrowed entries emptied
+    // once their message has gone (translation.h; native/README.md, "Translations").
+    void watch_translation();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the disks' count on
+    // the pause screen and the equipment screen, and the disk glyph (equip.h, pause.h).
+    void watch_equipment();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): RETURN HOME WITH THE
+    // DISKS? opened when asked for and idle, its black and ending watched (mission.h).
+    void watch_mission();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the Area Map named
+    // INTEL CHIP while on (intel.h).
+    void watch_intel();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the title screen's
+    // lines, with no save loaded (title.h).
+    void watch_title();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the AP logo and each
+    // disk seed's save its count on the file select, COPY FILE and DELETE FILE (files.h).
+    void watch_files();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): in play in an AP
+    // save, owned items the game lists (pickups::listed), but the new game's starting ones,
+    // appended to the major-item list as a pickup would: grants set the byte alone
+    // (docs/re/memory.md, "The pickup record holds the major-item list").
+    void watch_pickups();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): the text window's
+    // top cut patched, so tall popups' lines are cut right (text.h, TextCut).
+    void watch_text_cut() {
+        if (configured_) text_cut_.watch(at_.text_cut_code);
+    }
+    // Game thread: what the helper changed for a translation put back (its names in the tables,
+    // entry 70's offset once the popup areas are free, its icons): put_back_game's part, and the
+    // Linux helper's when a client goes.
+    void restore_translation();
+    // No icons painted into the icon sheets (the Linux helper's, when the game's sprite
+    // definitions are not counted as traced, so 101 and 104 may not be the sheets).
+    void hold_icon_sheets(bool held = true) { icon_sheets_held_ = held; }
     void* map_original(void* child) const;
     void hide_title();
     std::string title_state() const;
+    // The Area Map's record the game's again, and Intel Chips off (the Linux helper's when a
+    // client goes; drop_save_look's on Windows).
     void restore_intel();
     void mission_open();
     void* mission_yes() { return mission_.yes(); }
@@ -287,6 +357,9 @@ public:
     // that end or before (docs/re/memory.md, "Received Energy Shields", "Limits"), which turns
     // no cell collected.
     void watch_own_traps();
+    // Game thread, each frame call (watch_all's; the Linux helper's frame): each timer's
+    // AILMENTS tests patched while a trap's runs (trap.h).
+    void watch_trap_patches();
     // Queues one of this world's own traps for the save loaded, as watch_own_traps does:
     // `cell` its map cell (-1: none known), by which pump_traps drops one whose pickup a load
     // undid before it went off, or that waits in another slot's save of the seed than the one
@@ -360,7 +433,8 @@ public:
         return nullptr;
     }
 
-    // The translation (translation.h): `hello`'s `lang`; what the helper holds (tests).
+    // The translation (translation.h): `hello`'s `lang` (the Linux helper's `lang`); what the
+    // helper holds (tests).
     std::string language() const { return configured_ ? language_name(at_) : "?"; }
     // Game thread, in an unload's frame once all is put back: popups still to show take no
     // borrowed entry, so none is left the helper's; the next watch_all (the unload refused)
@@ -377,20 +451,7 @@ public:
 private:
     // The game's last message and its sequence, as the game keeps them: whether both read.
     bool last_message(BYTE*& last, int32_t& sequence) const;
-    // The watches only watch_all calls (it checks the configuration).
-    void watch_equipment();
-    void watch_mission();
-    void watch_files();
-    void watch_intel();
-    void watch_title();
-    void watch_map_names();
-    void watch_map_marks();
-    // In play in an AP save: owned items the game lists (pickups::listed), but the new game's
-    // starting ones, appended to the major-item list as a pickup would: grants set the byte alone
-    // (docs/re/memory.md, "The pickup record holds the major-item list").
-    void watch_pickups();
     // The helper's names and scanner line in the translation's tables; popup areas freed.
-    void watch_translation();
     // A popup in the translation's font: the icon and translated name (a stand-in's own, not its
     // label), then the client's suffix on the next line; a notice's text alone (hd_case).
     std::wstring hd_popup_text(const Popup& popup, const BYTE* rec, const Loaded& now) const;
@@ -445,6 +506,9 @@ private:
 
     bool configured_ = false;
     bool active_ = false;
+    // configure's tail, both builds': the addresses kept, a client's config (`active`) taking over
+    // from the offline look.
+    std::string use(const GameAddresses& found, bool active);
     GameAddresses at_;  // configure's; the hooks from set_hooks
     BYTE* base_ = nullptr;  // the game's image
     // Offline (offline.h).
@@ -454,8 +518,6 @@ private:
     bool drop_notice(const char* text);
     // The not-connected warning withdrawn; if it had not shown, given again with the next dress.
     void drop_offline_warning();
-    // A client gone, or a client's config: its notices not shown yet withdrawn, other_save reset.
-    void drop_client_notices();
     bool offline_warned_ = false;  // this load's warning queued
     // The seed dressed offline this load (-1: none), kept through short connections (client_back).
     int offline_played_ = -1;
@@ -506,8 +568,6 @@ private:
     // Sets off trap `item` now: "set" or "nothing" (trap_status).
     std::string run_trap(uint8_t item);
     std::string disorient(BYTE* player);  // op 5's writes: run_trap's outcome
-    // Game thread: each timer's AILMENTS tests patched while a trap's runs (trap.h).
-    void watch_trap_patches();
     trap::HitPatch hit_patch_;
     trap::WavePatch wave_patch_;
     bool trap_hit_ = false, trap_wave_ = false;  // a trap started the timer, and it runs
@@ -534,9 +594,8 @@ private:
     int32_t own_sequence_ = 0;
     bool own_popup_up() const;
 
-    bool newgame_armed_ = false;
-    NewGamePlan newgame_;
-    std::string newgame_status_ = "idle";
+    NewGames newgames_;          // the plan and the RANDOMIZER route (newgame.h)
+    NewGameAddresses newgame_at_;  // at_'s addresses it uses, set by configure
 
     ArchipelagoChoice choice_;
     AssistLock assists_;
@@ -548,16 +607,6 @@ private:
                                  {kDiskHeaderGlyphs[1], kDiskHeaderRows[1]}};  // files.h
     FontGlyph ap_logo_{kApLogoX, kApLogoY, kApLogoRows};  // the file select's AP logo (files.h)
     int file_slot_frames_ = 0;  // frames until the next look for the AP saves' slots
-    bool starting_ = false;  // ARCHIPELAGO pressed; the new game it queued not yet applied
-
-    // The start table: for ARCHIPELAGO (starting_), filled from the plan if the game has not
-    // built it, or checked against it; over a RANDOMIZER game, the game's own. The plan's second
-    // target must be in the table used. "" or why not.
-    std::string ensure_start_table();
-    // The seed's placement: the start table, the menu set to the seed's settings and the plan
-    // written, the game's placement run, the menu put back (however it ends); then, if the
-    // section holds `expect`, the plan written over it. "" or why not.
-    std::string place_seed();
     ScanText scan_;
     EquipmentHook equip_;
     EquipmentScreen equip_screen_;
@@ -607,6 +656,7 @@ private:
     EntryWriter tr_entries_;
     PopupAreas popup_areas_;
     bool translated_popups_ = true;  // hold_translated_popups
+    bool icon_sheets_held_ = false;  // hold_icon_sheets
     std::wstring stand_in_hd_[kStandInCount];
     bool stand_in_near_[kStandInCount] = {};  // a stand-in of each record within reach now
     // Each stand-in's name held while its pickup message shows: the serial, the name ("" not yet).
@@ -630,6 +680,8 @@ private:
     std::set<int> feats_slots_;  // the AP saves' slots, for the stub's load test
     int feats_slot_frames_ = 0;  // frames until the next look for them
     bool feats_ended_ = false;
+    // Linux: Steam held blocked from an AP save's ending until a save loads (watch_feats).
+    bool feats_ending_hold_ = false;
     bool note_seen_ = false;  // the Feats of Natu screen was up since the ending
     int note_frames_ = 0;  // frames until the next look for it
     // Every seed the helper has known since it loaded (table and start only), the oldest first.

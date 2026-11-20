@@ -152,6 +152,10 @@ MISSION_REQUEST = f"mission_prompt {HOME[0]} {HOME[1]}"
 # YES, until another save is loaded (native/src/mission.h, kEndingStarted).
 MISSION_STATUS = "mission_status"
 ENDING_STARTED = "ending started"
+# The start of its status once an unload or a client gone left the prompt up with YES put back to
+# NO's callback (native/src/mission.h, kPutBack), or the cancel dropped a YES before the ending had
+# started (kYesDropped): the prompt is offered again.
+PUT_BACK = "put back"
 
 # A save stamp (game.Game.save_stamp): the slot, then the slot block's bytes from +0x9354, of
 # which the continue point's row is at 6 and its column at 8, then the block's death count.
@@ -205,6 +209,13 @@ class ReturnHome:
     in_play: bool = False  # the last look was in play
     shown: int | None = None  # the GAME SAVED message last seen with a new stamp
     offer: bool = False  # a save at the pod, the prompt not yet queued
+    # Queued in this load and still on its way (not shown, answered, lapsed or ended): a Linux
+    # helper connected to again drops it, and it is offered again (again: ticks.linux_finds_tick).
+    queued: bool = False
+    # The Linux helper connection (its process, its number) on which that prompt was last read as
+    # ``shown``: not asked about again until the connection changes, as one closing while it is up
+    # puts YES back to NO (ticks.linux_finds_tick).
+    shown_on: tuple | None = None
 
     def see(
         self,
@@ -220,12 +231,12 @@ class ReturnHome:
         before, played, shown = self.stamp, self.in_play, self.shown
         self.stamp, self.in_play = stamp, in_play
         if before is None or stamp[:4] != before[:4]:
-            self.offer = False  # a first look, or another slot of the seed loaded: no save
+            self.offer = self.queued = False  # a first look, or another slot: no save
             self.shown = game_saved  # a message from before is no save of this one
             return
         died = (deaths(before) or 0) < (deaths(stamp) or 0)
         if died:
-            self.offer = False
+            self.offer = self.queued = False
         new = stamp != before
         if new and game_saved is not None:
             self.shown = game_saved
@@ -234,4 +245,12 @@ class ReturnHome:
         if saved:
             self.offer = enough and at_home and in_home_cell
         if in_play and not in_home_cell:
-            self.offer = False
+            self.offer = self.queued = False
+
+    def again(self) -> None:
+        """The prompt queued in this load was dropped before it showed (the Linux helper's
+        connection closed, its status ``not asked``, or ``put back``: left up with YES put back,
+        or a YES dropped before the ending started): offered again, as after a save at the
+        pod."""
+        if self.queued:
+            self.offer, self.queued = True, False

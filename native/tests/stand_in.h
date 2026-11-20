@@ -22,6 +22,11 @@ inline BYTE g_save_loaded = 0;
 inline BYTE g_menu = 0;
 inline BYTE g_records[51 * 100];
 // The pickup popup's `mov edx, 24`, in a section of its own that executes, as in the game's code.
+// Read the arrays in it with code_byte or code_is (check.h), never a plain memcmp or index: the
+// section is not writable, and MSVC 19.52 may take an array in it as holding its initializer, so
+// a patch the helper made reads as not made (the text-cut and seen-marker tests, in the jobs on
+// that compiler). MSVC will not make a section it declares both writable and executable
+// (C4330), so it stays read and execute.
 #pragma section(".zapcode", read, execute)
 __declspec(allocate(".zapcode")) inline unsigned char g_popup_width_code[16] = {0xBA, 0x18, 0, 0,
                                                                               0,    0xC3};

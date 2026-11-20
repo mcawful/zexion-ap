@@ -5,7 +5,7 @@
 // already the helper's. Unload restores the records and clears the pixels.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
 #include <cstdint>
 #include <map>
@@ -52,7 +52,8 @@ constexpr size_t kItemNameMax = 49;  // the record's 50 bytes, NUL-terminated
 constexpr int font_x(uint8_t code) { return (code % 16) * 8; }
 constexpr int font_y(uint8_t code) { return 976 + (code / 16) * 8; }
 
-// The OpenGL 1.1 functions the painting uses, taken from opengl32.dll (or a test's fakes).
+// The OpenGL 1.1 functions the painting uses, taken from opengl32.dll (the Linux build's
+// libGL.so.1, by dlsym) or a test's fakes.
 struct GlFunctions {
     void(WINAPI* BindTexture)(unsigned target, unsigned texture) = nullptr;
     void(WINAPI* GetIntegerv)(unsigned name, int* value) = nullptr;
@@ -91,7 +92,8 @@ int name_cells(const std::vector<StandInSeen>& seen, double player_x, double pla
                int player_cell, const std::map<int, Label>& labels, int (&cells)[2],
                bool* in_reach = nullptr);
 
-// From opengl32.dll if the process has loaded it; otherwise all null.
+// From opengl32.dll if the process has loaded it (on Linux, from the process's global scope:
+// the game's libGL.so.1); otherwise all null.
 GlFunctions load_gl();
 
 // The sprite texture read back (glGetTexImage, 16 MB), once per texture: whether it holds the
@@ -251,6 +253,8 @@ public:
 
     bool restyled() const { return records_[0] != nullptr || records_[1] != nullptr; }
     unsigned painted_texture() const { return painted_; }
+    // Whether the logos are painted into the texture [texture_holder] names now.
+    bool logo_shown(BYTE* texture_holder) const;
 
 private:
     // Paints (or clears) the logos and the glyph where the texture check allows. `arrow_only`:

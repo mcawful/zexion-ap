@@ -17,6 +17,7 @@ from client import (
     discs,
     game,
     ids,
+    linux_helper,
     native,
     newgame,
     offline,
@@ -68,6 +69,8 @@ class Ctx:
     def __init__(self, conn: state.Connection) -> None:
         self.conn = conn
         self.helper = Helper()
+        self.linux_mod = None
+        self.linux_back_by = 0.0
         self.told = state.HelperState()
         self.seed_state = seed_state(conn)
         self.load = state.LoadState()
@@ -128,6 +131,85 @@ def test_deaths_queued_when_the_ending_begins_in_this_load_are_dropped() -> None
     run(ticks.deathlink_tick(ctx, in_play(goal=True)))
     assert ctx.helper.requests == []
     assert ctx.seed_state.deaths.owed == 0
+
+
+class LinuxDeathMod:
+    """The Linux helper (linux_helper.LinuxMod) answering `die` with ``reply``, or raising it."""
+
+    def __init__(self, reply: str | Exception = "died") -> None:
+        self.reply = reply
+        self.requests: list[str] = []
+
+    def request(self, text: str) -> str:
+        self.requests.append(text)
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return self.reply
+
+
+def linux_death_ctx(reply: str | Exception) -> Ctx:
+    ctx = Ctx(connection(death_link=True))
+    ctx.helper = None  # the game's Linux build: no Windows helper
+    ctx.linux_mod = LinuxDeathMod(reply)
+    ctx.seed_state.deaths.receive()
+    return ctx
+
+
+def test_on_linux_a_received_death_is_dealt_through_the_linux_helper() -> None:
+    ctx = linux_death_ctx("died")
+    run(ticks.deathlink_tick(ctx, in_play(goal=False)))
+    assert ctx.linux_mod.requests == ["die"] and ctx.seed_state.deaths.owed == 0
+
+
+def test_on_linux_a_refused_death_stays_queued() -> None:
+    ctx = linux_death_ctx("refused message showing")
+    run(ticks.deathlink_tick(ctx, in_play(goal=False)))
+    deaths = ctx.seed_state.deaths
+    assert deaths.owed == 1 and deaths.asked_at is None and ctx.linux_mod is not None
+
+
+@pytest.mark.parametrize(
+    ("error", "maybe_dealt"),
+    [
+        (linux_helper.NoReply("the helper did not answer within 5 s"), True),
+        (linux_helper.ConnectionLost("the helper closed its socket"), True),
+        (linux_helper.LinuxHelperError("connecting to the helper again failed"), False),
+    ],
+)
+def test_on_linux_a_failed_death_request_drops_the_linux_helper(error, maybe_dealt) -> None:
+    # Not raised (side_tick would drop the Windows helper): the Linux helper's to drop. One
+    # that may have been dealt is the death seen soon after; one never sent stays queued.
+    ctx = linux_death_ctx(error)
+    run(ticks.deathlink_tick(ctx, in_play(goal=False)))
+    deaths = ctx.seed_state.deaths
+    assert ctx.linux_mod is None and ctx.linux_back_by > 0
+    assert deaths.owed == 1 and (deaths.asked_at is not None) is maybe_dealt
+
+
+def test_on_linux_a_death_whose_reply_timed_out_is_looked_for_from_then(monkeypatch) -> None:
+    # The socket's timeout outlasts DEALT_SECONDS: the window starts when the reply was lost.
+    clock = types.SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(ticks, "time", types.SimpleNamespace(monotonic=lambda: clock.now))
+
+    class Slow(LinuxDeathMod):
+        def request(self, text: str) -> str:
+            clock.now += 5.0  # the whole socket timeout
+            return super().request(text)
+
+    ctx = linux_death_ctx(linux_helper.NoReply("the helper did not answer within 5 s"))
+    ctx.linux_mod = Slow(ctx.linux_mod.reply)
+    run(ticks.deathlink_tick(ctx, in_play(goal=False)))
+    assert ctx.seed_state.deaths.asked_at == 1005.0
+
+
+def test_on_linux_an_older_helper_without_deaths_is_said_once(caplog) -> None:
+    ctx = linux_death_ctx("error unknown request")
+    with caplog.at_level(logging.WARNING):
+        run(ticks.deathlink_tick(ctx, in_play(goal=False)))
+        ctx.seed_state.death_retry_at = 0.0
+        run(ticks.deathlink_tick(ctx, in_play(goal=False)))
+    assert ctx.linux_mod.requests == ["die", "die"] and ctx.seed_state.deaths.owed == 1
+    assert sum("can't deal DeathLink" in r.getMessage() for r in caplog.records) == 1
 
 
 # --- the offline seed file ---------------------------------------------------------------------
@@ -1105,6 +1187,70 @@ def test_requests_that_never_reached_the_helper_are_not_misses(why, monkeypatch)
     ctx.helper = ShieldHelper(world)  # the helper back: the shield is still spawned
     play_for(ctx, 120.0, monkeypatch)  # the stand-in clock starts again at 1000
     assert ctx.helper.requests == ["shield"] and counts_sent(ctx)
+
+
+class LinuxShieldMod:
+    """The Linux helper (linux_helper.LinuxMod) answering `shield`: it spawns one, or raises
+    ``error``."""
+
+    def __init__(self, world: ShieldWorld, error: Exception | None = None) -> None:
+        self.world, self.error = world, error
+        self.requests: list[str] = []
+
+    def request(self, text: str) -> str:
+        self.requests.append(text)
+        if text != "shield":
+            return "error unknown request"
+        if self.error is not None:
+            raise self.error
+        self.world.spawn()
+        return "spawned"
+
+
+def test_on_linux_a_received_shield_is_spawned_through_the_linux_helper(monkeypatch) -> None:
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    ctx.helper = None  # the game's Linux build: no Windows helper
+    ctx.linux_mod = LinuxShieldMod(world)
+    play_for(ctx, 300.0, monkeypatch)
+    assert ctx.linux_mod.requests == ["shield"]
+    assert counts_sent(ctx) and set(counts_sent(ctx)) == {1}
+
+
+@pytest.mark.parametrize(
+    ("error", "looked_for"),
+    [
+        (linux_helper.NoReply("the helper did not answer within 2 s"), True),  # may have spawned
+        (linux_helper.ConnectionLost("the helper closed its socket"), True),
+        (linux_helper.LinuxHelperError("the helper's socket failed: 32"), False),  # never sent
+    ],
+)
+def test_on_linux_a_failed_shield_request_drops_the_linux_helper(error, looked_for) -> None:
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    ctx.helper = None
+    ctx.linux_mod = LinuxShieldMod(world, error)
+    run(ticks.shields_tick(ctx, ctx.received))  # not raised: the Linux helper's to drop
+    assert ctx.linux_mod is None and ctx.linux_back_by > 0  # held back, configured again later
+    assert (ctx.seed_state.shields.pending is not None) is looked_for
+
+
+class OldLinuxShieldMod(LinuxShieldMod):
+    def request(self, text: str) -> str:
+        self.requests.append(text)
+        return "error unknown request"
+
+
+def test_on_linux_an_older_helper_without_shields_is_said_once(monkeypatch, caplog) -> None:
+    world = ShieldWorld()
+    ctx = shield_ctx(world)
+    ctx.helper = None
+    ctx.linux_mod = OldLinuxShieldMod(world)
+    with caplog.at_level(logging.WARNING):
+        play_for(ctx, 30.0, monkeypatch)
+    assert len(ctx.linux_mod.requests) > 1 and ctx.seed_state.shields.pending is None
+    assert counts_sent(ctx) == []
+    assert sum("can't give Energy Shields" in r.getMessage() for r in caplog.records) == 1
 
 
 def test_a_request_canceled_on_its_way_stays_looked_for(monkeypatch) -> None:

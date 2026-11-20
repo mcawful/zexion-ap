@@ -1,0 +1,7 @@
+/* The Linux helper's two exports, the calls it stands in for: the frame call and the Feats
+   guard's Steam context (native/README.md, "The Linux helper"). The C++ runtime linked into it
+   stays its own, so it never stands in for the game's libstdc++. */
+{
+  global: SDL_GL_SwapWindow; SteamInternal_ContextInit;
+  local: *;
+};
