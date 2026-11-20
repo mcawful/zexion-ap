@@ -43,11 +43,11 @@ Where things are:
   resolved addresses with it and nothing live uses it.
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
-  its `install` (an empty slot, after a verified backup) and `restore` write the save folder.
-  The client never writes it. The same hooks block writes to the mod's offline files,
-  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts; on Linux the seeds' files and the helper's socket token, in
-  `$XDG_DATA_HOME/ZexionAP`, else `~/.local/share/ZexionAP`): only the helper writes them, and
-  they change what the mod does with no client running.
+  its `install` (an empty slot, after a verified backup) and `restore` write the save folder. The
+  client never writes it. The same hooks block writes to the mod's offline files,
+  `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts; on Linux the seeds' files and
+  the helper's socket token, in `$XDG_DATA_HOME/ZexionAP`, else `~/.local/share/ZexionAP`): only
+  the helper writes them, and they change what the mod does with no client running.
 - **Ask first, every time,** before anything that changes the running game or the saves:
   `grant.py set`, `memscan.py write`, `helper.py load` and `unload`, a client run (it may load
   the helper, and with or without it writes the game's map: "The client"), the client's
@@ -80,11 +80,14 @@ the mod supports, the helper, `client/process.py` (the Windows API) and the live
 game's Linux build, which has a helper of its own that runs every part of the Windows helper's but
 unloading (run in the game, on Flatpak Steam on one PC, 2026-11-19: new games, grants with their
 popups, received traps, Energy Shields, checks, Intel Chips, popups in English(HD) and Japanese,
-the OS Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending,
-tall popups' text, the title screen's lines, the file select's AP logo, disk counts and ITEMS row
-and the look without the client; this world's own traps, and its own disks with no client, not
-yet; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (what a connection set put back when it goes, `write` taking only the ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map cache, the Steam check's retry, the client's settings sent only on the configured connection), which have run on stand-ins only: the next in-game run re-checks the attach), and so do `grant.py`, `check_patterns.py --live` and
-`helper.py status` ([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
+the OS Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an
+ending, tall popups' text, the title screen's lines, the file select's AP logo, disk counts and
+ITEMS row and the look without the client; this world's own traps, and its own disks with no
+client, not yet; these runs predate the socket's token, the client's keep-alive and let-go, and
+the review's later fixes to the helper and client (`native/README.md`, "The Linux helper", lists
+them), which have run on stand-ins only: the next in-game run re-checks the attach), and so do
+`grant.py`, `check_patterns.py --live` and `helper.py status`
+([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
 
 uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
 (`--user` leaves it off `PATH`); or uv's own installer
@@ -165,12 +168,15 @@ Nothing in `tests/` needs the game, and CI never runs it.
   achievements kept out of AP saves and tall popups' text repaired (run in the game, on Flatpak
   Steam on one PC, 2026-11-19, for new games, grants with their popups, received traps, Energy
   Shields, checks, Intel Chips, popups in English(HD) and Japanese, the OS Install Disks goal with
-  RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending, tall popups' text, the title
-  screen's lines, the file select's AP logo, disk counts and ITEMS row and the look without the
-  client; this world's own traps, and its own disks with no client, not yet; these runs predate the socket's token, the client's keep-alive and let-go, and the review's helper fixes (what a connection set put back when it goes, `write` taking only the ranges the client writes, the auth deadline, the token candidates tried in turn, the narrower map cache, the Steam check's retry, the client's settings sent only on the configured connection), which have run on stand-ins only: the next in-game run re-checks the attach):
-  [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and
-  loads it again a few seconds later (for a misbehaving mod; popups still queued are lost); on
-  Linux, where the Linux helper stays for the game's run, it says to restart Zexion instead.
+  RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending, tall popups' text, the
+  title screen's lines, the file select's AP logo, disk counts and ITEMS row and the look without
+  the client; this world's own traps, and its own disks with no client, not yet; these runs
+  predate the socket's token, the client's keep-alive and let-go, and the review's later fixes to
+  the helper and client (`native/README.md`, "The Linux helper", lists them), which have run on
+  stand-ins only: the next in-game run re-checks the attach):
+  [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and loads it
+  again a few seconds later (for a misbehaving mod; popups still queued are lost); on Linux, where
+  the Linux helper stays for the game's run, it says to restart Zexion instead.
 - While `zexion_ap.disabled` sits in the game's folder, neither the proxy nor the client loads
   the game folder's helper, and the client says so (its own build, `native/build` or
   `ZEXION_DLL`, still loads). On Linux a `zexion_ap.disabled` beside `libzexion_ap.so` turns the
@@ -311,12 +317,12 @@ release's.
   defines the protected folders (for the tools and the write guard) and `append_log`.
 - `docs/re/`: the reverse-engineering record.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
-- `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan,
-  a fresh save). `test_cross_checks.py` reads `native/src` and `native/linux/src` for what the
-  client and the helpers must agree on (version, builds, `config` keys, the request names and the replies the client
-  branches on, the offline seed's header and keys, the label separator, the font's punctuation,
-  the item record count, the flags and layouts both read), and the world's `world_version`.
-  `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
+- `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan, a
+  fresh save). `test_cross_checks.py` reads `native/src` and `native/linux/src` for what the
+  client and the helpers must agree on (version, builds, `config` keys, the request names and the
+  replies the client branches on, the offline seed's header and keys, the label separator, the
+  font's punctuation, the item record count, the flags and layouts both read), and the world's
+  `world_version`. `test_build_apworld.py`, `test_gen_world_data.py`, `test_release_check.py`,
   `test_release_notes.py` and `test_release_footer.py` test the release builder, the data
   generator, the release gate, the release's message and the install guide in it.
 - Gitignored: `lab/` (save backups, working copies, snapshots), `private/` (notes that must not
