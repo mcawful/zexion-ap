@@ -58,11 +58,14 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     command (``sh -c``, ``eval``) or a substitution's backticks, so ``-print`` and the reads
     pass while ``-delete``, ``-exec``, ``-fprint`` and an ``xargs rm`` after it do not
     (``find . -iname '*zexion*' -delete`` and ``gci . zexion | ri`` in this repo block too:
-    they can't be told from ``ZexionAP``). A reach by a name only lets a plain substitution
-    through when all the commands in it read (``ls -ld $(find ~ -name ZexionAP)``), as the
-    guard let it before; or when it runs in or changes directory to a folder in a protected
-    one or a parent of one. Other names in the folder's path don't count, so a worktree named
-    ``steam-achievements`` works as any other.
+    they can't be told from ``ZexionAP``). A name or a list of names over 1000 characters is
+    read as a name. A reach by a name alone lets a command substitution through, as the guard
+    did before, when every command in the command line reads, and so does every one in the
+    substitution (plain ones: none inside another, none made by quoting): ``ls -ld $(find ~
+    -name ZexionAP)`` passes, ``cd $(find …) && git clean -fdx`` does not. Or when it runs in
+    or changes directory to a folder in a protected one or a parent of one. Other names in
+    the folder's path don't count, so a worktree named ``steam-achievements`` works as any
+    other.
   - *Read-only* means the verb is on a short list and nothing in its arguments makes it write
     (``_bash_args_write``: ``find -delete``, ``sort -o``, ``sed -i`` and the like); ``git
     diff``, ``log`` and ``show`` count unless an argument starts with ``--output``,
@@ -87,11 +90,11 @@ folder behind a ``cd`` into a variable, a Steam library folder by its own name (
 PowerShell's ``-Filter`` and ``-Include`` (``locate``, ``fd``, ``find ~ | grep ZexionAP |
 xargs rm``, ``Where-Object Name -like``, ``cmd /c for /d``, a .NET search), a name from a
 variable or an expression (``find -name "$n"``, ``"Zexion$(echo AP)"``, a ``$'…'`` string
-with escapes), a regular expression's quantifier (``-regex 'Zex(ion)?AP'``), a name only a
-``*`` that spans folders could build with ``Zexion`` (``-path '*common*Zexion'``), a pattern
-over 1000 characters (read as a name), or what a script file
-does when it runs (the file's contents are not read). A scratch script written by a heredoc
-and run in the same command is code, like ``python - <<'EOF'``, so it is blocked when it
+with escapes, text after a backtick), a regular expression's quantifier (``-regex
+'Zex(ion)?AP'``) or an alternation inside a group that splits a name (``(Z|z)exion``), a
+brace expansion past five levels or 32 alternatives, or what a script file does when it runs
+(the file's contents are not read). A scratch script written by a heredoc and run in the
+same command is code, like ``python - <<'EOF'``, so it is blocked when it
 names the saves, even to read them or in a comment; but the run is tied to the heredoc only
 by the file's name, so ``sh *.sh`` or a variable holding the name is missed, as is a program
 variable that is not on the list, set with ``env`` before a command that is otherwise
@@ -1157,14 +1160,62 @@ def _value_after(segments: list[list[Word]], si: int, wi: int, inline: str) -> s
     return segments[si + 1][0] if si + 1 < len(segments) and segments[si + 1] else ""
 
 
+# PowerShell's ``-Filter`` and ``-Include`` take a list, written with spaces or in parentheses
+# too, and ``Get-ChildItem`` takes its filter by position: read from the text, up to the end of
+# the command or, for a parameter, the next one.
+_PS_LIST_PARAM = re.compile(
+    rf"(?:^|\s){_DASH}(?:fi(?:l(?:t(?:e(?:r)?)?)?)?|inc(?:l(?:u(?:d(?:e)?)?)?)?)[:\s]\s*", re.I
+)
+_PS_LISTER_CALL = re.compile(r"(?:^|[\s;|&({])(?:get-childitem|gci|dir|ls)\s+", re.I)
+_NEXT_PARAM = re.compile(rf"[ \t]+{_DASH}[A-Za-z]")
+MAX_NAME_TEXT = 1000  # what is read of a name or a list of them; a longer one counts as a name
+
+
+def _ps_span(text: str, start: int, params_end: bool) -> str:
+    """The arguments from ``start`` to the end of a PowerShell command: a pipe, a semicolon, an
+    ampersand, a brace, a newline that no comma or backtick continues, and with ``params_end``
+    the next parameter. At most ``MAX_NAME_TEXT`` + 1 characters."""
+    end = start
+    while end < len(text) and end - start <= MAX_NAME_TEXT:
+        c = text[end]
+        if c in "|;&{}" or (c == "\n" and not re.search(r"[,`]\s*$", text[start:end])):
+            break
+        if params_end and c in " \t" and _NEXT_PARAM.match(text, end):
+            break
+        end += 1
+    return text[start:end]
+
+
+def _ps_text_names(text: str, lister: bool, protected) -> bool:
+    """Whether the names after a PowerShell ``-Filter`` or ``-Include`` (and, with ``lister``,
+    after ``Get-ChildItem`` and its aliases) in ``text`` may name a protected folder: each
+    element of a list, however it is written (``x, ZexionAP``, ``@('x', 'ZexionAP')``)."""
+    found = [(m.end(), True) for m in _PS_LIST_PARAM.finditer(text)]
+    if lister:
+        found += [(m.end(), False) for m in _PS_LISTER_CALL.finditer(text)]
+    for start, params_end in found:
+        span = _ps_span(text, start, params_end)
+        if len(span) > MAX_NAME_TEXT:
+            return True
+        names = [t for t in re.split(r"[\s,@()'\"`]+", span) if t and not re.match(_DASH, t)]
+        if any(
+            not re.search(r"[\\/]", t) and protected.pattern_may_name_protected(t, "ps", True)
+            for t in names
+        ):
+            return True
+    return False
+
+
 def _names_protected(value: str, kind: str, ignore_case: bool, protected) -> bool:
+    if len(value) > MAX_NAME_TEXT:
+        return True
     value = _predicate_value(value)
     items = _elements(value) if kind == "ps" else [value]
     return any(protected.pattern_may_name_protected(v, kind, ignore_case) for v in items if v)
 
 
 def _selects_protected_name(
-    segments: list[list[Word]], protected, powershell: bool, depth: int = 0
+    segments: list[list[Word]], protected, powershell: bool, depth: int = 0, text: str = ""
 ) -> bool:
     """Whether a name predicate of ``find`` (``-name``, ``-iname``, ``-path``, ``-regex``, …) or
     PowerShell's ``-Filter`` or ``-Include`` (also as ``-Filter:value``, as a list, and
@@ -1174,9 +1225,12 @@ def _selects_protected_name(
     path (``find ~ -name ZexionAP -delete``). Whatever the command does with what it finds is
     judged after: ``-print`` and the reads pass, ``-delete``, ``-exec`` and an ``xargs rm`` after
     it do not. Words with a predicate in them (``sh -c 'find …'``, ``eval``) are read again."""
+    if text and _ps_text_names(text, powershell, protected):
+        return True
     for si, words in enumerate(segments):
-        if powershell and any(
-            _names_protected(op, "ps", True, protected) for op in _lister_operands(words)
+        operands = _lister_operands(words) if powershell else []
+        if sum(map(len, operands)) > MAX_NAME_TEXT or any(
+            _names_protected(op, "ps", True, protected) for op in operands
         ):
             return True
         for wi, word in enumerate(words):
@@ -1190,7 +1244,7 @@ def _selects_protected_name(
                     return True
             elif depth < 3 and _NAME_PREDICATE_IN_TEXT.search(word):
                 for ps in (False, True):
-                    if _selects_protected_name(lex(word, ps)[0], protected, ps, depth + 1):
+                    if _selects_protected_name(lex(word, ps)[0], protected, ps, depth + 1, word):
                         return True
     return False
 
@@ -1370,17 +1424,24 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
     folders = ([cwd] if cwd else []) + cds
     kept = [[w for w in s if id(w) not in text_ids] for s in segments]
     by_path = _may_reach_protected(text, words, targets, folders, protected)
-    by_name = _selects_protected_name(kept, protected, powershell)
+    by_name = _selects_protected_name(kept, protected, powershell, text=text)
     if not (by_path or by_name):
         return None
-    # Reached only by a name, with substitutions that only read: ``ls -ld $(find ~ -name X)``.
-    reads = by_name and not by_path and _substitutions_only_read(code, powershell)
 
     substitution = _CAT_HEREDOC.sub("heredoc", code)
     if powershell:  # "$($_.Name)" only reads a member
         substitution = _PS_MEMBER_SUBEXPR.sub("member", substitution)
     else:  # also with Bash's quoting taken off: a value Bash later reads as arithmetic runs it
         substitution += "\n" + _quotes_taken_off(substitution)
+    # Reached only by a name, every command a read and every substitution a plain one of
+    # reads (also as quoting is taken off): ``ls -ld $(find ~ -name X)``, not ``cd $(…) &&
+    # git clean``, which runs in the folder the substitution found.
+    reads = (
+        by_name
+        and not by_path
+        and all(_segment_is_read_only(w, powershell) for w in segments)
+        and _substitutions_only_read(substitution, powershell)
+    )
     if not reads and ("$(" in substitution or (not powershell and "`" in substitution)):
         return f"{BLOCK_HINT}\nCommand substitution next to a protected path."
     if powershell and (call := _ps_calls_block(code)):

@@ -1325,6 +1325,28 @@ BY_NAME_BLOCKED = [
     ("Bash", "rm -rf $(find ~ -name ZexionAP)/x"),
     ("Bash", "ls `find ~ -name ZexionAP -delete`"),
     ("Bash", 'ls "$(find ~ -name ZexionAP -delete)"'),
+    # Round 4: a command that runs in the folder a substitution found by name, a substitution
+    # split by quotes, and PowerShell lists with spaces, parentheses or a continued line.
+    ("Bash", 'cd "$(find ~ -name ZexionAP)" && git init -q && git clean -fdx'),
+    ("Bash", "cd $(find ~ -name ZexionAP); git clean -fdx"),
+    ("Bash", "cd `find ~ -name ZexionAP` && git checkout -- ."),
+    ("Bash", 'pushd "$(find ~ -name ZexionAP)" && git clean -fdx'),
+    ("Bash", 'git -C "$(find ~ -name ZexionAP)" init'),
+    ("Bash", 'git --git-dir=/tmp/g --work-tree="$(find ~ -name ZexionAP)" clean -fdx'),
+    ("Bash", 'cd "$(find / -name Zexion -type d -print -quit)" && git init -q && git clean -fdx'),
+    ("PowerShell", "cd $(gci ~ -r -Filter ZexionAP); git init; git clean -fdx"),
+    ("Bash", "x=$'a[\\x24(find ~ -name ZexionAP -delete)]'; echo ${s:x}"),
+    ("Bash", "x='a[$''(find ~ -name ZexionAP -delete)]'; echo $[x]"),
+    ("PowerShell", "Remove-Item ~\\* -Recurse -Include x, ZexionAP"),
+    ("PowerShell", "Get-Item ~\\* -Include 'x', 'ZexionAP' | Remove-Item -Recurse"),
+    ("PowerShell", "Move-Item ~\\* -Include x, ZexionAP C:\\tmp\\x"),
+    ("PowerShell", "gci ~ -r -Include @('x', 'ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ -r -Include ('x', 'ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ -r -Include:@('x','ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ -r -Include x,@('ZexionAP') | ri -r"),
+    ("PowerShell", "gci ~ -r -Include x,`\nZexionAP | ri -r"),
+    ("PowerShell", "gci ~ ('ZexionAP') -r | ri -r"),
+    ("PowerShell", 'pwsh -c "Remove-Item ~\\* -Include x, ZexionAP"'),
 ]
 BY_NAME_ALLOWED = [
     # Looking: nothing here can write.
@@ -1380,6 +1402,12 @@ BY_NAME_ALLOWED = [
     ("Bash", "ls -ld $(find ~ -name ZexionAP)"),
     ("Bash", "ls -ld `find ~ -name ZexionAP`"),
     ("Bash", 'du -sh "$(find ~ -name ZexionAP -print)"'),
+    # Round 4: reads only, around a substitution that reads.
+    ("Bash", 'cd "$(find ~ -name ZexionAP)" && ls'),
+    ("Bash", "cat $(find ~ -name ZexionAP -type f)"),
+    ("PowerShell", "Get-Item ~\\* -Include '*.pyc', '*.pyo' | Remove-Item"),
+    ("PowerShell", "Remove-Item ~\\lab\\* -Recurse -Include x, y"),
+    ("PowerShell", "gci . ('*.pyc') -r | Remove-Item"),
     # The folders' names are text in a message, not a command.
     ("Bash", 'git commit -m "find ~ -name ZexionAP -delete"'),
     ("Bash", 'gh pr create --title "find -name ZexionAP -delete" --body "x"'),
@@ -1495,6 +1523,9 @@ def test_a_long_pattern_is_read_quickly(kind: str, piece: str) -> None:
 
 def test_a_long_pattern_in_a_command_is_read_quickly() -> None:
     started = time.monotonic()
+    run("PowerShell", command="gci ~ -Include " + "a," * 25000 + "x | ri")
+    run("PowerShell", command="gci ~ " + "a " * 2500 + "| ri")
+    run("PowerShell", command="Remove-Item x -Include " + "('a')," * 800 + "x")
     run("Bash", command="find ~ -name '" + "[[:a:" * 2000 + "x' -delete")
     run("PowerShell", command="gci ~ -Filter '" + "[[:a:" * 2000 + "x' | ri")
     assert time.monotonic() - started < 2
