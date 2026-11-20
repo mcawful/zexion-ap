@@ -2427,30 +2427,33 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   from the wrapper's calls: the game's `frame_clock` (`gGameState+0xB0`, `docs/re/linux.md`) is
   recorded, but stands still while a menu pauses the game, so it cannot key the work. So a call
   through a wrapper runs the work only if 100 microseconds (`kWrapperGapUs`) had passed, when it
-  began, since the last call through a wrapper that ran it returned from the real swap (stamped
-  by the calls that ran the work only, so a tight loop of calls cannot hold the work off). The
-  real swap is no part of that gap, whether or not it waits for the refresh (it probably does:
-  inferred from the game's measured call rate, `docs/re/linux.md`, not seen), and a repeated
-  call follows the first's return at once. The premise, an assumption: the game's work for a
-  frame, from one swap's return to the next call, takes longer than 100 microseconds. Two limits,
-  both timing: a wrapper that does something slow between its repeated calls still has the work
-  run for each (the frame-counted timers, the popup gap, file slots and Steam retry, then run
-  fast); and two real frames closer than that (`loadState`'s swap, then the frame's) lose the
-  second's work, which waits one frame. Neither touches a call from the frame function itself.
-  Stand-in tested (`tests/test_native_linux.py`,
+  began, since the last call through a wrapper, of any kind, returned from the real swap. Every
+  such call stamps its return, so a third or fourth call follows the second's return as the
+  second followed the first's, however long the real swap waits for the refresh (it probably
+  waits: inferred from the game's measured call rate, `docs/re/linux.md`, not seen). A backstop
+  keeps a tight loop of calls (a game loop with nothing between its swaps), which is never that
+  far apart, from stopping the work: it runs anyway once 50 ms have passed since the last run
+  began. The premise, an assumption: the game's work for a frame, from one swap's return to the
+  next call, takes longer than 100 microseconds. Two limits, both timing: a wrapper that does
+  something slow between its repeated calls still has the work run for each (the frame-counted
+  timers, the popup gap, file slots and Steam retry, then run fast); and two real frames closer
+  than that (`loadState`'s swap, then the frame's) lose the second's work, which waits one
+  frame. Neither touches a call from the frame function itself. Stand-in tested
+  (`tests/test_native_linux.py`,
   `test_frame_work_runs_for_a_wrapper_the_frame_function_calls`, the tests for a wrapper that
-  calls twice, with the real swap returning at once and waiting, one that calls once and loses no
-  frame's work, and one called from another function, with
+  repeats its call two, three and four times, with the real swap returning at once and waiting,
+  for a tight loop of calls, for one that calls once and loses no frame's work, and for one
+  called from another function, with
   `native/linux/tests/swap_wrapper.cpp`, built with no frame pointer); no such library has been
   in front of the helper in the game. **Known limit:** `SWHardwareEnd` is also called from
   `loadState`, which is not traced (`docs/re/linux.md`, "The per-frame call"); the helper tells
   that call from the others only by the return address inside `SWHardwareEnd` (or, through a
   wrapper, the wrapper's caller's), which is the same, so frame work runs at that swap too. A
   grant that lands in the middle of a load can then be overwritten by the load's copy of the
-  inventory, with its popup (and a trap riding on it) already out; the next poll gives the item again (the client's
-  reconcile), so none is lost, and the extra popup is the cost. Telling a load apart needs
-  `loadState`'s own state or a second return address (the stack's, with no frame pointers in
-  the game), neither traced.
+  inventory, with its popup (and a trap riding on it) already out; the next poll gives the item
+  again (the client's reconcile), so none is lost, and the extra popup is the cost. Telling a
+  load apart needs `loadState`'s own state or a second return address (the stack's, with no
+  frame pointers in the game), neither traced.
 - **Start-up.** The constructor does its work inside a `try`: whatever it throws leaves the helper
   off (a line on stderr), never an aborted program. It reads one of its own constants through
   `process_vm_readv` first, and if the kernel or a sandbox's filter refuses, says

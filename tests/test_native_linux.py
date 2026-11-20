@@ -251,18 +251,40 @@ def wrapped_frame_work(tmp_path: Path, **env: str) -> tuple[int, int, int]:
 
 @pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
 @pytest.mark.parametrize("swap_us", ["0", "3000"])
-def test_frame_work_runs_once_a_frame_for_a_wrapper_that_calls_twice(
-    tmp_path: Path, swap_us: str
+@pytest.mark.parametrize("repeats", [2, 3, 4])
+def test_frame_work_runs_once_a_frame_for_a_wrapper_that_repeats_its_call(
+    tmp_path: Path, repeats: int, swap_us: str
 ) -> None:
-    # A wrapper that passes each swap on twice, back to back, with the real swap returning at once
-    # or waiting (3 ms, as the real one waits for the refresh): frame work is taken for one of the
-    # two, so once a game frame. The game swaps its frame window every loop and the other window's
-    # every fourth, so the helper's calls are 2 x 1.25 a loop, the frames' 1 a loop.
-    work, calls, _ = wrapped_frame_work(tmp_path, ZAP_WRAPPER_TWICE="1", ZAP_STUB_SWAP_US=swap_us)
+    # A wrapper that passes each swap on `repeats` times, back to back, with the real swap
+    # returning at once or waiting (3 ms, as the real one waits for the refresh): frame work is
+    # taken for one of them, so once a game frame. The game swaps its frame window every loop and
+    # the other window's every fourth, so the helper's calls are `repeats` x 1.25 a loop, the
+    # frames' 1 a loop.
+    work, calls, _ = wrapped_frame_work(
+        tmp_path, ZAP_WRAPPER_CALLS=str(repeats), ZAP_STUB_SWAP_US=swap_us
+    )
     assert work > 20
-    # Taken for one call of a frame the ratio is 2.5; for both, 1.25 (the lower bound); and with
-    # frames losing their work (taken for fewer than one in a loop), above 2.7 (the upper bound).
-    assert 2.3 * work <= calls <= 2.7 * work, f"{work} frames took work in {calls} calls"
+    # Taken for one call of a frame the ratio is 1.25 x `repeats`; for all of them, 1.25 (the lower
+    # bound); and with frames losing their work (fewer than one in a loop), above the upper bound.
+    assert 1.15 * repeats <= calls / work <= 1.35 * repeats, (
+        f"{work} frames took work in {calls} calls"
+    )
+
+
+@pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
+def test_a_tight_loop_of_calls_through_a_wrapper_does_not_stop_frame_work(tmp_path: Path) -> None:
+    # A game loop with nothing between a wrapper's calls (millions of them from one frame's
+    # call, microseconds apart) is never "apart" by the gap after its first call: the backstop
+    # runs frame work once in 50 ms all the same, so a request is served (refused not configured:
+    # a frame took it) within its wait of a second, not refused for want of a frame.
+    started = Game((WRAPPER, HOOKTEST), tmp_path / "data", ZAP_WRAPPER_CALLS="50000000")
+    try:
+        with started.connect() as sock:
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > 1000)
+            assert ask(sock, "intel on") == "refused not configured"
+    finally:
+        started.proc.kill()  # it is deep in the loop: SIGTERM would wait for the whole of it
+        started.proc.wait()
 
 
 @pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
