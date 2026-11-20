@@ -2851,15 +2851,21 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   but counted from that read, not from the loss (the next poll first configures the helper
   again, which can take longer than the window, and the socket's timeout is itself longer), and
   so is one the save's death count shows (`discs.deaths`: it went up since the ask, the player
-  having respawned before the read, at any delay; two or more: the player's own death besides,
-  which is sent). The count is Windows B1's by disassembly (a death writes it into the slot's
-  block at its end, before the respawn: "A save at the Landing Pod" in `docs/re/memory.md`, not
-  seen live); **on the Linux build that the record's field is written so, and when, is assumed
-  and untraced** (`docs/re/linux.md` records the live counter `+0xAD4` only). RELOAD FROM SAVE
-  and RELOAD FROM CHECKPOINT raise it as a death does, and so does the player's own death: one
-  in the gap is taken for the dealt one, so a death the helper never got can go undealt. With no
-  count to go by, a first read more than `LOST_SECONDS` after the loss leaves it queued, as no
-  death seen is told from the player's own by then; one that never went out stays queued, and a Linux helper of this version from before deaths is said once, the deaths waiting
+  having respawned before the read, at any delay; two or more, read while the player is dead:
+  their own death besides, which is sent, and so is a further rise while they stay dead). The
+  count is Windows B1's by disassembly (a death writes it into the slot's block at its end,
+  before the respawn: "A save at the Landing Pod" in `docs/re/memory.md`, not seen live).
+  **On the Linux build that the record's field is written so, and when, is assumed and
+  untraced** (`docs/re/linux.md` records the live counter `+0xAD4` only), and so is that one
+  death with its respawn adds exactly one (on Windows B1 the respawn routines `0x9F3B0` and
+  `0xA2E50`, which adds at `0xA2EBB`, are not traced for it). **If either is wrong, the lost
+  reply's death can be echoed to the other players, or dealt twice**, as it could before the
+  count was used. On Windows B1 RELOAD FROM CHECKPOINT (not RELOAD FROM SAVE) and the player's own
+  death raise the count too: one in the gap is taken for the dealt one, so a death the helper
+  never got can go undealt, and a rise of two read in play (a dealt death and a reload) is not
+  sent. With no count to go by, a first read more than `LOST_SECONDS` after the loss leaves it
+  queued, as no death seen is told from the player's own by then. One that never went out stays
+  queued, and a Linux helper of this version from before deaths is said once, the deaths waiting
   for a newer one; the Linux helper is dropped (`linux_mod_lost`) either way. Tested on the
   stand-in game through the socket (`tests/test_native_linux.py`: `die` refused unconfigured and
   halted, then energy 0 and the death routine with the player and kind 0) and with stand-ins for

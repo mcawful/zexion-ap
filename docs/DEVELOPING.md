@@ -360,14 +360,16 @@ What there is:
   labels (`ticks.linux_labels_tick`), this seed's file (`ticks.linux_seed_tick`: at first its own
   traps and disks, with the labels, disk counts and free ASSIST menu the file already kept where
   the client can read it, then the whole file, labels included, for the look without the client;
-  the file's labels kept, and a DeathLink death whose reply was lost counted, are stand-in tests
-  only, not run in the game), CLIENT CONNECTED and the other-seed notice
+  the file's labels kept, and a DeathLink death whose reply was lost counted (by the save's death
+  count: Windows B1's by disassembly, assumed on Linux, untraced), are stand-in tests only, not
+  run in the game), CLIENT CONNECTED and the other-seed notice
   (`linux_client_back_tick`, `linux_other_save_tick`), the language (`linux_language_tick`), the
   OS Install Disks' count (`linux_discs_tick`), the finds' follow-ups and RETURN HOME
-  (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step back until the Linux helper is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll),
-  so no step meanwhile writes the items owed with no popup or drops a waiting trap. One lost after
-  it was configured holds the step back for 30 s too (`ticks.linux_mod_lost`), as does one let go
-  of with no server connection (`LinuxProcess.disconnect`, `linux_back_by`: the poll waits for it
+  (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step back until the Linux helper
+  is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll), so no step meanwhile writes
+  the items owed with no popup or drops a waiting trap. One lost after it was configured holds
+  the step back for 30 s too (`ticks.linux_mod_lost`), as does one let go of with no server
+  connection (`LinuxProcess.disconnect`, `linux_back_by`: the poll waits for it
   to be configured again, up to 30 s), then the items are written directly with no popup until it
   is back; one that failed two steps running has the next step's written directly. A Linux helper
   of this version built before traps, which answers `trap_status` with `error unknown request`

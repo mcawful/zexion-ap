@@ -26,8 +26,11 @@ DEALT_SECONDS = 5.0
 # The count is the save's own (discs.deaths): on Windows B1 a death writes it into the slot's block
 # before the respawn (docs/re/memory.md, "A save at the Landing Pod", by disassembly). On the Linux
 # build, where this runs, that the record's field is written so, and when, is assumed and not
-# traced (docs/re/linux.md records only the live counter, ``gGameState+0xAD4``): were it written
-# later, the state alone settles the death as before.
+# traced (docs/re/linux.md records only the live counter, ``gGameState+0xAD4``). So is that one
+# death with its respawn adds exactly one (on Windows B1 the respawn routines ``0x9F3B0`` and
+# ``0xA2E50``, which adds at ``0xA2EBB``, are not traced for it). If either is wrong, a lost
+# reply's death can be echoed to the other players or dealt twice, as it could before the count
+# was used.
 LOST_SECONDS = 45.0
 
 
@@ -48,6 +51,10 @@ class DeathLink:
         # starts at that read, as the next poll first configures the helper again, which can take
         # longer than DEALT_SECONDS before any state is read.
         self.unread = False
+        # The save's death count when a lost reply's death was settled while the player was still
+        # dead: a further rise while still dead (no in-play state between) is the player's own
+        # death, which is sent.
+        self.settled: int | None = None
 
     @property
     def watching(self) -> bool:
@@ -62,7 +69,14 @@ class DeathLink:
             self.alive = None  # a save loaded next starts over
             if self.lost_at is not None:  # the lost reply's death was in the save left
                 self.lost_at, self.asked_at, self.unread = None, None, False
+            self.settled = None
             return False
+        if self.settled is not None:
+            if state == game.IN_PLAY:
+                self.settled = None
+            elif state == game.DEAD and deaths is not None and deaths > self.settled:
+                self.settled = deaths  # another death while dead: the player's own, sent
+                return True
         if self.lost_at is not None and state in (game.IN_PLAY, game.DEAD):
             first, self.unread = self.unread, False
             counted = deaths is not None and self.deaths_at_ask is not None
@@ -70,12 +84,14 @@ class DeathLink:
             if rose > 0:
                 # Dealt, and the player already respawned, or the death is on its way: counted,
                 # and not dealt again nor sent as the player's own, however late this read comes.
-                # Two or more: the player died on their own besides, and that one is sent. (A
-                # RELOAD FROM SAVE or CHECKPOINT raises the count as a death does: taken for one.)
+                # Two or more with the player dead now: they died on their own besides, and that one
+                # is sent (read in play, a RELOAD FROM CHECKPOINT, which raises the count too, is
+                # as likely: not sent). A further rise while still dead is theirs too (settled).
                 self.lost_at = self.asked_at = None
                 self.owed = max(0, self.owed - 1)
                 self.alive = state == game.IN_PLAY
-                return rose > 1
+                self.settled = deaths if state == game.DEAD else None
+                return rose > 1 and state == game.DEAD
             if first:
                 # The first read since the reply was lost: a death seen within DEALT_SECONDS of
                 # this one is the one the helper may have dealt, if it comes soon enough to be

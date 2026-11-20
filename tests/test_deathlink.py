@@ -208,9 +208,6 @@ def test_a_lost_reply_looked_into_too_late_is_told_by_the_death_count_alone() ->
 
 
 def test_a_dealt_death_and_the_players_own_in_one_gap_are_both_told() -> None:
-    link = lost_reply(owed=2)
-    assert link.observe(game.IN_PLAY, 40.0, deaths=5), "two deaths: one dealt, one the player's"
-    assert link.owed == 1 and not link.watching
     link = lost_reply()
     assert link.observe(game.DEAD, 40.0, deaths=5)  # dead now, of their own besides
     assert link.owed == 0
@@ -222,3 +219,30 @@ def test_a_lost_reply_without_a_death_count_works_from_the_state_alone() -> None
     assert not link.observe(game.IN_PLAY, 40.0)
     assert link.watching
     assert not link.observe(game.DEAD, 41.0) and link.owed == 0
+
+
+def test_a_rise_of_two_read_in_play_is_not_taken_for_a_death_of_the_players() -> None:
+    # A dealt death and a RELOAD FROM CHECKPOINT (which raises the count too) in the same gap.
+    link = lost_reply(owed=2)
+    assert not link.observe(game.IN_PLAY, 40.0, deaths=5)
+    assert link.owed == 1 and not link.watching
+    assert link.alive is True
+
+
+def test_the_players_own_death_in_progress_at_the_first_read_is_sent_once_it_is_counted() -> None:
+    # The dealt death's write is in the count (+1), the player respawned and is dying again: the
+    # own death's write comes at its end.
+    link = lost_reply()
+    assert not link.observe(game.DEAD, 40.0, deaths=4)  # settled as the dealt one
+    assert not link.observe(game.DEAD, 40.5, deaths=4)  # no change
+    assert link.observe(game.DEAD, 41.0, deaths=5)  # the own death's write
+    assert not link.observe(game.DEAD, 41.5, deaths=5)  # sent once
+    assert link.owed == 0
+
+
+def test_a_settled_dead_death_with_no_further_rise_does_not_send_after_the_respawn() -> None:
+    link = lost_reply()
+    link.observe(game.DEAD, 40.0, deaths=4)
+    link.observe(game.IN_PLAY, 50.0, deaths=4)  # the respawn ends the watch
+    assert link.observe(game.DEAD, 60.0, deaths=5)  # the next death is the player's own
+    assert link.settled is None
