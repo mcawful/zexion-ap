@@ -17,10 +17,17 @@ from . import game
 
 # A death seen this soon after the helper was asked to deal one is that one.
 DEALT_SECONDS = 5.0
-# A lost reply (the Linux helper's connection closed, or its socket timed out) is looked into only
-# if the first state read after it comes this soon: past it, a death seen (or counted) is the
-# player's own as likely as the dealt one. The poll holds the step for 30 s while the helper is
-# configured again (ticks.LINUX_HOLD_SECONDS, the socket's 5 s after the ask).
+# A lost reply (the Linux helper's connection closed, or its socket timed out) is looked into by
+# the state alone only if the first state read after it comes this soon: past it, a death seen is
+# the player's own as likely as the dealt one. The death count (``deaths``) holds at any delay.
+# The poll holds the step for 30 s while the helper is configured again (ticks.LINUX_HOLD_SECONDS,
+# the socket's 5 s after the ask).
+#
+# The count is the save's own (discs.deaths): on Windows B1 a death writes it into the slot's block
+# before the respawn (docs/re/memory.md, "A save at the Landing Pod", by disassembly). On the Linux
+# build, where this runs, that the record's field is written so, and when, is assumed and not
+# traced (docs/re/linux.md records only the live counter, ``gGameState+0xAD4``): were it written
+# later, the state alone settles the death as before.
 LOST_SECONDS = 45.0
 
 
@@ -57,23 +64,26 @@ class DeathLink:
                 self.lost_at, self.asked_at, self.unread = None, None, False
             return False
         if self.lost_at is not None and state in (game.IN_PLAY, game.DEAD):
-            if self.unread:
+            first, self.unread = self.unread, False
+            counted = deaths is not None and self.deaths_at_ask is not None
+            rose = deaths - self.deaths_at_ask if counted else 0
+            if rose > 0:
+                # Dealt, and the player already respawned, or the death is on its way: counted,
+                # and not dealt again nor sent as the player's own, however late this read comes.
+                # Two or more: the player died on their own besides, and that one is sent. (A
+                # RELOAD FROM SAVE or CHECKPOINT raises the count as a death does: taken for one.)
+                self.lost_at = self.asked_at = None
+                self.owed = max(0, self.owed - 1)
+                self.alive = state == game.IN_PLAY
+                return rose > 1
+            if first:
                 # The first read since the reply was lost: a death seen within DEALT_SECONDS of
                 # this one is the one the helper may have dealt, if it comes soon enough to be
-                # told from the player's own.
-                self.unread = False
+                # told from the player's own (with no count to go by).
                 if now - self.lost_at > LOST_SECONDS:
                     self.lost_at = self.asked_at = None  # asked for again: nothing is known
                 else:
                     self.asked_at = now
-            counted = deaths is not None and self.deaths_at_ask is not None
-            if self.lost_at is not None and counted and deaths > self.deaths_at_ask:
-                # Dealt, and the player already respawned, or the death is on its way: it is
-                # counted, and not dealt again nor sent as the player's own.
-                self.lost_at = self.asked_at = None
-                self.owed = max(0, self.owed - 1)
-                self.alive = state == game.IN_PLAY
-                return False
             if self.lost_at is not None and now - (self.asked_at or now) > DEALT_SECONDS:
                 self.lost_at = self.asked_at = None  # no death came: it was not dealt
         if state == game.IN_PLAY:

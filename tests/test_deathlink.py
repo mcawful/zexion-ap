@@ -190,11 +190,31 @@ def test_a_death_counted_while_watching_is_the_dealt_one() -> None:
     assert link.owed == 0 and not link.watching
 
 
-def test_a_lost_reply_looked_into_too_late_is_no_longer_taken_for_the_death() -> None:
-    link = lost_reply()
+def test_a_lost_reply_looked_into_too_late_is_told_by_the_death_count_alone() -> None:
     late = 15.0 + deathlink.LOST_SECONDS + 1
-    assert link.observe(game.DEAD, late, deaths=4), "the player's own death: sent"
+    # The count the same: none was dealt, so a death seen is the player's own, sent.
+    link = lost_reply()
+    assert link.observe(game.DEAD, late, deaths=3)
     assert link.owed == 1 and not link.watching
+    # The count up: the dealt one, however late, never sent back nor dealt again.
+    link = lost_reply()
+    assert not link.observe(game.DEAD, late, deaths=4)
+    assert link.owed == 0 and not link.watching
+    link = lost_reply()
+    assert not link.observe(game.IN_PLAY, late, deaths=4) and link.owed == 0
+    # With no count to go by: nothing is known, and it stays queued.
+    link = lost_reply(deaths=None)
+    assert not link.observe(game.IN_PLAY, late) and not link.watching and link.owed == 1
+
+
+def test_a_dealt_death_and_the_players_own_in_one_gap_are_both_told() -> None:
+    link = lost_reply(owed=2)
+    assert link.observe(game.IN_PLAY, 40.0, deaths=5), "two deaths: one dealt, one the player's"
+    assert link.owed == 1 and not link.watching
+    link = lost_reply()
+    assert link.observe(game.DEAD, 40.0, deaths=5)  # dead now, of their own besides
+    assert link.owed == 0
+    assert not link.observe(game.DEAD, 40.5, deaths=5)
 
 
 def test_a_lost_reply_without_a_death_count_works_from_the_state_alone() -> None:

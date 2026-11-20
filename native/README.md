@@ -2851,16 +2851,21 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   but counted from that read, not from the loss (the next poll first configures the helper
   again, which can take longer than the window, and the socket's timeout is itself longer), and
   so is one the save's death count shows (`discs.deaths`: it went up since the ask, the player
-  having respawned before the read; read by disassembly, "A save at the Landing Pod" in
-  `docs/re/memory.md`, not seen live); a first read more than `LOST_SECONDS` after the loss
-  leaves it queued, as none is told from the player's own by then; one that never went out stays
-  queued, and a Linux helper of this version from before deaths is said once, the deaths waiting
+  having respawned before the read, at any delay; two or more: the player's own death besides,
+  which is sent). The count is Windows B1's by disassembly (a death writes it into the slot's
+  block at its end, before the respawn: "A save at the Landing Pod" in `docs/re/memory.md`, not
+  seen live); **on the Linux build that the record's field is written so, and when, is assumed
+  and untraced** (`docs/re/linux.md` records the live counter `+0xAD4` only). RELOAD FROM SAVE
+  and RELOAD FROM CHECKPOINT raise it as a death does, and so does the player's own death: one
+  in the gap is taken for the dealt one, so a death the helper never got can go undealt. With no
+  count to go by, a first read more than `LOST_SECONDS` after the loss leaves it queued, as no
+  death seen is told from the player's own by then; one that never went out stays queued, and a Linux helper of this version from before deaths is said once, the deaths waiting
   for a newer one; the Linux helper is dropped (`linux_mod_lost`) either way. Tested on the
   stand-in game through the socket (`tests/test_native_linux.py`: `die` refused unconfigured and
   halted, then energy 0 and the death routine with the player and kind 0) and with stand-ins for
   the client (`tests/test_ticks.py`); both ways run in the game, 2026-11-19 ("The Linux helper",
-  above: run 2). A reply lost is stand-in tests only (`tests/test_deathlink.py`,
-  `tests/test_ticks.py`), not run in the game.
+  above: run 2). The lost reply's handling is stand-in tests only
+  (`tests/test_deathlink.py`, `tests/test_ticks.py`), not run in the game.
 - **Intel Chips.** `intel on` and `intel off` are taken as on Windows ("Intel Chips"), and
   `Game::watch_intel` runs at each frame call: the Area Map's record (49) named INTEL CHIP, its
   map reveal (3551) off, while on and only if the record reads as the game loads it or as the
@@ -2957,10 +2962,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   request that says what its file holds), so a client that closes before the whole text is known
   leaves the later runs with no client the labels they had, where the client can read the
   helper's token folder (where it can't, the poorer text replaces the file as before). A text
-  the helper cannot parse is put again as the slot data's alone. Stand-in tests only, not run in
-  the game. The file select's counts,
-  from the save slots, and its logo show as on Windows ("The file select's AP logo and disk
-  counts", below). What differs on Linux:
+  the helper cannot parse is put again as the slot data's alone. Those two (the stored file's
+  labels kept, and the merged text put again) are stand-in tests only, not run in the game. The
+  file select's counts, from the save slots, and its logo show as on Windows ("The file select's
+  AP logo and disk counts", below). What differs on Linux:
   - a client that loses its server connection lets the Linux helper's connection go, as the
     Windows client lets its helper go (`leave_helper_tick`: under the same conditions, with
     `LinuxProcess.disconnect`), so the helper takes it for a client that went (below) and this

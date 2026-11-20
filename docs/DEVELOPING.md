@@ -363,8 +363,8 @@ What there is:
   the file's labels kept, and a DeathLink death whose reply was lost counted, are stand-in tests
   only, not run in the game), CLIENT CONNECTED and the other-seed notice
   (`linux_client_back_tick`, `linux_other_save_tick`), the language (`linux_language_tick`), the
-  OS Install Disks' count (`linux_discs_tick`), the finds' follow-ups and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step
-  back until the Linux helper is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll),
+  OS Install Disks' count (`linux_discs_tick`), the finds' follow-ups and RETURN HOME
+  (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step back until the Linux helper is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll),
   so no step meanwhile writes the items owed with no popup or drops a waiting trap. One lost after
   it was configured holds the step back for 30 s too (`ticks.linux_mod_lost`), as does one let go
   of with no server connection (`LinuxProcess.disconnect`, `linux_back_by`: the poll waits for it
