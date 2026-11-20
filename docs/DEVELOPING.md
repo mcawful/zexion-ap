@@ -121,17 +121,18 @@ worlds/zexion/ → generation → slot data → client
   game's own save folder, next to the saves, as `ZexionAP-seed-<NAME>.sav`, so Steam Cloud, which
   syncs `*.sav` there, carries it with the saves: a save that comes to another machine is known
   there as an AP save with no client run on it. A copy is written only while one of the 30 saves
-  in that folder uses the seed (so at most 30 a machine writes; one a save does not use is read
-  but not refreshed, and none is deleted), at a put and at a read of the files (at start, and when
+  in that folder uses the seed (so at most 30 are written and refreshed at a time; one a save does not use any more is read
+  but not refreshed, none is deleted, and so more than 30 may stand over time), at a put and at a read of the files (at start, and when
   a client that set something goes: not for `helper.py status`). The helpers read both places and
   make the two copies of a seed one (`native/README.md`, "Seed files in the save folder"). The
   folder is the game's: `%APPDATA%\Gallant Leaf\Zexion`; on Linux `$XDG_DATA_HOME/Gallant
   Leaf/Zexion`, else `~/.local/share/Gallant Leaf/Zexion` (under Flatpak Steam, the sandbox's
-  home). Steam's Auto-Cloud rule for Linux looks in `$HOME/.local/share/Gallant Leaf/Zexion`
-  (`docs/re/save-format.md`, "Steam Auto-Cloud syncs only `*.sav` and `*.png` in the save folder
-  itself"), which is the game's folder only while `XDG_DATA_HOME` is unset or the default
-  `~/.local/share`: with it set elsewhere the saves themselves are not what Steam syncs. Not yet
-  run in the game, nor on two machines.
+  home). Steam's Auto-Cloud rule for Linux is measured as a root override to `LinuxHome` with the
+  path `.local/share/Gallant Leaf/Zexion`; that it therefore syncs `$HOME/.local/share/Gallant
+  Leaf/Zexion` is inferred, not seen (`docs/re/save-format.md`, "Steam Auto-Cloud syncs only
+  `*.sav` and `*.png` in the save folder itself"). If so, that is the game's folder only while
+  `XDG_DATA_HOME` is unset or the default `~/.local/share`: with it set elsewhere the saves
+  themselves would not be what Steam syncs. Not yet run in the game, nor on two machines.
 
 How the helper works: [`native/README.md`](../native/README.md).
 

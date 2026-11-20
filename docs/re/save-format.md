@@ -2,8 +2,8 @@
 
 The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except through
 `tools/save_lab.py` (see `/save-lab`); the client never writes it. The one exception is the
-helpers' own seed copies, `ZexionAP-seed-<NAME>.sav` (below, "The helpers keep a copy of each seed's
-file here"). Map cells are this repo's
+helpers' own seed copies, `ZexionAP-seed-<NAME>.sav` (below, "The helpers keep the file of each seed a
+save uses here"). Map cells are this repo's
 (x, y), and "row" and "column" follow it (`randocells.md`, "Grid order"). Format and statuses
 per [`README.md`](README.md).
 
@@ -52,7 +52,7 @@ offsets (section `+…`) are what the code and `memory.md` use.
 | Field | |
 |---|---|
 | Value | The folder holds `steam_autocloud.vdf`, the marker Steam's Auto-Cloud writes into folders it syncs. **Syncing between two machines has been seen:** on 2026-11-20 the owner saw a save made on one machine appear on another through Steam Cloud, on Windows and on Linux, with the helper installed on both; the save came over as a plain randomizer game. A second data point: on 2026-11-18 the Flatpak Steam PC's save folder held slots 1 to 30 synced by Steam Cloud from the Windows PC's saves (`builds.md`, "B1 on Linux", Evidence). **Inferred, not seen:** that the save was plain because the per-seed files that make it an AP save (`native/README.md`, "AP saves without the client") are in a folder Steam does not sync (`%LOCALAPPDATA%\ZexionAP\seeds`, on Linux `$XDG_DATA_HOME/ZexionAP/seeds`; "Steam Auto-Cloud syncs only `*.sav` and `*.png` in the save folder itself" shows they are not synced), so that machine had no file for the seed: no labels for other players' items, no traps, no disk count, no Feats guard. **Assumed** (not tried): that connecting the client for that seed before loading the save makes it an AP save there, which needs the AP room to be up. `/save-lab` asks for Steam Cloud to be paused for Zexion. |
-| Status | measured (the marker file; Steam's own record of what it tracks); measured (the owner's report of the sync, 2026-11-20; builds not recorded) |
+| Status | measured (the marker file; Steam's own record of what it tracks); measured (the owner's report of the sync, 2026-11-20; builds not recorded); assumed (the cause of the plain randomizer game, inferred from where the seed files are kept; that connecting the client first fixes it) |
 | Method | file inspection; the owner's report; `builds.md`'s listing of the Flatpak PC's folder |
 | Build | the owner's 2026-11-20 report does not name a build (B1 is the only build this repo has measured, so B1 on both machines is expected, not confirmed); B1 (Linux) for the 2026-11-18 data point |
 | Evidence | `ls -la` of the save folder, 2026-10-20. The owner's report of 2026-11-20, relayed in the planning session; how the machines were set up (one Steam account, both with Steam Cloud on) is not recorded. |
@@ -67,7 +67,7 @@ offsets (section `+…`) are what the code and `memory.md` use.
 | | **On Linux** one root override: `WinAppDataRoaming` becomes `LinuxHome` with the path `Gallant Leaf/Zexion` replaced by `.local/share/Gallant Leaf/Zexion` (measured: it is in the parse). **Inferred, from the key names and not seen in use:** that Steam syncs `$HOME/.local/share/Gallant Leaf/Zexion`, where `$HOME` is the home of the Steam that runs the game (under Flatpak Steam, `~/.var/app/com.valvesoftware.Steam`: that the saves are there is seen, 2026-11-18, `builds.md`), and that a file the Windows build writes there lands on the other OS under the same name; and that it is `$HOME`, not `$XDG_DATA_HOME`: the game's own folder is SDL's `SDL_GetPrefPath("Gallant Leaf", "Zexion")` ("The game's files are opened by fixed name"), which follows `$XDG_DATA_HOME` when set, so with that set elsewhere the game's saves would not be the folder Steam syncs (not our case: the owner's Linux saves sync). |
 | | **What Steam tracks now** (`remotecache.vdf` of the owner's Windows install, 32 entries, all `root` 4 (WinAppDataRoaming), `syncstate` 1, `platformstosync2` -1 (every platform)): `Save Game 1.sav` to `Save Game 30.sav`, `PreferencesSynced.sav` and `GameUnlocks.sav`. Not tracked: `PreferencesLocal` (no `.sav`), `steam_autocloud.vdf`, `Mods/**` (not recursive). So a file we add would have to be named `*.sav` (or `*.png`), directly in the folder, to be synced; any other name stays local. A file's slot in the 640 is shared with these 32. |
 | | **Not measured:** that a new `*.sav` of another name is in fact uploaded (no such file was put there: the save folder is never written by us, Claude, the tools or the client; the helpers' copies, below, will show it); that a `.sav` that is not a save passes Steam's checks; how Steam resolves two machines that changed the same file (Steam asks for one side's copy of all of the app's files when it finds a conflict, assumed from its general behavior, not seen for this app). |
-| Status | measured (the rules and the tracked list, on the owner's Windows install); inferred (the Linux reading of the root override, as stated); assumed (the rest, as stated) |
+| Status | measured (the rules and the tracked list, on the owner's Windows install); assumed (the Linux reading of the root override, inferred from the key names; the rest, as stated) |
 | Method | file inspection, read only. **`appinfo.vdf`** in Steam's `appcache` folder, binary, version 41: magic `0x07564429` (a `uint32`), the universe (a `uint32`), then the offset (an `int64`) of a string table (a `uint32` count, then that many NUL-terminated strings) which the entries' keys index; then entries of `appid` (`uint32`), `size` (`uint32`), and a body of 4 + 4 + 8 + 20 + 4 + 20 bytes (state, update time, token, hash, change number, binary hash) before the binary key-value tree (a type byte: 0 a subtree, 1 a string, 2 an int, 3 a float, 7 and 10 64-bit values, 8 the end; each key a `uint32` index into the string table). Read for app 3392510 with a script of this session's (not kept: the format above is what it did; the tool is not in `tools/`, as it was run once), printing the app's `ufs` subtree and `common/oslist`. **`remotecache.vdf`** under Steam's `userdata/<account>/3392510/` (the account id not recorded here): the entry names, `root`, `size`, `syncstate`, `persiststate` and `platformstosync2`. SteamDB's cloud tab was not read: the local record is the source Steam itself uses. |
 | Build | not build-specific (Steam's record of the app, as Steam had it on 2026-11-20; the game's depot is B1) |
 | Evidence | The parse, 2026-11-20: `quota` 102428800, `maxnumfiles` 640, `savefiles` 0 `*.png` and 1 `*.sav`, `rootoverrides` 0 as above, `oslist` `windows,linux`. `remotecache.vdf` `ChangeNumber` 182, 32 entries as listed. |
@@ -94,7 +94,7 @@ offsets (section `+…`) are what the code and `memory.md` use.
 | Build | B1 installed; files written by older builds |
 | Evidence | `ls -la` of the save folder, 2026-10-20. |
 
-## The helpers keep a copy of each seed's file here
+## The helpers keep the file of each seed a save uses here
 
 | Field | |
 |---|---|

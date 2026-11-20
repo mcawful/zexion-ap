@@ -760,19 +760,31 @@ def put_clients_seed(sock: socket.socket, at: dict[str, int]) -> None:
     assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a randomizer save
 
 
-def seed_save(slot: Path, marker: int = 1) -> None:
-    """A save file of the seed `put_clients_seed` and the tests below put (all zeros: its table
-    and start), as far as the helper reads one: the randomizer marker, the empty mark clear."""
-    data = bytearray(0x13100)
-    data[0x9402] = marker
-    slot.write_bytes(bytes(data))
+def configure_and_use_seed(sock: socket.socket) -> None:
+    """Configure the helper on the stand-in game (a client's `config`) and make slot 1 a randomizer
+    save of the all-zeros seed (the stand-in's slot array is zeros: the randomizer marker word is
+    the only byte set), as the game's memory would hold one: the frame calls publish the slots'
+    seeds from there, and no save file of the game is involved."""
+    at = config_addresses()
+    assert ask(sock, "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())) == "ok"
+    assert ask(sock, f"write {at['slot_array'] + 0x9400:#x} 0100") == "written 2"
+
+
+def wait_until(condition, seconds: float = 4.0) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.05)
+    return condition()
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_a_put_seed_is_copied_into_the_save_folder_under_its_own_name(game: Game) -> None:
     # The copy Steam Cloud carries with the saves (native/README.md, "Seed files in the save
     # folder"): the client's own text, then a crc line, only when the game's folder is there and
-    # one of its saves uses the seed.
+    # one of the game's slots, as its memory holds them, uses the seed. A put before any slot
+    # does is copied by the copy thread a moment after one does (the client may stay connected).
     import zlib
 
     from client import offline
@@ -780,57 +792,56 @@ def test_a_put_seed_is_copied_into_the_save_folder_under_its_own_name(game: Game
     text = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(40, 102)])
     name = offline.seed_file_name("S", 0, 1)
     save = game.save
+    copy = save / f"ZexionAP-seed-{name}.sav"
     sock = game.connect()
     try:
         assert ask(sock, offline.put_request("seed", text, name)) == "stored"
         assert not save.exists()  # no folder of the game's: none made
         save.mkdir(parents=True)
-        seed_save(save / "Save Game 2.sav", marker=0)  # a normal game: not a save of the seed
-        assert ask(sock, offline.put_request("seed", text, name)) == "unchanged"
-        assert sorted(p.name for p in save.iterdir()) == ["Save Game 2.sav"]  # no save uses it
-        seed_save(save / "Save Game 1.sav")
-        # The same again, the local file unchanged, now with a save of the seed: the copy is made.
-        assert ask(sock, offline.put_request("seed", text, name)) == "unchanged"
+        (save / "Save Game 1.sav").write_bytes(b"SAVE")  # the game's own: the helper never opens it
+        time.sleep(0.8)
+        assert not copy.exists()  # no slot uses the seed (the helper is not even configured)
+        configure_and_use_seed(sock)
+        # No second put, no client action: the copy thread writes it once the slots show the seed.
+        assert wait_until(copy.exists), "the copy did not follow the slot"
     finally:
         sock.close()
-    copy = save / f"ZexionAP-seed-{name}.sav"
     body = (game.offline / "seeds" / f"{name}.txt").read_text()
     assert body == text  # the helper's text for the seed is the client's, byte for byte
     assert copy.read_text() == f"{text}crc {zlib.crc32(text.encode()):08X}\n"
-    assert sorted(p.name for p in save.iterdir()) == [
-        "Save Game 1.sav",
-        "Save Game 2.sav",
-        copy.name,
-    ]
-    assert (save / "Save Game 1.sav").read_bytes()[0x9402] == 1
+    assert sorted(p.name for p in save.iterdir()) == ["Save Game 1.sav", copy.name]
+    assert (save / "Save Game 1.sav").read_bytes() == b"SAVE"
     assert copy.stat().st_mode & 0o077 == 0
 
 
-def a_put_of(game: Game) -> str:
-    """The reply to a put of the all-zeros seed, to a game started as `game`."""
+def a_put_of(game: Game, wait: float = 1.2) -> str:
+    """The reply to a put of the all-zeros seed to a game started as `game`, with a slot of the
+    stand-in game using it, then a wait for any copy a helper would write."""
     from client import offline
 
     text = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
     sock = game.connect()
     try:
-        return ask(sock, offline.put_request("seed", text, offline.seed_file_name("S", 0, 1)))
+        configure_and_use_seed(sock)
+        reply = ask(sock, offline.put_request("seed", text, offline.seed_file_name("S", 0, 1)))
+        time.sleep(wait)
+        return reply
     finally:
         sock.close()
 
 
 def test_the_test_build_ignores_home_and_xdg_for_the_save_folder(tmp_path: Path) -> None:
     # The test build takes its save folder only from ZAP_TEST_SAVE_DIR: a fake home that holds a
-    # Gallant Leaf/Zexion folder with a save of the seed, named by $HOME and $XDG_DATA_HOME as
-    # the production helper reads them, gets no file.
+    # Gallant Leaf/Zexion folder, named by $HOME and $XDG_DATA_HOME as the production helper reads
+    # them, gets no file though a slot uses the seed.
     home = tmp_path / "home"
     share = home / ".local" / "share"
     fake_save = share / "Gallant Leaf" / "Zexion"
     fake_save.mkdir(parents=True)
-    seed_save(fake_save / "Save Game 1.sav")
     started = Game(HOOKTEST, share, HOME=str(home), ZAP_TEST_SAVE_DIR="")
     try:
         assert a_put_of(started) == "stored"  # the helper works, in its own folder
-        assert sorted(p.name for p in fake_save.iterdir()) == ["Save Game 1.sav"]
+        assert sorted(p.name for p in fake_save.iterdir()) == []
         assert not list(home.rglob("ZexionAP-seed-*"))
     finally:
         started.proc.kill()
@@ -838,25 +849,33 @@ def test_the_test_build_ignores_home_and_xdg_for_the_save_folder(tmp_path: Path)
 
 
 def test_the_test_build_refuses_a_save_folder_outside_the_temporary_folder(tmp_path: Path) -> None:
-    # TMPDIR is the test's folder: a save folder beside it (here where a fixed path outside it,
-    # as the real one is, would be) is refused though the variable names it and a save is in it.
+    # TMPDIR is the test's folder: a save folder beside it (where a fixed path outside it, as the
+    # real one is, would be) is refused though the variable names it and a slot uses the seed.
     inside = tmp_path / "temp"
     inside.mkdir()
     outside = tmp_path / "elsewhere"
     outside.mkdir()
-    seed_save(outside / "Save Game 1.sav")
     data = inside / "data"
     started = Game(HOOKTEST, data, TMPDIR=str(inside), ZAP_TEST_SAVE_DIR=str(outside))
     try:
         assert a_put_of(started) == "stored"
-        assert sorted(p.name for p in outside.iterdir()) == ["Save Game 1.sav"]
+        assert sorted(p.name for p in outside.iterdir()) == []
+    finally:
+        started.proc.kill()
+        started.proc.wait()
+    # A link in the temporary folder to the folder outside it is followed: refused too.
+    link = inside / "link"
+    link.symlink_to(outside)
+    started = Game(HOOKTEST, data, TMPDIR=str(inside), ZAP_TEST_SAVE_DIR=str(link))
+    try:
+        assert a_put_of(started) == "unchanged"
+        assert sorted(p.name for p in outside.iterdir()) == []
     finally:
         started.proc.kill()
         started.proc.wait()
     # The same folder inside it is taken.
     named = inside / "save"
     named.mkdir()
-    seed_save(named / "Save Game 1.sav")
     started = Game(HOOKTEST, data, TMPDIR=str(inside), ZAP_TEST_SAVE_DIR=str(named))
     try:
         assert a_put_of(started) == "unchanged"  # the local seed file was there

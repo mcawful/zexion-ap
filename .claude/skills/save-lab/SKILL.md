@@ -26,7 +26,7 @@ off for Zexion, and wait until they confirm. You can't do it for them, and you c
 With it on, Steam can upload a test save over the cloud copy, or pull the cloud copy back over a
 restore. Remind the user to turn it back on only after `restore` has put everything back and
 the game has been closed. A restore changes the seed copies (`ZexionAP-seed-*.sav`) too, which
-Steam uploads like the saves: another reason to keep Steam Cloud off until it is done.
+Steam is expected to upload like the saves (not yet seen): another reason to keep Steam Cloud off until it is done.
 
 ## 2. Look before changing anything
 

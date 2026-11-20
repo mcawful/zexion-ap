@@ -879,12 +879,25 @@ __attribute__((init_priority(101))) Kept<std::wstring> g_offline_folder;
 // The game's own save folder (offline.h, save_folder), found there too: the seeds' copies Steam
 // Cloud carries with the saves are written into it, and read from it.
 __attribute__((init_priority(101))) Kept<std::wstring> g_save_folder;
+// The seeds of the game's randomizer saves as its memory holds the slots (Game::saved_seeds),
+// published from the frame call, read by the serving thread and the copy thread: a seed's copy goes
+// into the save folder only while a slot here uses it, and no save file of the game is opened.
+__attribute__((init_priority(101))) Kept<zap::SavedSeeds> g_saved;
+
+// The slots for a call of the serving thread: null before the first list (none known: no copy).
+const std::vector<zap::OfflineSeed>* saved_list(std::vector<zap::OfflineSeed>& held) {
+    if (g_saved->generation() == 0) return nullptr;
+    held = g_saved->get();
+    return &held;
+}
 // The client's token (core.h), made in the constructor and written into that folder.
 __attribute__((init_priority(101))) Kept<std::string> g_token;
 
 // Serving thread (file I/O; never the frame call). A file that could not be read is said once.
 void read_offline() {
-    zap::OfflineFiles files = zap::read_offline_files(*g_offline_folder, g_build, *g_save_folder);
+    std::vector<zap::OfflineSeed> held;
+    zap::OfflineFiles files = zap::read_offline_files(*g_offline_folder, g_build, *g_save_folder,
+                                                      true, saved_list(held));
     static Kept<std::string> said;  // as the globals above: never destroyed under this thread
     if (!files.error.empty() && files.error != *said) {
         std::fprintf(stderr, "zexion-ap %s: seed files: %s\n", kVersion, files.error.c_str());
@@ -939,6 +952,9 @@ void configure_self() {
 // A seed taken but not kept (no folder, a write that failed) is the helper's until the game
 // closes: added again after each read of the files replaces the seeds (set_offline).
 void take_offline() {
+    // The slots' seeds for the other threads: the first frame and every 16th (cheap).
+    static uint32_t frame_count = 0;
+    if ((frame_count++ & 15u) == 0) g_saved->publish(g_game->saved_seeds());
     static std::vector<zap::OfflineSeed> unkept;
     std::optional<zap::OfflineFiles> files;
     std::vector<PutSeed> put;
@@ -1111,8 +1127,10 @@ std::optional<std::string> game_request(std::string_view request) {
         // (take_offline) whether the file could be kept or not, as on Windows.
         zap::OfflineSeed seed;
         std::string save_error;
+        std::vector<zap::OfflineSeed> held;
         std::string reply = zap::put_offline_file(*g_offline_folder, g_build, std::string(request),
-                                                  &seed, *g_save_folder, &save_error);
+                                                  &seed, *g_save_folder, &save_error,
+                                                  saved_list(held));
         if (!save_error.empty()) {
             std::fprintf(stderr, "zexion-ap %s: the seed's copy in the save folder: %s\n",
                          kVersion, save_error.c_str());
@@ -1351,6 +1369,43 @@ bool start_thread(int fd) {
     return true;
 }
 
+// The copy thread: when the game's slots change (a save made, a new game, a deleted save) it reads
+// the seed files and writes the copy of each seed a slot now uses into the save folder: the case of
+// a seed a client put before the game's first save, whatever the client does after. Never the
+// frame call; looks at the slots' generation every 250 ms. The helper stays for the game's run.
+void* copy_loop(void*) {
+    uint64_t done = 0;
+    for (;;) {
+        usleep(250 * 1000);
+        const uint64_t generation = g_saved->generation();
+        if (generation == done) continue;
+        done = generation;
+        try {
+            std::vector<zap::OfflineSeed> saved = g_saved->get();
+            zap::OfflineFiles files = zap::read_offline_files(*g_offline_folder, g_build,
+                                                              *g_save_folder, true, &saved);
+            if (!files.error.empty()) {
+                std::fprintf(stderr, "zexion-ap %s: seed copies: %s\n", kVersion,
+                             files.error.c_str());
+            }
+        } catch (...) {
+        }
+    }
+    return nullptr;
+}
+
+bool start_copy_thread() {
+    sigset_t all, old;
+    sigfillset(&all);
+    pthread_sigmask(SIG_SETMASK, &all, &old);
+    pthread_t thread;
+    int failed = pthread_create(&thread, nullptr, copy_loop, nullptr);
+    pthread_sigmask(SIG_SETMASK, &old, nullptr);
+    if (failed != 0) return false;
+    pthread_detach(thread);
+    return true;
+}
+
 extern "C" void* SteamInternal_ContextInit(void* context);  // defined at the end, exported
 
 // The kernel's copy of this process's own memory must work for the helper's reads (`read`, the
@@ -1428,6 +1483,7 @@ void start_inside() {
         return;
     }
     g_active = true;
+    start_copy_thread();  // no copies if it fails: the local files and the puts still work
     std::fprintf(stderr, "zexion-ap %s: serving build %s\n", kVersion, g_build);
 }
 

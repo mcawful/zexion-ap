@@ -5,8 +5,9 @@ disk counts the helper keeps; on Linux the seeds' files and the helper's socket 
 folder; only the helper writes them).
 
 The save folder is no exception for Claude's own calls, though the Windows and Linux helpers
-themselves write ``ZexionAP-seed-<NAME>.sav`` into it (a copy of each seed's file, which Steam
-Cloud carries with the saves: ``native/README.md``, "Seed files in the save folder"): they are
+themselves write ``ZexionAP-seed-<NAME>.sav`` into it (a copy of the file of each seed one of the
+saves uses, which Steam Cloud carries with the saves: ``native/README.md``, "Seed files in the
+save folder"): they are
 the game's own process, not a tool call, so this hook never sees them, and it blocks the same
 writes of Claude's as before, those files' names included.
 

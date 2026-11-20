@@ -30,14 +30,25 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 add_compile_options(/W4 /WX /permissive- /utf-8 /EHsc)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
-add_library(zap_core STATIC
+# The core, built twice from the same objects. zap_core is the release's. zap_core_test is
+# the test-only build: src/offline_test_build.cpp is src/offline.cpp with ZAP_TEST_BUILD set, which
+# makes each write primitive refuse a folder that is not a test's own (inside the temporary
+# folder, never a real one). Every test program and the test builds of the helper link
+# zap_core_test; the release links zap_core.
+add_library(zap_core_objs OBJECT
             src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp src/game_mem.cpp
             src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/text.cpp src/newgame.cpp src/choice.cpp
             src/menu.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
-            src/files.cpp src/intel.cpp src/offline.cpp src/title.cpp src/mapmarks.cpp src/trap.cpp
+            src/files.cpp src/intel.cpp src/title.cpp src/mapmarks.cpp src/trap.cpp
             src/apitem.cpp src/looks.cpp src/feats.cpp src/translation.cpp src/findaddr.cpp)
-target_include_directories(zap_core PUBLIC src)
-target_link_libraries(zap_core PUBLIC advapi32)
+target_include_directories(zap_core_objs PUBLIC src)
+foreach(core IN ITEMS zap_core zap_core_test)
+  add_library(${core} STATIC $<TARGET_OBJECTS:zap_core_objs>)
+  target_include_directories(${core} PUBLIC src)
+  target_link_libraries(${core} PUBLIC advapi32)
+endforeach()
+target_sources(zap_core PRIVATE src/offline.cpp)
+target_sources(zap_core_test PRIVATE src/offline_test_build.cpp)
 
 # The helper: hooks the game's SDL_GL_SwapWindow, in a known build only.
 add_library(zexion_ap SHARED src/dllmain.cpp)
@@ -56,15 +67,15 @@ set_target_properties(version_proxy PROPERTIES OUTPUT_NAME version
 # that load the whole helper (below).
 add_library(zexion_ap_hooktest SHARED src/dllmain.cpp)
 target_compile_definitions(zexion_ap_hooktest PRIVATE ZAP_HOOKTEST)
-target_link_libraries(zexion_ap_hooktest PRIVATE zap_core)
+target_link_libraries(zexion_ap_hooktest PRIVATE zap_core_test)
 
 enable_testing()
-# Single-program tests on zap_core: NAME builds tests/NAME_tests.cpp as zap_NAME_tests.
+# Single-program tests on zap_core_test: NAME builds tests/NAME_tests.cpp as zap_NAME_tests.
 set(ZAP_TESTS parts game requests menu apitem equip mission pause files intel title mapmarks
     offline translation findaddr)
 foreach(name IN LISTS ZAP_TESTS)
   add_executable(zap_${name}_tests tests/${name}_tests.cpp)
-  target_link_libraries(zap_${name}_tests PRIVATE zap_core)
+  target_link_libraries(zap_${name}_tests PRIVATE zap_core_test)
   add_test(NAME ${name} COMMAND zap_${name}_tests)
 endforeach()
 
@@ -74,7 +85,7 @@ endforeach()
 add_library(zap_steam_stub SHARED tests/steam_stub.cpp)
 set_target_properties(zap_steam_stub PROPERTIES OUTPUT_NAME steam_api64)
 add_executable(zap_feats_tests tests/feats_tests.cpp)
-target_link_libraries(zap_feats_tests PRIVATE zap_core zap_steam_stub)
+target_link_libraries(zap_feats_tests PRIVATE zap_core_test zap_steam_stub)
 foreach(target IN ITEMS zap_steam_stub zap_feats_tests)
   set_target_properties(${target} PROPERTIES
                         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/feats
@@ -86,7 +97,7 @@ add_test(NAME feats COMMAND zap_feats_tests)
 # pipe applied in its frame calls.
 foreach(name IN ITEMS unload apply)
   add_executable(zap_${name}_test tests/${name}_test.cpp)
-  target_link_libraries(zap_${name}_test PRIVATE zap_core)
+  target_link_libraries(zap_${name}_test PRIVATE zap_core_test)
   add_dependencies(zap_${name}_test zexion_ap_hooktest)
 endforeach()
 add_test(NAME unload_under_load COMMAND zap_unload_test $<TARGET_FILE:zexion_ap_hooktest> 300)
@@ -102,7 +113,7 @@ add_test(NAME proxy COMMAND zap_proxy_test)
 # folder as they were before the first test, checked after the last, whatever failed between. Every
 # test requires the fixture, so the snapshot runs first and the check last.
 add_executable(zap_canary tests/canary.cpp)
-target_link_libraries(zap_canary PRIVATE zap_core)
+target_link_libraries(zap_canary PRIVATE zap_core_test)
 add_test(NAME canary_before COMMAND zap_canary snapshot ${CMAKE_BINARY_DIR}/canary.snapshot)
 add_test(NAME canary_after COMMAND zap_canary verify ${CMAKE_BINARY_DIR}/canary.snapshot)
 set_tests_properties(canary_before PROPERTIES FIXTURES_SETUP real_folders)

@@ -2,8 +2,9 @@
 // folder and the game's save folder, where each seed's copy is kept for Steam Cloud
 // (offline.h, "Seed files in the save folder"). The pure parts (the format, the crc, the merge)
 // are the Windows tests' too (native/tests/offline_tests.cpp); this runs the file system's:
-// the atomic write, the listing by name, the save folder from the environment, which saves use a
-// seed, what a read does with two folders, and the test builds' folder guard.
+// the atomic write, the listing by name, the save folder from the environment, which seeds the
+// game's slots use (a list, never the game's save files), what a read does with two folders, and
+// the guard of the test-only build (restrict_to_test_folder, the write primitives).
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -15,6 +16,7 @@
 #include <iterator>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "offline.h"
 
@@ -68,16 +70,17 @@ std::string client_text(int count, int labels, int variant = 0) {
     return text;
 }
 
-// A save of slot `n` in `save`, as far as the helper reads one: the randomizer marker, the empty
-// mark, the table of seed `variant` and the start.
-void write_save(const fs::path& save, int n, int variant = 0, int marker = 1, bool empty = false) {
-    std::string data(0x13100, '\0');
-    data[0x9402] = static_cast<char>(marker);
-    data[0x9360] = empty ? '\xFF' : '\0';
-    for (int i = 0; i < 154; ++i) data[0x12A80 + i] = static_cast<char>(table_of(variant, i));
-    const unsigned char start[6] = {0x06, 0x00, 0xbf, 0x00, 0x49, 0x01};
-    std::memcpy(&data[0x12B24], start, 6);
-    write_all(save / ("Save Game " + std::to_string(n) + ".sav"), data);
+// The seeds of the game's slots (Game::saved_seeds) as a list, for the seed files `variants` make.
+using Saved = std::vector<zap::OfflineSeed>;
+
+Saved saved_of(std::initializer_list<int> variants) {
+    Saved saved;
+    for (int variant : variants) {
+        zap::OfflineSeed seed;
+        zap::parse_offline_seed(client_text(0, 0, variant), seed);
+        saved.push_back(seed);
+    }
+    return saved;
 }
 
 const std::string kCopy = "ZexionAP-seed-AP_1-0-1.sav";
@@ -109,12 +112,12 @@ void test_a_put_and_a_read_with_a_save_folder() {
     fs::remove_all(root);
     const fs::path local = root / "local", save = root / "save";
     fs::create_directories(save);
-    write_save(save, 1);  // a save of the seed
-    const std::string slot_one = read_all(save / "Save Game 1.sav");
+    write_all(save / "Save Game 1.sav", "SAVE ONE");  // the game's own: never opened
+    const Saved used = saved_of({0}), other = saved_of({1});
     const std::string put = "offline_put seed AP_1-0-1\n" + client_text(3, 2);
     zap::OfflineSeed got;
     std::string error = "unset";
-    check(zap::put_offline_file(wide(local), "", put, &got, wide(save), &error) == "stored" &&
+    check(zap::put_offline_file(wide(local), "", put, &got, wide(save), &error, &used) == "stored" &&
               error.empty(),
           "a seed stored with its copy");
     zap::OfflineSeed copy;
@@ -123,52 +126,51 @@ void test_a_put_and_a_read_with_a_save_folder() {
           "the copy is the seed's text with a crc line");
     check(names_in(save) == std::set<std::string>{"Save Game 1.sav", kCopy},
           "the only file added, no temporary one left");
-    check(read_all(save / "Save Game 1.sav") == slot_one, "the game's own file untouched");
-    // No save uses the seed: no copy from a put; a slot of another seed, a normal game, an empty
-    // slot and a short file do not count.
+    check(read_all(save / "Save Game 1.sav") == "SAVE ONE", "the game's own file untouched");
+    // No slot uses the seed, or none is known: no copy from a put.
     fs::remove(save / kCopy);
-    fs::remove(save / "Save Game 1.sav");
-    write_save(save, 2, 1);
-    write_save(save, 3, 0, 0);
-    write_save(save, 4, 0, 1, true);
-    write_all(save / "Save Game 5.sav", "SHORT");
     zap::OfflineSeed unused;
-    check(zap::put_offline_file(wide(local), "", put, &unused, wide(save), &error) == "unchanged" &&
+    check(zap::put_offline_file(wide(local), "", put, &unused, wide(save), &error, &other) ==
+                  "unchanged" &&
               error.empty() && unused.count == 3 && !fs::exists(save / kCopy),
-          "no save of the seed: no copy");
-    write_save(save, 6);
-    check(zap::put_offline_file(wide(local), "", put, &unused, wide(save), &error) == "unchanged" &&
+          "no slot of the seed: no copy");
+    check(zap::put_offline_file(wide(local), "", put, &unused, wide(save), &error, nullptr) ==
+                  "unchanged" &&
+              !fs::exists(save / kCopy),
+          "no list of the slots yet: no copy");
+    check(zap::put_offline_file(wide(local), "", put, &unused, wide(save), &error, &used) ==
+                  "unchanged" &&
               fs::exists(save / kCopy),
-          "a save of it now: the copy is written");
+          "a slot of it now: the copy is written");
     // A new machine: no local folder, the copy alone.
     fs::remove_all(local);
-    zap::OfflineFiles files = zap::read_offline_files(wide(local), "", wide(save), false);
+    zap::OfflineFiles files = zap::read_offline_files(wide(local), "", wide(save), false, &used);
     check(files.seeds.size() == 1 && !fs::exists(local), "the copy read, nothing written");
-    files = zap::read_offline_files(wide(local), "", wide(save));
+    files = zap::read_offline_files(wide(local), "", wide(save), true, &used);
     check(files.seeds.size() == 1 && files.seeds[0].name == "AP_1-0-1.txt" &&
               files.seeds[0].count == 3 &&
               read_all(local / "seeds" / "AP_1-0-1.txt") == client_text(3, 2),
           "and the local file made from it at a read that writes");
-    // The first run after an upgrade: a local file only, mirrored while a save uses its seed.
+    // The first run after an upgrade: a local file only, mirrored while a slot uses its seed.
     fs::remove(save / kCopy);
-    files = zap::read_offline_files(wide(local), "", wide(save));
+    files = zap::read_offline_files(wide(local), "", wide(save), true, &used);
     check(files.seeds.size() == 1 && zap::parse_synced_file(read_all(save / kCopy), copy).empty(),
-          "a local seed a save uses gets its copy");
-    write_all(local / "seeds" / "AP_2-0-1.txt", client_text(2, 0, 3));  // no slot holds variant 3
-    files = zap::read_offline_files(wide(local), "", wide(save));
+          "a local seed a slot uses gets its copy");
+    write_all(local / "seeds" / "AP_2-0-1.txt", client_text(2, 0, 3));
+    files = zap::read_offline_files(wide(local), "", wide(save), true, &used);
     check(files.seeds.size() == 2 && !fs::exists(save / "ZexionAP-seed-AP_2-0-1.sav"),
-          "a seed no save uses gets none");
+          "a seed no slot uses gets none");
     fs::remove(local / "seeds" / "AP_2-0-1.txt");
     // Two machines' copies: the larger count wins in both.
     write_all(local / "seeds" / "AP_1-0-1.txt", client_text(9, 1));
-    files = zap::read_offline_files(wide(local), "", wide(save));
+    files = zap::read_offline_files(wide(local), "", wide(save), true, &used);
     check(files.seeds.size() == 1 && files.seeds[0].count == 9 &&
               files.seeds[0].labels.find("label 21") != std::string::npos &&
               zap::parse_synced_file(read_all(save / kCopy), copy).empty() && copy.count == 9,
           "two copies made one, each written as the result");
     // A local file that is there and does not read is not written over from a copy.
     write_all(local / "seeds" / "AP_1-0-1.txt", "not a seed\n");
-    files = zap::read_offline_files(wide(local), "", wide(save));
+    files = zap::read_offline_files(wide(local), "", wide(save), true, &used);
     check(read_all(local / "seeds" / "AP_1-0-1.txt") == "not a seed\n",
           "an unread local file is left alone");
     write_all(local / "seeds" / "AP_1-0-1.txt", client_text(9, 1));
@@ -177,66 +179,103 @@ void test_a_put_and_a_read_with_a_save_folder() {
     write_all(save / kCopy, good.substr(0, good.size() - 30));
     write_all(save / "ZexionAP-seed-AP_2-0-1.sav.tmp", "x\n");
     write_all(save / "other-ZexionAP-seed-AP_2-0-1.sav", good);
-    files = zap::read_offline_files(wide(local), "", wide(save));
+    files = zap::read_offline_files(wide(local), "", wide(save), true, &used);
     check(files.seeds.size() == 1 && files.error.find("crc") != std::string::npos &&
               zap::parse_synced_file(read_all(save / kCopy), copy).empty() && copy.count == 9,
           "a cut copy refused, said, and replaced by the local one");
     // No save folder: not made; a folder in the copy's place: said, the rest goes on.
-    check(zap::read_offline_files(wide(local), "", wide(root / "none")).seeds.size() == 1 &&
+    check(zap::read_offline_files(wide(local), "", wide(root / "none"), true, &used).seeds.size() == 1 &&
               !fs::exists(root / "none"),
           "no save folder: none made");
     fs::remove(save / kCopy);
     fs::create_directories(save / kCopy);
     check(zap::put_offline_file(wide(local), "", "offline_put seed AP_1-0-1\n" + client_text(10, 1),
-                                &got, wide(save), &error) == "stored" &&
+                                &got, wide(save), &error, &used) == "stored" &&
               !error.empty() && got.count == 10,
           "a copy that cannot be written is said, the local file written");
     // The write leaves no file mode wider than the owner's.
     fs::remove_all(save / kCopy);
     zap::put_offline_file(wide(local), "", "offline_put seed AP_1-0-1\n" + client_text(10, 1), &got,
-                          wide(save), &error);
+                          wide(save), &error, &used);
     struct stat st {};
     check(stat((save / kCopy).c_str(), &st) == 0 && (st.st_mode & 0077) == 0,
           "the copy is the owner's alone");
-    check(read_all(save / "Save Game 6.sav").size() == 0x13100, "the saves were never touched");
+    check(read_all(save / "Save Game 1.sav") == "SAVE ONE", "the saves were never touched");
     fs::remove_all(root);
 }
 
 void test_a_test_build_takes_only_a_folder_in_temp() {
     const fs::path temp = fs::temp_directory_path();
     const std::wstring inside = wide(temp / "zap_restrict_probe" / "ZexionAP");
-    check(zap::restrict_to_test_folder(inside) == inside, "a folder inside the temporary folder");
+    const std::wstring resolved = zap::restrict_to_test_folder(inside);
+    check(!resolved.empty() &&
+              resolved.size() >= 27 &&
+              resolved.compare(resolved.size() - 27, 27, L"zap_restrict_probe/ZexionAP") == 0,
+          "a folder inside the temporary folder, returned resolved");
     check(zap::restrict_to_test_folder(L"").empty(), "no folder: none");
     check(zap::restrict_to_test_folder(L"relative/folder").empty(), "a relative one: refused");
     check(zap::restrict_to_test_folder(wide(temp)).empty(), "the temporary folder itself: refused");
     check(zap::restrict_to_test_folder(wide(temp / "x" / ".." / "..")).empty(),
           "a path that climbs out of it: refused");
-    check(!zap::restrict_to_test_folder(wide(temp / "a" / ".." / "b")).empty(),
-          "one that climbs and stays inside: allowed");
+    check(zap::restrict_to_test_folder(wide(temp / "a" / ".." / "b")).empty(),
+          "a path with .. in it at all: refused (never folded as text)");
     check(zap::restrict_to_test_folder(wide(temp) + L"2/x").empty(),
           "a sibling that begins with its name: refused");
-    // A link out of it is followed: a path through it is where the link points.
+    // Never the real ones: this user's, as the passwd entry names them: the default, Flatpak
+    // Steam's and its default data folder.
+    const std::vector<std::wstring> saves = zap::os_save_folders(), locals = zap::os_offline_folders();
+    check(saves.size() == 3 && locals.size() == 3 && !saves[0].empty() && !locals[0].empty(),
+          "the OS names three of each (default, Flatpak's, Flatpak's data)");
+    for (const std::wstring& real : saves) {
+        check(zap::restrict_to_test_folder(real).empty() &&
+                  zap::restrict_to_test_folder(real + L"/Mods").empty(),
+              "a real save folder, and what is inside it: refused");
+    }
+    for (const std::wstring& real : locals) {
+        check(zap::restrict_to_test_folder(real).empty(), "a real per-user folder: refused");
+    }
+    // Links are followed, and `..` is never folded as text.
     const fs::path root = temp / ("zap_restrict_link_" + std::to_string(getpid()));
     fs::remove_all(root);
-    fs::create_directories(root);
+    fs::create_directories(root / "dir");
     const char* home = std::getenv("HOME");
+    std::error_code error;
+    fs::create_directory_symlink("/", root / "out", error);  // a link out of the temporary folder
+    check(!error, "a symbolic link could be made");
+    check(zap::restrict_to_test_folder(wide(root / "out" / "etc" / "zap_probe")).empty(),
+          "a link in temp to a folder outside it: refused, and what is under it");
+    check(zap::restrict_to_test_folder(wide(root / "out" / "..")).empty(),
+          "/tmp/x/l/.. (a link, then ..): refused");
     if (home != nullptr && home[0] == '/') {
-        std::error_code error;
-        fs::create_directory_symlink(home, root / "out", error);
-        if (!error) {
-            check(zap::restrict_to_test_folder(wide(root / "out" / ".local" / "share" / "ZexionAP"))
-                      .empty() ||
-                      !fs::exists(fs::path(home) / ".local" / "share" / "ZexionAP"),
-                  "a link out of the temporary folder to the real one: refused");
-        }
+        fs::create_directory_symlink(home, root / "home", error);
+        check(zap::restrict_to_test_folder(wide(root / "home" / ".local" / "share" / "ZexionAP"))
+                  .empty() &&
+                  zap::restrict_to_test_folder(wide(root / "home" / ".var")).empty(),
+              "a link in temp to the home, then a real folder under it: refused");
     }
-    fs::remove_all(root);
+    // A link in temp to a folder in temp is fine, and resolved.
+    fs::create_directory_symlink(root / "dir", root / "inside", error);
+    const std::wstring through = zap::restrict_to_test_folder(wide(root / "inside" / "x"));
+    check(!through.empty() && through.find(L"/dir/x") != std::wstring::npos,
+          "a link to another place in temp: allowed, and the resolved path returned");
+    // The write primitives, handed a folder outside the temporary folder, write nothing: the
+    // test-only core refuses (a put whose save folder is a link out of temp).
+    const Saved used = saved_of({0});
+    std::string refused;
+    zap::OfflineSeed got;
+    const fs::path under_link = root / "out" / "tmp";  // /tmp is a real folder: writable if allowed
+    zap::put_offline_file(wide(root / "local"), "", "offline_put seed AP_1-0-1\n" + client_text(3, 0),
+                          &got, wide(under_link), &refused, &used);
+    check(refused == "refused: not a test folder",
+          "a put with a save folder through a link out of temp: the write is refused");
+    check(!fs::exists(under_link / kCopy), "and none exists there");
     // A TMPDIR elsewhere is the temporary folder: what is under /tmp is then not.
     setenv("TMPDIR", "/var/tmp/zap-elsewhere", 1);
     check(zap::restrict_to_test_folder(inside).empty() &&
               !zap::restrict_to_test_folder(L"/var/tmp/zap-elsewhere/x").empty(),
           "$TMPDIR names the temporary folder");
     unsetenv("TMPDIR");
+    fs::remove_all(root);
 }
 
 }  // namespace

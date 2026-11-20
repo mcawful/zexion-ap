@@ -94,7 +94,9 @@ around the change.
    `~/.local/share`; only the helper writes them) for writing, other than
    `save_lab.py install` and `restore` (the client writes neither of the first two). The helpers
    alone (`native/`) also write seed copies into the save folder, `ZexionAP-seed-<NAME>.sav` by
-   a temporary file renamed over: flag any other name, any other write there, or any delete.
+   a temporary file renamed over, only for a seed one of the game's slots uses (their seeds come
+   from the game's memory, never from the save files, which the helpers must not open): flag any
+   other name, any other write there, any delete, or any open of a `Save Game N.sav`.
    The tools'
    paths must go through `tools/protected.py` (`assert_writable`). Also flag any new path around the
    backup checks in those two.

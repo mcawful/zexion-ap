@@ -372,26 +372,19 @@ def test_the_seed_copy_in_the_save_folder_has_the_name_steam_cloud_syncs() -> No
     assert f"`{prefix[0]}<NAME>{suffix[0]}`" in claude
 
 
-def test_the_helper_reads_the_saves_where_the_client_and_the_tools_do() -> None:
-    # The helper decides which seeds a save uses (offline.cpp, saved_seeds) from the first bytes
-    # of each Save Game N.sav: the randomizer section, the slot's randomizer marker and empty
-    # mark, at the file offsets save_patch and save_lab name.
-    import save_lab
-
+def test_the_helper_never_opens_the_games_save_files() -> None:
+    # The game opens a save to write with no share mode: a read open by the helper, on its pipe
+    # thread, could fail the game's save. Which seeds a save uses comes from the slots in the game's
+    # memory (Game::saved_seeds, published from the frame call), never from the files.
     code = source("offline.cpp")
-    section = re.findall(r"constexpr size_t kSaveSection = (0x[0-9A-Fa-f]+);", code)
-    assert [int(n, 16) for n in section] == [sp.SECTION]
-    slot = layout("slot")
-    rando = layout("rando")
-    assert slot["kRandoMarker"] + 2 == sp.RANDO_MARKER  # the block holds the file from offset 2
-    assert slot["kEmpty"] + 2 == save_lab.EMPTY_MARKER
-    assert slot["kEmptyMark"] == 0xFF and slot["kCount"] == 30
-    assert sp.SECTION + rando["kItemTable"] == sp.ITEM_TABLE
-    assert sp.SECTION + rando["kStart"] == sp.START_RECORD
-    assert sp.SECTION + rando["kSettings"] == sp.OPTIONS
-    prefix = sp.SECTION + rando["kSettings"] + rando["kSecretShuffle"] + 1
-    assert "kSavePrefix = kSaveSection + rando::kSettings + rando::kSecretShuffle + 1" in code
-    assert prefix == 0x130B5  # what native/README.md says is read of each save
+    assert "Save Game" not in code.replace("`Save Game N.sav`", "")
+    assert "read_prefix" not in code and "saved_seeds(save" not in code
+    frame = source("dllmain.cpp")
+    assert "g_game.saved_seeds()" in frame and "g_saved.publish(" in frame
+    linux = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text(encoding="utf-8")
+    assert "g_game->saved_seeds()" in linux and "g_saved->publish(" in linux
+    # Both helpers write a copy from a thread of their own, never the frame call.
+    assert "copy_thread" in frame and "copy_loop" in linux
 
 
 def test_the_test_builds_read_their_folders_only_through_the_guard() -> None:

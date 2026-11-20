@@ -164,10 +164,12 @@ and the seed's name, ending in `.sav`, in Zexion's save folder beside the saves,
 syncs it with them. This is expected to work but has not been tried on two machines yet.
 
 - Both machines need the mod, from a release with this feature.
-- The first machine writes the file once Zexion has saved a game of the seed, and the mod has
-  been loaded with it: start the game with the mod and the client, or play the seed with the mod
-  and close the game. The file follows when Steam syncs; close Zexion and wait for the cloud to say
-  it is up to date before you start it on the second machine.
+- The first machine writes the file while Zexion runs with the mod, within a moment of the game
+  holding a save of the seed (a new game of it, or a loaded save), with the client connected or
+  not: closing the game after playing writes nothing more, so the mod must have been running
+  while the game held that save. The file goes up when Steam syncs, which it is expected to do
+  when you close Zexion: wait for the cloud to say it is up to date before you start it on the
+  second machine.
 - The save folder is `%APPDATA%\Gallant Leaf\Zexion` on Windows; on Linux
   `~/.local/share/Gallant Leaf/Zexion`, or Flatpak Steam's `~/.var/app/com.valvesoftware.Steam/.local/share/Gallant Leaf/Zexion`
   ("Linux and Steam Deck", above). Steam Cloud syncs that Linux folder only if it is where the

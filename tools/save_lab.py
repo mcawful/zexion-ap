@@ -15,7 +15,14 @@ keeps the slots in memory, wrote them back over an install (docs/re/memory.md, "
 achievements"), and would presumably over a restore. ``install`` fills only an empty slot, and
 only when a backup from the last 12 hours holds that slot as it is now. ``restore`` may
 overwrite slots in use; it refuses a backup of another save folder, checks the backup against
-its manifest, and backs up the present state first.
+its manifest, and backs up the present state first, and never writes a ``*.tmp`` file.
+
+``backup`` leaves out ``*.tmp`` files and warns while Zexion runs (it still backs up: it
+only reads). A mod helper in the running game may be writing a seed copy
+(``ZexionAP-seed-<NAME>.sav``, through ``<name>.sav.tmp`` renamed over it) and the game its
+saves, so a backup taken then may hold a half-moved state; the helper's temporary file is no
+save and no copy, and a restore would put it back under a name outside the helpers' own
+(CLAUDE.md, "Rules"). Close the game for a backup you will restore from.
 
 A slot is empty in two ways, and ``slots`` names both. "empty" holds the unused-slot template.
 "empty (deleted, data kept)" holds a save deleted in the game: deleting keeps the file and all

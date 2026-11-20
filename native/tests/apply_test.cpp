@@ -159,21 +159,21 @@ int wmain(int argc, wchar_t** argv) {
     check(reply == "stored", "seed B put", reply);
     check(std::filesystem::is_regular_file(base / L"ZexionAP" / L"seeds" / L"12345-0-1.txt"),
           "written into the test's folder");
-    // No save of the seed in the test's save folder yet: no copy. Then one, and the next put
-    // writes it, under its own name.
+    // No slot of the game holds the seed yet: no copy in the test's save folder. Then the stand-in
+    // game's slot 1 does: the frame calls publish the slots' seeds and the copy thread writes the
+    // copy, under its own name, a moment later (no put, no client, no save file of the game).
     check(!std::filesystem::exists(save / L"ZexionAP-seed-12345-0-1.sav"),
-          "no save of the seed: no copy in the test's save folder");
-    {
-        std::string file_bytes(0x13100, '\0');
-        file_bytes[0x9402] = 1;
-        std::memcpy(&file_bytes[0x12A80], g_table, sizeof(g_table));
-        std::memcpy(&file_bytes[0x12B24], g_start, sizeof(g_start));
-        std::ofstream(save / L"Save Game 1.sav", std::ios::binary) << file_bytes;
+          "no slot of the seed: no copy in the test's save folder");
+    stand_in::slot_block(1)[0x935E] = 0;
+    put<uint16_t>(stand_in::slot_block(1), 0x9400, 1);
+    std::memcpy(stand_in::rando_copy(1), stand_in::g_section, 0x908);
+    for (int i = 0; i < 300 && !std::filesystem::exists(save / L"ZexionAP-seed-12345-0-1.sav"); ++i) {
+        Sleep(10);
     }
+    check(std::filesystem::is_regular_file(save / L"ZexionAP-seed-12345-0-1.sav"),
+          "a slot of the seed now: the copy thread wrote its copy into the test's save folder");
     reply = zap_test::ask(pipe, "offline_put seed 12345-0-1\n" + file);
-    check(reply == "unchanged" &&
-              std::filesystem::is_regular_file(save / L"ZexionAP-seed-12345-0-1.sav"),
-          "a save of the seed now: its copy in the test's save folder, under its own name");
+    check(reply == "unchanged", "the same put again: unchanged", reply);
     for (int i = 0; i < 200 && reply != "told"; ++i) {  // asked again until a frame has taken it
         reply = zap_test::ask(pipe, "other_save");
         if (reply != "told") Sleep(5);

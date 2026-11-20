@@ -51,16 +51,20 @@ Where things are:
   and the Linux helper write `ZexionAP-seed-<NAME>.sav` into the save folder (each through a
   temporary file renamed over the old one) so Steam Cloud carries them with the saves to another
   machine (`native/README.md`, "Seed files in the save folder"; owner's decision, 2026-11-20). A
-  helper writes one only for a seed that one of the 30 saves in that folder uses (the owner's
-  decision, 2026-11-20: at most 30 copies a machine writes), only a name that starts with
+  helper writes one only for a seed that one of the game's 30 save slots uses, as the game's
+  memory holds them (never by opening a save file: the game opens one to write with no share
+  mode) (the owner's
+  decision, 2026-11-20: so at most 30 copies are written and refreshed at a time; the ones a deleted
+  save leaves stay), only a name that starts with
   `ZexionAP-seed-` and ends in `.sav`, never a `Save Game`, `GameUnlocks` or `Preferences` file or
   any other the game uses, and deletes nothing there. The client and Claude never write the save
   folder, and the tools only through `save_lab.py install` and `restore`. The write guard stays
   as it is for Claude's own tool calls. Tests never write the real folders: they use fakes (a
   test's own folder, `ZEXION_SAVE_DIR` for the Python tools), the helper built for tests takes
-  only folders inside the temporary folder (never the real ones) and its save folder only from
-  `ZAP_TEST_SAVE_DIR` (`native/src/dllmain.cpp`, `save_dir`; `restrict_to_test_folder`), and a
-  canary in CTest and pytest fails a run that changes the real folders. The same hooks block
+  only folders inside the temporary folder (never the real ones, links resolved) and its save folder
+  only from `ZAP_TEST_SAVE_DIR` (`native/src/dllmain.cpp`, `save_dir`; `restrict_to_test_folder`), the
+  test-only build of the core every test program links refuses any other write itself
+  (`ZAP_TEST_BUILD`), and a canary in CTest and pytest fails a run that changes the real folders. The same hooks block
   writes to the mod's offline files,
   `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts; on Linux the seeds' files and
   the helper's socket token, in `$XDG_DATA_HOME/ZexionAP`, else `~/.local/share/ZexionAP`): only
@@ -71,8 +75,8 @@ Where things are:
   `/reload_mod`, and `save_lab.py install` and `restore`. Grants and memory writes go only
   into a lab slot; grants only while the player stands still in play. Loading the helper
   (`helper.py load`), starting the game with the mod, and a client run also make the helper write
-  seed copies into the real save folder for the saves there (see above), which Steam uploads:
-  ask first for those too.
+  seed copies into the real save folder for the saves there (see above), which Steam is
+  expected to upload (not yet seen): ask first for those too.
 - **Branches and releases.** `main` holds released code; `develop` holds code ready for the next
   release. Work on a short-lived topic branch cut from `develop`, merged into `develop` by pull
   request, then deleted. `develop` and `main` take changes only through pull requests with every CI

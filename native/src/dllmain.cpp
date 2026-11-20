@@ -141,6 +141,20 @@ std::wstring save_dir() {
 #endif
 }
 
+// The seeds of the game's randomizer saves, as its memory holds the slots (Game::saved_seeds),
+// published from the frame call and read by the pipe thread and the copy thread: a seed's copy goes
+// into the save folder only while a slot here uses it, and no save file of the game is opened (the
+// game opens one to write with no share mode, so a read open of ours could fail its save).
+zap::SavedSeeds g_saved;
+
+// The slots as the pipe thread's calls see them: null before the first list is published (none
+// known: no copy is written), else the list in `held`.
+const std::vector<zap::OfflineSeed>* saved_list(std::vector<zap::OfflineSeed>& held) {
+    if (g_saved.generation() == 0) return nullptr;
+    held = g_saved.get();
+    return &held;
+}
+
 // Set by any request that is no probe (a client's: `config`, `offline_put`, `apply`, ...), taken
 // when the connection goes: a client that set nothing, `helper.py status` or a hello, leaves
 // the files as they are (no copy is written for it).
@@ -162,7 +176,9 @@ public:
 
 // `write` false only makes the seeds one, writing nothing (a client that set nothing went).
 void read_offline_with(bool write) {
-    zap::OfflineFiles files = zap::read_offline_files(offline_dir(), g_build, save_dir(), write);
+    std::vector<zap::OfflineSeed> held;
+    zap::OfflineFiles files = zap::read_offline_files(offline_dir(), g_build, save_dir(), write,
+                                                      saved_list(held));
     // Copied before the lock, and the lock released however this ends: a throw under it would
     // leave the next `hello` waiting for it for good.
     std::string error = files.error;
@@ -347,6 +363,58 @@ void take_offline() {
     }
 }
 
+// Game thread: the slots' seeds published for the other threads, on the first frame and every
+// 16th (cheap: 30 slots' markers and sections). A change wakes the copy thread by its generation.
+void snapshot_saves() {
+    static uint32_t frame_count = 0;
+    if ((frame_count++ & 15u) != 0) return;
+    g_saved.publish(g_game.saved_seeds());
+}
+
+// The copy thread: when the game's slots change (a save made, a new game, a deleted save) it
+// reads the seed files and writes the copy of each seed a slot now uses into the save folder:
+// the case of a seed a client put before the game's first save, which the put could not copy,
+// whatever the client does after (it may be connected till the game closes). Never the frame
+// call. Polls the slots' generation every 250 ms and stops when asked (helper_thread joins it
+// before the DLL can go).
+std::atomic<bool> g_copy_stop{false};
+HANDLE g_copy_thread = nullptr;
+HANDLE g_copy_wake = nullptr;  // set to stop it at once (else it looks every 250 ms)
+
+DWORD WINAPI copy_thread(void*) {
+    uint64_t done = 0;
+    while (!g_copy_stop.load()) {
+        WaitForSingleObject(g_copy_wake, 250);
+        if (g_copy_stop.load()) break;
+        const uint64_t generation = g_saved.generation();
+        if (generation == done) continue;
+        done = generation;
+        try {
+            std::vector<zap::OfflineSeed> saved = g_saved.get();
+            zap::OfflineFiles files =
+                zap::read_offline_files(offline_dir(), g_build, save_dir(), true, &saved);
+            if (!files.error.empty()) {
+                OfflineLock lock;
+                g_offline_error = files.error;
+            }
+        } catch (...) {
+            // Nothing may end this thread but being asked to.
+        }
+    }
+    return 0;
+}
+
+void stop_copy_thread() {
+    if (g_copy_thread == nullptr) return;
+    g_copy_stop.store(true);
+    SetEvent(g_copy_wake);
+    WaitForSingleObject(g_copy_thread, INFINITE);
+    CloseHandle(g_copy_thread);
+    CloseHandle(g_copy_wake);
+    g_copy_thread = nullptr;
+    g_copy_wake = nullptr;
+}
+
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
 void note_put_seed(zap::OfflineSeed seed) {
     AcquireSRWLockExclusive(&g_offline_lock);
@@ -380,6 +448,7 @@ uintptr_t frame(void* argument) {
                 g_game.client_gone(&archipelago_chosen);
             }
             take_offline();
+            snapshot_saves();
             g_mailbox.serve();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
                 // No watch once an unload has begun: what the client asked for stays set, and a
@@ -632,8 +701,9 @@ std::string handle(const std::string& request, bool& stop) {
         // The seed's copy in the game's save folder too (offline.h): Steam Cloud carries it.
         zap::OfflineSeed seed;
         std::string save_error;
+        std::vector<zap::OfflineSeed> held;
         std::string reply = zap::put_offline_file(offline_dir(), g_build, request, &seed,
-                                                  save_dir(), &save_error);
+                                                  save_dir(), &save_error, saved_list(held));
         if (!save_error.empty()) {
             OfflineLock lock;
             g_offline_error = "save folder copy: " + save_error;
@@ -723,6 +793,17 @@ DWORD WINAPI helper_thread(void*) {
         if (g_slot != nullptr) guarded(run_self_scan);
         // Guarded as the scan is: the pipe comes up whatever these throw (no files read then).
         if (g_slot != nullptr) guarded(read_offline);
+        if (g_slot != nullptr) {
+            g_copy_stop.store(false);
+            g_copy_wake = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            if (g_copy_wake != nullptr) {
+                g_copy_thread = CreateThread(nullptr, 0, copy_thread, nullptr, 0, nullptr);
+                if (g_copy_thread == nullptr) {
+                    CloseHandle(g_copy_wake);
+                    g_copy_wake = nullptr;
+                }
+            }
+        }
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle, [] {
                 g_client_gone.store(true);
                 // The client may have written them; the copies in the save folder only if it
@@ -739,6 +820,7 @@ DWORD WINAPI helper_thread(void*) {
                 Sleep(1000);
             }
         }
+        stop_copy_thread();
         wait_until_no_call_inside();
         while (g_in_callback.load() != 0) Sleep(1);
     } catch (...) {
