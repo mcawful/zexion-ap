@@ -1314,3 +1314,46 @@ def test_a_shield_seen_up_after_a_switch_to_another_seed_is_not_counted() -> Non
     world.settled_state = switch
     run(ticks.confirm_shield(ctx, world, old, ctx.conn.shield_key))
     assert counts_sent(ctx) == [] and old.shields.given is None
+
+
+def stamp(deaths: int) -> bytes:
+    """A save stamp with a death count (discs.deaths)."""
+    return bytes(discs.STAMP_DEATHS_AT) + struct.pack("<I", deaths)
+
+
+def in_play_at(deaths: int) -> session.Step:
+    return session.Step(
+        goal=False, seed_matches=True, state=game.IN_PLAY, ended=False, save_stamp=stamp(deaths)
+    )
+
+
+@pytest.mark.parametrize("respawned", [True, False])
+def test_on_linux_a_death_dealt_with_the_reply_lost_is_never_dealt_twice(
+    monkeypatch, respawned
+) -> None:
+    # The helper dealt it, the reply was lost, and the next poll's first read: the player in
+    # play again (respawned, the save's death count up), or not yet dead (count the same).
+    clock = types.SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(ticks, "time", types.SimpleNamespace(monotonic=lambda: clock.now))
+    ctx = linux_death_ctx(linux_helper.NoReply("the helper did not answer within 5 s"))
+    first = ctx.linux_mod
+    ctx.seed_state.deaths.receive()  # two queued
+    ctx.seed_state.deaths.observe(game.IN_PLAY, clock.now)
+    run(ticks.deathlink_tick(ctx, in_play_at(3)))
+    deaths = ctx.seed_state.deaths
+    assert first.requests == ["die"] and deaths.watching and ctx.linux_mod is None
+    ctx.linux_mod = LinuxDeathMod("died")  # configured again, a slow poll
+    clock.now += 20.0
+    run(ticks.deathlink_tick(ctx, in_play_at(4 if respawned else 3)))
+    assert ctx.deaths_sent == [], "the dealt death is not the player's own"
+    if respawned:
+        # Counted as the one dealt: the second queued is asked for now, once (not the first again).
+        assert ctx.linux_mod.requests == ["die"] and deaths.owed == 0 and not deaths.watching
+    else:
+        assert ctx.linux_mod.requests == [], "not asked again in the tick that read the state"
+        clock.now += 2.0
+        run(ticks.deathlink_tick(ctx, in_play_at(3)))
+        assert ctx.linux_mod.requests == [], "still within the window"
+        clock.now += deathlink.DEALT_SECONDS
+        run(ticks.deathlink_tick(ctx, in_play_at(3)))
+        assert ctx.linux_mod.requests == ["die"] and deaths.owed == 1  # none came: asked again

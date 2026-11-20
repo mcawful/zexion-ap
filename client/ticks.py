@@ -558,7 +558,8 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
     deaths = seed.deaths
     now = time.monotonic()
     state_now = game.NO_SAVE if step.left_seed else step.state
-    if deaths.observe(state_now, now):
+    count = discs.deaths(step.save_stamp)  # a death dealt unseen shows in it (Linux's lost reply)
+    if deaths.observe(state_now, now, count):
         try:
             await ctx.send_death(f"{ctx.player_names.get(ctx.slot, 'A player')} died in Zexion.")
         except Exception as exc:  # a closing connection: this death is not sent
@@ -574,9 +575,9 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
     mod = ctx.linux_mod if helper is None else None  # the game's Linux build: its helper's
     if not deaths.owed or (helper is None and mod is None):
         return
-    if state_now != game.IN_PLAY or now < seed.death_retry_at:
-        return
-    deaths.dealing(now)  # a death seen after a lost reply is this one
+    if state_now != game.IN_PLAY or now < seed.death_retry_at or deaths.watching:
+        return  # (watching: the death of a lost reply is not settled: one never twice)
+    deaths.dealing(now, count)  # a death seen after a lost reply is this one
     if helper is not None:
         reply = await asyncio.to_thread(helper.request, "die", native.APPLY_SECONDS)
     else:
@@ -813,14 +814,16 @@ def read_stored_seed(folder: Path, name: str) -> str | None:
 
 def linux_stored_seed(mod, name: str) -> str | None:
     """The seed file the Linux helper keeps under ``name``, read as this client can see it, in the
-    data folder of the newest token it found (``linux_helper.find_tokens``: the one the helper
-    wrote when the game started); None where it can't be read. The helper has no request that
-    tells what its file holds."""
-    try:
-        folder = linux_helper.find_tokens(mod.pm.game)[0][0].parent
-    except linux_helper.LinuxHelperError:
-        return None
-    return read_stored_seed(folder, name)
+    data folder of the token the helper took (``LinuxProcess.token_path``; else the newest token
+    ``linux_helper.find_tokens`` finds); None where it can't be read. The helper has no request
+    that tells what its file holds."""
+    path = getattr(mod.pm, "token_path", None)
+    if path is None:
+        try:
+            path = linux_helper.find_tokens(mod.pm.game)[0][0]
+        except linux_helper.LinuxHelperError:
+            return None
+    return read_stored_seed(path.parent, name)
 
 
 async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
@@ -888,9 +891,10 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
             logger.warning(LINUX_OFFLINE_FAILED)
             log.warning(f"The Linux helper did not keep the seed's file: {reply}")
     else:
-        if full is None:
-            # Not taken: put again with what the file held, it would be refused each time; the
-            # slot data's text alone next.
+        if full is None and (reply.startswith("error bad ") or reply == "error not a seed file"):
+            # The file's lines, not this run's, are what it cannot parse (a file cut short on
+            # disk, say): its labels are lost, the slot data's text alone goes next (the seed's
+            # own traps need one). Any other refusal keeps the text for the next try.
             ctx.linux_stored_seeds[name] = None
         if ctx.said("linux seed", reply):
             logger.warning(

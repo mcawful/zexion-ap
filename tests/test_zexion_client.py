@@ -2070,3 +2070,32 @@ def test_the_stored_seed_is_read_only_as_a_plain_file(tmp_path) -> None:
     (seeds / "link2-0-1.txt").symlink_to(seeds / "real.txt")
     if hasattr(os, "O_NOFOLLOW"):
         assert ticks.read_stored_seed(tmp_path, "link2-0-1") is None
+
+
+def test_on_linux_a_refusal_not_about_the_files_lines_keeps_the_merged_text(monkeypatch) -> None:
+    # Only a text the helper cannot parse is dropped for the slot data's alone: any other refusal
+    # would take the stored labels with it for nothing.
+    ctx = context(connection(), linux_game({"config": "ok", "offline_put": "error exception"}))
+    ctx.seed_name, ctx.team, ctx.slot = "S", 0, 1
+    ctx.linux_mod = linux_helper.LinuxMod(ctx.game_conn.pm)
+    monkeypatch.setattr(ticks, "linux_stored_seed", lambda mod, name: WHOLE_FILE)
+    monkeypatch.setattr(ticks, "linux_seed", lambda ctx, p: POORER_FILE)
+    monkeypatch.setattr(ticks, "offline_seed", lambda ctx, p: None)
+    for _ in range(2):
+        asyncio.run(ticks.linux_seed_tick(ctx, None))
+        ctx.linux_mod.told.offline_at = 0.0
+    puts = [t for t in ctx.game_conn.pm.sent if t.startswith("offline_put")]
+    assert len(puts) == 2 and all("ap_labels" in t for t in puts)
+
+
+def test_the_stored_seed_is_read_beside_the_token_the_helper_took(tmp_path, monkeypatch) -> None:
+    taken = tmp_path / "live" / "ZexionAP"
+    (taken / "seeds").mkdir(parents=True)
+    (taken / "seeds" / "S-0-1.txt").write_bytes(WHOLE_FILE.encode())
+    mod = types.SimpleNamespace(pm=types.SimpleNamespace(game=object(), token_path=taken / "token"))
+
+    def newest(game):  # a stale token in another folder, the newest: not what is read
+        raise AssertionError("the token the helper took is known")
+
+    monkeypatch.setattr(linux_helper, "find_tokens", newest)
+    assert REAL_LINUX_STORED_SEED(mod, "S-0-1") == WHOLE_FILE

@@ -93,11 +93,12 @@ def seed_text(
 def keep_richer(text: str, stored: str | None) -> str:
     """``text``, a seed file with less than the whole (the slot data's alone: no labels, and no
     disk counts until the items are listed), with what ``stored``, the file the helper already
-    keeps under the seed's name, has that ``text`` lacks: its ``ap_labels`` block and its
-    ``discs`` and ``unfound`` lines. So putting ``text`` never replaces a richer file with a
-    poorer one (the helper keeps what it is put as it is), while the helper still takes the seed's
-    own traps from it. ``text`` as it is when ``stored`` is no seed file, or one of another seed
-    (its table differs)."""
+    keeps under the seed's name, has that ``text`` lacks: its ``ap_labels`` block, its
+    ``discs`` and ``unfound`` lines, and ``assists free`` (Assist Unlock is never taken back, and
+    the slot data's lock stands before this connection's items are listed). So putting ``text``
+    never replaces a richer file with a poorer one (the helper keeps what it is put as it is),
+    while the helper still takes the seed's own traps from it. ``text`` as it is when ``stored``
+    is no seed file, or one of another seed (its table differs)."""
     if not stored:
         return text
     old, new = stored.splitlines(), text.splitlines()

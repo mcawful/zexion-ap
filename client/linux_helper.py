@@ -287,6 +287,9 @@ class LinuxHelper:
         self.game = game
         self.timeout = timeout
         self._sock: socket.socket | None = None
+        # The token file the helper took (``auth``), once connected: its folder is the helper's
+        # data folder, as this client sees it (ticks.linux_stored_seed reads the seed files there).
+        self.token_path: Path | None = None
 
     def __enter__(self) -> LinuxHelper:
         """Connect, check the server, and show it a token. The tokens found (``find_tokens``) are
@@ -303,6 +306,7 @@ class LinuxHelper:
                 path, token = tokens[len(refused)]
                 reply = self.request(f"auth {token}")
                 if reply == "ok":
+                    self.token_path = path
                     return self
                 refused.append(path)
                 if len(refused) == len(tokens):
@@ -512,6 +516,12 @@ class LinuxProcess:
         """Whether its connection to the helper is open (one closed is made again by the next
         read, write or request)."""
         return self._helper.connected
+
+    @property
+    def token_path(self) -> Path | None:
+        """The token file the helper took on the latest connection made: the helper's data
+        folder holds it, so its ``seeds`` folder is beside it."""
+        return self._helper.token_path
 
     def request(self, text: str) -> str:
         """A request to the helper on this connection (one at a time with the reads and

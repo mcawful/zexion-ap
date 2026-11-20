@@ -423,3 +423,19 @@ def test_the_ranges_the_helper_lets_a_client_write_are_the_ones_the_client_write
     assert client_game.CELL_ITEM < client_game.CELL_STRIDE
     assert constant("kMapGrid") == targets["map_grid"].offset
     assert constant("kMapCells") == client_game.MAP_SIZE * client_game.MAP_SIZE
+
+
+def test_the_token_file_the_helper_took_is_remembered(monkeypatch, tmp_path: Path) -> None:
+    # ticks.linux_stored_seed reads the seed files beside it, not beside the newest token found.
+    stale, live = tmp_path / "stale" / "token", tmp_path / "live" / "token"
+    monkeypatch.setattr(linux_helper, "find_tokens", lambda game: [(stale, "a"), (live, "b")])
+    helper = linux_helper.LinuxHelper(types.SimpleNamespace(pid=1))
+    monkeypatch.setattr(helper, "_connect", lambda: None)
+    monkeypatch.setattr(helper, "__exit__", lambda *args: None)
+    monkeypatch.setattr(helper, "request", lambda text: "ok" if text == "auth b" else "refused")
+    assert helper.token_path is None
+    assert helper.__enter__() is helper
+    assert helper.token_path == live
+    process = object.__new__(linux_helper.LinuxProcess)
+    process._helper = helper
+    assert process.token_path == live

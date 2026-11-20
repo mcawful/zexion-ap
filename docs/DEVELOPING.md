@@ -358,11 +358,12 @@ What there is:
   (`ticks.shields_tick`) and DeathLink's deaths (`ticks.deathlink_tick`), Intel Chips
   (`ticks.linux_intel_tick`), the ASSIST lock (`ticks.linux_assists_tick`), other players' items'
   labels (`ticks.linux_labels_tick`), this seed's file (`ticks.linux_seed_tick`: at first its own
-  traps and disks, with the labels and disk counts the file already kept, then the whole file,
-  labels included, for the look without the client), CLIENT
-  CONNECTED and the other-seed notice (`linux_client_back_tick`, `linux_other_save_tick`), the
-  language (`linux_language_tick`), the OS Install Disks' count (`linux_discs_tick`), the finds'
-  follow-ups and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step
+  traps and disks, with the labels, disk counts and free ASSIST menu the file already kept where
+  the client can read it, then the whole file, labels included, for the look without the client;
+  the file's labels kept, and a DeathLink death whose reply was lost counted, are stand-in tests
+  only, not run in the game), CLIENT CONNECTED and the other-seed notice
+  (`linux_client_back_tick`, `linux_other_save_tick`), the language (`linux_language_tick`), the
+  OS Install Disks' count (`linux_discs_tick`), the finds' follow-ups and RETURN HOME (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step
   back until the Linux helper is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll),
   so no step meanwhile writes the items owed with no popup or drops a waiting trap. One lost after
   it was configured holds the step back for 30 s too (`ticks.linux_mod_lost`), as does one let go
