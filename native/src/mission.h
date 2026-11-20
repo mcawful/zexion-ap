@@ -30,6 +30,9 @@ constexpr int8_t kEndingFadeStep = 8;
 extern const char kMissionQuestion[];  // in capitals after a blank in its pixel glyphs
 // The status from the frame the ending is set until left_save (client/discs.py, ENDING_STARTED).
 extern const char kEndingStarted[];
+// The status after restore left a prompt up with YES put back to NO's callback, until it is asked
+// again (client/discs.py, PUT_BACK is its start).
+extern const char kPutBack[];
 
 // The game's fade of the global level, at `fade`: target, step (0: off) and countdown, signed
 // bytes; the level is the byte at `fade_level` (docs/re/memory.md, "The mission prompt").

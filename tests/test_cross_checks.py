@@ -257,7 +257,7 @@ def test_the_replies_the_client_branches_on_are_ones_the_helper_gives() -> None:
         "error too large", "error no LOCALAPPDATA", "refused not settled", "error unknown request",
         "unknown line ", "missing ", "; not unloading", "bye", "ok", "applied", "refused ",
         "stored", "unchanged", "labeled", "spawned", "died", "armed", "shown", "unknown", "idle",
-        "queued", "on:", "the new game is not this seed", discs.ENDING_STARTED,
+        "queued", "on:", "the new game is not this seed", discs.ENDING_STARTED, discs.PUT_BACK,
         "a menu is open", "free", "locked", "intel on", "intel off",
         "discs on", "discs off",
     )  # fmt: skip

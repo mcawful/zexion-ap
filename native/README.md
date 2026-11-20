@@ -132,7 +132,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs` (frame) | `discs on`, `discs off`, `refused <why>` | The OS Install Disks goal |
-| `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
+| `discs_status`, `mission_prompt COLUMN ROW`, `mission_status` (frame) | `shown N` or `not shown…`; `queued`, `refused not configured` or `error <why>`; `not asked`, `asked`, `opening after the fade`, `opening without the fade: …`, `shown`, `put back: the prompt was up, YES is NO` (an unload or a client gone left it open with YES put back to NO's callback), `lapsed: the player left the landing pod`, `yes: ending when idle` (`, the screen kept black` or another note after it), `ending started` (until another save is loaded; the client reads it), … | The OS Install Disks goal |
 | `mission_black` (frame) | how the last black after RETURN HOME's YES ended: `none`, `kept black` or `ended: …` | The OS Install Disks goal |
 | `client_back`, `other_save` (frame) | `shown`, `none`; `told`, `already told`, `unknown` (no known seed: a plain randomizer game, left alone); or `refused <why>` | AP saves without the client |
 | `unload` | `bye`, or `error <why>` | Unloading |
@@ -2707,8 +2707,12 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     gets no reply, so the client follows a prompt it queued while it is on its way
     (`mission_status`, `ticks.linux_finds_tick`) while it is on its way (`asked`, `opening…`) and
     after a YES until the ending has started (`yes: ending when idle…`): one the cancel dropped
-    (`not asked`) is offered again at once; one shown, lapsed or with its ending started is not
-    followed any more, so a NO is never undone;
+    (`not asked`), or left up with YES put back to NO's callback (`put back: …`, which
+    `MissionPrompt::restore` sets only for a prompt still open, so a NO the player pressed, which
+    leaves `shown`, is not taken for it), is offered again at once. A prompt read as `shown` is
+    asked about once more on each new connection (`ReturnHome.shown_on`), not every poll, and
+    then reading `not asked` (a NO closed it, the cancel reset the status) is not offered again;
+    one lapsed or with its ending started is not followed any more, so a NO is never undone;
   - the frame call also comes from a swap inside the game's `loadState()` (`docs/re/linux.md`,
     "The per-frame call"), so `watch_mission` may run mid-load, as the grants, popups, drops and
     traps may: by the code the prompt gives up an opener or a fade another transition took
