@@ -1,5 +1,7 @@
 """The few ELF fields the tools read from Zexion's Linux build (64-bit little-endian only): the
-file type, the machine, the entry point, the sections, the GNU build id, and the symbol tables.
+file type, the machine, the entry point, the sections, the GNU build id, the symbol tables, and
+the symbol versions a file needs of each library (the release's check of the Linux helper's glibc:
+tools/build_apworld.py).
 
 Zexion's Linux binary is a position-dependent executable (``ET_EXEC``, loaded at its link
 addresses) that keeps its symbol table (``docs/re/builds.md``, "B1 on Linux"), so a global's
@@ -18,9 +20,11 @@ ET_EXEC = 2  # a fixed-address executable
 ET_DYN = 3  # a shared object, or a position-independent executable
 EM_X86_64 = 62
 SHT_SYMTAB = 2
+SHT_STRTAB = 3
 SHT_NOTE = 7
 SHT_NOBITS = 8
 SHT_DYNSYM = 11
+SHT_GNU_VERNEED = 0x6FFFFFFE  # .gnu.version_r: the symbol versions needed of each library
 SHF_ALLOC = 0x2  # loaded when the program runs
 SHF_TLS = 0x400  # per thread: its sh_addr is a template's, overlapping other sections
 NT_GNU_BUILD_ID = 3
@@ -118,6 +122,55 @@ class Image:
             raise ELFError(f"{len(matches)} different symbols named {name}")
         return next(iter(matches.values()))
 
+    def version_needs(self) -> dict[str, set[str]]:
+        """The symbol versions the file needs, by the library that defines them
+        (``{"libc.so.6": {"GLIBC_2.2.5", ...}}``), from ``.gnu.version_r``: what the dynamic
+        loader checks before it maps the file. Empty when the file needs none."""
+        needs: dict[str, set[str]] = {}
+        for section in self.sections:
+            if section.type != SHT_GNU_VERNEED:
+                continue
+            if section.link >= len(self.sections):
+                raise ELFError(f"{section.name} names no string table")
+            strings = self.sections[section.link]
+            if strings.type != SHT_STRTAB:
+                raise ELFError(f"{section.name} names a section that is no string table")
+            names = self.data[strings.offset : strings.offset + strings.size]
+            end = min(section.offset + section.size, len(self.data))
+            at = section.offset
+            # Each record and entry 16 bytes, after the last: a chain that steps back or overlaps,
+            # or longer than the section holds, is a damaged file, refused.
+            for _ in range(section.size // 16 + 1):
+                if at + 16 > end:
+                    raise ELFError(f"{section.name} runs past its end")
+                version, count, file_at, aux, following = struct.unpack_from(
+                    "<HHIII", self.data, at
+                )
+                if version != 1:
+                    raise ELFError(f"{section.name} is of version {version}, not 1")
+                versions = needs.setdefault(_string(names, file_at, section.name), set())
+                entry = at + aux
+                for i in range(count):
+                    if aux < 16 or entry + 16 > end:
+                        raise ELFError(f"{section.name} runs past its end")
+                    _hash, _flags, _other, name_at, after = struct.unpack_from(
+                        "<IHHII", self.data, entry
+                    )
+                    versions.add(_string(names, name_at, section.name))
+                    if not after:
+                        break
+                    if after < 16 or i == count - 1:
+                        raise ELFError(f"{section.name} has a damaged chain")
+                    entry += after
+                if not following:
+                    break
+                if following < 16:
+                    raise ELFError(f"{section.name} has a damaged chain")
+                at += following
+            else:
+                raise ELFError(f"{section.name} has a damaged chain")
+        return needs
+
     def function_at(self, addr: int) -> tuple[Symbol, int] | None:
         """The defined function whose bytes hold ``addr``, and ``addr``'s offset into it; None
         when no function symbol covers it."""
@@ -145,6 +198,14 @@ class Image:
 
 def _align4(n: int) -> int:
     return (n + 3) & ~3
+
+
+def _string(names: bytes, at: int, where: str) -> str:
+    """The NUL-ended string at ``at`` in the string table ``names`` (``where``'s)."""
+    end = names.find(b"\0", at)
+    if at >= len(names) or end < 0:
+        raise ELFError(f"{where} names a string past its table")
+    return names[at:end].decode("utf-8", "replace")
 
 
 def parse(data: bytes) -> Image:

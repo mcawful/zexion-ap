@@ -415,7 +415,8 @@ instead. Your normal saves earn them as usual.
 
 The mod also stops Steam achievements in Archipelago saves (for items, the map and the
 ending). The ending's has been checked in game; the others so far only in the mod's own tests.
-While `/reload_mod` reloads the mod, for a few seconds, they are not stopped.
+While `/reload_mod` reloads the mod, for a few seconds, they are not stopped (on Windows only:
+on Linux the mod can't be reloaded, so restart Zexion instead).
 
 This needs the mod in the game's folder. It holds with the client closed too, once you have
 connected to that seed at least once: endings of Archipelago saves played with no client have

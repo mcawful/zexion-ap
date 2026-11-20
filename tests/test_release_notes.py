@@ -20,10 +20,13 @@ from build_apworld import client_version
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 
-# sha256 of each release's message as published on GitHub (the release's "body"), 2026-11-09.
+# sha256 of each release's message as published on GitHub (the release's "body"), 2026-11-09,
+# for the messages the notes and the install guide here still rebuild. A message carries the
+# install guide (.github/release-footer.md) as it was then, so a change to the guide retires the
+# pins of messages made with it: 1.1.0's ("2e46f2cc…", from v1.0.0) went with the guide's Linux
+# steps; 1.0.0's has no install guide.
 PUBLISHED = {
     ("1.0.0", None): "01672568b4672d4f5fda6eae420f1317d600a86d1ce88b492e0805d077620a55",
-    ("1.1.0", "v1.0.0"): "2e46f2cc8fab48f71331b0a3f662050574359b7784565b511ad6a82becba0677",
 }
 
 NOTES = """\

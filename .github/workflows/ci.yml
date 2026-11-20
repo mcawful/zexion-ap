@@ -93,6 +93,48 @@ jobs:
           ZEXION_REQUIRE: helper
         run: python -m pytest tests/test_native_linux.py -v
 
+  # The Linux helper as a release builds it (release.yml): in the Steam Runtime's SDK, sniper, at
+  # a pinned snapshot (by tag and digest), the runtime the game asks Steam for, with glibc 2.31,
+  # GCC 14 and CMake 3.25. Built and tested there, then checked as the release checks it.
+  native-linux-runtime:
+    name: Linux helper (Steam Runtime)
+    runs-on: ubuntu-latest
+    container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:3.0.20261021.266025@sha256:bb30053d3cd19d35c76ae69b2790dbaa1430448006f8240cb6d7e723f2d1940e
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build
+        run: |
+          cmake -S native -B native/build -G Ninja -DCMAKE_CXX_COMPILER=g++-14
+          cmake --build native/build
+      - name: Native tests
+        run: ctest --test-dir native/build --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libzexion_ap-runtime
+          path: native/build/libzexion_ap.so
+          if-no-files-found: error
+
+  # The release's own check of that build (tools/build_apworld.py, --check-linux-helper): its
+  # version, glibc 2.31 at most, numbered glibc versions only, no library but glibc's.
+  native-linux-runtime-check:
+    name: Linux helper (Steam Runtime) loads
+    runs-on: ubuntu-latest
+    needs: native-linux-runtime
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: libzexion_ap-runtime
+          path: native/build
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.13"
+          activate-environment: true
+      - name: Check
+        run: python tools/build_apworld.py --check-linux-helper native/build/libzexion_ap.so
+
   world:
     name: Archipelago world tests
     runs-on: ubuntu-latest
