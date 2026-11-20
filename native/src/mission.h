@@ -33,6 +33,8 @@ extern const char kEndingStarted[];
 // The status after restore left a prompt up with YES put back to NO's callback, until it is asked
 // again (client/discs.py, PUT_BACK is its start).
 extern const char kPutBack[];
+// The status after a cancel dropped a YES whose ending had not started (starts as kPutBack does).
+extern const char kYesDropped[];
 
 // The game's fade of the global level, at `fade`: target, step (0: off) and countdown, signed
 // bytes; the level is the byte at `fade_level` (docs/re/memory.md, "The mission prompt").

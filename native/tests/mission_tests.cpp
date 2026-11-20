@@ -378,6 +378,7 @@ void test_cancel_drops_it_for_another_save() {
     m.open(a);
     m.yes();
     m.cancel(a);  // YES, then the save changed before the ending
+    check(m.status() == zap::kYesDropped, m.status().c_str());  // not "not asked": no NO
     g_current = nullptr;
     g_fn = kIdle;
     m.watch(a, true);

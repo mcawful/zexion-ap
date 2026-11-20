@@ -955,9 +955,9 @@ async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> N
     """With the game's Linux build, after the step: the follow-up popups of this world's finds
     (followups_tick) and the Landing Pod's RETURN HOME (mission_tick), through the Linux helper
     with what it was told (LinuxMod.told); a prompt queued in this load and dropped before it
-    showed, or answered YES before its ending started, with the helper's last connection (its
-    status ``not asked``), offered again. A
-    helper that fails is linux_mod_lost."""
+    showed (its status ``not asked``), or shown or answered YES before its ending started (its
+    status ``put back: …``, which the helper says apart from a NO), with the helper's last
+    connection, offered again. A helper that fails is linux_mod_lost."""
     mod = ctx.linux_mod
     if mod is None or not mod.current():
         # Not through a connection made again since it was configured: the helper has no client
@@ -974,7 +974,8 @@ async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> N
             # idle ...") until the ending has started, since a connection that closes before
             # then drops the queued ending too; and while it is up ("shown"), once on each
             # connection, since one that closes then puts YES back to NO's callback, which the
-            # status says ("put back": offered again). One read as shown that then reads "not
+            # status says ("put back": offered again, as for a YES it dropped before the ending
+            # started, which this may not have read yet). One read as shown that then reads "not
             # asked" was closed by NO before the connection did; lapsed or ended ("ending
             # started"): no longer followed, so a prompt answered NO is not offered again.
             reply = await asyncio.to_thread(mod.request, discs.MISSION_STATUS)
