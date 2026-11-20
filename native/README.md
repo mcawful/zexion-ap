@@ -2344,7 +2344,26 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   on stderr). It returns the next one's result as an `int`: nothing for SDL2's callers, SDL3's
   `bool` for a program of SDL3 in the same launch. It counts the calls by call site too (the
   return address, in a lock-free table of eight; `callers`), which tells a frame's swap from
-  another window's. In another program, or another build, it only passes the call on.
+  another window's. In another program, or another build, it only passes the call on. Frame work
+  runs one frame at a time, as the Windows helper's: a swap that a game function the work called
+  makes again (a draw in a menu builder, say) finds the work running and is only passed on. If
+  none of the first 1200 calls comes from the frame function (`SWHardwareEnd`) while the game's
+  symbols give it, another library's `SDL_GL_SwapWindow` stands in front of the helper's, and it
+  says so on stderr once, naming that library (`put libzexion_ap.so first in LD_PRELOAD`): every
+  frame request would be refused, though `hello` says `hooked=1`. **Known limit:** `SWHardwareEnd`
+  is also called from `loadState`, which is not traced (`docs/re/linux.md`, "The per-frame
+  call"); the helper tells that call from the others only by the return address inside
+  `SWHardwareEnd`, which is the same, so frame work runs at that swap too. A grant that lands in
+  the middle of a load can then be overwritten by the load's copy of the inventory, with its popup
+  (and a trap riding on it) already out; the next poll gives the item again (the client's
+  reconcile), so none is lost, and the extra popup is the cost. Telling a load apart needs
+  `loadState`'s own state or a second return address (the stack's, with no frame pointers in
+  the game), neither traced.
+- **Start-up.** The constructor does its work inside a `try`: whatever it throws leaves the helper
+  off (a line on stderr), never an aborted program. It reads one of its own constants through
+  `process_vm_readv` first, and if the kernel or a sandbox's filter refuses, says
+  `memory reads refused: <why>` and does not serve (grants would otherwise land with no
+  popups and no labels).
 - **The socket.** An abstract unix socket, `zexion-ap-<pid>`, `SOCK_SEQPACKET`: one request a
   message, one reply a message, one client at a time, as the Windows pipe. The next client's
   connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
@@ -2354,8 +2373,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   has no file permissions, and any process can bind a name first: the helper serves only a
   client of its own user (`SO_PEERCRED`) and drops the others; the client talks only to a server
   that is the game's own process, of its user (`SO_PEERCRED` again: the pid as the client sees
-  it), whose `hello` names the game's build. A request over 64 KB drops the client. The helper
-  refuses to start, saying so on stderr, if the name is taken. The serving thread catches every
+  it), whose `hello` names the game's build. A connection is served nothing but `hello` until it
+  has sent the helper's token ("Who may connect", below). A request over 64 KB drops the client.
+  The helper refuses to start, saying so on stderr, if the name is taken. The serving thread catches every
   exception, so none reaches the game (`serve`,
   `read_offline_guarded`): one thrown before a request's work went to the game thread is answered
   `error exception` (nothing done, so the client tries again); one thrown after it, or while
@@ -2370,10 +2390,11 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   | Request | Reply |
   |---|---|
   | `hello` | `zexion-ap <version> build=<B1\|unknown> hooked=<0\|1> platform=linux folder=<0\|1>` (`folder=1`: the `.so` is in the game binary's own folder) |
+  | `auth TOKEN` (first, after `hello` if the client likes) | `ok`, or `error auth refused` and the connection closed; every request below is `error auth required`, and the connection closed, before it |
   | `ping` | `pong frames=<calls since load>` |
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
-  | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it) |
+  | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it, `error not_in_the_game's_function_tables` over the tables of function pointers "Reading and writing the game" lists) |
   | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 90 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
@@ -2394,6 +2415,49 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
 
   Anything else gets `error unknown request`.
+- **Who may connect.** The socket is reachable by every process of the user in the host's
+  network namespace, a Flatpak app with network access too (`docs/re/linux.md`, "Read from the
+  running game": the game under Flatpak's Steam shared the client's network namespace), and
+  through `read` and `write` a client has the game's memory. `SO_PEERCRED`'s user check keeps
+  other users out and nothing else, so the helper serves a connection only once it has shown a
+  **token**:
+  - The helper makes 32 random bytes from the kernel in its constructor, before it listens, and
+    writes them as 64 hex digits into `token` of its data folder, `ZexionAP` in `$XDG_DATA_HOME`,
+    else `~/.local/share`, the folder of the seed files ("Seed files", below), made with mode 0700
+    if it is not there: a new file (mode 0600, never through a link) renamed over the last run's.
+    The folder is the game's own view of it, so under Flatpak's Steam it is the sandbox's
+    (`~/.var/app/com.valvesoftware.Steam/...` on the host), which another Flatpak app can't see
+    unless it was given the user's home, and an app that was can read the saves and the game's
+    files anyway. With no absolute data folder, or if the token can't be written, the helper says
+    so on stderr (`no token`) and serves no one: it passes the frame call on as in another
+    program.
+  - The first request of a connection is `hello` (answered: the build and the version, so a
+    client can tell a helper of another version from a wrong token) or `auth TOKEN`; anything
+    else, and a token that is not the helper's, is answered `error auth required` or
+    `error auth refused` and the connection is closed, and a connection that sends neither in 5 s
+    is closed (after the token, the 30 s of silence above). The comparison does not stop at the
+    first byte that differs. The serving thread serves one connection at a time, so a process that
+    connects and says nothing holds it up to 5 s: a nuisance, not a way in.
+  - The client (`client/linux_helper.py`, `find_token`) reads the token after `hello` has shown the
+    server is the game's own process of its user and the right build and version, and sends it to
+    that process only. It looks in the game's own view first: `/proc/<pid>/root` and the game's
+    `XDG_DATA_HOME` or `HOME` from `/proc/<pid>/environ` (a process of the same user may follow
+    both, as it reads `/proc/<pid>/exe`), which is the sandbox's folder under Flatpak's Steam;
+    then the host's own `$XDG_DATA_HOME` or `~/.local/share`, and Flatpak Steam's
+    `~/.var/app/com.valvesoftware.Steam/.local/share` and `.../data`. It uses only a plain file
+    (not a link) that no one but its user can read, holding exactly 64 lower-case hex digits; when
+    none does, its error names the places it looked.
+  - Only a client that sent `config` (the one `LinuxMod` is) is put back when it goes: the
+    helper's plan, labels, Intel Chips, ASSIST lock and disk count, and the seed files read again.
+    It is put back at the next frame call or before the next request's work on the game thread
+    (`client_gone_if_left`), whichever comes first, and the serving thread marks the client gone
+    before it takes the next one: so a client that comes back at once (a request with no reply
+    ends a connection and the client makes another) never has its `config` followed by the last
+    one's clean-up. A connection that never did (`tools/helper.py status`, a probe) leaves nothing to put back,
+    and its closing changes nothing in the game or in the look of an AP save with no client.
+  - Not run in the game yet: the stand-in tests cover the handshake, the refusals, the file's
+    modes and a client reading it through `/proc/<pid>/root`, not Flatpak's Steam
+    (`docs/re/linux.md`, "Read from the running game": what the owner checks).
 - **Reading and writing the game.** The helper reads the game's memory itself, for `read`, with
   `process_vm_readv` on its own pid: the kernel copies it, so an address not mapped is an
   error (`error Bad_address`), not a fault. It writes it for `write` with `process_vm_writev`,
@@ -2401,11 +2465,21 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `p_filesz` to `p_memsz` of each `PT_LOAD` with `PF_W`, read at start-up), where `gGameState`
   and the other state the client writes live: never its code, its constants, its initialized
   data (`.data`'s function pointers) or its import slots (`.got.plt`, writable in a binary
-  without `BIND_NOW`, as B1's is), nor a library's memory. The client's
+  without `BIND_NOW`, as B1's is), nor a library's memory, and not the `.bss` tables of function
+  pointers the game calls through, by their symbols' extents: `gExitActionP` (`updateGame` calls
+  it), `gExitActions`, `gMoveProcs`, `gAreaEventProcs` and `gSpriteDrawProcs` (the config's
+  `transition_fn`, `routine_table`, `map_handler`'s table, `event_handlers` and `palette_table`),
+  so a client, or whoever got past its token, can't turn a write into a call
+  (`error not_in_the_game's_function_tables`). Nothing the client writes is among them (its
+  `inventory`, `cell_state` and `map_grid` are in `gGameState`); the helper's own parts write them
+  directly and are not asked. The list is the five the review of this port found, not a proof
+  that no other `.bss` object holds a pointer the game calls. The client's
   `game.Game` reads and writes through these (`Game.attach_linux`, `client/linux_helper.py`'s
-  `LinuxProcess`), reading back every write as on Windows. It never opens the game's memory to another process
-  (no `prctl(PR_SET_PTRACER)`), whatever the kernel's ptrace scope: the client reads only
-  through it (`docs/re/linux.md`, "Reading the running game"). Stand-in tests: a separate process
+  `LinuxProcess`), reading back every write as on Windows. It never opens the game's memory
+  to another process through the kernel (no `prctl(PR_SET_PTRACER)`), whatever the kernel's ptrace
+  scope: the client reads only through it, and the helper serves `read` and `write` to a client
+  that has the token alone ("Who may connect"; `docs/re/linux.md`, "Reading the running game").
+  Stand-in tests: a separate process
   is refused the stand-in game's memory with a client connected or not (on the test PC, scope 1,
   2026-11-18), and reads through the helper return the stand-in's bytes, one piece or two;
   `game.Game` writes and reads back through it, a write to the stand-in's `.rodata` or `.data`
@@ -2431,7 +2505,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `game_tests.cpp`); on Linux only built, and configured through the socket. The shared sources
   build on Linux through `src/platform.h` and the Linux parts of the memory layer,
   `src/game_mem_linux.cpp`: fault-safe reads through the kernel, writability from the process's
-  memory map (kept 250 ms between reads, never for a range unmapped since), the game's code from
+  memory map (kept 250 ms between reads, and only for a range in the program's own segments or
+  `[heap]`: below), the game's code from
   its program headers, code patches with `mprotect`, the page's own protection put back. `Game`
   and every part it holds build there too, the Windows-only pieces of those left out:
   `Game::configure` takes the helper's checked addresses instead of resolving a client's, the
@@ -2474,8 +2549,13 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     missing, the texture not passing its check) the stand-ins stay the game's Scrap Energy and
     Scrap Chunk, named and drawn as the game has them, rather than drawing their empty frames;
   - the writability checks before the records' writes read `/proc/self/maps`, which the memory
-    layer keeps for 250 ms between reads, never for a range unmapped since (`mincore`), and
-    drops after its own `mprotect` (`src/game_mem_linux.cpp`);
+    layer keeps for 250 ms between reads, only for a range that lies wholly in the game
+    binary's own segments or `[heap]` (whose protection does not change under the game) and is
+    still mapped (`mincore`), and drops after its own `mprotect` (`src/game_mem_linux.cpp`): any
+    other range (a large allocation's own mapping, a stack, a library) is read afresh each
+    time, as Windows' `VirtualQuery` asks, since another mapping may take a freed one's
+    addresses with another protection within the 250 ms, and the write after the check is a
+    plain store (a window of microseconds is left, as on Windows);
   - a client that goes takes its labels with it, the records, the width and the pixels put back at
     the next frame call; the look without the client (below) then dresses a known seed's save
     again with its seed file's labels. The client sends them again on a new connection (a request
@@ -2719,11 +2799,14 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   afresh (not through a link) and synced, then renamed over it, the folders made for the user
   alone (mode 0700); a file is read only if it is a plain file, through no link. The serving
   thread reads them, at most 256, newest first, when the helper starts and each time a client
-  goes, saying on stderr a file it could not read; the next frame call takes them, in place of the
+  that sent `config` goes (not a probe such as `tools/helper.py status`), saying on stderr a
+  file it could not read; the same folder holds the client's `token` ("Who may connect"), which
+  the seed reader ignores (it reads `seeds/` alone); the next frame call takes them, in place of the
   last ones with no client and added to them with one (`Game::set_offline`, `merge_offline`). A
-  seed taken but not kept (`error no folder`, `error too large`, a write that failed: the client
-  takes each for taken, and puts it again only when it changes) stays the helper's until the game
-  closes, added again after each read. No config is kept: with a seed file read and no client yet,
+  seed taken but not kept (`error too large`, a write that failed: the client takes each for
+  taken, and puts it again only when it changes; `error no folder` is not reached on Linux, where
+  a helper with no data folder has nowhere for its token and serves no one) stays the helper's
+  until the game closes, added again after each read. No config is kept: with a seed file read and no client yet,
   the helper configures itself from the game's own symbols (`configure_self`: the addresses a
   client's `config` must give, checked as one, said on stderr), with no client attached, so this
   world's own traps and disks work with no client; with no seed file it waits for a client, as

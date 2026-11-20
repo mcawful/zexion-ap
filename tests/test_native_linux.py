@@ -66,7 +66,12 @@ class Game:
         self.block = int(match.group(2), 16)  # 40000 bytes, byte i being i % 251
         self.pid = self.proc.pid
 
-    def connect(self, timeout: float = 5.0) -> socket.socket:
+    def token(self) -> str:
+        """The token the helper wrote for its clients (native/linux/src/core.h, kTokenFile)."""
+        return (self.offline / "token").read_text()
+
+    def connect(self, timeout: float = 5.0, authed: bool = True) -> socket.socket:
+        """A connection to the helper's socket, with the token sent unless ``authed`` is False."""
         name = b"\0zexion-ap-" + str(self.pid).encode()
         deadline = time.monotonic() + timeout
         while True:
@@ -74,6 +79,8 @@ class Game:
             try:
                 sock.connect(name)
                 sock.settimeout(timeout)
+                if authed:
+                    assert ask(sock, f"auth {self.token()}") == "ok"
                 return sock
             except OSError:
                 sock.close()
@@ -259,6 +266,95 @@ def test_a_disabled_file_beside_the_helper_turns_it_off(tmp_path: Path) -> None:
         if started.proc.poll() is None:
             started.proc.kill()
             started.proc.wait()
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_the_helper_serves_nothing_before_the_token(game: Game) -> None:
+    # Any process of the user in the network namespace can connect to the abstract socket
+    # (Flatpak apps included): the token, written where only the game's user can read it, is the
+    # one thing that tells the client from them.
+    token = game.token()
+    assert re.fullmatch(r"[0-9a-f]{64}", token)
+    assert (game.offline / "token").stat().st_mode & 0o777 == 0o600
+    assert game.offline.stat().st_mode & 0o777 == 0o700
+    hello = f"zexion-ap {native.VERSION} build=test hooked=1 platform=linux folder=1"
+    with game.connect(authed=False) as sock:
+        assert ask(sock, "hello") == hello  # the build and version only: nothing of the memory
+        assert ask(sock, f"read {game.marker:#x} 4") == "error auth required"
+        assert sock.recv(65536) == b""  # and dropped
+    for first in ("ping", "callers", f"write {game.block:#x} 00", "config", "auth"):
+        with game.connect(authed=False) as sock:
+            assert ask(sock, first) == "error auth required"
+            assert sock.recv(65536) == b""
+    for wrong in ("auth " + "0" * 64, "auth " + token[:-1], "auth " + token + "0", "auth "):
+        with game.connect(authed=False) as sock:
+            assert ask(sock, wrong) == "error auth refused"
+            assert sock.recv(65536) == b""
+    with game.connect(authed=False) as sock:  # the token itself, once; a second `auth` is a request
+        assert ask(sock, f"auth {token}") == "ok"
+        assert ask(sock, f"read {game.marker:#x} {len(MARKER)}") == "data " + MARKER.decode()
+        assert ask(sock, f"auth {token}") == "error unknown request"
+    with game.connect() as sock:  # none of that has changed what the client can do
+        assert ask(sock, "ping").startswith("pong frames=")
+
+
+def test_each_run_of_the_game_has_a_token_of_its_own(tmp_path: Path) -> None:
+    tokens = []
+    for name in ("one", "two"):
+        started = Game(HOOKTEST, tmp_path / name)
+        try:
+            started.connect().close()
+            tokens.append(started.token())
+        finally:
+            started.proc.kill()
+            started.proc.wait()
+    assert tokens[0] != tokens[1]
+
+
+def test_the_helper_serves_no_one_without_a_folder_for_its_token(tmp_path: Path) -> None:
+    # Neither the data folder nor HOME is an absolute path: nowhere to put the token, so a
+    # socket anyone could use is not served, and the game goes on (the frame calls pass through).
+    started = Game(HOOKTEST, Path("relative"), HOME="relative")
+    try:
+        with pytest.raises(OSError):
+            started.connect(timeout=0.3, authed=False)
+        swaps, _, err = started.stop()
+        assert swaps > 0
+        assert "no token" in err and "serving build" not in err
+    finally:
+        if started.proc.poll() is None:
+            started.proc.kill()
+            started.proc.wait()
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_client_with_another_token_is_refused(game: Game, monkeypatch) -> None:
+    found = game.as_found()
+    monkeypatch.setattr(linux_helper, "find_token", lambda *_: "0" * 64)
+    with (
+        pytest.raises(linux_helper.LinuxHelperError, match="refused this client's token"),
+        linux_helper.LinuxHelper(found),
+    ):
+        pass
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_write_leaves_the_games_function_tables_alone(game: Game) -> None:
+    # What the game calls through (the exit action, the exit routines, the area events' handlers,
+    # the sprite-draw procedures, the move procedures): no write may change them, whole or in part.
+    at = config_addresses()
+    with game.connect() as sock:
+        for name in ("transition_fn", "routine_table", "event_handlers", "palette_table"):
+            for address in (at[name], at[name] + 1):
+                reply = ask(sock, f"write {address:#x} 00")
+                assert reply == "error not_in_the_game's_function_tables", (name, reply)
+        assert ask(sock, f"write {at['map_handler']:#x} 00") == (
+            "error not_in_the_game's_function_tables"
+        )
+        before = read_at(sock, at["routine_table"], 16 * 8)
+        assert ask(sock, f"write {at['routine_table'] - 4:#x} {'ff' * 8}").startswith("error ")
+        assert read_at(sock, at["routine_table"], 16 * 8) == before
+        assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the rest is open
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
@@ -474,8 +570,9 @@ def test_a_new_game_queued_with_the_seeds_text_gets_the_seed(game: Game) -> None
         assert ask(sock, f"write {at['current_slot']:#x} 04000000") == "written 4"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"
         assert ask(sock, f"write {at['transition_timer']:#x} 28000000") == "written 4"
-        newgame = at["newgame_fn"].to_bytes(8, "little").hex()
-        assert ask(sock, f"write {at['transition_fn']:#x} {newgame}") == "written 8"
+        # START GAME: the game writes its exit action itself (the helper's `write` leaves the
+        # function-pointer tables alone: test_write_leaves_the_games_function_tables_alone).
+        assert ask(sock, f"write {stand_in('zap_press'):#x} 01") == "written 1"
         status = wait_for(sock, "newgame_status", lambda r: r != "armed")
         assert status == "applied slot 5"
         sock.send(f"read {at['rando_blob'] + 0x26C:#x} 1".encode())
@@ -862,20 +959,25 @@ def test_with_no_client_nothing_runs_while_the_player_pointer_reads_elsewhere(
 
 
 def test_a_seed_taken_but_not_kept_stays_the_helpers_when_its_client_goes(tmp_path: Path) -> None:
-    # No folder (the data folder and HOME not absolute): `error no folder`, the seed the helper's
-    # all the same, and still once the client has gone and the files were read again.
+    # A seeds folder the helper can't write in (a file stands there): the put is refused, the seed
+    # the helper's all the same, and still once the client has gone and the files were read again.
+    # (With no data folder at all, the helper has nowhere for its token and serves no one:
+    # test_the_helper_serves_no_one_without_a_folder_for_its_token.)
     from client import offline
 
     cell = 100
     seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
     put = offline.put_request("seed", seed, offline.seed_file_name("S", 0, 1))
-    started = Game(HOOKTEST, Path("relative"), HOME="relative")
+    data = tmp_path / "data"
+    (data / "ZexionAP").mkdir(parents=True)
+    (data / "ZexionAP" / "seeds").write_text("not a folder")
+    started = Game(HOOKTEST, data)
     try:
         at = config_addresses()
         with started.connect() as sock:
             config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
             assert ask(sock, config) == "ok"
-            assert ask(sock, put) == "error no folder"
+            assert ask(sock, put).startswith("error cannot create")
         with started.connect() as sock:  # the client gone, the files read again: none
             assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"
             frames = int(ask(sock, "ping").split("frames=")[1])

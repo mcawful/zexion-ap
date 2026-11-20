@@ -4,6 +4,7 @@ and the reads run against the stand-in game in tests/test_native_linux.py)."""
 from __future__ import annotations
 
 import hashlib
+import re
 import socket
 import sys
 import threading
@@ -135,6 +136,143 @@ def test_the_game_counts_as_running_only_as_itself(tmp_path, state, started, ali
     _stat(proc, 9, state, started)
     assert linux_helper.running(9, 500, proc) is alive
     assert linux_helper.running(10, 500, proc) is False  # no such process
+
+
+TOKEN = "0123456789abcdef" * 4  # 64 lower-case hex digits, as the helper writes it
+linux_only = pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="the token is read as a Linux process reads it"
+)
+
+
+def _token_at(root: Path, *parts: str, text: str = TOKEN, mode: int = 0o600) -> Path:
+    path = root.joinpath(*parts, "ZexionAP", "token")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    path.chmod(mode)
+    return path
+
+
+@linux_only
+def test_the_token_is_looked_for_in_the_games_own_data_folder_first(tmp_path: Path) -> None:
+    # Under Flatpak's Steam the helper's folder is the sandbox's: seen through /proc/<pid>/root,
+    # from the game's own XDG_DATA_HOME; then the host's own folder and Flatpak Steam's.
+    proc = _proc(tmp_path)
+    (proc / "4242" / "environ").write_bytes(b"HOME=/home/x\0XDG_DATA_HOME=/sandbox/data\0")
+    game = linux_helper.find_game(proc)
+    home = tmp_path / "home"
+    paths = linux_helper.token_paths(game, proc, {"XDG_DATA_HOME": "/host/data"}, home)
+    assert paths == [
+        proc / "4242" / "root" / "sandbox" / "data" / "ZexionAP" / "token",
+        Path("/host/data/ZexionAP/token"),
+        home / ".local" / "share" / "ZexionAP" / "token",
+        home / ".var/app/com.valvesoftware.Steam/.local/share/ZexionAP/token",
+        home / ".var/app/com.valvesoftware.Steam/data/ZexionAP/token",
+    ]
+    (proc / "4242" / "environ").write_bytes(b"HOME=/home/x\0")  # no XDG_DATA_HOME: HOME's
+    inner = linux_helper.token_paths(game, proc, {}, home)[0]
+    assert (
+        inner == proc / "4242" / "root" / "home" / "x" / ".local" / "share" / "ZexionAP" / "token"
+    )
+    (proc / "4242" / "environ").write_bytes(b"HOME=relative\0XDG_DATA_HOME=also/relative\0")
+    assert len(linux_helper.token_paths(game, proc, {}, home)) == 3  # none of the game's
+
+
+@linux_only
+def test_the_token_is_read_from_the_game_s_view_or_the_hosts(tmp_path: Path) -> None:
+    proc = _proc(tmp_path)
+    (proc / "4242" / "environ").write_bytes(b"XDG_DATA_HOME=/sandbox/data\0")
+    game = linux_helper.find_game(proc)
+    home = tmp_path / "home"
+    _token_at(home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", text="a" * 64)
+    # Flatpak Steam's folder, as the host sees it, when the game's root can't be followed
+    assert linux_helper.find_token(game, proc, {}, home) == "a" * 64
+    _token_at(proc / "4242" / "root", "sandbox", "data")  # the game's own view wins
+    assert linux_helper.find_token(game, proc, {}, home) == TOKEN
+
+
+@linux_only
+@pytest.mark.parametrize(
+    ("text", "mode"),
+    [
+        (TOKEN, 0o644),
+        (TOKEN, 0o640),
+        (TOKEN, 0o604),
+        (TOKEN[:-1], 0o600),
+        (TOKEN.upper(), 0o600),
+        (TOKEN + "0", 0o600),
+        ("", 0o600),
+    ],  # fmt: skip
+    ids=[
+        "world-readable",
+        "group-readable",
+        "other-readable",
+        "short",
+        "upper-case",
+        "long",
+        "empty",
+    ],
+)
+def test_a_token_file_others_can_read_or_that_is_no_token_is_not_used(
+    tmp_path: Path, text: str, mode: int
+) -> None:
+    proc = _proc(tmp_path)
+    game = linux_helper.find_game(proc)
+    home = tmp_path / "home"
+    _token_at(home, ".local", "share", text=text, mode=mode)
+    with pytest.raises(
+        linux_helper.LinuxHelperError, match="takes only a client that has its token"
+    ):
+        linux_helper.find_token(game, proc, {}, home)
+
+
+@linux_only
+def test_a_token_that_is_a_link_is_not_followed(tmp_path: Path) -> None:
+    proc = _proc(tmp_path)
+    game = linux_helper.find_game(proc)
+    home = tmp_path / "home"
+    real = _token_at(tmp_path, "elsewhere")
+    link = home / ".local" / "share" / "ZexionAP" / "token"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(real)
+    with pytest.raises(linux_helper.LinuxHelperError, match="no token|takes only a client"):
+        linux_helper.find_token(game, proc, {}, home)
+
+
+@linux_only
+def test_no_token_says_where_it_looked_and_what_to_do(tmp_path: Path) -> None:
+    proc = _proc(tmp_path)
+    game = linux_helper.find_game(proc)
+    with pytest.raises(linux_helper.LinuxHelperError) as raised:
+        linux_helper.find_token(game, proc, {"XDG_DATA_HOME": "/host/data"}, tmp_path / "home")
+    message = str(raised.value)
+    assert "/host/data/ZexionAP/token" in message and "com.valvesoftware.Steam" in message
+    assert "start the game again" in message
+
+
+def test_the_linux_config_leaves_null_only_what_the_windows_build_alone_reads() -> None:
+    # The helper's watch_* calls reach Game's addresses without a check of their own once
+    # configured (helper.cpp's frame checks configured() first), so an address the Linux config
+    # leaves null must be one nothing reads on Linux. Read by hand, 2026-11-19: these five are read
+    # only inside `#ifdef _WIN32` (equip.cpp's malloc and free slots, feats.cpp's patch_ending
+    # check, check_steam and hook_steam, translation.cpp's build); the Linux build has the
+    # helper's own malloc and free, the export for the Steam call, and its own string.
+    root = Path(__file__).resolve().parent.parent
+    fields = set(
+        re.findall(
+            r"BYTE\* (\w+) = nullptr", (root / "native/src/addresses.h").read_text(encoding="utf-8")
+        )
+    )
+    source = (root / "native/linux/src/helper.cpp").read_text(encoding="utf-8")
+    production = source.split("#ifndef ZAP_HOOKTEST\nconstexpr ConfigKey kConfigKeys[]")[1]
+    keys = set(re.findall(r"&G::(\w+)", production.split("#else")[0]))
+    assert fields - keys == {
+        "malloc_slot",
+        "free_slot",
+        "stats_context",
+        "context_init_slot",
+        "wstring_new_fn",
+    }
+    assert keys <= fields
 
 
 class Socket:

@@ -115,6 +115,52 @@ std::string read_reply(std::string_view args, const Reader& read) {
 
 }  // namespace
 
+std::string hex_text(const unsigned char* bytes, size_t size) {
+    static const char kHex[] = "0123456789abcdef";
+    std::string hex;
+    for (size_t i = 0; i < size; ++i) {
+        hex += kHex[bytes[i] >> 4];
+        hex += kHex[bytes[i] & 0xF];
+    }
+    return hex;
+}
+
+bool is_token_text(std::string_view text) {
+    if (text.size() != 2 * kTokenBytes) return false;
+    for (char c : text) {
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+    }
+    return true;
+}
+
+bool same_secret(std::string_view a, std::string_view b) {
+    unsigned char difference = a.size() == b.size() ? 0 : 1;
+    const size_t n = a.size() < b.size() ? a.size() : b.size();
+    for (size_t i = 0; i < n; ++i) {
+        difference |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
+    }
+    return difference == 0;
+}
+
+Gate gate(std::string_view request, std::string_view token, const State& state) {
+    Gate out;
+    if (request == "hello") {
+        out.answer = reply(request, state, Reader(), Writer());
+    } else if (request.starts_with(kAuthRequest) &&
+               is_token_text(token) &&
+               same_secret(request.substr(sizeof kAuthRequest - 1), token)) {
+        out.answer = "ok";
+        out.authed = true;
+    } else if (request.starts_with(kAuthRequest)) {
+        out.answer = "error auth refused";
+        out.drop = true;
+    } else {
+        out.answer = "error auth required";
+        out.drop = true;
+    }
+    return out;
+}
+
 const char* identify_build(std::string_view build_id_hex) {
     for (const auto& build : kKnownBuilds) {
         if (build_id_hex == build.build_id) return build.name;

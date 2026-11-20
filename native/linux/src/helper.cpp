@@ -3,10 +3,13 @@
 // SDL_GL_SwapWindow on.
 
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <link.h>
 #include <pthread.h>
 #include <signal.h>
+#include <sys/random.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/uio.h>
 #include <sys/un.h>
@@ -44,6 +47,7 @@ namespace {
 using namespace zap::linux_helper;
 
 constexpr int kClientSilenceSeconds = 30;  // a client that sends nothing this long is dropped
+constexpr int kAuthSeconds = 5;  // a connection that has not shown the token by then is dropped
 
 using Swap = int (*)(void*);
 Swap g_next_swap = nullptr;  // the SDL_GL_SwapWindow after ours, set by the constructor
@@ -56,6 +60,7 @@ constexpr int kCallSites = 8;
 std::atomic<uintptr_t> g_site[kCallSites]{};
 std::atomic<uint64_t> g_site_calls[kCallSites]{};
 std::atomic<uint64_t> g_other_calls{0};
+std::atomic<uint64_t> g_frame_calls{0};  // the calls from the frame function (SWHardwareEnd)
 
 void count_call_site(uintptr_t site) {
     for (int i = 0; i < kCallSites; ++i) {
@@ -85,6 +90,15 @@ bool g_folder = false;
 constexpr int kMaxSegments = 4;
 uintptr_t g_writable[kMaxSegments][2] = {};
 int g_writable_count = 0;
+
+// The game's tables of function pointers in that .bss, which the game calls through (the exit
+// action and its table, the move, area-event and sprite-draw procedures: docs/re/linux.md,
+// "Lookup: targets"), as [start, end) from the game's own symbols: `write` leaves them alone, so
+// a client can't turn a write into a call. Nothing the client writes is among them (its
+// inventory, cell states and map grid).
+constexpr int kMaxDenied = 8;
+uintptr_t g_denied[kMaxDenied][2] = {};
+int g_denied_count = 0;
 
 // The game's thread's work (native/src/mailbox.h), and the Windows helper's Game, configured by
 // a client's `config` (native/src/game_calls.h). Of Game, only the parts ported run here: new
@@ -229,11 +243,23 @@ bool in_game_data(uint64_t address, size_t size) {
     return false;
 }
 
+// Whether [address, address + size) touches one of g_denied's tables.
+bool in_function_tables(uint64_t address, size_t size) {
+    for (int i = 0; i < g_denied_count; ++i) {
+        if (address < g_denied[i][1] && address + size > g_denied[i][0]) return true;
+    }
+    return false;
+}
+
 // Into this process's memory, by the kernel (a page not writable is EFAULT, not a fault), and
-// only inside the main program's .bss (g_writable).
+// only inside the main program's .bss (g_writable), outside its function tables (g_denied).
 bool write_own(uint64_t address, const std::string& data, std::string& out) {
     if (!in_game_data(address, data.size())) {
         out = "not_in_the_game's_writable_data";
+        return false;
+    }
+    if (in_function_tables(address, data.size())) {
+        out = "not_in_the_game's_function_tables";
         return false;
     }
     iovec local{const_cast<char*>(data.data()), data.size()};
@@ -541,6 +567,21 @@ bool read_own_symbols() {
     for (size_t i = 0; i < kConfigKeyCount; ++i) {
         g_expected[i] = found[kConfigKeys[i].symbol].value + kConfigKeys[i].offset;
     }
+    // The keys that are function-pointer tables, whole by their symbols' sizes (at least the
+    // key's own bytes): the exit action, the exit routines, the area events' handlers, the
+    // sprite-draw procedures (the palette table is the start of theirs) and the move procedures.
+    g_denied_count = 0;
+    for (const char* name :
+         {"transition_fn", "routine_table", "event_handlers", "palette_table", "map_handler"}) {
+        for (const ConfigKey& key : kConfigKeys) {
+            if (std::strcmp(key.name, name) != 0 || g_denied_count >= kMaxDenied) continue;
+            const zap::linux_helper::SymbolSpan& symbol = found[key.symbol];
+            const uint64_t own = key.offset + (key.size == 0 ? sizeof(void*) : key.size);
+            g_denied[g_denied_count][0] = symbol.value;
+            g_denied[g_denied_count][1] = symbol.value + std::max<uint64_t>(symbol.size, own);
+            ++g_denied_count;
+        }
+    }
     g_expected_known = true;
     return true;
 }
@@ -591,7 +632,8 @@ void archipelago_chosen(void*, int) {
 // The game-mode panel's handler while the choice is up: the game's own, then the hover border
 // fitted around ARCHIPELAGO in the frame the game laid it out (choice.h, fit_border).
 void panel_hook(void* widget, int event) {
-    reinterpret_cast<void (*)(void*, int)>(g_game->panel_handler())(widget, event);
+    auto original = reinterpret_cast<void (*)(void*, int)>(g_game->panel_handler());
+    if (original != nullptr) original(widget, event);
     try {
         g_game->fit_archipelago_border();
     } catch (...) {
@@ -685,6 +727,53 @@ void mission_end_hook() {
     }
 }
 
+// Each part on its own, so one that throws keeps none of the others from running, and nothing
+// reaches the game.
+template <class Work>
+void guarded(Work&& work) {
+    try {
+        work();
+    } catch (...) {
+    }
+}
+
+// Game thread: what a client's going puts back. A client's popups stay queued for its save, as on
+// Windows; its plan, its labels, its Intel Chips and its ASSIST lock go (the records, the popup's
+// width, the entry and the pixels put back); the look without the client (watch_offline) may
+// dress the save again.
+void client_gone() {
+    guarded([] { g_game->client_left(); });  // an own disk's count the helper's again
+    // RETURN HOME's prompt and ending, the map's names and the choice put back in open menus,
+    // before the disks go below (which drop the prompt asked for), as on Windows.
+    guarded([] { g_game->put_back_client_menus(&archipelago_chosen); });
+    // The look without the client dressed again from scratch at the next look, its not-connected
+    // notice with it, as client_gone does on Windows (put_back_game).
+    guarded([] { g_game->leave_offline(); });
+    guarded([] { g_game->disarm_newgame(); });
+    guarded([] { g_game->restore_ap_items(); });
+    guarded([] { g_game->restore_intel(); });  // the Area Map's record the game's again
+    guarded([] {  // ASSIST unlocked, as drop_save_look on Windows
+        g_game->set_assists_locked(false);
+        g_game->restore_assists();
+    });
+    guarded([] { g_game->restore_translation(); });  // the names, entry 70, the icons
+    guarded([] {  // the disks' count off and put back, as drop_save_look on Windows
+        g_game->set_discs(0, 0, "");
+        g_game->restore_discs();
+    });
+    // Its notices not shown yet withdrawn (another seed's, CLIENT CONNECTED.), as client_gone does
+    // on Windows: the offline look dresses the save again with no client from here.
+    guarded([] { g_game->drop_client_notices(); });
+}
+
+// Game thread: client_gone once if a client has gone since it last ran. At the top of each frame
+// and of each request's work (on_game): the serving thread marks a client gone before it takes the
+// next, so whatever the next client asks, the last one's plan is put back first and is never
+// taken for the new one's. Run once, whichever comes first (the flag's exchange).
+void client_gone_if_left() {
+    if (g_client_left.exchange(false)) client_gone();
+}
+
 // `work` run on the game's thread at its next frame call; "refused not configured" first when
 // `needs_config` and no config came; "refused no frame" if no frame took it in time (it then
 // never runs); "error <why>" at once for a request not parsed. As the Windows helper's on_game.
@@ -700,6 +789,7 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config,
     t_posted = true;
     bool ran = g_mailbox->call(
         [&] {
+            client_gone_if_left();  // the last client's, before anything this one asks
             if (needs_config && !g_game->configured()) return std::string("refused not configured");
             return work();
         },
@@ -756,6 +846,8 @@ __attribute__((init_priority(101))) Kept<std::vector<PutSeed>> g_put_seeds;  // 
 // The folder, found once in the constructor (getenv there, before the game's threads run: never
 // while they may set the environment).
 __attribute__((init_priority(101))) Kept<std::wstring> g_offline_folder;
+// The client's token (core.h), made in the constructor and written into that folder.
+__attribute__((init_priority(101))) Kept<std::string> g_token;
 
 // Serving thread (file I/O; never the frame call). A file that could not be read is said once.
 void read_offline() {
@@ -996,16 +1088,105 @@ std::optional<std::string> game_request(std::string_view request) {
     return std::nullopt;
 }
 
+// A folder and the ones above it made if they are not there yet, each only for the user (mode
+// 0700); false if it is not there after.
+bool make_private_folders(const std::string& path) {
+    for (size_t slash = path.find('/', 1); slash != std::string::npos;
+         slash = path.find('/', slash + 1)) {
+        mkdir(path.substr(0, slash).c_str(), 0700);  // there already: EEXIST, left as it is
+    }
+    mkdir(path.c_str(), 0700);
+    struct stat info {};
+    return stat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode);
+}
+
+// `size` random bytes from the kernel; false if it won't give them.
+bool random_bytes(unsigned char* out, size_t size) {
+    for (size_t done = 0; done < size;) {
+        ssize_t n = getrandom(out + done, size - done, 0);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return false;
+        done += static_cast<size_t>(n);
+    }
+    return true;
+}
+
+// The client's token (core.h) made and written to `folder`/token for the user alone: a new file
+// (mode 0600, never through a link) renamed over the last run's, so no one sees a half-written
+// one. Said on stderr why not, false, and the helper serves no one: a socket anyone could use
+// is not served.
+bool make_token(const std::string& folder) {
+    unsigned char bytes[zap::linux_helper::kTokenBytes];
+    if (!random_bytes(bytes, sizeof bytes)) {
+        std::fprintf(stderr, "zexion-ap %s: no token: the kernel's random bytes: %s\n", kVersion,
+                     std::strerror(errno));
+        return false;
+    }
+    std::string token = hex_text(bytes, sizeof bytes);
+    std::memset(bytes, 0, sizeof bytes);
+    if (folder.empty() || !make_private_folders(folder)) {
+        std::fprintf(stderr, "zexion-ap %s: no token: no folder to put it in (%s)\n", kVersion,
+                     folder.empty() ? "no data folder" : folder.c_str());
+        return false;
+    }
+    const std::string target = folder + "/" + kTokenFile, temp = target + ".tmp";
+    unlink(temp.c_str());  // a stale one (or a link planted there) gone, then made afresh
+    int fd = open(temp.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    bool ok = fd >= 0;
+    int why = ok ? 0 : errno;
+    for (size_t done = 0; ok && done < token.size();) {
+        ssize_t n = ::write(fd, token.data() + done, token.size() - done);
+        if (n < 0 && errno == EINTR) continue;
+        ok = n > 0;
+        if (ok) done += static_cast<size_t>(n);
+        else why = errno;
+    }
+    if (fd >= 0 && close(fd) != 0 && ok) {
+        ok = false;
+        why = errno;
+    }
+    if (ok && rename(temp.c_str(), target.c_str()) != 0) {
+        ok = false;
+        why = errno;
+    }
+    if (!ok) {
+        unlink(temp.c_str());
+        std::fprintf(stderr, "zexion-ap %s: no token: %s: %s\n", kVersion, target.c_str(),
+                     std::strerror(why));
+        return false;
+    }
+    *g_token = token;
+    return true;
+}
+
 // One client: a request a message, a reply a message, until it goes, sends too much, or says
-// nothing for kClientSilenceSeconds.
-void serve_client(int client) {
-    timeval silence{kClientSilenceSeconds, 0};
-    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &silence, sizeof silence);
+// nothing for kClientSilenceSeconds. It serves nothing but `hello` until the client has shown the
+// token (core.h, gate), and is dropped if its first words are anything else, or not the token,
+// or do not come within kAuthSeconds. `sent_config` is set once it sends `config`: only a client
+// that did has anything to put back when it goes.
+void serve_client(int client, bool& sent_config) {
+    timeval waiting{kAuthSeconds, 0};
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &waiting, sizeof waiting);
+    bool authed = false;
     std::vector<char> buffer(kMaxRequest);
     for (;;) {
         ssize_t n = recv(client, buffer.data(), buffer.size(), MSG_TRUNC);
         if (n <= 0 || static_cast<size_t>(n) > buffer.size()) return;
         std::string_view request(buffer.data(), static_cast<size_t>(n));
+        if (!authed) {
+            Gate checked = gate(request, *g_token, state());
+            if (send(client, checked.answer.data(), checked.answer.size(), MSG_NOSIGNAL) < 0 ||
+                checked.drop) {
+                return;
+            }
+            if (checked.authed) {
+                authed = true;
+                timeval silence{kClientSilenceSeconds, 0};
+                setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &silence, sizeof silence);
+            }
+            continue;
+        }
+        if (request == "config" || request.starts_with("config ")) sent_config = true;
         std::optional<std::string> game;
         t_posted = false;
         try {
@@ -1043,12 +1224,20 @@ void* serve(void* arg) {
         socklen_t size = sizeof cred;
         if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &cred, &size) == 0 &&
             cred.uid == geteuid()) {
+            bool sent_config = false;
             try {
-                serve_client(client);
+                serve_client(client, sent_config);
             } catch (...) {
             }
-            g_client_left = true;    // as the Windows helper does, its plan is not kept for it
-            read_offline_guarded();  // and the seeds' files read again, as there
+            // As the Windows helper does, a client's plan is not kept for it: the next frame puts
+            // back what it set (client_gone), and before any request of the next client
+            // (on_game). A connection that never sent `config` (`helper.py status`, a probe) set
+            // nothing, and its going changes nothing: no plan to drop, the offline look as it
+            // was. The seeds' files are read again for a client that did, as there.
+            if (sent_config) {
+                g_client_left = true;
+                read_offline_guarded();
+            }
         }
         close(client);
     }
@@ -1090,7 +1279,18 @@ bool start_thread(int fd) {
 
 extern "C" void* SteamInternal_ContextInit(void* context);  // defined at the end, exported
 
-__attribute__((constructor)) void start() {
+// The kernel's copy of this process's own memory must work for the helper's reads (`read`, the
+// frame's checks): a sandbox's seccomp filter may refuse process_vm_readv, and the helper would
+// then write items it could not show. "" if it does, else why not.
+std::string memory_reads_refused() {
+    static const char kProbe[] = "zexion-ap";
+    std::string copy;
+    if (!read_own(reinterpret_cast<uintptr_t>(&kProbe[0]), sizeof kProbe, copy)) return copy;
+    return copy == std::string(kProbe, sizeof kProbe) ? "" : "read back differently";
+}
+
+// The constructor's work. Any exception is the caller's to catch: it must not leave the library.
+void start_inside() {
     // Every library the program needs is mapped before any constructor runs.
     zap::set_feats_export(reinterpret_cast<const void*>(&SteamInternal_ContextInit));
     g_next_swap = reinterpret_cast<Swap>(dlsym(RTLD_NEXT, "SDL_GL_SwapWindow"));
@@ -1114,6 +1314,12 @@ __attribute__((constructor)) void start() {
     if (g_next_swap == nullptr) {
         std::fprintf(stderr, "zexion-ap %s: no SDL_GL_SwapWindow after the helper's\n", kVersion);
     }
+    std::string refused = memory_reads_refused();
+    if (!refused.empty()) {
+        std::fprintf(stderr, "zexion-ap %s: memory reads refused: %s\n", kVersion,
+                     refused.c_str());
+        return;
+    }
     g_folder = !folder.empty() && folder == folder_of("/proc/self/exe");
     *g_offline_folder = zap::offline_folder();  // here, before the game's threads (getenv)
     g_game->set_title_version(kVersion);  // the title's version line (title.h), as on Windows
@@ -1121,6 +1327,12 @@ __attribute__((constructor)) void start() {
         std::fprintf(stderr, "zexion-ap %s: the game's symbols were not found: no new games\n",
                      kVersion);
     }
+    // The token before the socket: a client that finds the socket finds the token's file.
+    std::string data_folder;  // the folder's bytes, as offline.cpp holds a path in a wstring
+    for (wchar_t c : *g_offline_folder) {
+        data_folder += static_cast<char>(static_cast<unsigned char>(c));
+    }
+    if (!make_token(data_folder)) return;
     int fd = listen_socket();
     if (fd < 0) return;
     if (!start_thread(fd)) {
@@ -1131,6 +1343,16 @@ __attribute__((constructor)) void start() {
     std::fprintf(stderr, "zexion-ap %s: serving build %s\n", kVersion, g_build);
 }
 
+__attribute__((constructor)) void start() {
+    // A constructor that throws ends every program the preload reaches, before main: whatever
+    // fails here leaves the helper off (g_active false), passing the frame call on.
+    try {
+        start_inside();
+    } catch (...) {
+        std::fprintf(stderr, "zexion-ap %s: failed to start\n", kVersion);
+    }
+}
+
 }  // namespace
 
 namespace {
@@ -1139,51 +1361,35 @@ namespace {
 // client gone's plan and labels dropped, the mailbox's work, an armed new game watched, the
 // ARCHIPELAGO choice, other players' items, the traps, then the next popup. Each part guarded on
 // its own, so one that throws keeps none of the others from running, and nothing reaches the
-// game. A fault in the game's own placement is
-// not an exception: it stays the game's crash.
+// game. A fault in the game's own placement is not an exception: it stays the game's crash.
+// One at a time, as the Windows helper's frame: a game function the frame work calls that swaps
+// the window again (a draw) finds this running, and only passes the swap on.
+std::atomic_flag g_in_frame_work;  // clear: C++20's default
+
+struct FrameScope {
+    bool entered = !g_in_frame_work.test_and_set(std::memory_order_acquire);
+    ~FrameScope() {
+        if (entered) g_in_frame_work.clear(std::memory_order_release);
+    }
+    FrameScope(const FrameScope&) = delete;
+    FrameScope& operator=(const FrameScope&) = delete;
+    FrameScope() = default;
+};
+
 void game_frame(uintptr_t site) {
     if (site < g_frame_function.value || site >= g_frame_function.value + g_frame_function.size) {
         return;  // another swap (UpdatePalette's window), or the frame function unknown
     }
-    auto guarded = [](auto&& work) {
-        try {
-            work();
-        } catch (...) {
-        }
-    };
+    g_frame_calls.fetch_add(1, std::memory_order_relaxed);
+    FrameScope scope;
+    if (!scope.entered) return;
     // First, as the Windows helper's frame: the cell clock a death, a shield or a drop waits on
     // (settled) is this frame's when the mailbox's requests run (note_play does nothing until
     // configured).
     guarded([] { g_game->note_play(zap::ticks_ms()); });
-    // A client's popups stay queued for its save, as on Windows; its plan, its labels, its Intel
-    // Chips and its ASSIST lock go (the records, the popup's width, the entry and the pixels put
-    // back); the look without the client (watch_offline, below) may dress the save again.
-    // Before the mailbox: the serving thread marks a client gone before it takes the next one,
-    // so nothing that next client asks is dropped with the last one's.
-    if (g_client_left.exchange(false)) {
-        guarded([] { g_game->client_left(); });  // an own disk's count the helper's again
-        // RETURN HOME's prompt and ending, the map's names and the choice put back in open
-        // menus, before the disks go below (which drop the prompt asked for), as on Windows.
-        guarded([] { g_game->put_back_client_menus(&archipelago_chosen); });
-        // The look without the client dressed again from scratch at the next look, its
-        // not-connected notice with it, as client_gone does on Windows (put_back_game).
-        guarded([] { g_game->leave_offline(); });
-        guarded([] { g_game->disarm_newgame(); });
-        guarded([] { g_game->restore_ap_items(); });
-        guarded([] { g_game->restore_intel(); });  // the Area Map's record the game's again
-        guarded([] {  // ASSIST unlocked, as drop_save_look on Windows
-            g_game->set_assists_locked(false);
-            g_game->restore_assists();
-        });
-        guarded([] { g_game->restore_translation(); });  // the names, entry 70, the icons
-        guarded([] {  // the disks' count off and put back, as drop_save_look on Windows
-            g_game->set_discs(0, 0, "");
-            g_game->restore_discs();
-        });
-        // Its notices not shown yet withdrawn (another seed's, CLIENT CONNECTED.), as client_gone
-        // does on Windows: the offline look dresses the save again with no client from here.
-        guarded([] { g_game->drop_client_notices(); });
-    }
+    // A client gone (client_gone): before the mailbox, so nothing that next client asks is
+    // dropped with the last one's.
+    client_gone_if_left();
     // The seeds' files read since (and, with none configured, the game's own config), before
     // the mailbox as on Windows: a client's config this frame comes after them.
     guarded([] { take_offline(); });
@@ -1255,14 +1461,47 @@ void game_frame(uintptr_t site) {
 
 }  // namespace
 
+namespace {
+
+// Frame work runs only for calls from the game's frame function (game_frame). If none of the first
+// kAuditCalls come from it while the game's symbols give it, another library's SDL_GL_SwapWindow
+// stands between the game and the helper (an overlay or a recorder preloaded ahead of it), and the
+// frame requests will all be refused: said once, with whose code the calls come from.
+constexpr uint64_t kAuditCalls = 1200;  // some seconds of frames, a few with the title's slowest
+
+void audit_frame_calls() {
+    if (g_frame_function.size == 0 || g_frame_calls.load(std::memory_order_relaxed) != 0) return;
+    uintptr_t busiest = 0;
+    uint64_t most = 0;
+    for (int i = 0; i < kCallSites; ++i) {
+        uint64_t calls = g_site_calls[i].load(std::memory_order_relaxed);
+        if (calls > most) {
+            most = calls;
+            busiest = g_site[i].load(std::memory_order_acquire);
+        }
+    }
+    Dl_info info{};
+    const char* from = busiest != 0 && dladdr(reinterpret_cast<void*>(busiest), &info) != 0 &&
+                               info.dli_fname != nullptr
+                           ? info.dli_fname
+                           : "somewhere else";
+    std::fprintf(stderr,
+                 "zexion-ap %s: no frame call came from the game's own frame function in %llu "
+                 "calls; they come through %s: put libzexion_ap.so first in LD_PRELOAD\n",
+                 kVersion, static_cast<unsigned long long>(kAuditCalls), from);
+}
+
+}  // namespace
+
 // The game's per-frame call (native/README.md, "The Linux helper"). SDL2's returns nothing and
 // SDL3's a bool: returned as an int, which an SDL2 caller ignores.
 extern "C" __attribute__((visibility("default"))) int SDL_GL_SwapWindow(void* window) {
     if (g_active.load(std::memory_order_relaxed)) {
-        g_frames.fetch_add(1, std::memory_order_relaxed);
+        const uint64_t calls = g_frames.fetch_add(1, std::memory_order_relaxed) + 1;
         auto site = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
         count_call_site(site);
         game_frame(site);
+        if (calls == kAuditCalls) audit_frame_calls();
     }
     Swap next = g_next_swap;
     if (next == nullptr) {  // SDL loaded after the constructor ran: look once more

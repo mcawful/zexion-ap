@@ -14,7 +14,9 @@ On Linux, with the game's Linux build, only ``status`` runs: the Linux helper is
 the game's launch options (native/README.md, "The Linux helper"), not loaded into a running
 game. ``status`` there also gives the frame calls by call site (each return address, named by
 the function of the binary that holds it), and reads the game's ``.rodata`` through the helper
-and compares it with the binary's, which says the binary is at its link addresses.
+and compares it with the binary's, which says the binary is at its link addresses. It connects as
+any client does, with the helper's token (``client/linux_helper.py``, ``find_token``), and sends
+no ``config``: when it goes the helper puts nothing back, so it changes nothing in the game.
 """
 
 from __future__ import annotations

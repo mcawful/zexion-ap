@@ -36,8 +36,44 @@ namespace {
 
 struct Region {
     uintptr_t start, end;
-    int prot;  // PROT_ flags
+    int prot;      // PROT_ flags
+    bool settled;  // the main program's own segments or [heap]: a protection that does not change
 };
+
+// The main program's segments (all its PT_LOADs, page-aligned), as dl_iterate_phdr lists it
+// first, and its executable ones: found once.
+struct Span {
+    uintptr_t start = 0, end = 0;
+};
+std::vector<Span> g_loads;
+std::vector<Span> g_code;
+std::once_flag g_spans_once;
+
+int main_program_spans(dl_phdr_info* info, size_t, void*) {
+    const auto page = static_cast<uintptr_t>(sysconf(_SC_PAGESIZE));
+    for (int i = 0; i < info->dlpi_phnum; ++i) {
+        const ElfW(Phdr)& ph = info->dlpi_phdr[i];
+        if (ph.p_type != PT_LOAD) continue;
+        uintptr_t start = info->dlpi_addr + ph.p_vaddr;
+        g_loads.push_back({start & ~(page - 1), (start + ph.p_memsz + page - 1) & ~(page - 1)});
+        if (ph.p_flags & PF_X) g_code.push_back({start, start + ph.p_memsz});
+    }
+    return 1;
+}
+
+void find_spans() {
+    std::call_once(g_spans_once, [] { dl_iterate_phdr(main_program_spans, nullptr); });
+}
+
+// Whether [start, end) of a mapping is the main program's own memory or its [heap]: a protection
+// that does not change under a running game, so a cached answer for it does not go stale.
+bool in_main_program(uintptr_t start, uintptr_t end) {
+    find_spans();
+    for (const Span& span : g_loads) {
+        if (start >= span.start && end <= span.end) return true;
+    }
+    return false;
+}
 
 // The process's memory map, as /proc/self/maps says now (read on each query, as Windows'
 // VirtualQuery asks each time: no snapshot to go stale).
@@ -49,10 +85,15 @@ std::vector<Region> read_map() {
     while (std::fgets(line, sizeof line, maps) != nullptr) {
         unsigned long start = 0, end = 0;
         char perms[5] = {};
-        if (std::sscanf(line, "%lx-%lx %4s", &start, &end, perms) != 3) continue;
+        int name = 0;
+        if (std::sscanf(line, "%lx-%lx %4s %*s %*s %*s %n", &start, &end, perms, &name) < 3) {
+            continue;
+        }
         int prot = (perms[0] == 'r' ? PROT_READ : 0) | (perms[1] == 'w' ? PROT_WRITE : 0) |
                    (perms[2] == 'x' ? PROT_EXEC : 0);
-        map.push_back({start, end, prot});
+        const char* path = name > 0 ? line + name : "";
+        map.push_back({start, end, prot,
+                       std::strncmp(path, "[heap]", 6) == 0 || in_main_program(start, end)});
     }
     std::fclose(maps);
     return map;
@@ -60,14 +101,30 @@ std::vector<Region> read_map() {
 
 // The last map read, kept a moment: writable() runs at every frame call (the item records, while
 // labels are held), and a read parses every mapping of the process. Reused while younger than
-// kMapCacheMs and only for a range whose pages are all still mapped (mincore fails for an
-// unmapped one), so a range unmapped since is always read afresh; a protection changed since by
-// another thread may be seen up to kMapCacheMs late. The helper's own mprotect drops it.
+// kMapCacheMs, for a range whose pages are all still mapped (mincore fails for an unmapped one)
+// and all in the main program's own segments or [heap], whose protection does not change under
+// the game; any other range (a large allocation, a stack, a library) is read afresh each time, as
+// Windows' VirtualQuery asks each time: another mapping may have taken its addresses with another
+// protection, and the write that follows writable() is a plain store. The helper's own mprotect
+// drops it.
 constexpr uint64_t kMapCacheMs = 250;
 std::mutex g_map_mutex;
 std::vector<Region> g_map;
 uint64_t g_map_at = 0;
 bool g_map_kept = false;
+
+// Whether every byte of [p, end) lies in a region of g_map that is settled.
+bool settled_range(uintptr_t p, uintptr_t end) {
+    uintptr_t q = p;
+    for (const Region& r : g_map) {  // in address order
+        if (q >= r.start && q < r.end) {
+            if (!r.settled) return false;
+            q = r.end;
+            if (q >= end) return true;
+        }
+    }
+    return false;
+}
 
 bool still_mapped(uintptr_t p, size_t size) {
     const auto page = static_cast<uintptr_t>(sysconf(_SC_PAGESIZE));
@@ -90,7 +147,8 @@ bool mapped_with(const void* at, size_t size, int prot) {
     uintptr_t q = p, end = p + size;
     std::lock_guard<std::mutex> lock(g_map_mutex);
     const uint64_t now = ticks_ms();
-    if (!g_map_kept || now - g_map_at >= kMapCacheMs || !still_mapped(p, size)) {
+    if (!g_map_kept || now - g_map_at >= kMapCacheMs || !settled_range(p, end) ||
+        !still_mapped(p, size)) {
         g_map = read_map();
         g_map_at = now;
         g_map_kept = true;
@@ -113,24 +171,6 @@ int protection_of(uintptr_t at) {
     return -1;
 }
 
-// The main program's executable segments: dl_iterate_phdr lists it first.
-struct CodeSpan {
-    uintptr_t start = 0, end = 0;
-};
-std::vector<CodeSpan> g_code;
-std::once_flag g_code_once;
-
-int main_program_code(dl_phdr_info* info, size_t, void*) {
-    for (int i = 0; i < info->dlpi_phnum; ++i) {
-        const ElfW(Phdr)& ph = info->dlpi_phdr[i];
-        if (ph.p_type == PT_LOAD && (ph.p_flags & PF_X)) {
-            uintptr_t start = info->dlpi_addr + ph.p_vaddr;
-            g_code.push_back({start, start + ph.p_memsz});
-        }
-    }
-    return 1;
-}
-
 }  // namespace
 
 bool safe_read(const void* from, void* to, size_t size) {
@@ -144,9 +184,9 @@ bool safe_read(const void* from, void* to, size_t size) {
 bool writable(const void* at, size_t size) { return mapped_with(at, size, PROT_READ | PROT_WRITE); }
 
 bool in_image_code(const void* p) {
-    std::call_once(g_code_once, [] { dl_iterate_phdr(main_program_code, nullptr); });
+    find_spans();
     auto address = reinterpret_cast<uintptr_t>(p);
-    for (const CodeSpan& span : g_code) {
+    for (const Span& span : g_code) {
         if (address >= span.start && address < span.end) return true;
     }
     return false;

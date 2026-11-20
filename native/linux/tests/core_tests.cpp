@@ -115,6 +115,41 @@ void test_writes() {
     g_memory = "zexion-ap memory";
 }
 
+// The token's gate (core.h): `hello` and the right `auth` pass, nothing else does.
+void test_gate() {
+    State s;
+    s.build = "B1";
+    s.hooked = true;
+    const std::string token(2 * kTokenBytes, 'a');
+    const unsigned char bytes[3] = {0x00, 0x0f, 0xa5};
+    check(hex_text(bytes, 3) == "000fa5", "hex of bytes", hex_text(bytes, 3));
+    check(is_token_text(token), "a token is 64 hex digits");
+    check(!is_token_text(token.substr(1)) && !is_token_text(token + "a") &&
+              !is_token_text(std::string(2 * kTokenBytes, 'A')) &&
+              !is_token_text(std::string(2 * kTokenBytes, 'g')) && !is_token_text(""),
+          "a token is exactly 64 lower-case hex digits");
+    check(same_secret("abc", "abc") && !same_secret("abc", "abd") && !same_secret("abc", "ab") &&
+              !same_secret("ab", "abc") && same_secret("", ""),
+          "secrets compare whole");
+    Gate hello = gate("hello", token, s);
+    check(hello.answer == reply_("hello", s, fake_read) && !hello.authed && !hello.drop,
+          "hello is answered before the token and does not authenticate", hello.answer);
+    Gate good = gate("auth " + token, token, s);
+    check(good.answer == "ok" && good.authed && !good.drop, "the right token passes", good.answer);
+    Gate wrong = gate("auth " + std::string(2 * kTokenBytes, 'b'), token, s);
+    check(wrong.answer == "error auth refused" && !wrong.authed && wrong.drop,
+          "another token is refused and dropped", wrong.answer);
+    Gate empty = gate("auth ", token, s);
+    check(!empty.authed && empty.drop, "an empty token is refused");
+    Gate unset = gate("auth " + token, "", s);
+    check(!unset.authed && unset.drop, "no token held: no one passes");
+    for (const char* asked : {"ping", "read 0x1000 4", "write 0x1000 00", "config", "callers", "auth"}) {
+        Gate refused = gate(asked, token, s);
+        check(refused.answer == "error auth required" && !refused.authed && refused.drop,
+              "nothing else before the token", asked);
+    }
+}
+
 void test_replies() {
     State s;
     check(reply_("hello", s, fake_read) ==
@@ -183,6 +218,7 @@ int main() {
     test_builds();
     test_notes();
     test_replies();
+    test_gate();
     test_reads();
     test_writes();
     test_own_symbols();

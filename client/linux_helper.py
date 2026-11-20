@@ -12,8 +12,12 @@ helper names its socket by its own pid, which under Flatpak's Steam or the Steam
 container may be the pid inside that namespace: the last entry of ``NSpid`` in
 ``/proc/<pid>/status``. Any process can bind an abstract socket's name, so the client checks
 that the process serving it is the game, and of this user (``SO_PEERCRED``), and that its
-``hello`` names the game's build. The client reads the game's memory only through the helper
-(``read``): it never opens the game's memory itself.
+``hello`` names the game's build. Any process of the user in the network namespace, a sandboxed
+one too, can also connect to it, so the helper serves a connection only after it has sent the
+token the helper wrote when the game started, into ``ZexionAP/token`` of the game's data folder
+(``find_token``: where it looks, and why that reaches the folder under Flatpak's Steam); the
+client sends it only to the process it has checked. The client reads the game's memory only
+through the helper (``read``): it never opens the game's memory itself.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import hashlib
 import os
 import re
 import socket
+import stat
 import struct
 import threading
 from dataclasses import dataclass
@@ -36,6 +41,9 @@ MAX_READ = 32 * 1024  # the helper's kMaxRead: one read's bytes
 MAX_WRITE = 16 * 1024  # the helper's kMaxWrite: one write's bytes
 DATA_PREFIX = b"data "  # the helper's kDataPrefix
 UCRED = struct.Struct("3i")  # pid, uid, gid
+TOKEN_FILE = Path("ZexionAP", "token")  # in the game's data folder: the helper's kTokenFile
+TOKEN_LENGTH = 64  # the helper's 2 * kTokenBytes: lower-case hex
+FLATPAK_STEAM = Path(".var", "app", "com.valvesoftware.Steam")  # its home, on the host
 
 
 class LinuxHelperError(RuntimeError):
@@ -155,6 +163,102 @@ def find_game(proc: Path = PROC) -> LinuxGame:
     raise GameNotFound("Zexion (the Linux build) is not running")
 
 
+def _data_home(environ: dict[str, str]) -> Path | None:
+    """The base the helper puts its ``ZexionAP`` folder in, by the game's own rule
+    (``offline_folder``): ``$XDG_DATA_HOME``, else ``$HOME/.local/share``, an absolute path only."""
+    data = environ.get("XDG_DATA_HOME", "")
+    if data.startswith("/"):
+        return Path(data)
+    home = environ.get("HOME", "")
+    return Path(home, ".local", "share") if home.startswith("/") else None
+
+
+def _game_environment(pid: int, proc: Path) -> dict[str, str]:
+    """``/proc/<pid>/environ``'s variables (the environment the game started with); empty if it
+    can't be read."""
+    try:
+        raw = (proc / str(pid) / "environ").read_bytes()
+    except OSError:
+        return {}
+    out: dict[str, str] = {}
+    for entry in raw.split(b"\0"):
+        key, sep, value = entry.partition(b"=")
+        if sep:
+            out[key.decode("utf-8", "replace")] = value.decode("utf-8", "replace")
+    return out
+
+
+def token_paths(
+    game: LinuxGame,
+    proc: Path = PROC,
+    environ: dict[str, str] | None = None,
+    home: Path | None = None,
+) -> list[Path]:
+    """Where the helper's token may be, most likely first, as this client can see it.
+
+    The helper writes it into the data folder its own process has, which under Flatpak's Steam
+    is the sandbox's, not the host's: so first the game's own view, ``/proc/<pid>/root`` (a
+    process of the same user may follow it, as it reads ``/proc/<pid>/exe``) and the game's own
+    ``XDG_DATA_HOME`` or ``HOME`` from its environment; then, as the host sees them, this
+    client's own data folder and Flatpak Steam's, whose sandbox home is
+    ``~/.var/app/com.valvesoftware.Steam``."""
+    environ = dict(os.environ) if environ is None else environ
+    home = Path.home() if home is None else home
+    found: list[Path] = []
+    inner = _data_home(_game_environment(game.pid, proc))
+    if inner is not None:
+        found.append(proc / str(game.pid) / "root" / str(inner).lstrip("/") / TOKEN_FILE)
+    own = _data_home(environ)
+    if own is not None:
+        found.append(own / TOKEN_FILE)
+    found.append(home / ".local" / "share" / TOKEN_FILE)
+    found.append(home / FLATPAK_STEAM / ".local" / "share" / TOKEN_FILE)
+    found.append(home / FLATPAK_STEAM / "data" / TOKEN_FILE)
+    return list(dict.fromkeys(found))
+
+
+def _read_token(path: Path) -> str | None:
+    """The token in the file at ``path``, or None if it is not a plain file only its user can
+    read, holding one (never through a link)."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError:
+        return None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+            return None
+        text = os.read(fd, 4 * TOKEN_LENGTH).decode("ascii", "replace").strip()
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    return text if re.fullmatch(f"[0-9a-f]{{{TOKEN_LENGTH}}}", text) else None
+
+
+def find_token(
+    game: LinuxGame,
+    proc: Path = PROC,
+    environ: dict[str, str] | None = None,
+    home: Path | None = None,
+) -> str:
+    """The helper's token (``token_paths``); LinuxHelperError, naming the places looked, when
+    none of them holds one."""
+    paths = token_paths(game, proc, environ, home)
+    for path in paths:
+        token = _read_token(path)
+        if token is not None:
+            return token
+    where = "; ".join(str(p) for p in paths)
+    raise LinuxHelperError(
+        f"the helper in Zexion (pid {game.pid}) takes only a client that has its token, and "
+        f"none is in a place this client can read (looked: {where}). The helper writes it, "
+        "readable by its user alone, into ZexionAP/token of the game's data folder "
+        "($XDG_DATA_HOME, else ~/.local/share, as the game sees them) when the game starts: "
+        "start the game again, and check its stderr for a 'no token' line"
+    )
+
+
 class LinuxHelper:
     """A connection to the helper in ``game``: one request a message, one reply a message."""
 
@@ -183,7 +287,8 @@ class LinuxHelper:
         return self
 
     def _check_server(self) -> None:
-        """The socket's server is the game, of this user, and says it is the game's build."""
+        """The socket's server is the game, of this user, says it is the game's build and this
+        client's version, and takes the client's token."""
         assert self._sock is not None
         raw = self._sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, UCRED.size)
         pid, uid, _gid = UCRED.unpack(raw)
@@ -208,6 +313,14 @@ class LinuxHelper:
             raise LinuxHelperError(
                 f"the mod in Zexion is version {hello.get('version')}, this client {VERSION}: "
                 "copy this client's libzexion_ap.so into the game's folder"
+            )
+        # The process is the game's (the checks above), so the token goes to it and no other.
+        reply = self.request(f"auth {find_token(self.game)}")
+        if reply != "ok":
+            raise LinuxHelperError(
+                f"the helper in Zexion (pid {self.game.pid}) refused this client's token "
+                f"({reply}): one left by an earlier run of the game, or from another game's "
+                "folder? Start the game again"
             )
 
     def __exit__(self, *_exc: object) -> None:

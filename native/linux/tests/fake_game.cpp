@@ -29,6 +29,10 @@ short zap_start_count;
 unsigned char zap_start_cells[4 * 64];
 unsigned char zap_start_flags[64];
 __attribute__((noinline, used)) void zap_new_game() { asm volatile(""); }
+// Set through the socket: the player's START GAME, which the game answers by writing its exit
+// action itself. The helper's `write` leaves the game's function-pointer tables alone, so the
+// stand-in's frame loop makes that write.
+unsigned char zap_press;
 // The stand-in's placement: the item table's first location, as the game's placement writes it.
 __attribute__((noinline, used)) void zap_placement() { zap_section[0x26C] = 0x5A; }
 // The menus the ARCHIPELAGO choice reads (no menu is ever up in the stand-in: it is not offered).
@@ -420,6 +424,10 @@ int main() {
     for (unsigned long frame = 0; !g_stop; ++frame) {
         draw_frame();
         if (frame % 4 == 0) draw_editor();
+        if (zap_press != 0) {  // the game's own write of its exit action
+            zap_press = 0;
+            zap_transition = reinterpret_cast<void*>(&zap_new_game);
+        }
         if (zap_achieve != 0) {  // the game thread, between frames, as the game's own
             zap_achieve = 0;
             zap_steam_achievement();

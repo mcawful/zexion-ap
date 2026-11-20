@@ -22,6 +22,36 @@ inline constexpr size_t kMaxRead = 32 * 1024;     // one `read`'s bytes, its rep
 inline constexpr char kDataPrefix[] = "data ";    // a `read`'s reply: this, then the bytes
 inline constexpr size_t kMaxWrite = 16 * 1024;    // one `write`'s bytes (hex: twice that sent)
 
+// The client's token (native/README.md, "The Linux helper", "Who may connect"): kTokenBytes
+// random bytes made when the helper starts, written as hex into kTokenFile of the helper's data
+// folder (mode 0600, in a folder of 0700), which the client reads and sends as its first request
+// but `hello`'s: "auth <hex>". A connection serves nothing until it has.
+inline constexpr size_t kTokenBytes = 32;
+inline constexpr char kTokenFile[] = "token";
+inline constexpr char kAuthRequest[] = "auth ";
+
+// `bytes` as lower-case hex.
+std::string hex_text(const unsigned char* bytes, size_t size);
+
+// Whether `text` is a token as written: exactly 2 * kTokenBytes lower-case hex digits.
+bool is_token_text(std::string_view text);
+
+// Whether two secrets are equal, comparing every byte of the shorter one whatever the first
+// difference (so the time a refusal takes tells nothing of the token).
+bool same_secret(std::string_view a, std::string_view b);
+
+// What a connection that has not shown the token may ask, and the helper's answer: `hello` (the
+// build and version, so a client can tell an old helper from a wrong token; nothing of the
+// game's memory), and `auth <token>`. Anything else, and a token that is not the helper's, is
+// refused and the connection dropped (`drop`); a token that is ends `authed`.
+struct Gate {
+    std::string answer;
+    bool authed = false;
+    bool drop = false;
+};
+struct State;
+Gate gate(std::string_view request, std::string_view token, const State& state);
+
 // The build a GNU build id (hex) is, or nullptr for one not known.
 const char* identify_build(std::string_view build_id_hex);
 
