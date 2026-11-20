@@ -260,7 +260,9 @@ def test_frame_work_runs_once_a_frame_for_a_wrapper_that_calls_twice(
     # every fourth, so the helper's calls are 2 x 1.25 a loop, the frames' 1 a loop.
     work, calls, _ = wrapped_frame_work(tmp_path, ZAP_WRAPPER_TWICE="1", ZAP_STUB_SWAP_US=swap_us)
     assert work > 20
-    assert calls >= 2.3 * work  # taken twice a frame it would be 1.25 x, taken once 2.5 x
+    # Taken for one call of a frame the ratio is 2.5; for both, 1.25 (the lower bound); and with
+    # frames losing their work (taken for fewer than one in a loop), above 2.7 (the upper bound).
+    assert 2.3 * work <= calls <= 2.7 * work, f"{work} frames took work in {calls} calls"
 
 
 @pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")

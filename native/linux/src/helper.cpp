@@ -1489,15 +1489,18 @@ __attribute__((noinline)) bool called_through_wrapper(uintptr_t site) {
 // A wrapper may call the helper's swap more than once for one call of its own from the frame
 // function (a frame pacer, a duplicating layer), and frame work should run once a game frame, as
 // its frame-counted timers (the popups' gap, the file select's, the Steam retry) assume. The
-// helper cannot see the game's frame from the wrapper's calls (no per-loop counter of the game's
-// is recorded in docs/re/linux.md), so a call through a wrapper is taken only if kWrapperGapUs
-// have passed since the last call through a wrapper returned: the real swap, which waits for the
-// refresh, is then not part of the gap, and a repeated call follows the first's return at once
-// (microseconds), where the next real frame follows the game's own work for it. Two limits, both
-// timing: a wrapper that does something slow between its repeated calls still has the work run
-// for each; and two real frames separated by less than the gap's worth of the game's own work
-// (`loadState`'s swap, then the frame's) lose the second's work, which then waits one frame. The
-// gap is short for that; the direct path has neither limit.
+// helper cannot tell the game's frames apart from the wrapper's calls: the game's frame_clock
+// (`gGameState+0xB0`, docs/re/linux.md) is recorded, but stands still while a menu pauses the
+// game, so it cannot key frame work. So a call through a wrapper runs the work only if
+// kWrapperGapUs had passed, when it began, since the last call through a wrapper that ran it
+// returned from the real swap (stamped only by the calls that ran the work, so a tight loop of
+// calls cannot hold the work off). The real swap, which waits for the refresh (inferred from the
+// game's measured call rate, not seen), is then no part of the gap; a repeated call follows the
+// first's return at once. The premise, an assumption: the game's work for a frame, from one
+// swap's return to the next call, takes longer than kWrapperGapUs. Limits, both timing: a wrapper
+// that does something slow between its repeated calls still has the work run for each; and two
+// real frames closer than that (`loadState`'s swap, then the frame's) lose the second's work,
+// which waits one frame. The direct path has neither.
 constexpr int64_t kWrapperGapUs = 100;
 std::atomic<int64_t> g_wrapper_returned_us{INT64_MIN / 2};
 
@@ -1505,10 +1508,6 @@ int64_t now_us() {
     return std::chrono::duration_cast<std::chrono::microseconds>(
                std::chrono::steady_clock::now().time_since_epoch())
         .count();
-}
-
-bool wrapper_frame_due() {
-    return now_us() - g_wrapper_returned_us.load(std::memory_order_relaxed) >= kWrapperGapUs;
 }
 
 void frame_work() {
@@ -1591,16 +1590,20 @@ void frame_work() {
     guarded([] { g_game->pump_drops(zap::ticks_ms()); });
 }
 
-// A call to the helper's swap, from `site`: frame work for a call from the frame function, or from
-// a wrapper it calls (kWrapperGapUs above). Returns whether the call came through a wrapper, which
-// the caller notes the return of; any other call, UpdatePalette's say, only passes on.
-bool game_frame(uintptr_t site) {
+// A call to the helper's swap, from `site`, begun at `start_us`: frame work for a call from the
+// frame function, or from a wrapper it calls (kWrapperGapUs above). Returns whether the work ran
+// for a call through a wrapper, which the caller stamps the return of; any other call,
+// UpdatePalette's say, only passes on.
+bool game_frame(uintptr_t site, int64_t start_us) {
     if (in_frame_function(site)) {
         frame_work();
         return false;
     }
     if (!called_through_wrapper(site)) return false;
-    if (wrapper_frame_due()) frame_work();
+    if (start_us - g_wrapper_returned_us.load(std::memory_order_relaxed) < kWrapperGapUs) {
+        return false;
+    }
+    frame_work();
     return true;
 }
 
@@ -1641,12 +1644,13 @@ void audit_frame_calls() {
 // The game's per-frame call (native/README.md, "The Linux helper"). SDL2's returns nothing and
 // SDL3's a bool: returned as an int, which an SDL2 caller ignores.
 extern "C" __attribute__((visibility("default"))) int SDL_GL_SwapWindow(void* window) {
-    bool wrapped = false;
+    bool wrapper_ran = false;
     if (g_active.load(std::memory_order_relaxed)) {
+        const int64_t start_us = now_us();  // before the walk, which may stall
         const uint64_t calls = g_frames.fetch_add(1, std::memory_order_relaxed) + 1;
         auto site = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
         count_call_site(site);
-        wrapped = game_frame(site);
+        wrapper_ran = game_frame(site, start_us);
         if (calls == kAuditCalls) audit_frame_calls();
     }
     Swap next = g_next_swap;
@@ -1655,8 +1659,8 @@ extern "C" __attribute__((visibility("default"))) int SDL_GL_SwapWindow(void* wi
         if (next == nullptr) return 0;
     }
     const int result = next(window);
-    // Where a wrapper's repeated call is told from the next frame's (wrapper_frame_due).
-    if (wrapped) g_wrapper_returned_us.store(now_us(), std::memory_order_relaxed);
+    // Where a wrapper's repeated call is told from the next frame's (game_frame).
+    if (wrapper_ran) g_wrapper_returned_us.store(now_us(), std::memory_order_relaxed);
     return result;
 }
 

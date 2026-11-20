@@ -12,8 +12,10 @@ What this covers, exactly (it reads the sources; nothing here needs the build or
   structs listed below), ``Kept`` (built in place, never destroyed), or has ``init_priority(101)``,
   which builds it before the constructor runs, whatever the compiler's library does. Any other
   type, a user's or the library's, fails until it is one of these, and so does a scalar whose
-  initializer is a call (``= getenv(...)``), which runs at load time. Not seen by this scan: a
-  type declared together with its object (``struct { ... } g;``).
+  initializer is a call (``= getenv(...)``, ``{call()}``) or names another ``g_`` global, which
+  runs at load time. Not seen by this scan: a type declared together with its object
+  (``struct { ... } g;``), a direct-initialized object (``T g(call());``, read as a function), and
+  an initializer naming a non-constexpr variable that is not a ``g_`` global.
 * ``feats.cpp``'s stand-in holder, which the Steam export answers with from any thread, must be
   ``constinit``.
 
@@ -64,9 +66,10 @@ def declarations(text: str) -> list[str]:
     return out
 
 
-def objects(text: str) -> list[tuple[str, str, str]]:
-    """The declarations that are objects, as (statement, type, name): no parameter list before
-    the declarator ends, and not a type or an alias."""
+def objects(text: str) -> list[tuple[str, str, str, str]]:
+    """The declarations that are objects, as (statement, type, name, initializer): no parameter
+    list before the declarator ends, and not a type or an alias. The initializer is what follows
+    the name, from its ``=`` or ``{`` to the ``;``."""
     found = []
     for statement in declarations(text):
         bare = PRIORITY.sub("", statement).strip()
@@ -80,26 +83,26 @@ def objects(text: str) -> list[tuple[str, str, str]]:
         match = re.match(r"(.*?)\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$", head)
         if not match:
             continue
-        found.append((statement, match.group(1).strip(), match.group(2)))
+        found.append((statement, match.group(1).strip(), match.group(2), bare[end:].split(";")[0]))
     return found
 
 
 def test_every_global_is_constant_kept_or_built_before_the_helpers_constructor() -> None:
     checked = 0
     for path in FILES:
-        for statement, kind, name in objects(path.read_text(encoding="utf-8")):
+        for statement, kind, name, initializer in objects(path.read_text(encoding="utf-8")):
             checked += 1
             if CONSTANT.match(kind):
-                # Constant by its type, unless a call initializes it (`= getenv(...)`): that runs
-                # at load time, in an initializer of default priority.
-                after = PRIORITY.sub("", statement).split(";")[0]
-                initializer = after[after.index("=") :] if "=" in after else ""
+                # Constant by its type, unless its initializer is a call (`= getenv(...)`,
+                # `{call()}`) or names another global (`= g_other + 1`): that runs at load time,
+                # in an initializer of default priority.
                 constant_init = re.match(
                     r"(?:thread_local\s+|static\s+)*(?:constexpr|constinit)\b", kind
                 )
-                assert constant_init or "(" not in initializer or PRIORITY.search(statement), (
-                    f"{path.name}: {name} is initialized by a call, at load time: "
-                    f"{statement.strip()}"
+                dynamic = "(" in initializer or re.search(r"\bg_\w+", initializer)
+                assert constant_init or not dynamic or PRIORITY.search(statement), (
+                    f"{path.name}: {name} is initialized by a call or another global, at load "
+                    f"time: {statement.strip()}"
                 )
                 continue
             if kind.startswith("Kept<") or PRIORITY.search(statement):
@@ -119,7 +122,7 @@ def test_every_global_is_constant_kept_or_built_before_the_helpers_constructor()
 def test_the_scan_finds_the_globals_the_serving_thread_reads() -> None:
     names = set()
     for path in FILES:
-        for statement, _kind, name in objects(path.read_text(encoding="utf-8")):
+        for statement, _kind, name, _init in objects(path.read_text(encoding="utf-8")):
             if PRIORITY.search(statement):
                 names.add(name)
     assert {

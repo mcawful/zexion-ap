@@ -2423,27 +2423,31 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   passed on. That the wrapper has `.eh_frame` (the unwinder's one source) is assumed, not
   checked: without it the walk ends and the call is only passed on, as with no wrapper handling.
   A wrapper that passes a swap on more than once for one of its own calls (a frame-duplicating
-  layer) has frame work taken for one of them: the helper cannot see the game's frame from the
-  wrapper's calls (no per-loop counter of the game's is recorded), so a call through a wrapper
-  counts only if 100 microseconds (`kWrapperGapUs`) have passed since the last call through a
-  wrapper returned from the real swap, which waits for the refresh and so is no part of the gap:
-  a repeated call follows the first's return at once, the next frame follows the game's own work
-  for it. Two limits, both timing: a wrapper that does something slow between its repeated calls
-  still has the work run for each (the frame-counted timers, the popup gap, file slots and Steam
-  retry, then run fast); and two real frames less than 100 microseconds of the game's own work
-  apart (`loadState`'s swap, then the frame's) lose the second's work, which waits one frame.
-  Neither touches a call from the frame function itself. Stand-in tested
-  (`tests/test_native_linux.py`, `test_frame_work_runs_for_a_wrapper_the_frame_function_calls`,
-  the tests for a wrapper that calls twice, with the real swap returning at once and waiting, one
-  that calls once and loses no frame's work, and one called from another function, with
+  layer) has frame work taken for one of them. The helper cannot tell the game's frames apart
+  from the wrapper's calls: the game's `frame_clock` (`gGameState+0xB0`, `docs/re/linux.md`) is
+  recorded, but stands still while a menu pauses the game, so it cannot key the work. So a call
+  through a wrapper runs the work only if 100 microseconds (`kWrapperGapUs`) had passed, when it
+  began, since the last call through a wrapper that ran it returned from the real swap (stamped
+  by the calls that ran the work only, so a tight loop of calls cannot hold the work off). The
+  real swap is no part of that gap, whether or not it waits for the refresh (it probably does:
+  inferred from the game's measured call rate, `docs/re/linux.md`, not seen), and a repeated
+  call follows the first's return at once. The premise, an assumption: the game's work for a
+  frame, from one swap's return to the next call, takes longer than 100 microseconds. Two limits,
+  both timing: a wrapper that does something slow between its repeated calls still has the work
+  run for each (the frame-counted timers, the popup gap, file slots and Steam retry, then run
+  fast); and two real frames closer than that (`loadState`'s swap, then the frame's) lose the
+  second's work, which waits one frame. Neither touches a call from the frame function itself.
+  Stand-in tested (`tests/test_native_linux.py`,
+  `test_frame_work_runs_for_a_wrapper_the_frame_function_calls`, the tests for a wrapper that
+  calls twice, with the real swap returning at once and waiting, one that calls once and loses no
+  frame's work, and one called from another function, with
   `native/linux/tests/swap_wrapper.cpp`, built with no frame pointer); no such library has been
   in front of the helper in the game. **Known limit:** `SWHardwareEnd` is also called from
   `loadState`, which is not traced (`docs/re/linux.md`, "The per-frame call"); the helper tells
   that call from the others only by the return address inside `SWHardwareEnd` (or, through a
-  wrapper, the wrapper's caller's), which is the same, so
-  frame work runs at that swap too. A grant that lands in
-  the middle of a load can then be overwritten by the load's copy of the inventory, with its popup
-  (and a trap riding on it) already out; the next poll gives the item again (the client's
+  wrapper, the wrapper's caller's), which is the same, so frame work runs at that swap too. A
+  grant that lands in the middle of a load can then be overwritten by the load's copy of the
+  inventory, with its popup (and a trap riding on it) already out; the next poll gives the item again (the client's
   reconcile), so none is lost, and the extra popup is the cost. Telling a load apart needs
   `loadState`'s own state or a second return address (the stack's, with no frame pointers in
   the game), neither traced.
