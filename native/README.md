@@ -2474,20 +2474,62 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   none of the first 1200 calls comes from the frame function (`SWHardwareEnd`) while the game's
   symbols give it, another library's `SDL_GL_SwapWindow` stands in front of the helper's, and it
   says so on stderr once, naming that library (`put libzexion_ap.so first in LD_PRELOAD`): every
-  frame request would be refused, though `hello` says `hooked=1`. **Known limit:** `SWHardwareEnd`
-  is also called from `loadState`, which is not traced (`docs/re/linux.md`, "The per-frame
-  call"); the helper tells that call from the others only by the return address inside
-  `SWHardwareEnd`, which is the same, so frame work runs at that swap too. A grant that lands in
-  the middle of a load can then be overwritten by the load's copy of the inventory, with its popup
-  (and a trap riding on it) already out; the next poll gives the item again (the client's
-  reconcile), so none is lost, and the extra popup is the cost. Telling a load apart needs
-  `loadState`'s own state or a second return address (the stack's, with no frame pointers in
-  the game), neither traced.
+  frame request would be refused, though `hello` says `hooked=1`. The exception is one level of
+  wrapper: a call whose caller is called from `SWHardwareEnd` also counts as a frame call, so
+  a library in front that calls the helper's from its own code does no harm. The caller's caller
+  is found with the unwinder on every library's `.eh_frame` (a wrapper built without frame
+  pointers keeps none), only for a call that did not come from the frame function itself, so
+  frame work still runs once for a call at most; a stack the unwinder cannot read, or a
+  wrapper called from anywhere but `SWHardwareEnd` (`UpdatePalette`'s swap, say), is only
+  passed on. That the wrapper has `.eh_frame` (the unwinder's one source) is assumed, not
+  checked: without it the walk ends and the call is only passed on, as with no wrapper handling.
+  A wrapper that passes a swap on more than once for one of its own calls (a frame-duplicating
+  layer) has frame work taken for one of them. The helper cannot tell the game's frames apart
+  from the wrapper's calls: the game's `frame_clock` (`gGameState+0xB0`, `docs/re/linux.md`) is
+  recorded, but stands still while a menu pauses the game, so it cannot key the work. So a call
+  through a wrapper runs the work only if 100 microseconds (`kWrapperGapUs`) had passed, when it
+  began, since the last call through a wrapper, of any kind, returned from the real swap. Every
+  such call stamps its return, so a third or fourth call follows the second's return as the
+  second followed the first's, however long the real swap waits for the refresh (it probably
+  waits: inferred from the game's measured call rate, `docs/re/linux.md`, not seen). A backstop
+  keeps a tight loop of calls (a game loop with nothing between its swaps), which is never that
+  far apart, from stopping the work: it runs anyway once 50 ms have passed since the last run
+  began. The premise, an assumption: the game's work for a frame, from one swap's return to the
+  next call, takes longer than 100 microseconds. Two limits, both timing: a wrapper that does
+  something slow between its repeated calls still has the work run for each (the frame-counted
+  timers, the popup gap, file slots and Steam retry, then run fast); and two real frames closer
+  than that (`loadState`'s swap, then the frame's) lose the second's work, which waits one
+  frame. Neither touches a call from the frame function itself. Stand-in tested
+  (`tests/test_native_linux.py`,
+  `test_frame_work_runs_for_a_wrapper_the_frame_function_calls`, the tests for a wrapper that
+  repeats its call two, three and four times, with the real swap returning at once and waiting,
+  for a tight loop of calls, for one that calls once and loses no frame's work, and for one
+  called from another function, with
+  `native/linux/tests/swap_wrapper.cpp`, built with no frame pointer); no such library has been
+  in front of the helper in the game. **Known limit:** `SWHardwareEnd` is also called from
+  `loadState`, which is not traced (`docs/re/linux.md`, "The per-frame call"); the helper tells
+  that call from the others only by the return address inside `SWHardwareEnd` (or, through a
+  wrapper, the wrapper's caller's), which is the same, so frame work runs at that swap too. A
+  grant that lands in the middle of a load can then be overwritten by the load's copy of the
+  inventory, with its popup (and a trap riding on it) already out; the next poll gives the item
+  again (the client's reconcile), so none is lost, and the extra popup is the cost. Telling a
+  load apart needs `loadState`'s own state or a second return address (the stack's, with no
+  frame pointers in the game), neither traced.
 - **Start-up.** The constructor does its work inside a `try`: whatever it throws leaves the helper
   off (a line on stderr), never an aborted program. It reads one of its own constants through
   `process_vm_readv` first, and if the kernel or a sandbox's filter refuses, says
   `memory reads refused: <why>` and does not serve (grants would otherwise land with no
-  popups and no labels).
+  popups and no labels). It starts the serving thread last, from the library's constructor,
+  which runs ahead of the default-priority dynamic initializers of the helper's file and of the
+  shared sources: every global with a constructor that the thread reads (the offline folder, the
+  token, the mailbox, `Game`, the seeds' lists and lock, and the memory layer's map, its lock and
+  its program spans) is `Kept` (built in place, never destroyed) or has `init_priority(101)`, so
+  it is built before the constructor sets it, whatever the compiler's library builds at load time.
+  `tests/test_native_linux_init_order.py` reads `helper.cpp` and `game_mem_linux.cpp` and fails
+  for any object in them that is none of constant by its type, `Kept` or `init_priority(101)`,
+  and checks the Steam export's stand-in holder is `constinit`; the other shared sources'
+  globals (`feats.cpp`'s others, `offline.cpp`) are read on the game's thread or by the export,
+  by reading the code, not by the test.
 - **The socket.** An abstract unix socket, `zexion-ap-<pid>`, `SOCK_SEQPACKET`: one request a
   message, one reply a message, one client at a time, as the Windows pipe. The next client's
   connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
@@ -3062,7 +3104,16 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     loaded, marker 1 and slot an AP save's, read at the call; every other call goes on to
     `libsteam_api`'s own (`dlsym(RTLD_NEXT)`, else the library's own if it is loaded but not
     global; looked for again while not found, never the helper's), the game's first, before any
-    config, too, and in any other program the preload reaches; the guard reports a fault
+    config, too, and in any other program the preload reaches; where there is none to go on to
+    (a program without `libsteam_api`: the game has it `NEEDED`) the answer is the stand-in's
+    holder, never null, as the game's accessor reads through it (stand-in tested,
+    `native/linux/tests/feats_tests.cpp`), built at load time (`constinit`) so no constructor
+    finds it zero, and saying so once on stderr. It fits the game's one-pointer accessor only: an
+    accessor that reads more of a context block, an interface of more than 64 methods, or a
+    method whose result is a pointer would not be served. If `real_init` failed in the game, Steam
+    would be stubbed that way, silently for the player (no achievement outside AP saves), with
+    that stderr line and `feats_status`'s "libsteam_api's SteamInternal_ContextInit is not found"
+    the only signs; the guard reports a fault
     (`feats_status`) unless the game's call binds to the helper's export (the first definition in
     the global scope: another preload ahead of it would take the calls) and the library's is
     found (a check that fails is made again every `kSteamRetryFrames`, 60 frames, so a library loaded later still counts); `watch_feats` runs before the frame's player-pointer gate, as it only reads;
@@ -3207,8 +3258,15 @@ fixed-address executable as the game is, calling `SDL_GL_SwapWindow` from a stan
 `tests/test_native_linux.py` preloads both builds into the stand-in game ("The Linux helper"),
 `zap_newgame_tests` runs the shared new-game logic (`linux/tests/newgame_tests.cpp`), and
 `zap_patch_tests` runs the Linux build's code patches side by side with the game's bytes
-(`linux/tests/patch_tests.cpp`, "The map"), and `zap_translation_tests` the label builder's call
-(`linux/tests/translation_tests.cpp`, "Translations");
+(`linux/tests/patch_tests.cpp`, "The map"), `zap_translation_tests` the label builder's call
+(`linux/tests/translation_tests.cpp`, "Translations") and `zap_feats_tests` the Steam export's
+answer in a program with no `libsteam_api` (`linux/tests/feats_tests.cpp`);
+`libzap_swap_wrapper.so` (`linux/tests/swap_wrapper.cpp`) is a stand-in for another library's
+`SDL_GL_SwapWindow`, preloaded ahead of the helper by the wrapper tests (a frame function's
+call through it, a repeated call, a call from another function: "The Linux helper", "The frame
+call"), and
+`tests/test_native_linux_init_order.py` reads the helper's sources for globals built too late
+("The Linux helper", "Start-up", for what it covers);
 `ZEXION_NATIVE_BUILD` points it at another build folder than `native/build`.
 CI runs all of it on Ubuntu, with `ZEXION_REQUIRE=helper`.
 

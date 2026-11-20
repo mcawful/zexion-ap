@@ -14,11 +14,14 @@
 #include <sys/uio.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <unwind.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -862,7 +865,7 @@ bool player_where_expected() {
 // AP saves without the client (native/README.md, "AP saves without the client"): the seeds'
 // files (offline.h) read on the serving thread at start and each time a client goes, and the
 // seeds put since; the next frame takes both (take_offline).
-std::mutex g_offline_mutex;
+__attribute__((init_priority(101))) std::mutex g_offline_mutex;
 __attribute__((init_priority(101))) Kept<std::optional<zap::OfflineFiles>>
     g_offline_files;  // read, not yet taken
 struct PutSeed {
@@ -1085,6 +1088,11 @@ std::optional<std::string> game_request(std::string_view request) {
     if (request == "die") {  // a DeathLink death received (game_calls.h, kill)
         return on_game([] { return g_game->kill(zap::ticks_ms()); }, false);
     }
+#ifdef ZAP_HOOKTEST
+    if (request == "frame_calls") {  // the calls frame work was taken for (tests only)
+        return "frame_calls " + std::to_string(g_frame_calls.load());
+    }
+#endif
     if (request == "feats_status") {  // the Feats guard (feats.h, state): checks
         return on_game([] { return g_game->feats_state(); }, false);
     }
@@ -1415,7 +1423,7 @@ __attribute__((constructor)) void start() {
 
 namespace {
 
-// The game's thread, at its frame swap (SWHardwareEnd's call: `site`, the return address): a
+// The game's thread, at its frame swap (SWHardwareEnd's call, or a wrapper's: game_frame): a
 // client gone's plan and labels dropped, the mailbox's work, an armed new game watched, the
 // ARCHIPELAGO choice, other players' items, the traps, then the next popup. Each part guarded on
 // its own, so one that throws keeps none of the others from running, and nothing reaches the
@@ -1434,10 +1442,79 @@ struct FrameScope {
     FrameScope() = default;
 };
 
-void game_frame(uintptr_t site) {
-    if (site < g_frame_function.value || site >= g_frame_function.value + g_frame_function.size) {
-        return;  // another swap (UpdatePalette's window), or the frame function unknown
+bool in_frame_function(uintptr_t address) {
+    return address >= g_frame_function.value &&
+           address < g_frame_function.value + g_frame_function.size;
+}
+
+// One level of wrapper: another library's SDL_GL_SwapWindow, preloaded ahead of the helper's (an
+// overlay, a frame limiter), calls ours from its own code, and the game's frame function is the
+// wrapper's caller (docs/re/linux.md, "The per-frame call"). Found by the unwinder, from every
+// library's .eh_frame, not by frame pointers, which a wrapper built without them does not keep:
+// the first few frames of the stack, to the one whose address is `site` (the wrapper's call), and
+// the address above it. A stack the unwinder cannot read ends the walk: no frame work, nothing more.
+struct StackWalk {
+    uintptr_t site;       // where our caller will return: the wrapper's frame
+    bool found = false;   // `site`'s frame has been passed
+    uintptr_t above = 0;  // the frame above it: where the wrapper itself will return
+    int steps = 0;
+};
+
+_Unwind_Reason_Code walk_one_frame(_Unwind_Context* context, void* data) {
+    constexpr int kMaxSteps = 6;  // ours, the wrapper's, its caller's, and room for a helper frame
+    auto* walk = static_cast<StackWalk*>(data);
+    const auto address = static_cast<uintptr_t>(_Unwind_GetIP(context));
+    if (walk->found) {
+        walk->above = address;
+        return _URC_END_OF_STACK;
     }
+    if (address == walk->site) {
+        walk->found = true;
+    } else if (++walk->steps >= kMaxSteps) {
+        return _URC_END_OF_STACK;
+    }
+    return _URC_NO_REASON;
+}
+
+// Whether `site`'s caller was called from the frame function: it is a wrapper the frame function
+// calls. Only for a call not itself from the frame function (a direct call is the common case and
+// costs no walk), and never when the frame function is unknown.
+__attribute__((noinline)) bool called_through_wrapper(uintptr_t site) {
+    if (g_frame_function.size == 0) return false;
+    StackWalk walk{site};
+    _Unwind_Backtrace(walk_one_frame, &walk);
+    return walk.found && walk.above != 0 && in_frame_function(walk.above);
+}
+
+// A wrapper may call the helper's swap more than once for one call of its own from the frame
+// function (a frame pacer, a duplicating layer), and frame work should run once a game frame, as
+// its frame-counted timers (the popups' gap, the file select's, the Steam retry) assume. The
+// helper cannot tell the game's frames apart from the wrapper's calls: the game's frame_clock
+// (`gGameState+0xB0`, docs/re/linux.md) is recorded, but stands still while a menu pauses the
+// game, so it cannot key frame work. So a call through a wrapper runs the work only if
+// kWrapperGapUs had passed, when it began, since the last call through a wrapper, of any kind,
+// returned from the real swap: every such call stamps its return, so a wrapper's third and fourth
+// calls follow the second's return as the second followed the first's, however long the real swap
+// waits for the refresh (inferred from the game's measured call rate, not seen). The premise, an
+// assumption: the game's work for a frame, from one swap's return to the next call, takes longer
+// than kWrapperGapUs. Backstop: a tight loop of calls through a wrapper (a game loop with no
+// work between swaps) would never be due, so the work runs anyway once kWrapperBackstopUs have
+// passed since the last run began. Limits, both timing: a wrapper that does something slow
+// between its repeated calls still has the work run for each; and two real frames closer than
+// the gap (`loadState`'s swap, then the frame's) lose the second's work, which waits one frame.
+// The direct path has neither.
+constexpr int64_t kWrapperGapUs = 100;
+constexpr int64_t kWrapperBackstopUs = 50000;
+std::atomic<int64_t> g_wrapper_returned_us{INT64_MIN / 2};  // the last wrapper call's return
+std::atomic<int64_t> g_wrapper_ran_us{INT64_MIN / 2};       // the last run through one, begun
+
+int64_t now_us() {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+void frame_work() {
     g_frame_calls.fetch_add(1, std::memory_order_relaxed);
     FrameScope scope;
     if (!scope.entered) return;
@@ -1517,6 +1594,27 @@ void game_frame(uintptr_t site) {
     guarded([] { g_game->pump_drops(zap::ticks_ms()); });
 }
 
+// A call to the helper's swap, from `site`, begun at `start_us`: frame work for a call from the
+// frame function, or from a wrapper it calls (kWrapperGapUs above). Returns whether the call came
+// through a wrapper, which the caller stamps the return of; any other call, UpdatePalette's say,
+// only passes on.
+bool game_frame(uintptr_t site, int64_t start_us) {
+    if (in_frame_function(site)) {
+        frame_work();
+        return false;
+    }
+    if (!called_through_wrapper(site)) return false;
+    const bool apart = start_us - g_wrapper_returned_us.load(std::memory_order_relaxed) >=
+                       kWrapperGapUs;
+    const bool overdue = start_us - g_wrapper_ran_us.load(std::memory_order_relaxed) >=
+                         kWrapperBackstopUs;
+    if (apart || overdue) {
+        g_wrapper_ran_us.store(start_us, std::memory_order_relaxed);
+        frame_work();
+    }
+    return true;
+}
+
 }  // namespace
 
 namespace {
@@ -1554,11 +1652,13 @@ void audit_frame_calls() {
 // The game's per-frame call (native/README.md, "The Linux helper"). SDL2's returns nothing and
 // SDL3's a bool: returned as an int, which an SDL2 caller ignores.
 extern "C" __attribute__((visibility("default"))) int SDL_GL_SwapWindow(void* window) {
+    bool wrapped = false;
     if (g_active.load(std::memory_order_relaxed)) {
+        const int64_t start_us = now_us();  // before the walk, which may stall
         const uint64_t calls = g_frames.fetch_add(1, std::memory_order_relaxed) + 1;
         auto site = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
         count_call_site(site);
-        game_frame(site);
+        wrapped = game_frame(site, start_us);
         if (calls == kAuditCalls) audit_frame_calls();
     }
     Swap next = g_next_swap;
@@ -1566,7 +1666,10 @@ extern "C" __attribute__((visibility("default"))) int SDL_GL_SwapWindow(void* wi
         next = reinterpret_cast<Swap>(dlsym(RTLD_NEXT, "SDL_GL_SwapWindow"));
         if (next == nullptr) return 0;
     }
-    return next(window);
+    const int result = next(window);
+    // Where a wrapper's repeated call is told from the next frame's (game_frame).
+    if (wrapped) g_wrapper_returned_us.store(now_us(), std::memory_order_relaxed);
+    return result;
 }
 
 // Steam's SteamInternal_ContextInit, in libsteam_api's place: the dynamic linker binds the game's

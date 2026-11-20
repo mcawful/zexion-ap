@@ -158,8 +158,26 @@ void test_a_range_unmapped_since_the_last_read_is_not_writable() {
     check(!zap::writable(at, 16), "nor the first once unmapped");
 }
 
+// And never for one mapped again, at the same addresses, without write permission within the
+// map's 250 ms: it passes the cached map and mincore (it is mapped), but is read afresh, as it lies
+// in neither the game binary's segments nor [heap], so a write that follows is not a fault.
+void test_a_range_mapped_again_read_only_is_not_writable() {
+    const size_t page = 4096;
+    void* p = mmap(nullptr, page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    check(p != MAP_FAILED, "a page mapped");
+    auto* at = static_cast<BYTE*>(p);
+    check(zap::writable(at, 16), "writable once mapped");
+    check(zap::writable(at, 16), "and again, from the kept map or afresh");
+    void* again = mmap(at, page, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+    check(again == p, "the same addresses mapped again, read only");
+    check(!zap::writable(at, 16), "not writable at once, with no read since");
+    check(!zap::writable(at, 1), "nor a single byte of it");
+    munmap(at, page);
+}
+
 int main() {
     test_a_range_unmapped_since_the_last_read_is_not_writable();
+    test_a_range_mapped_again_read_only_is_not_writable();
     test_the_seeds_text_gets_the_seed();
     test_another_seeds_text_is_left_alone();
     test_a_placement_not_the_seeds_puts_the_players_back();

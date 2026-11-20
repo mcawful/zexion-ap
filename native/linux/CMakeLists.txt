@@ -61,6 +61,10 @@ target_compile_definitions(zexion_ap_hooktest PRIVATE ZAP_HOOKTEST)
 # preloaded helper comes first), and keeps a marker in its data for the memory read test.
 add_library(zap_sdl_stub SHARED tests/sdl_stub.cpp)
 set_target_properties(zap_sdl_stub PROPERTIES CXX_VISIBILITY_PRESET default)
+# Another library's SDL_GL_SwapWindow, to preload ahead of the helper (a wrapper that calls it from
+# its own code, with no frame pointer kept: the unwinder finds its caller).
+add_library(zap_swap_wrapper SHARED tests/swap_wrapper.cpp)
+target_compile_options(zap_swap_wrapper PRIVATE -fomit-frame-pointer)
 add_executable(zap_fake_game tests/fake_game.cpp)
 target_link_libraries(zap_fake_game PRIVATE zap_sdl_stub)
 # A fixed-address executable (ET_EXEC), as the game is, so its sections are at their link
@@ -82,6 +86,11 @@ add_test(NAME newgame COMMAND zap_newgame_tests)
 add_executable(zap_patch_tests tests/patch_tests.cpp)
 target_link_libraries(zap_patch_tests PRIVATE zap_shared)
 add_test(NAME patch COMMAND zap_patch_tests)
+
+# The Steam export's answer where no libsteam_api is loaded (this program has none).
+add_executable(zap_feats_tests tests/feats_tests.cpp)
+target_link_libraries(zap_feats_tests PRIVATE zap_shared)
+add_test(NAME feats COMMAND zap_feats_tests)
 
 # The Linux build's calls in a translation: the label builder given the helper's own std::wstring.
 add_executable(zap_translation_tests tests/translation_tests.cpp)

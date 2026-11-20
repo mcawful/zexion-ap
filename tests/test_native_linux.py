@@ -30,6 +30,7 @@ BUILD = Path(os.environ.get("ZEXION_NATIVE_BUILD", ROOT / "native" / "build"))
 HELPER = BUILD / "libzexion_ap.so"
 HOOKTEST = BUILD / "libzexion_ap_hooktest.so"
 GAME = BUILD / "zap_fake_game"
+WRAPPER = BUILD / "libzap_swap_wrapper.so"  # another library's SDL_GL_SwapWindow, to go first
 MARKER = b"zexion-ap test marker"
 
 if not sys.platform.startswith("linux"):
@@ -52,9 +53,14 @@ class Game:
     ``data_home`` is its XDG_DATA_HOME: the helper's seed files go in its ``ZexionAP``, never the
     real one."""
 
-    def __init__(self, preload: Path, data_home: Path, **env_more: str) -> None:
+    def __init__(self, preload: Path | tuple[Path, ...], data_home: Path, **env_more: str) -> None:
         self.offline = data_home / "ZexionAP"
-        env = {**os.environ, "LD_PRELOAD": str(preload), "XDG_DATA_HOME": str(data_home)}
+        preloads = preload if isinstance(preload, tuple) else (preload,)
+        env = {
+            **os.environ,
+            "LD_PRELOAD": ":".join(str(p) for p in preloads),
+            "XDG_DATA_HOME": str(data_home),
+        }
         env.update(env_more)
         self.proc = subprocess.Popen(
             [str(GAME)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -203,6 +209,110 @@ def test_the_frame_calls_are_counted_by_call_site(game: Game) -> None:
     assert set(named) == {"draw_frame", "draw_editor"} and other == 0
     assert named["draw_frame"] >= 3 * named["draw_editor"] - 3  # one in four frames
     assert abs(sum(named.values()) - total) <= 2  # counted between the two requests
+
+
+@pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
+def test_frame_work_runs_for_a_wrapper_the_frame_function_calls(tmp_path: Path) -> None:
+    # Another library's SDL_GL_SwapWindow ahead of the helper's (an overlay, a frame limiter): the
+    # helper's is called from the wrapper, whose own caller is the game's frame function. Frame
+    # work runs for those calls (one level of wrapper), and no stderr warning says it never does.
+    started = Game((WRAPPER, HOOKTEST), tmp_path / "data")
+    try:
+        with started.connect() as sock:
+            assert ask(sock, "intel on") == "refused not configured"  # a frame took the request
+            assert ask(sock, "ping").startswith("pong frames=")
+        found = started.as_found()
+        with linux_helper.LinuxHelper(found) as helper:
+            sites, _ = helper.callers()
+        # Both of the game's swaps reach the helper from the wrapper's one call site.
+        assert len(sites) == 1
+        assert found.image.function_at(next(iter(sites))) is None  # in none of the game's own
+    finally:
+        _, _, err = started.stop()
+    assert "no frame call came from" not in err
+
+
+def wrapped_frame_work(tmp_path: Path, **env: str) -> tuple[int, int, int]:
+    """The frame calls taken for frame work (the hooktest build's `frame_calls`) and all the
+    helper's swap calls, once the stand-in game has made 200 or more, with its swaps through the
+    wrapper; and the swaps that reached the stand-in SDL."""
+    started = Game((WRAPPER, HOOKTEST), tmp_path / "data", **env)
+    try:
+        with started.connect() as sock:
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > 200, seconds=20)
+            work = int(ask(sock, "frame_calls").removeprefix("frame_calls "))
+            calls = int(ask(sock, "ping").removeprefix("pong frames="))
+            assert ask(sock, "intel on") == "refused not configured"  # frame work still runs
+    finally:
+        swaps, _, _ = started.stop()
+    assert swaps >= calls  # every call still went on to SDL
+    return work, calls, swaps
+
+
+@pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
+@pytest.mark.parametrize("swap_us", ["0", "3000"])
+@pytest.mark.parametrize("repeats", [2, 3, 4])
+def test_frame_work_runs_once_a_frame_for_a_wrapper_that_repeats_its_call(
+    tmp_path: Path, repeats: int, swap_us: str
+) -> None:
+    # A wrapper that passes each swap on `repeats` times, back to back, with the real swap
+    # returning at once or waiting (3 ms, as the real one waits for the refresh): frame work is
+    # taken for one of them, so once a game frame. The game swaps its frame window every loop and
+    # the other window's every fourth, so the helper's calls are `repeats` x 1.25 a loop, the
+    # frames' 1 a loop.
+    work, calls, _ = wrapped_frame_work(
+        tmp_path, ZAP_WRAPPER_CALLS=str(repeats), ZAP_STUB_SWAP_US=swap_us
+    )
+    assert work > 20
+    # Taken for one call of a frame the ratio is 1.25 x `repeats`; for all of them, 1.25 (the lower
+    # bound); and with frames losing their work (fewer than one in a loop), above the upper bound.
+    assert 1.15 * repeats <= calls / work <= 1.35 * repeats, (
+        f"{work} frames took work in {calls} calls"
+    )
+
+
+@pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
+def test_a_tight_loop_of_calls_through_a_wrapper_does_not_stop_frame_work(tmp_path: Path) -> None:
+    # A game loop with nothing between a wrapper's calls (millions of them from one frame's
+    # call, microseconds apart) is never "apart" by the gap after its first call: the backstop
+    # runs frame work once in 50 ms all the same, so a request is served (refused not configured:
+    # a frame took it) within its wait of a second, not refused for want of a frame.
+    started = Game((WRAPPER, HOOKTEST), tmp_path / "data", ZAP_WRAPPER_CALLS="50000000")
+    try:
+        with started.connect() as sock:
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > 1000)
+            assert ask(sock, "intel on") == "refused not configured"
+    finally:
+        started.proc.kill()  # it is deep in the loop: SIGTERM would wait for the whole of it
+        started.proc.wait()
+
+
+@pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
+@pytest.mark.parametrize("swap_us", ["0", "3000"])
+def test_a_wrapper_that_calls_once_never_loses_a_frames_work(tmp_path: Path, swap_us: str) -> None:
+    # One call a frame through the wrapper, the real swap returning at once or waiting: every
+    # frame takes its work (the calls are 1.25 a loop, the frames 1 a loop), none skipped by the
+    # gap that tells a repeated call from the next frame.
+    work, calls, _ = wrapped_frame_work(tmp_path, ZAP_STUB_SWAP_US=swap_us)
+    assert work > 20
+    assert calls <= 1.4 * work, f"{work} frames took work in {calls} calls"
+
+
+@pytest.mark.skipif(not WRAPPER.is_file(), reason="no stand-in wrapper in the build")
+def test_frame_work_does_not_run_for_a_wrapper_called_from_another_function(
+    tmp_path: Path,
+) -> None:
+    # The same wrapper, with a game that swaps only from its other window's function: the
+    # wrapper's caller is not the frame function, so no frame work runs (the request is refused
+    # after a frame's wait, as with no wrapper in the way), though every call is passed on.
+    started = Game((WRAPPER, HOOKTEST), tmp_path / "data", ZAP_FAKE_NO_FRAME="1")
+    try:
+        with started.connect() as sock:
+            assert ask(sock, "intel on") == "refused no frame"
+            assert ask(sock, "ping").startswith("pong frames=")
+    finally:
+        swaps, _, _ = started.stop()
+    assert swaps > 0  # every call still reached SDL
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

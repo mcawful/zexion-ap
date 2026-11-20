@@ -41,7 +41,9 @@ bool feats_screen_note(const GameAddresses& addresses, bool show);
 // The Linux helper's SteamInternal_ContextInit, which it exports in the libsteam_api's place
 // (native/linux/src/helper.cpp; docs/re/linux.md, "Mapped by disassembly: the Feats guard's Steam
 // and load test"): for the stats context while the guard blocks, the stand-in's holder (an
-// interface whose every method returns 0); any other call `real(context)`. Any thread, no lock.
+// interface whose every method returns 0); any other call `real(context)`, or, where there is no
+// libsteam_api to go on to, the same holder (never null; it fits the game's one-pointer accessor
+// only, and says so once on stderr). Any thread, no lock.
 void* feats_context_init(void* context);
 // The game's SteamUserStats() context, from its own symbols; before any thread runs.
 void set_feats_stats_context(const void* context);

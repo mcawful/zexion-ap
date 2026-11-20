@@ -1,9 +1,11 @@
 // The stand-in game for tests/test_native_linux.py: it prints where its marker and block are,
 // then calls SDL_GL_SwapWindow every 5 ms until killed, from two call sites (every frame from
-// draw_frame, every fourth from draw_editor, as the game swaps a second window), and on SIGTERM the stand-in SDL's count of the calls that
-// reached it.
+// draw_frame, every fourth from draw_editor, as the game swaps a second window; with
+// ZAP_FAKE_NO_FRAME set, only from draw_editor, every time), and on SIGTERM the stand-in SDL's
+// count of the calls that reached it.
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <cwchar>
@@ -424,9 +426,12 @@ int main() {
                 static_cast<void*>(const_cast<unsigned char*>(g_block)));
     std::fflush(stdout);
     timespec pause{0, 5 * 1000 * 1000};
+    // ZAP_FAKE_NO_FRAME: the game never swaps from its frame function, only (every frame) from the
+    // other window's: no frame work may run for any call a wrapper passes on.
+    const bool editor_only = std::getenv("ZAP_FAKE_NO_FRAME") != nullptr;
     for (unsigned long frame = 0; !g_stop; ++frame) {
-        draw_frame();
-        if (frame % 4 == 0) draw_editor();
+        if (!editor_only) draw_frame();
+        if (editor_only || frame % 4 == 0) draw_editor();
         if (zap_press != 0) {  // the game's own write of its exit action
             zap_press = 0;
             zap_transition = reinterpret_cast<void*>(&zap_new_game);
