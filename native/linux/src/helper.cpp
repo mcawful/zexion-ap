@@ -876,12 +876,15 @@ __attribute__((init_priority(101))) Kept<std::vector<PutSeed>> g_put_seeds;  // 
 // The folder, found once in the constructor (getenv there, before the game's threads run: never
 // while they may set the environment).
 __attribute__((init_priority(101))) Kept<std::wstring> g_offline_folder;
+// The game's own save folder (offline.h, save_folder), found there too: the seeds' copies Steam
+// Cloud carries with the saves are written into it, and read from it.
+__attribute__((init_priority(101))) Kept<std::wstring> g_save_folder;
 // The client's token (core.h), made in the constructor and written into that folder.
 __attribute__((init_priority(101))) Kept<std::string> g_token;
 
 // Serving thread (file I/O; never the frame call). A file that could not be read is said once.
 void read_offline() {
-    zap::OfflineFiles files = zap::read_offline_files(*g_offline_folder, g_build);
+    zap::OfflineFiles files = zap::read_offline_files(*g_offline_folder, g_build, *g_save_folder);
     static Kept<std::string> said;  // as the globals above: never destroyed under this thread
     if (!files.error.empty() && files.error != *said) {
         std::fprintf(stderr, "zexion-ap %s: seed files: %s\n", kVersion, files.error.c_str());
@@ -1107,8 +1110,13 @@ std::optional<std::string> game_request(std::string_view request) {
         // (offline.cpp, offline_folder), and its text the running helper's from the next frame
         // (take_offline) whether the file could be kept or not, as on Windows.
         zap::OfflineSeed seed;
-        std::string reply =
-            zap::put_offline_file(*g_offline_folder, g_build, std::string(request), &seed);
+        std::string save_error;
+        std::string reply = zap::put_offline_file(*g_offline_folder, g_build, std::string(request),
+                                                  &seed, *g_save_folder, &save_error);
+        if (!save_error.empty()) {
+            std::fprintf(stderr, "zexion-ap %s: the seed's copy in the save folder: %s\n",
+                         kVersion, save_error.c_str());
+        }
         if (!seed.name.empty()) {
             note_put_seed(std::move(seed), reply == "stored" || reply == "unchanged");
         }
@@ -1388,6 +1396,7 @@ void start_inside() {
     }
     g_folder = !folder.empty() && folder == folder_of("/proc/self/exe");
     *g_offline_folder = zap::offline_folder();  // here, before the game's threads (getenv)
+    *g_save_folder = zap::save_folder();
     g_game->set_title_version(kVersion);  // the title's version line (title.h), as on Windows
     if (!read_own_symbols()) {
         std::fprintf(stderr, "zexion-ap %s: the game's symbols were not found: no new games\n",

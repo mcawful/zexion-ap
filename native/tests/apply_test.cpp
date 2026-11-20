@@ -63,6 +63,14 @@ int wmain(int argc, wchar_t** argv) {
         std::filesystem::remove_all(base);
         return EXIT_FAILURE;
     }
+    // The helper in the test build uses no save folder but the one named here: never the real one.
+    const std::filesystem::path save = base / L"save";
+    std::filesystem::create_directories(save);
+    if (SetEnvironmentVariableW(L"ZEXION_SAVE_DIR", save.wstring().c_str()) == 0) {
+        std::printf("FAIL: ZEXION_SAVE_DIR not set to the test's folder\n");
+        std::filesystem::remove_all(base);
+        return EXIT_FAILURE;
+    }
     stand_in::reset_game();
     // Seed B's AP save loaded, in play.
     for (int i = 0; i < 154; ++i) g_table[i] = static_cast<uint8_t>(i % 40);
@@ -148,6 +156,8 @@ int wmain(int argc, wchar_t** argv) {
     check(reply == "stored", "seed B put", reply);
     check(std::filesystem::is_regular_file(base / L"ZexionAP" / L"seeds" / L"12345-0-1.txt"),
           "written into the test's folder");
+    check(std::filesystem::is_regular_file(save / L"ZexionAP-seed-12345-0-1.sav"),
+          "its copy in the test's save folder, under its own name");
     for (int i = 0; i < 200 && reply != "told"; ++i) {  // asked again until a frame has taken it
         reply = zap_test::ask(pipe, "other_save");
         if (reply != "told") Sleep(5);

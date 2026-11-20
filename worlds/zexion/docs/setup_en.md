@@ -155,6 +155,22 @@ open but not connected (the server down, say), and for the one you are in when y
 
 With the client closed, your other saves play as normal.
 
+## Playing on more than one machine
+
+With Steam Cloud on, your saves follow you to another computer, a Steam Deck or the other
+operating system. So does what the mod needs to know your seed's saves: it keeps a small file
+per seed, named `ZexionAP-seed-` and the seed's name, ending in `.sav`, in Zexion's save folder
+beside the saves (`%APPDATA%\Gallant Leaf\Zexion` on Windows), and Steam Cloud syncs it with
+them. Both machines need the mod; the other one then shows a save as your seed's with no client
+run on it. Leave these files alone. Let Steam finish syncing (close Zexion on the first machine
+and wait for the cloud to say it is up to date) before you start it on the second.
+
+If a save on the other machine still shows as a plain randomizer game (no Archipelago logo on the
+file select, other players' items look like Scrap), connect the client once with Zexion running
+and that seed's room up: it gives the mod the seed's file again. This works only if you had
+the mod on the first machine from a release with this feature, and played the seed there since.
+Saves from before that need the client connected once, as before.
+
 ## Updating
 
 - Finish your seed first, or keep the old release until it ends: a seed made with an older
@@ -198,7 +214,9 @@ play as normal.
   when you pick it up), and they can earn Feats and
   Steam achievements again. To play a seed again, install the mod again. The mod's small files for
   playing without the client stay in `%LOCALAPPDATA%\ZexionAP` (on Linux, the folder named in
-  "Linux and Steam Deck"); you can delete that folder.
+  "Linux and Steam Deck"); you can delete that folder. So do the copies named `ZexionAP-seed-`
+  and ending in `.sav` in Zexion's save folder, which Steam Cloud syncs ("Playing on more than
+  one machine"); delete those too if you don't want them, and none of your saves.
 
 ## Troubleshooting
 

@@ -132,6 +132,7 @@ def test_the_scan_finds_the_globals_the_serving_thread_reads() -> None:
         "g_offline_files",
         "g_put_seeds",
         "g_offline_folder",
+        "g_save_folder",
         "g_token",
         "g_offline_mutex",
         "g_loads",

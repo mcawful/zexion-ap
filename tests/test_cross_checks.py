@@ -332,6 +332,46 @@ def test_the_offline_seed_file_has_the_header_and_keys_the_helper_reads() -> Non
     assert {line.split()[0] for line in without.splitlines()[1:]} <= keys
 
 
+def test_the_helper_writes_a_seed_file_as_the_client_does() -> None:
+    # The helper writes a seed back out (format_offline_seed) when it makes two copies one: its
+    # lines, in its order, are the client's (offline.seed_text).
+    writer = source("offline.cpp").split("std::string format_offline_seed", 1)[1]
+    writer = writer.split("std::string synced_file_text", 1)[0]
+    in_order = re.findall(
+        r'"(zexion-ap offline 1|table|start|intel|assists|discs|unfound|traps)\b', writer
+    )
+    text = offline.seed_text(
+        [1, 2], (3, 4, 5), True, True, (1, 2, "Collect 2 OS Install Disks!", [7]),
+        aplabels.labels_request({(1, 2): "@0"}), [(8, 101)],
+    )  # fmt: skip
+    client = [line.split()[0] for line in text.splitlines()]
+    client = [k if k != "zexion-ap" else "zexion-ap offline 1" for k in client]
+    first = list(dict.fromkeys(in_order))  # "discs" and "unfound" are written on two branches
+    assert first == [k for k in client if k in first]
+    assert client[-2] == "ap_labels"  # which the writer appends as it holds it
+    assert "seed.labels" in writer
+
+
+def test_the_seed_copy_in_the_save_folder_has_the_name_steam_cloud_syncs() -> None:
+    # Steam's Auto-Cloud rule for the game syncs `*.sav` in the save folder
+    # (docs/re/save-format.md, "Steam Auto-Cloud syncs only *.sav and *.png in the save folder
+    # itself"), and the helpers write only under their own prefix, never a name the game uses.
+    header = (SRC / "offline.h").read_text(encoding="utf-8")
+    prefix = re.findall(r'kSyncedPrefix = "([^"]*)";', header)
+    suffix = re.findall(r'kSyncedSuffix = "([^"]*)";', header)
+    assert prefix == ["ZexionAP-seed-"] and suffix == [".sav"]
+    game_names = ("Save Game", "GameUnlocks", "Preferences", "steam_autocloud")
+    assert not any(prefix[0].startswith(name) for name in game_names)
+    # The one write into the save folder goes through write_synced_copy, under that name.
+    code = source("offline.cpp")
+    assert code.count("write_whole(join(save,") == 1
+    assert "write_whole(join(save, synced_file_name(base))" in code
+    # The Linux build lists the same names, so a file one writes is read by the other.
+    assert code.count("kSyncedPrefix") >= 3
+    claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert f"`{prefix[0]}<NAME>{suffix[0]}`" in claude
+
+
 def test_no_name_the_client_puts_in_a_label_has_the_helpers_separator() -> None:
     # "@N NAME/PICKUP": the helper ends NAME at the first "/" (native/src/requests.cpp,
     # parse_labels), which the client never sends in one.

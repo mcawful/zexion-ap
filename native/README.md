@@ -1799,11 +1799,14 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
   file that parses is handed to the running helper before the checks that concern keeping it
   alone (the folder, the size, the write: "Traps", "This world's own"). The helper
   writes it on the pipe's thread into `%LOCALAPPDATA%\ZexionAP` (`config-<build>.txt`,
-  `seeds\<NAME>.txt`; an absolute `LOCALAPPDATA` only), never the game's folder. The helper
+  `seeds\<NAME>.txt`; an absolute `LOCALAPPDATA` only), and a copy of each seed's file into the
+  game's save folder ("Seed files in the save folder"), nothing else there. The helper
   writes them, not the client: a client run from a packaged app has its AppData writes
   redirected (inferred: `docs/re/memory.md`, "AP saves without the client").
 - **Reading:** when it starts and each time a client goes away (anything that used the pipe,
-  `tools/helper.py status` too), at most 256 seed files, newest first. Seed files read with no
+  `tools/helper.py status` too), at most 256 seed files, newest first, from its own folder and
+  from the save folder, the two copies of a seed made one ("Seed files in the save folder").
+  Seed files read with no
   client replace the last ones, a dressed save's seed kept dressed if they still hold it (its
   record as it was); those read while a client is
   connected, and any seed file a client puts, are added to them from the next frame call
@@ -1886,6 +1889,64 @@ notice shown, the map's unseen squares named as the game names its own (develop 
 `version.dll` `88d0de4c…`, develop 345fea7), the helper the proxy loaded configured from a cache
 holding every key, with no client, at two starts of the game and one after a close while
 disconnected.
+
+### Seed files in the save folder
+
+`src/offline.cpp` (`save_folder`, `format_offline_seed`, `synced_file_text`, `parse_synced_file`,
+`merge_offline_seeds`, `join_saves`, `join_synced`), `src/dllmain.cpp` (`save_dir`), the Linux
+helper's `g_save_folder`; `docs/re/save-format.md`, "Steam Auto-Cloud syncs only `*.sav` and
+`*.png` in the save folder itself". Stand-in tests only: not yet run in the game, nor on two
+machines.
+
+- **Why:** Steam Cloud syncs the game's saves, so a save made on one machine is on the next, but
+  the seeds' files, which make it an AP save, are in a folder it does not sync. On that machine
+  the save was a plain randomizer game until a client had connected for its seed (needs the AP
+  room up). So each helper also keeps every seed's file in the game's save folder, where Steam's
+  Auto-Cloud rule (`*.sav`, that folder only: measured) syncs it with the saves.
+- **The file:** `ZexionAP-seed-<NAME>.sav` (`kSyncedPrefix`, `kSyncedSuffix`; NAME as the local
+  file's: `<seed>-<team>-<slot>`, `good_seed_name`), the seed's own file text, then one last line
+  `crc XXXXXXXX`: the CRC-32 of every byte before it. The reader refuses a copy whose last line is
+  missing, wrong or not last, so one cut short by a sync (a labels block, which runs to the end of
+  the file, would otherwise parse) is refused, never read as another seed. The name starts with a
+  prefix no file of the game's has, and ends in the suffix the rule syncs. The helpers never write
+  any other name there, never a `Save Game`, `GameUnlocks` or `Preferences` file, and delete
+  nothing (so a seed's copy stays on every machine until a person deletes it). Its temporary file
+  is `...sav.tmp`, which no rule syncs.
+- **Where:** the game's own folder: on Windows what the game's `SDL2.dll` gives for
+  `SDL_GetPrefPath("Gallant Leaf", "Zexion")` (the call the game makes, B1: `docs/re/save-format.md`),
+  else `%APPDATA%\Gallant Leaf\Zexion`; on Linux `$XDG_DATA_HOME`, else `~/.local/share`, then
+  those names (SDL's rule, found once in the constructor with the helper's own folder, before the
+  game's threads run; under Flatpak Steam, the sandbox's home). Never made by the helper itself
+  (SDL's own call makes it, as the game's does at start): with no such folder, nothing is written,
+  and nothing said. The test build
+  (`zexion_ap_hooktest`) uses only the folder a test names in `ZEXION_SAVE_DIR`, and none
+  otherwise, so no test run writes the real one.
+- **Written:** by the pipe thread, never the frame call, through a temporary file renamed over the
+  old one, and only when the text differs (no churn for Steam to sync): at an `offline_put seed`
+  (after it is made one with the copy already there), and at each read of the files, which is
+  when it starts and each time a client goes away. A read mirrors every local seed that has no
+  copy there, the newest 256 (the first run after an upgrade: the helper's own folder alone held
+  them until then), and makes a seed that has no local file its file. A copy that does not read
+  is not trusted: a good local file replaces it, and with none it is left alone. A write that
+  fails is said (`read_error` of `hello` on Windows, stderr on Linux) and the rest goes on: the
+  local file, which stays as before, is the fallback.
+- **Two copies of a seed made one** (`merge_offline_seeds`; the same table and start; the copy
+  last written is the newer, a put one always newer; a name that holds another seed's file is not
+  merged, and said): the newer one's fields, except that Assist Unlock is never taken back
+  (`assists free` wins), the larger disk count stands with its own-disk cells and scanner's line (a
+  tie: the newer's), the labels with more `label` lines stand, and the traps are the older's if the
+  newer has none. The result is written to whichever copy differs from it, so both converge: two
+  machines that played the same seed, each syncing the other's copy, end with the richer fields of
+  both. What changes as a seed is played is the disk count (which only grows), the ASSIST lock (once)
+  and the labels; the table, start, Intel Chip setting and own traps are the slot data's, the same on
+  every machine. Steam itself keeps one side's copy whole at a conflict.
+- **Limits:** 48 KB a file (`kMaxFile`), and 256 seed files read from each folder. Steam's quota
+  for the game is 97.7 MiB and 640 files, and it tracks the 30 saves and two more already.
+- **Tests:** `native/tests/offline_tests.cpp` (the text, the crc, the merge, the put and the read
+  with a stand-in save folder, `apply_test.cpp` through the helper itself),
+  `native/linux/tests/offline_tests.cpp` (the POSIX half), `tests/test_native_linux.py` (a put
+  through the Linux helper, byte for byte against `client.offline.seed_text`),
+  `tests/test_cross_checks.py` (the name, the writer's lines against the client's).
 
 ### The map
 
@@ -2072,8 +2133,8 @@ closed, gone with it open.
       frame call while no save is loaded.
 - **An AP save** (`Game::ap_save_loaded`): a randomizer save is loaded (a save, and the marker
   set) whose item table and start are a seed's the helper knows. It knows a seed from:
-  - a seed file read from `%LOCALAPPDATA%\ZexionAP` (at start and each time a client goes
-    away);
+  - a seed file read from `%LOCALAPPDATA%\ZexionAP` or the save folder's copy (at start and each
+    time a client goes away);
   - one a client has put since (`offline_put seed`), known from the next frame call;
   - the seed the labels were set for.
 
@@ -3132,7 +3193,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   thread reads them, at most 256, newest first, when the helper starts and each time a client
   that set something goes (`sets_client_state`; not a probe such as `tools/helper.py status`),
   saying on stderr a
-  file it could not read; the same folder holds the client's `token` ("Who may connect"), which
+  file it could not read; the same copies in the game's save folder as the Windows helper's are
+  kept and read, found by the same rule (`g_save_folder`, "Seed files in the save folder"; stand-in
+  tests only); the same folder holds the client's `token` ("Who may connect"), which
   the seed reader ignores (it reads `seeds/` alone); the next frame call takes them, in place of the
   last ones with no client and added to them with one (`Game::set_offline`, `merge_offline`); with a
   client, the last one put is also its seed for the look (`note_client_seed`, as on Windows: "AP
@@ -3149,7 +3212,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   in, as the client checks before it attaches. With a disk seed's file, the pause screen's disk
   row shows its save's count with no client, and in a translation the helper's icons are painted
   into the icon sheets in any save, as on Windows with its own addresses. The guard hook and
-  `tools/protected.py` protect the folder as they do the Windows one. Tested on the stand-in game
+  `tools/protected.py` protect the folder as they do the Windows one (the save folder's copies are
+the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   through the socket (`tests/test_native_linux.py`: a seed put stored in the stand-in's own data
   folder, `unchanged` the second time; with a seed file at start and no client, an own trap going
   off at its pickup, and not while the player pointer reads elsewhere; a seed not kept still the

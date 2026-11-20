@@ -114,7 +114,17 @@ worlds/zexion/ → generation → slot data → client
   `$XDG_DATA_HOME`: `native/README.md`, "The Linux helper"). With no client, the helper uses the
   seeds' files to give AP saves their look. With or without a client, they also tell it which
   saves are AP saves, which earn no Feats or Steam achievements. Deleting the folder is safe: the
-  client sends the files again the next time it attaches to the game.
+  client sends the files again the next time it attaches to the game, and the copies below bring
+  them back with no client.
+- **The seed copies in the save folder.** Each helper also keeps a copy of every seed's file in
+  the game's own save folder, next to the saves, as `ZexionAP-seed-<NAME>.sav`, so Steam Cloud,
+  which syncs `*.sav` there, carries it with the saves: a save that comes to another machine is
+  known there as an AP save with no client run on it. The helpers read both places and make the
+  two copies of a seed one (`native/README.md`, "Seed files in the save folder"). The folder is
+  the game's: `%APPDATA%\Gallant Leaf\Zexion`; on Linux `$XDG_DATA_HOME/Gallant Leaf/Zexion`, else
+  `~/.local/share/Gallant Leaf/Zexion` (under Flatpak Steam, the sandbox's home), which is where
+  Steam's Auto-Cloud rule looks on Linux too (`docs/re/save-format.md`, "Steam Auto-Cloud syncs
+  only `*.sav` and `*.png` in the save folder itself"). Not yet run in the game on two machines.
 
 How the helper works: [`native/README.md`](../native/README.md).
 

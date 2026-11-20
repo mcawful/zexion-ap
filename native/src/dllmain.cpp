@@ -114,6 +114,19 @@ void run_self_scan() {
     }
 }
 
+// The game's save folder, where the seeds' copies go (offline.h). The test build is a host
+// program's, never the game's: it uses the folder a test names in ZEXION_SAVE_DIR and none
+// otherwise, so a test run never writes the real one.
+std::wstring save_dir() {
+#ifdef ZAP_HOOKTEST
+    wchar_t folder[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"ZEXION_SAVE_DIR", folder, MAX_PATH);
+    return n != 0 && n < MAX_PATH ? std::wstring(folder, n) : std::wstring();
+#else
+    return zap::save_folder();
+#endif
+}
+
 // An exclusive hold of the offline lock, released however the scope ends.
 class OfflineLock {
 public:
@@ -124,7 +137,8 @@ public:
 };
 
 void read_offline() {
-    zap::OfflineFiles files = zap::read_offline_files(zap::offline_folder(), g_build);
+    zap::OfflineFiles files =
+        zap::read_offline_files(zap::offline_folder(), g_build, save_dir());
     // Copied before the lock, and the lock released however this ends: a throw under it would
     // leave the next `hello` waiting for it for good.
     std::string error = files.error;
@@ -583,8 +597,15 @@ std::string handle(const std::string& request, bool& stop) {
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
     if (request.rfind("offline_put ", 0) == 0) {
         // Written by the helper: a packaged client's AppData writes are redirected (offline.h).
+        // The seed's copy in the game's save folder too (offline.h): Steam Cloud carries it.
         zap::OfflineSeed seed;
-        std::string reply = zap::put_offline_file(zap::offline_folder(), g_build, request, &seed);
+        std::string save_error;
+        std::string reply = zap::put_offline_file(zap::offline_folder(), g_build, request, &seed,
+                                                  save_dir(), &save_error);
+        if (!save_error.empty()) {
+            OfflineLock lock;
+            g_offline_error = "save folder copy: " + save_error;
+        }
         if (!seed.name.empty()) note_put_seed(std::move(seed));
         return reply;
     }

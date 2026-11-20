@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <set>
 #include <string>
 
@@ -904,7 +905,313 @@ void test_a_cache_without_the_text_cut() {
 
 }  // namespace
 
+// ---- Seed files in the save folder (offline.h, "Seed files in the save folder") ----
+
+// A seed file as the client writes it (client/offline.py, seed_text): lower-case hex, the labels
+// last. `count` disks, Assist Unlock free or locked, `labels` label lines.
+std::string client_text(int count, bool free_assists, int labels, const std::string& traps = "-") {
+    std::string text = "zexion-ap offline 1\ntable " + hex(g_table, sizeof(g_table)) + "\nstart " +
+                       hex(g_start, sizeof(g_start)) + "\nintel 1\nassists " +
+                       (free_assists ? "free" : "lock") + "\ndiscs " + std::to_string(count) +
+                       " 12 434f4c4c454354\nunfound 40,1312\ntraps " + traps + "\n";
+    if (labels > 0) text += "ap_labels\n";
+    for (int i = 0; i < labels; ++i) {
+        text += "label " + std::to_string(20 + i) + " 14 4150204954454d\n";
+    }
+    for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
+}
+
+std::string read_all(const std::wstring& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+void write_all(const std::wstring& path, const std::string& text) {
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+    std::ofstream(path, std::ios::binary) << text;
+}
+
+// The names in `folder`.
+std::set<std::wstring> names_in(const std::wstring& folder) {
+    std::set<std::wstring> names;
+    for (const auto& entry : std::filesystem::directory_iterator(folder)) {
+        names.insert(entry.path().filename().wstring());
+    }
+    return names;
+}
+
+const std::wstring kCopy = L"ZexionAP-seed-AP_1-0-1.sav";
+
+void test_the_seed_text_round_trips() {
+    for (int i = 0; i < 154; ++i) g_table[i] = static_cast<uint8_t>(i % 47);
+    for (const std::string& text : {client_text(3, false, 2), client_text(0, true, 0),
+                                    client_text(9, true, 1, "1312:102,40:103")}) {
+        zap::OfflineSeed seed;
+        check(zap::parse_offline_seed(text, seed).empty(), "the client's text parses");
+        check(zap::format_offline_seed(seed) == text, "and formats back as the client wrote it");
+    }
+    // No disks: "discs -".
+    std::string none = client_text(3, false, 0);
+    none.replace(none.find("discs 3 12 434f4c4c454354"), 25, "discs -");
+    none.replace(none.find("unfound 40,1312"), 15, "unfound -");
+    zap::OfflineSeed seed;
+    check(zap::parse_offline_seed(none, seed).empty() && !seed.discs &&
+              zap::format_offline_seed(seed) == none,
+          "a file with no disk count formats back as it was");
+    // Secret Shuffle's 155-entry table keeps its length.
+    uint8_t table[155];
+    for (int i = 0; i < 155; ++i) table[i] = static_cast<uint8_t>(i % 23);
+    std::string shuffled = "zexion-ap offline 1\ntable " + hex(table, 155) + "\nstart " +
+                           hex(g_start, 6) +
+                           "\nintel 0\nassists lock\ndiscs -\nunfound -\ntraps -\n";
+    for (char& c : shuffled) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    check(zap::parse_offline_seed(shuffled, seed).empty() && seed.locations == 155 &&
+              zap::format_offline_seed(seed) == shuffled,
+          "a 155-entry table too");
+}
+
+void test_the_synced_text_is_refused_when_cut() {
+    zap::OfflineSeed seed;
+    check(zap::parse_offline_seed(client_text(3, false, 4), seed).empty(), "a seed");
+    const std::string text = zap::synced_file_text(seed);
+    check(text.size() > 20 && text.compare(text.size() - 13, 4, "crc ") == 0 &&
+              text.back() == '\n',
+          "the copy ends with its crc line");
+    zap::OfflineSeed back;
+    check(zap::parse_synced_file(text, back).empty() &&
+              zap::format_offline_seed(back) == zap::format_offline_seed(seed),
+          "and reads back");
+    // Every shorter prefix is refused, the cut labels block included: never read as a seed.
+    bool every_cut_refused = true;
+    for (size_t n = 0; n < text.size(); ++n) {
+        zap::OfflineSeed cut;
+        every_cut_refused =
+            every_cut_refused && !zap::parse_synced_file(text.substr(0, n), cut).empty();
+    }
+    check(every_cut_refused, "a copy cut anywhere is refused");
+    std::string flipped = text;
+    flipped[flipped.find("intel 1") + 6] = '0';
+    zap::OfflineSeed bad;
+    check(!zap::parse_synced_file(flipped, bad).empty(), "a changed byte is refused");
+    check(!zap::parse_synced_file(client_text(3, false, 0), bad).empty(),
+          "a local file (no crc line) is not a synced copy");
+    std::string crlf;
+    for (char c : text) crlf += c == '\n' ? std::string("\r\n") : std::string(1, c);
+    check(!zap::parse_synced_file(crlf, bad).empty(),
+          "a text with its line ends changed is refused");
+    check(!zap::parse_synced_file("", bad).empty() && !zap::parse_synced_file("\n", bad).empty() &&
+              !zap::parse_synced_file("crc 00000000\n", bad).empty(),
+          "nothing, or only a crc line, is refused");
+}
+
+void test_two_copies_are_made_one() {
+    zap::OfflineSeed older, newer;
+    check(zap::parse_offline_seed(client_text(5, false, 3, "1312:102"), older).empty() &&
+              zap::parse_offline_seed(client_text(2, true, 1), newer).empty(),
+          "two copies of one seed");
+    zap::OfflineSeed merged = zap::merge_offline_seeds(older, newer);
+    check(!merged.lock_assists, "Assist Unlock: free wins");  // free is lock_assists false
+    check(merged.count == 5 && merged.discs, "the larger disk count stands");
+    check(merged.labels == older.labels, "the labels with more lines stand");
+    check(merged.traps.size() == 1 && merged.traps[0].cell == 1312,
+          "the traps of the copy that has them");
+    zap::OfflineSeed flipped = zap::merge_offline_seeds(newer, older);
+    check(flipped.count == 5 && flipped.labels == older.labels && !flipped.lock_assists &&
+              flipped.traps.size() == 1,
+          "the same result whichever is the newer");
+    // A tie goes to the newer one's fields (its scanner's line), and a missing count yields.
+    zap::OfflineSeed tie_old, tie_new;
+    zap::parse_offline_seed(client_text(4, false, 0), tie_old);
+    zap::parse_offline_seed(client_text(4, false, 0), tie_new);
+    tie_new.scan_line = "NEWER";
+    check(zap::merge_offline_seeds(tie_old, tie_new).scan_line == "NEWER", "a tie: the newer's");
+    zap::OfflineSeed no_discs = tie_new;
+    no_discs.discs = false;
+    no_discs.count = 0;
+    check(zap::merge_offline_seeds(tie_old, no_discs).count == 4 &&
+              zap::merge_offline_seeds(tie_old, no_discs).discs,
+          "a copy with no disk count yields to one that has it");
+}
+
+void test_a_put_reaches_the_save_folder() {
+    const std::wstring folder = temp_folder(L"zap_sync_put_local");
+    const std::wstring save = temp_folder(L"zap_sync_put_save");
+    std::filesystem::create_directories(save);
+    write_all(save + L"\\Save Game 1.sav", "SAVE ONE");
+    write_all(save + L"\\GameUnlocks.sav", "UNLOCKS");
+    const std::string put = "offline_put seed AP_1-0-1\n" + client_text(3, false, 2);
+    zap::OfflineSeed got;
+    std::string error = "unset";
+    check(zap::put_offline_file(folder, "B1", put, &got, save, &error) == "stored" &&
+              error.empty(),
+          "a seed stored, and its copy kept in the save folder");
+    zap::OfflineSeed copy;
+    check(zap::parse_synced_file(read_all(save + L"\\" + kCopy), copy).empty() &&
+              zap::format_offline_seed(copy) == client_text(3, false, 2),
+          "the copy is the seed's text and its crc line");
+    check(names_in(save) ==
+              std::set<std::wstring>{L"Save Game 1.sav", L"GameUnlocks.sav", kCopy},
+          "and it is the only file added: no temporary file left, no other name");
+    check(read_all(save + L"\\Save Game 1.sav") == "SAVE ONE" &&
+              read_all(save + L"\\GameUnlocks.sav") == "UNLOCKS",
+          "the game's own files untouched");
+    check(read_all(folder + L"\\seeds\\AP_1-0-1.txt") == client_text(3, false, 2),
+          "the local file as before");
+    // A poorer put (fewer disks, no labels, locked again) never takes a richer copy's place.
+    zap::OfflineSeed rich;
+    zap::parse_offline_seed(client_text(8, true, 5), rich);
+    write_all(save + L"\\" + kCopy, zap::synced_file_text(rich));
+    zap::OfflineSeed poor;
+    check(zap::put_offline_file(folder, "B1",
+                                "offline_put seed AP_1-0-1\n" + client_text(1, false, 0), &poor,
+                                save, &error) == "stored" &&
+              error.empty(),
+          "a poorer put over a richer copy");
+    check(poor.count == 8 && !poor.lock_assists &&
+              poor.labels.find("label 24") != std::string::npos,
+          "is handed over made one with it");
+    check(read_all(folder + L"\\seeds\\AP_1-0-1.txt") == client_text(8, true, 5) &&
+              zap::parse_synced_file(read_all(save + L"\\" + kCopy), copy).empty() &&
+              copy.count == 8,
+          "and so are the local file and the copy");
+    // Another seed's file under the same name is replaced by the put one.
+    zap::OfflineSeed other;
+    g_table[0] = 46;
+    zap::parse_offline_seed(client_text(8, true, 5), other);
+    g_table[0] = 0;
+    write_all(save + L"\\" + kCopy, zap::synced_file_text(other));
+    check(zap::put_offline_file(folder, "B1", put, &got, save, &error) == "stored" &&
+              got.count == 3 &&
+              zap::parse_synced_file(read_all(save + L"\\" + kCopy), copy).empty() &&
+              zap::offline_matches(copy, got),
+          "a copy of another seed under the name is replaced");
+    // A copy that cannot be written is said, and the rest goes on.
+    std::filesystem::remove(save + L"\\" + kCopy);
+    std::filesystem::create_directories(save + L"\\" + kCopy);
+    zap::OfflineSeed unwritten;
+    check(zap::put_offline_file(folder, "B1", put, &unwritten, save, &error) == "unchanged" &&
+              !error.empty() && unwritten.count == 3,
+          "a copy that cannot be written: said, the local file and the seed unaffected");
+    std::filesystem::remove_all(save + L"\\" + kCopy);
+    // No save folder: nothing made, nothing said.
+    const std::wstring nosave = save + L"-missing";
+    check(zap::put_offline_file(folder, "B1", put, &got, nosave, &error) == "unchanged" &&
+              error.empty() && !std::filesystem::exists(nosave),
+          "no save folder: not made");
+    // Too large to keep (padding): no copy either.
+    check(zap::put_offline_file(folder, "B1", put + std::string(49 * 1024, '\n'), &got, save,
+                                &error) == "error too large" &&
+              !std::filesystem::exists(save + L"\\" + kCopy),
+          "a file too large to keep has no copy");
+    std::filesystem::remove_all(folder);
+    std::filesystem::remove_all(save);
+}
+
+void test_the_read_joins_the_save_folder() {
+    const std::wstring folder = temp_folder(L"zap_sync_read_local");
+    const std::wstring save = temp_folder(L"zap_sync_read_save");
+    std::filesystem::create_directories(save);
+    write_all(save + L"\\Save Game 3.sav", "SAVE THREE");
+    // The first run after an upgrade: only the local copy exists, and it is mirrored.
+    write_all(folder + L"\\seeds\\AP_1-0-1.txt", client_text(3, false, 2));
+    write_all(folder + L"\\seeds\\notanap.txt", client_text(1, false, 0));  // not a client's name
+    zap::OfflineFiles f = zap::read_offline_files(folder, "B1", save);
+    zap::OfflineSeed copy;
+    check(f.seeds.size() == 2 &&
+              zap::parse_synced_file(read_all(save + L"\\" + kCopy), copy).empty() &&
+              copy.count == 3,
+          "a local seed gets its copy in the save folder");
+    check(names_in(save) == std::set<std::wstring>{L"Save Game 3.sav", kCopy},
+          "and a file not named as the client names them does not");
+    const std::string once = read_all(save + L"\\" + kCopy);
+    f = zap::read_offline_files(folder, "B1", save);
+    check(read_all(save + L"\\" + kCopy) == once && f.error.empty(),
+          "read again: nothing changes");
+    // A new machine: only the copy exists, and the local file is made from it.
+    std::filesystem::remove_all(folder);
+    f = zap::read_offline_files(folder, "B1", save);
+    check(f.seeds.size() == 1 && f.seeds[0].name == "AP_1-0-1.txt" && f.seeds[0].count == 3 &&
+              read_all(folder + L"\\seeds\\AP_1-0-1.txt") == client_text(3, false, 2),
+          "a seed only in the save folder is read, and its local file made");
+    // Two machines' copies: the richer fields of each.
+    write_all(folder + L"\\seeds\\AP_1-0-1.txt", client_text(9, false, 1));
+    zap::OfflineSeed theirs;
+    zap::parse_offline_seed(client_text(4, true, 4), theirs);
+    write_all(save + L"\\" + kCopy, zap::synced_file_text(theirs));
+    f = zap::read_offline_files(folder, "B1", save);
+    check(f.seeds.size() == 1 && f.seeds[0].count == 9 && !f.seeds[0].lock_assists &&
+              f.seeds[0].labels.find("label 23") != std::string::npos,
+          "two copies are read as one: the larger count, Assist Unlock, the longer labels");
+    const std::string joined = client_text(9, true, 4);
+    check(read_all(folder + L"\\seeds\\AP_1-0-1.txt") == joined &&
+              zap::parse_synced_file(read_all(save + L"\\" + kCopy), copy).empty() &&
+              zap::format_offline_seed(copy) == joined,
+          "and each is written as the result");
+    // A copy cut short by a sync is refused, said, and replaced by the good local file.
+    const std::string good = read_all(save + L"\\" + kCopy);
+    const std::string cut = good.substr(0, good.size() - 40);
+    write_all(save + L"\\" + kCopy, cut);
+    f = zap::read_offline_files(folder, "B1", save);
+    check(f.seeds.size() == 1 && f.seeds[0].count == 9 &&
+              f.error.find("crc") != std::string::npos && read_all(save + L"\\" + kCopy) == good,
+          "a cut copy is refused, said, and replaced");
+    // With no local seed, a cut copy is neither used nor touched.
+    std::filesystem::remove_all(folder);
+    write_all(save + L"\\" + kCopy, cut);
+    f = zap::read_offline_files(folder, "B1", save);
+    check(f.seeds.empty() && read_all(save + L"\\" + kCopy) == cut &&
+              !std::filesystem::exists(folder),
+          "a cut copy and no local seed: nothing used, nothing written");
+    // Other names are not read.
+    std::filesystem::remove(save + L"\\" + kCopy);
+    write_all(save + L"\\ZexionAP-seed-AP_1-0-1.txt", client_text(3, false, 0));
+    write_all(save + L"\\ZexionAP-seed-bad.sav", "x\n");
+    write_all(save + L"\\ZexionAP-seed-AP_2-0-1.sav.tmp", "x\n");
+    write_all(save + L"\\other-ZexionAP-seed-AP_2-0-1.sav", zap::synced_file_text(theirs));
+    f = zap::read_offline_files(folder, "B1", save);
+    check(f.seeds.empty(), "files not named ZexionAP-seed-<NAME>.sav are not read");
+    // The seed of another table under a name is kept apart, not merged.
+    std::filesystem::remove_all(save);
+    std::filesystem::create_directories(save);
+    write_all(folder + L"\\seeds\\AP_1-0-1.txt", client_text(3, false, 0));
+    g_table[0] = 46;
+    zap::OfflineSeed another;
+    zap::parse_offline_seed(client_text(7, false, 0), another);
+    g_table[0] = 0;
+    write_all(save + L"\\" + kCopy, zap::synced_file_text(another));
+    f = zap::read_offline_files(folder, "B1", save);
+    check(f.seeds.size() == 1 && f.seeds[0].count == 3 && !f.error.empty(),
+          "a copy of another seed under the name is not merged, and said");
+    // No save folder: not made.
+    check(zap::read_offline_files(folder, "B1", save + L"-missing").seeds.size() == 1 &&
+              !std::filesystem::exists(save + L"-missing"),
+          "no save folder: the local seeds alone, none made");
+    check(zap::read_offline_files(folder, "B1", L"").seeds.size() == 1, "no save folder named");
+    std::filesystem::remove_all(folder);
+    std::filesystem::remove_all(save);
+}
+
+void test_the_save_folder_is_the_games() {
+    wchar_t old[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"APPDATA", old, MAX_PATH);
+    // The test process has no SDL2.dll of its own: the folder is %APPDATA%'s, the game's two names.
+    check(GetModuleHandleW(L"SDL2.dll") == nullptr, "no SDL2.dll in the test process");
+    SetEnvironmentVariableW(L"APPDATA", L"C:\\Users\\Someone\\AppData\\Roaming");
+    check(zap::save_folder() == L"C:\\Users\\Someone\\AppData\\Roaming\\Gallant Leaf\\Zexion",
+          "the save folder: %APPDATA%\\Gallant Leaf\\Zexion without the game's SDL");
+    SetEnvironmentVariableW(L"APPDATA", L"relative");
+    check(zap::save_folder().empty(), "a relative path is no save folder");
+    SetEnvironmentVariableW(L"APPDATA", n != 0 && n < MAX_PATH ? old : nullptr);
+}
+
 int main() {
+    test_the_seed_text_round_trips();
+    test_the_synced_text_is_refused_when_cut();
+    test_two_copies_are_made_one();
+    test_a_put_reaches_the_save_folder();
+    test_the_read_joins_the_save_folder();
+    test_the_save_folder_is_the_games();
     test_the_file();
     test_the_folder();
     test_the_cache_must_fit_the_game();

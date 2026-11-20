@@ -101,6 +101,13 @@ add_executable(zap_feats_tests tests/feats_tests.cpp)
 target_link_libraries(zap_feats_tests PRIVATE zap_shared)
 add_test(NAME feats COMMAND zap_feats_tests)
 
+# The seed files' POSIX half: the atomic write, the listing, the save folder, the copies Steam
+# Cloud carries with the saves.
+add_executable(zap_linux_offline_tests tests/offline_tests.cpp)
+target_link_libraries(zap_linux_offline_tests PRIVATE zap_shared)
+target_compile_options(zap_linux_offline_tests PRIVATE -Wno-missing-field-initializers)
+add_test(NAME linux_offline COMMAND zap_linux_offline_tests)
+
 # The Linux build's calls in a translation: the label builder given the helper's own std::wstring.
 add_executable(zap_translation_tests tests/translation_tests.cpp)
 target_link_libraries(zap_translation_tests PRIVATE zap_shared)

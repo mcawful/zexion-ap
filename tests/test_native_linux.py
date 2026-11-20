@@ -754,6 +754,36 @@ def put_clients_seed(sock: socket.socket, at: dict[str, int]) -> None:
     assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a randomizer save
 
 
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_put_seed_is_copied_into_the_save_folder_under_its_own_name(game: Game) -> None:
+    # The copy Steam Cloud carries with the saves (native/README.md, "Seed files in the save
+    # folder"): the client's own text, then a crc line, only when the game's folder is there.
+    import zlib
+
+    from client import offline
+
+    text = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(40, 102)])
+    name = offline.seed_file_name("S", 0, 1)
+    save = game.offline.parent / "Gallant Leaf" / "Zexion"
+    sock = game.connect()
+    try:
+        assert ask(sock, offline.put_request("seed", text, name)) == "stored"
+        assert not save.exists()  # no folder of the game's: none made
+        save.mkdir(parents=True)
+        (save / "Save Game 1.sav").write_bytes(b"SAVE")
+        # The same again, the local file unchanged, now with the folder there: the copy is made.
+        assert ask(sock, offline.put_request("seed", text, name)) == "unchanged"
+    finally:
+        sock.close()
+    copy = save / f"ZexionAP-seed-{name}.sav"
+    body = (game.offline / "seeds" / f"{name}.txt").read_text()
+    assert body == text  # the helper's text for the seed is the client's, byte for byte
+    assert copy.read_text() == f"{text}crc {zlib.crc32(text.encode()):08X}\n"
+    assert sorted(p.name for p in save.iterdir()) == ["Save Game 1.sav", copy.name]
+    assert (save / "Save Game 1.sav").read_bytes() == b"SAVE"
+    assert copy.stat().st_mode & 0o077 == 0
+
+
 def frames_pass(sock: socket.socket, count: int = 6) -> None:
     frames = int(ask(sock, "ping").split("frames=")[1])
     wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + count)

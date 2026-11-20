@@ -1,7 +1,9 @@
 # Save format
 
 The save folder is `%APPDATA%\Gallant Leaf\Zexion`. Never write there except through
-`tools/save_lab.py` (see `/save-lab`); the client never writes it. Map cells are this repo's
+`tools/save_lab.py` (see `/save-lab`); the client never writes it. The one exception is the
+helpers' own seed copies, `ZexionAP-seed-<NAME>.sav` (below, "The helpers keep a copy of each seed's
+file here"). Map cells are this repo's
 (x, y), and "row" and "column" follow it (`randocells.md`, "Grid order"). Format and statuses
 per [`README.md`](README.md).
 
@@ -64,7 +66,7 @@ offsets (section `+…`) are what the code and `memory.md` use.
 | | **Two Auto-Cloud rules**, both `root` `WinAppDataRoaming`, `path` `Gallant Leaf/Zexion`: pattern `*.png` and pattern `*.sav`. Neither sets `recursive`, `platforms` or any exclusion, so each looks only in that one folder (not under `Mods/`), on every platform the app lists (`oslist` `windows,linux`). |
 | | **On Linux** one root override: `WinAppDataRoaming` becomes `LinuxHome` with the path `Gallant Leaf/Zexion` replaced by `.local/share/Gallant Leaf/Zexion`. So Steam syncs `$HOME/.local/share/Gallant Leaf/Zexion`, where `$HOME` is the home of the Steam that runs the game (under Flatpak Steam, `~/.var/app/com.valvesoftware.Steam`), and a file the Windows build writes there lands on the other OS under the same name. It is `$HOME`, not `$XDG_DATA_HOME`: the game's own folder is SDL's `SDL_GetPrefPath("Gallant Leaf", "Zexion")` ("The game's files are opened by fixed name"), which follows `$XDG_DATA_HOME` when set, so with that set elsewhere the game's saves would not be the folder Steam syncs (not our case: the owner's Linux saves sync). |
 | | **What Steam tracks now** (`remotecache.vdf` of the owner's Windows install, 32 entries, all `root` 4 (WinAppDataRoaming), `syncstate` 1, `platformstosync2` -1 (every platform)): `Save Game 1.sav` to `Save Game 30.sav`, `PreferencesSynced.sav` and `GameUnlocks.sav`. Not tracked: `PreferencesLocal` (no `.sav`), `steam_autocloud.vdf`, `Mods/**` (not recursive). So a file we add would have to be named `*.sav` (or `*.png`), directly in the folder, to be synced; any other name stays local. A file's slot in the 640 is shared with these 32. |
-| | **Not measured:** that a new `*.sav` of another name is in fact uploaded (no such file was put there: the save folder is read-only to us); that a `.sav` that is not a save passes Steam's checks; how Steam resolves two machines that changed the same file (Steam asks for one side's copy of all of the app's files when it finds a conflict, assumed from its general behavior, not seen for this app). |
+| | **Not measured:** that a new `*.sav` of another name is in fact uploaded (no such file was put there by us: the save folder is read-only to us; the helpers' copies, below, will show it); that a `.sav` that is not a save passes Steam's checks; how Steam resolves two machines that changed the same file (Steam asks for one side's copy of all of the app's files when it finds a conflict, assumed from its general behavior, not seen for this app). |
 | Status | measured (the rules and the tracked list); assumed (the rest, as stated) |
 | Method | file inspection, read only: the `ufs` section of the `appinfo.vdf` in Steam's `appcache` folder (binary, parsed with a small script held in the scratchpad: its string table, then the app's key-value tree); `remotecache.vdf` under Steam's `userdata/<account>/3392510/` (the account id not recorded here). SteamDB's cloud tab was not read: the local record is the source Steam itself uses. |
 | Build | not build-specific (Steam's record of the app, as Steam had it on 2026-11-20; the game's depot is B1) |
@@ -91,6 +93,16 @@ offsets (section `+…`) are what the code and `memory.md` use.
 | Method | file inspection (directory listing) |
 | Build | B1 installed; files written by older builds |
 | Evidence | `ls -la` of the save folder, 2026-10-20. |
+
+## The helpers keep a copy of each seed's file here
+
+| Field | |
+|---|---|
+| Value | Each helper (the Windows helper's and the Linux helper's) writes `ZexionAP-seed-<NAME>.sav` into this folder, one per seed (`<NAME>` as the helper's own seed file: `<seed>-<team>-<slot>`), so Steam Cloud, which syncs `*.sav` here ("Steam Auto-Cloud syncs only `*.sav` and `*.png` in the save folder itself"), carries what makes a save an AP save to the next machine. The file is the seed's file text (`native/README.md`, "AP saves without the client") and a last line `crc XXXXXXXX`, the CRC-32 of the bytes before it; a copy without a right crc line is refused. Only that name is ever written (through `...sav.tmp`, renamed over), never a file the game uses, and nothing is deleted. The helpers read these copies and the local ones and make the two of a seed one: `native/README.md`, "Seed files in the save folder". |
+| Status | designed; stand-in tests only (a write, a read and a merge against a stand-in folder on Windows and Linux, a put through the Linux helper); **not run in the game**, and the sync of such a file by Steam is **not observed**: assumed from the measured rule |
+| Method | design from the measured rules; tests in `native/tests/offline_tests.cpp`, `native/linux/tests/offline_tests.cpp`, `tests/test_native_linux.py` |
+| Build | B1 (the helpers' own, 1.2.0 and later) |
+| Evidence | 2026-11-20, by the owner's approval of the design in the session that made it. Nothing in the game yet. |
 
 ## Saves are raw, uncompressed binary
 

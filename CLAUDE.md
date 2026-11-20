@@ -47,7 +47,16 @@ Where things are:
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
   its `install` (an empty slot, after a verified backup) and `restore` write the save folder. The
-  client never writes it. The same hooks block writes to the mod's offline files,
+  client never writes it. The one exception is the helpers' own seed copies: the Windows helper
+  and the Linux helper write `ZexionAP-seed-<NAME>.sav`, one per seed, into the save folder (each
+  through a temporary file renamed over the old one) so Steam Cloud carries them with the saves
+  to another machine (`native/README.md`, "Seed files in the save folder"; owner's decision,
+  2026-11-20). A helper writes only a name that starts with `ZexionAP-seed-` and ends in `.sav`,
+  never a `Save Game`, `GameUnlocks` or `Preferences` file or any other the game uses, and deletes
+  nothing there. The client, the tools and Claude still never write the save folder, and the
+  write guard stays as it is for Claude's own tool calls: tests use fakes (`ZEXION_SAVE_DIR`, a
+  test's own folder), and the helper built for tests uses only the folder `ZEXION_SAVE_DIR` names
+  (`native/src/dllmain.cpp`, `save_dir`). The same hooks block writes to the mod's offline files,
   `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts; on Linux the seeds' files and
   the helper's socket token, in `$XDG_DATA_HOME/ZexionAP`, else `~/.local/share/ZexionAP`): only
   the helper writes them, and they change what the mod does with no client running.
