@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from fakes import ELF_BUILD_ID, elf_image, fake_proc, proc_entry
+from native_source import linux_config_table
 
 from client import linux_helper, patterns
 
@@ -248,9 +249,7 @@ def test_the_linux_config_leaves_null_only_what_the_windows_build_alone_reads() 
             r"BYTE\* (\w+) = nullptr", (root / "native/src/addresses.h").read_text(encoding="utf-8")
         )
     )
-    source = (root / "native/linux/src/helper.cpp").read_text(encoding="utf-8")
-    production = source.split("#ifndef ZAP_HOOKTEST\nconstexpr ConfigKey kConfigKeys[]")[1]
-    keys = set(re.findall(r"&G::(\w+)", production.split("#else")[0]))
+    keys = {field for _, field, _, _ in linux_config_table()}
     assert fields - keys == {
         "malloc_slot",
         "free_slot",

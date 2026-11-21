@@ -12,7 +12,7 @@
 
 namespace zap {
 
-struct OfflineSeed;  // offline.h
+struct SeedKey;  // offline.h
 
 struct Cas {
     uint8_t item;  // inventory byte 0..49
@@ -35,7 +35,7 @@ struct Popup {
     bool intel = false;
     // The save a client's popup is for (the randomizer save loaded at `apply`): it waits while
     // another save is loaded. None: shown in any save.
-    std::shared_ptr<const OfflineSeed> origin;
+    std::shared_ptr<const SeedKey> origin;
     // The `apply` that queued it (Game::apply numbers them from 1); 0: one of the helper's own.
     uint32_t batch = 0;
     // One of the helper's own that plays its item's pickup sound, as a client's does: an own

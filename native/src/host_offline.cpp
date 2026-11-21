@@ -40,7 +40,7 @@ void HostOffline::note_error(std::string error) {
 }
 
 void HostOffline::read_files(bool write) {
-    const std::vector<OfflineSeed> saved = saved_.get();
+    const std::vector<SeedKey> saved = saved_.get();
     OfflineFiles files = read_offline_files(offline_dir(), build_, save_dir(), write, &saved);
     note_error(files.error);
     found_.store(static_cast<int>(files.seeds.size()));
@@ -52,7 +52,7 @@ std::string HostOffline::put(const std::string& request) {
     // seed's copy in the game's save folder too (offline.h): Steam Cloud carries it.
     OfflineSeed seed;
     std::string save_error;
-    const std::vector<OfflineSeed> saved = saved_.get();
+    const std::vector<SeedKey> saved = saved_.get();
     std::string reply =
         put_offline_file(offline_dir(), build_, request, &seed, save_dir(), &save_error, &saved);
     if (!save_error.empty()) note_error("save folder copy: " + save_error);

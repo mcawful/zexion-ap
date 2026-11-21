@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from client import elf, linux_helper, native, patterns
+from client import elf, linux_helper, linux_targets, native, patterns
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = Path(os.environ.get("ZEXION_NATIVE_BUILD", ROOT / "native" / "build"))
@@ -49,7 +49,6 @@ def _ptrace_scope() -> int:
         return -1  # no Yama
 
 
-SELF_CONFIG = {"ZAP_TEST_NO_SELF_CONFIG": "0"}
 SELF = "self-configured"  # a `game` parameter: the hooktest helper, configuring itself as released
 # The tests of a client's attach run both ways: from a helper that has not configured (the start
 # the test build keeps by default) and from one that configured itself, as the release's does at
@@ -62,11 +61,20 @@ BOTH_WAYS = pytest.mark.parametrize(
 class Game:
     """The stand-in game, started with ``preload``; its pid and its marker's address.
     ``data_home`` is its XDG_DATA_HOME: the helper's seed files go in its ``ZexionAP``, never the
-    real one. The test build starts unconfigured (``ZAP_TEST_NO_SELF_CONFIG=1``, the tests of a
-    client's config and of the requests refused before it); ``SELF_CONFIG`` lets it configure
-    itself from the game's symbols as the release helper does."""
+    real one. The stand-in's player pointer (gMainCharacterSpriteP) is null at the start
+    (``ZAP_FAKE_NO_PLAYER=1``, as at the game's title screen before any save), so the helper has
+    not configured itself: the tests of a client's config and of the requests refused before it.
+    With ``player`` the pointer reads the player state from the start, and the helper configures
+    itself from the game's symbols as the release helper does; a test may also write the pointer
+    later (``set_player``)."""
 
-    def __init__(self, preload: Path | tuple[Path, ...], data_home: Path, **env_more: str) -> None:
+    def __init__(
+        self,
+        preload: Path | tuple[Path, ...],
+        data_home: Path,
+        player: bool = False,
+        **env_more: str,
+    ) -> None:
         self.offline = data_home / "ZexionAP"
         # The test build writes no folder but ones inside the temporary folder, and takes its save
         # folder only from ZAP_TEST_SAVE_DIR (never $HOME, $XDG_DATA_HOME or ZEXION_SAVE_DIR,
@@ -78,11 +86,13 @@ class Game:
             "LD_PRELOAD": ":".join(str(p) for p in preloads),
             "XDG_DATA_HOME": str(data_home),
             "ZAP_TEST_SAVE_DIR": str(self.save),
-            "ZAP_TEST_NO_SELF_CONFIG": "1",
         }
         env.pop("ZEXION_SAVE_DIR", None)
+        env.pop("ZAP_FAKE_NO_PLAYER", None)
+        if not player:
+            env["ZAP_FAKE_NO_PLAYER"] = "1"
         env.update(env_more)
-        self.self_configured = env["ZAP_TEST_NO_SELF_CONFIG"] != "1"  # it configures itself
+        self.self_configured = player  # it configures itself
         self.proc = subprocess.Popen(
             [str(GAME)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
@@ -121,6 +131,15 @@ class Game:
         image = stand_in_image()
         return linux_helper.LinuxGame(self.pid, linux_helper.inner_pid(self.pid), build, image)
 
+    def __enter__(self) -> Game:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        """Kill the stand-in if it still runs (a test that stopped it leaves it be)."""
+        if self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait()
+
     def stop(self) -> tuple[int, str, str]:
         """Its swaps that reached the stand-in SDL, and what it wrote."""
         self.proc.send_signal(signal.SIGTERM)
@@ -131,14 +150,13 @@ class Game:
 
 @pytest.fixture
 def game(request, tmp_path):
-    if request.param == SELF:
-        started = Game(HOOKTEST, tmp_path / "data", **SELF_CONFIG)
-    else:
-        started = Game(request.param, tmp_path / "data")
-    yield started
-    if started.proc.poll() is None:
-        started.proc.kill()
-        started.proc.wait()
+    started = (
+        Game(HOOKTEST, tmp_path / "data", player=True)
+        if request.param == SELF
+        else Game(request.param, tmp_path / "data")
+    )
+    with started:
+        yield started
 
 
 def ask(sock: socket.socket, request: str) -> str:
@@ -164,9 +182,10 @@ def reads_marker(game: Game) -> bool:
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_the_helper_serves_counts_frames_and_passes_them_on(game: Game) -> None:
     with game.connect() as sock:
-        # folder=1: the stand-in game and the helper are both in the build folder
+        # folder=1: the stand-in game and the helper are both in the build folder; lang=?: no
+        # config yet, so no language to read (the Windows helper's hello says the same)
         assert ask(sock, "hello") == (
-            f"zexion-ap {native.VERSION} build=test hooked=1 platform=linux folder=1"
+            f"zexion-ap {native.VERSION} build=test hooked=1 platform=linux folder=1 lang=?"
         )
         first = int(ask(sock, "ping").removeprefix("pong frames="))
         time.sleep(0.2)
@@ -230,8 +249,9 @@ def test_the_frame_calls_are_counted_by_call_site(game: Game) -> None:
         function = found.image.function_at(site)
         assert function, f"{site:#x} is in none of the stand-in's functions"
         named[function[0].name] = count
-    assert set(named) == {"draw_frame", "draw_editor"} and other == 0
-    assert named["draw_frame"] >= 3 * named["draw_editor"] - 3  # one in four frames
+    frame = "_Z13SWHardwareEndP14SpriteWorldRec"  # the game's own frame function
+    assert set(named) == {frame, "draw_editor"} and other == 0
+    assert named[frame] >= 3 * named["draw_editor"] - 3  # one in four frames
     assert abs(sum(named.values()) - total) <= 2  # counted between the two requests
 
 
@@ -362,16 +382,11 @@ def test_the_release_helper_does_nothing_in_another_program(game: Game) -> None:
 def test_a_disabled_file_beside_the_helper_turns_it_off(tmp_path: Path) -> None:
     shutil.copy2(HOOKTEST, tmp_path / HOOKTEST.name)
     (tmp_path / native.DISABLED_NAME).write_text("")
-    started = Game(tmp_path / HOOKTEST.name, tmp_path / "data")
-    try:
+    with Game(tmp_path / HOOKTEST.name, tmp_path / "data") as started:
         with pytest.raises(OSError):
             started.connect(timeout=0.3)
         swaps, _, _ = started.stop()
         assert swaps > 0
-    finally:
-        if started.proc.poll() is None:
-            started.proc.kill()
-            started.proc.wait()
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
@@ -407,30 +422,21 @@ def test_the_helper_serves_nothing_before_the_token(game: Game) -> None:
 def test_each_run_of_the_game_has_a_token_of_its_own(tmp_path: Path) -> None:
     tokens = []
     for name in ("one", "two"):
-        started = Game(HOOKTEST, tmp_path / name)
-        try:
+        with Game(HOOKTEST, tmp_path / name) as started:
             started.connect().close()
             tokens.append(started.token())
-        finally:
-            started.proc.kill()
-            started.proc.wait()
     assert tokens[0] != tokens[1]
 
 
 def test_the_helper_serves_no_one_without_a_folder_for_its_token(tmp_path: Path) -> None:
     # Neither the data folder nor HOME is an absolute path: nowhere to put the token, so a
     # socket anyone could use is not served, and the game goes on (the frame calls pass through).
-    started = Game(HOOKTEST, Path("relative"), HOME="relative")
-    try:
+    with Game(HOOKTEST, Path("relative"), HOME="relative") as started:
         with pytest.raises(OSError):
             started.connect(timeout=0.3, authed=False)
         swaps, _, err = started.stop()
         assert swaps > 0
         assert "no token" in err and "serving build" not in err
-    finally:
-        if started.proc.poll() is None:
-            started.proc.kill()
-            started.proc.wait()
 
 
 def test_a_token_folder_open_to_others_is_made_private(tmp_path: Path) -> None:
@@ -439,13 +445,9 @@ def test_a_token_folder_open_to_others_is_made_private(tmp_path: Path) -> None:
     folder = tmp_path / "data" / "ZexionAP"
     folder.mkdir(parents=True)
     folder.chmod(0o755)  # as an older run or the user left it
-    started = Game(HOOKTEST, tmp_path / "data")
-    try:
+    with Game(HOOKTEST, tmp_path / "data") as started:
         started.connect().close()
         assert folder.stat().st_mode & 0o777 == 0o700
-    finally:
-        started.proc.kill()
-        started.proc.wait()
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
@@ -488,7 +490,7 @@ def test_a_status_asks_no_config_and_a_request_that_sets_state_does(game: Game) 
         assert ask(sock, "unheard_of") == "error unknown request"
 
 
-@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+@pytest.mark.parametrize("game", [SELF], indirect=True)
 def test_a_connection_that_sets_something_has_it_put_back_when_it_goes(game: Game) -> None:
     # A connection made again in the middle of a poll has not sent `config` yet: what it sets
     # (here the disks' count) is put back when it goes all the same (the Linux helper's
@@ -636,100 +638,23 @@ def test_the_game_reads_and_writes_through_the_helper(game: Game) -> None:
         pm.close_process()
 
 
-# The config's keys (native/linux/src/helper.cpp, kConfigKeys' test build): the stand-in game's
-# symbol for each, and the offset past it.
-CONFIG_SYMBOLS = {
-    "rando_blob": "zap_section",
-    "randomizer_menu": "zap_menu",
-    "transition_fn": "zap_transition",
-    "transition_timer": "zap_timer",
-    "newgame_fn": "zap_new_game",
-    "placement_fn": "zap_placement",
-    "rando_marker": "zap_marker",
-    "current_slot": "zap_slot",
-    "start_count": "zap_start_count",
-    "start_cells": "zap_start_cells",
-    "start_flags": "zap_start_flags",
-    "current_menu": "zap_menu_top",
-    "rando_menu_fn": "zap_rando_menu",
-    "widget_handler_fn": "zap_widget_handler",
-    "panel_handler_fn": "zap_panel_handler",
-    "rando_newgame_fn": "zap_force_seed",
-    "tr_flag": ("zap_translation", 0x91),
-    "translation": "zap_translation",
-    "small_text": ("zap_translation", 0x30),
-    "small_offsets": ("zap_translation", 0x58),
-    "item_names": ("zap_translation", 0x48),
-    "item_name_offsets": ("zap_translation", 0x78),
-    "small_count": "zap_small_count",
-    "item_name_count": "zap_item_name_count",
-    "hd_text_fn": "zap_hd_text",
-    "hd_build_fn": "zap_build_text",
-    "inventory": ("zap_player", 0x108E),
-    "save_loaded": "zap_save_loaded",
-    "menu_state": "zap_cursor",
-    "item_records": "zap_records",
-    "last_message": "zap_last_message",
-    "weapon_strip_gate": "zap_strip_gate",
-    "sound_system": "zap_sounds",
-    "message_fn": "zap_message",
-    "sound_fn": "zap_sound",
-    "hud_number_fn": "zap_hud_number",
-    "hud_layout_fn": "zap_hud_layout",
-    "energy_hud_fn": "zap_energy_hud",
-    "weapon_strip_fn": "zap_weapon_strip",
-    "suit_color_fn": "zap_suit_color",
-    "hd_messages": "zap_hd_messages",
-    "message_slots": "zap_message_slots",
-    "sprite_texture": "zap_sprite_world",
-    "popup_width_code": "zap_pickup",
-    "item_pool": "zap_item_pool",
-    "palette_table": "zap_palettes",
-    "frame_clock": "zap_frame_clock",
-    "sprite_templates": "zap_templates",
-    "object_pool": "zap_object_pool",
-    "flags": "zap_flags",
-    "map_grid": "zap_map_grid",
-    "event_table": "zap_events",
-    "event_count": "zap_event_count",
-    "event_handlers": "zap_event_procs",
-    "ailments": "zap_ailments",
-    "ailments_hit_code": "zap_weapon_cool",
-    "ailments_wave_code": ("zap_weapon_cool", 0x35),
-    "halt_flag": "zap_halt",
-    "seen_marker_code": "zap_power_up",
-    "map_handler": ("zap_move_procs", 0x3C0),
-    "text_set_fn": "zap_text_set",
-    "text_table": "zap_text_table",
-    "equipment_fn": "zap_equipment_menu",
-    "equip_panel_fn": "zap_equipment_frame",
-    "widget_move_fn": "zap_widget_move",
-    "text_place_fn": "zap_text_place",
-    "widget_new_fn": "zap_widget_new",
-    "sprite_sheet_fn": "zap_sprite_sheet",
-    "panel_link_fn": "zap_panel_link",
-    "keys_branch": "zap_pause_game",
-    "options_back_fn": "zap_options_back",
-    "fade": "zap_fade",
-    "fade_level": "zap_fade_level",
-    "routine_table": "zap_routines",
-    "death_fn": "zap_death",
-    "assist_menu_fn": "zap_assist_menu",
-    "draw_layer": "zap_draw_layer",
-    "text_new_fn": "zap_text_new",
-    "text_link_fn": "zap_text_link",
-    "slot_array": "zap_save_games",
-    "rando_slots": "zap_saved_randos",
-    "ending_unlocks": "zap_ending",
-    "ending_join": "zap_ending_join",
-    "large_count": "zap_large_count",
-    "file_panel_fn": "zap_file_panel",
-    "file_entry_fn": "zap_file_entry",
-    "copy_entry_fn": "zap_copy_entry",
-    "delete_entry_fn": "zap_delete_entry",
-    "pickup_list": "zap_pickup_list",
-    "text_cut_code": "zap_text_cut",
+# The helper's own keys (native/linux/src/helper.cpp, kConfigKeys) that the client's targets lack
+# and a test reaches for: the game's symbol for each, and the offset past it.
+OTHER_KEYS = {
+    "tr_flag": ("gCurrentTranslation", 0x91),
+    "start_cells": ("rStartingLocations", 0),
+    "pickup_list": ("gGameState", 0xAE0),
+    "seen_marker_code": ("_Z15PowerUpMoveProcP9SpriteRec", 0x788),
+    "ailments_hit_code": ("_Z10weaponCoolP12PlayerStruct", 0xAD5),
+    "text_cut_code": ("_Z28setGameMessageStringClippingP9SpriteRecii", 0x661),
+    "keys_branch": ("_Z9PauseGamev", 0x9C),
+    "hd_messages": ("gTranslationGameMessages", 0),
+    "halt_flag": ("gEditorMode", 0),
+    "translation": ("gCurrentTranslation", 0),
 }
+PLAYER_STATE = 0x1CD50  # in gGameState: the stand-in's player state (inventory at +0x108E)
+POPUP_WIDTH = ("_Z17playerCollideProcP10CollideRecS0_P6dPointc", 0x251E)  # its mov esi, 24
+ENDING = ("_Z14EndingCutscenev", 0x3B)  # the first achievement call
 PLAN = (
     "ap_newgame\nidentify 0x658 4142434445464748\nmenu 0x88 0300\nexpect 0x26C 5A\nwrite 0x26C 2A"
 )
@@ -742,15 +667,17 @@ def stand_in_image() -> elf.Image:
 
 
 def config_request(at: dict[str, int]) -> str:
-    """The ``config`` request for the addresses ``at`` (a stand-in game's, or a doctored copy)."""
-    return "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+    """The ``config`` request for the addresses ``at`` (a stand-in game's, or a doctored copy):
+    the client's targets', as the client sends them (client/linux_targets.py)."""
+    return "config " + " ".join(f"{t.name}={at[t.name]:#x}" for t in linux_targets.TARGETS)
 
 
 def config_addresses() -> dict[str, int]:
+    """The stand-in's addresses for the client's targets, resolved by the client's own code, and
+    for ``OTHER_KEYS``."""
     image = stand_in_image()
-    found = {}
-    for key, where in CONFIG_SYMBOLS.items():
-        name, offset = where if isinstance(where, tuple) else (where, 0)
+    found = linux_targets.resolve(image)
+    for key, (name, offset) in OTHER_KEYS.items():
         found[key] = image.symbol(name).value + offset
     return found
 
@@ -867,14 +794,10 @@ def test_the_test_build_ignores_home_and_xdg_for_the_save_folder(tmp_path: Path)
     share = home / ".local" / "share"
     fake_save = share / "Gallant Leaf" / "Zexion"
     fake_save.mkdir(parents=True)
-    started = Game(HOOKTEST, share, HOME=str(home), ZAP_TEST_SAVE_DIR="")
-    try:
+    with Game(HOOKTEST, share, HOME=str(home), ZAP_TEST_SAVE_DIR="") as started:
         assert a_put_of(started) == "stored"  # the helper works, in its own folder
         assert sorted(p.name for p in fake_save.iterdir()) == []
         assert not list(home.rglob("ZexionAP-seed-*"))
-    finally:
-        started.proc.kill()
-        started.proc.wait()
 
 
 def test_the_test_build_refuses_a_save_folder_outside_the_temporary_folder(tmp_path: Path) -> None:
@@ -885,33 +808,21 @@ def test_the_test_build_refuses_a_save_folder_outside_the_temporary_folder(tmp_p
     outside = tmp_path / "elsewhere"
     outside.mkdir()
     data = inside / "data"
-    started = Game(HOOKTEST, data, TMPDIR=str(inside), ZAP_TEST_SAVE_DIR=str(outside))
-    try:
+    with Game(HOOKTEST, data, TMPDIR=str(inside), ZAP_TEST_SAVE_DIR=str(outside)) as started:
         assert a_put_of(started) == "stored"
         assert sorted(p.name for p in outside.iterdir()) == []
-    finally:
-        started.proc.kill()
-        started.proc.wait()
     # A link in the temporary folder to the folder outside it is followed: refused too.
     link = inside / "link"
     link.symlink_to(outside)
-    started = Game(HOOKTEST, data, TMPDIR=str(inside), ZAP_TEST_SAVE_DIR=str(link))
-    try:
+    with Game(HOOKTEST, data, TMPDIR=str(inside), ZAP_TEST_SAVE_DIR=str(link)) as started:
         assert a_put_of(started) == "unchanged"
         assert sorted(p.name for p in outside.iterdir()) == []
-    finally:
-        started.proc.kill()
-        started.proc.wait()
     # The same folder inside it is taken.
     named = inside / "save"
     named.mkdir()
-    started = Game(HOOKTEST, data, TMPDIR=str(inside), ZAP_TEST_SAVE_DIR=str(named))
-    try:
+    with Game(HOOKTEST, data, TMPDIR=str(inside), ZAP_TEST_SAVE_DIR=str(named)) as started:
         assert a_put_of(started) == "unchanged"  # the local seed file was there
         assert len(list(named.glob("ZexionAP-seed-*.sav"))) == 1
-    finally:
-        started.proc.kill()
-        started.proc.wait()
 
 
 def test_the_test_build_does_not_serve_with_its_own_folder_outside_the_temporary_folder(
@@ -921,13 +832,9 @@ def test_the_test_build_does_not_serve_with_its_own_folder_outside_the_temporary
     # folder it has none, and with no data folder the helper has nowhere for its token and serves
     # no one (never the real ~/.local/share/ZexionAP).
     elsewhere = tmp_path / "data"
-    started = Game(HOOKTEST, elsewhere, TMPDIR=str(tmp_path / "narrower"))
-    try:
+    with Game(HOOKTEST, elsewhere, TMPDIR=str(tmp_path / "narrower")):
         time.sleep(0.5)
         assert not (elsewhere / "ZexionAP").exists()
-    finally:
-        started.proc.kill()
-        started.proc.wait()
 
 
 def frames_pass(sock: socket.socket, count: int = 6) -> None:
@@ -962,21 +869,99 @@ def test_a_new_game_queued_with_the_seeds_text_gets_the_seed(game: Game) -> None
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
-def test_a_config_outside_the_games_data_or_code_is_refused(game: Game) -> None:
+def test_hello_after_the_token_carries_the_language_the_game_shows(game: Game) -> None:
+    # As the Windows helper's hello: "?" with nothing to read, "-" the default English, else the
+    # translation's name as one word. The pre-auth hello (above) says nothing of the game.
+    at = config_addresses()
+    with game.connect() as sock:
+        assert ask(sock, "hello").endswith(" platform=linux folder=1 lang=?")
+        assert ask(sock, config_request(at)) == "ok"
+        assert ask(sock, "hello").endswith(" lang=-")
+        assert ask(sock, f"write {at['translation']:#x} {b'Brazilian Portuguese'.hex()}00") == (
+            "written 21"
+        )
+        assert ask(sock, f"write {at['tr_flag']:#x} 01") == "written 1"
+        assert wait_for(sock, "hello", lambda r: not r.endswith(" lang=-")).endswith(
+            " lang=Brazilian_Portuguese"
+        )
+        assert ask(sock, f"write {at['tr_flag']:#x} 00") == "written 1"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_config_that_agrees_with_the_helpers_own_addresses_configures(game: Game) -> None:
+    # The helper activates its own addresses; the client's say only that the two agree.
+    at = config_addresses()
+    with game.connect() as sock:
+        assert ask(sock, PLAN) == "refused not configured"
+        assert ask(sock, config_request(at)) == "ok"
+        assert ask(sock, PLAN) == "armed"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_config_that_disagrees_on_a_client_key_is_refused(game: Game) -> None:
     at = config_addresses()
     with game.connect() as sock:
         bad = dict(at, rando_blob=game.marker)  # not the game's own symbol for it
-        config = config_request(bad)
-        assert ask(sock, config) == "error rando_blob is not where the game's symbols put it"
-        bad = dict(at, placement_fn=at["rando_blob"])
-        config = config_request(bad)
-        assert ask(sock, config) == "error placement_fn is not where the game's symbols put it"
-        bad = dict(at, start_cells=at["start_cells"] + 4)  # inside .bss, off by a room
-        config = config_request(bad)
-        assert ask(sock, config) == "error start_cells is not where the game's symbols put it"
-        missing = {k: v for k, v in at.items() if k != "start_flags"}
-        config = config_request(missing)
-        assert ask(sock, config) == "error missing start_flags"
+        assert ask(sock, config_request(bad)) == (
+            "error rando_blob is not where the game's symbols put it"
+        )
+        bad = dict(at, slot_array=at["rando_blob"])  # another of the game's objects
+        assert ask(sock, config_request(bad)) == (
+            "error slot_array is not where the game's symbols put it"
+        )
+        bad = dict(at, flags=at["flags"] + 4)  # inside the game's data, off by four
+        assert (
+            ask(sock, config_request(bad)) == "error flags is not where the game's symbols put it"
+        )
+        bad = dict(at, cell_state=at["cell_state"] - 9)  # a key only the client reads
+        assert ask(sock, config_request(bad)) == (
+            "error cell_state is not where the game's symbols put it"
+        )
+        assert ask(sock, PLAN) == "refused not configured"  # nothing changed
+        assert ask(sock, config_request(at)) == "ok"  # and the right one still takes
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_config_must_name_every_client_key_and_no_other(game: Game) -> None:
+    at = config_addresses()
+    good = config_request(at)
+    with game.connect() as sock:
+        missing = " ".join(w for w in good.split() if not w.startswith("current_slot="))
+        assert ask(sock, missing) == "error missing current_slot"
+        assert ask(sock, "config") == "error missing map_grid"
+        # A key of the helper's own, which a client does not send (it carries only its targets):
+        # what an older client's longer config looks like, refused whole.
+        assert ask(sock, f"{good} placement_fn={at['rando_blob']:#x}") == (
+            "error unknown key placement_fn"
+        )
+        assert ask(sock, f"{good} nonsense=0x10") == "error unknown key nonsense"
+        assert ask(sock, f"{good} flags_again") == "error config takes name=address pairs"
+        assert ask(sock, good.replace("flags=0x", "flags=0xzz")).startswith("error a bad address")
+        assert ask(sock, PLAN) == "refused not configured"  # none of them configured it
+        assert ask(sock, good) == "ok"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_an_older_clients_full_config_is_refused_by_the_version_check_first(
+    game: Game, monkeypatch
+) -> None:
+    # A client of another version (the old one sent ~90 addresses) never gets as far as `config`:
+    # the helper's hello names its version, which the client checks before it sends the token.
+    from client import native as client_native
+
+    found = game.as_found()
+    game.connect().close()
+    monkeypatch.setattr(client_native, "VERSION", "1.1.0")
+    with (
+        pytest.raises(linux_helper.LinuxHelperError, match=r"version .*, this client 1\.1\.0"),
+        linux_helper.LinuxHelper(found),
+    ):
+        pass
+    # And were one sent anyway, by a client that did not check, the helper refuses it whole.
+    at = config_addresses()
+    old = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+    with game.connect() as sock:
+        assert ask(sock, old).startswith("error unknown key ")
         assert ask(sock, PLAN) == "refused not configured"
 
 
@@ -1077,7 +1062,7 @@ def test_labels_name_the_stand_ins_and_size_the_popup_until_the_client_goes(game
 
     at = config_addresses()
     energy = stand_in("zap_record_table") + 47 * 100 + 0x0A  # record 47's name
-    width = stand_in("zap_pickup") + 1  # the immediate of its mov esi, 24
+    width = stand_in(POPUP_WIDTH[0]) + POPUP_WIDTH[1] + 1  # the immediate of its mov esi, 24
     labels = aplabels.labels_request({(3, 2): "Hookshot\nfor Alice"})  # the player's: row 2
     with game.connect() as sock:
         if game.self_configured:  # the client attaches to a helper that configured itself
@@ -1119,7 +1104,7 @@ def test_with_no_logos_painted_the_stand_ins_stay_the_games(game: Game) -> None:
         frames = int(ask(sock, "ping").split("frames=")[1])
         wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 20)
         assert read_at(sock, energy, 13) == b"SCRAP ENERGY\x00"
-        width = stand_in("zap_pickup") + 1
+        width = stand_in(POPUP_WIDTH[0]) + POPUP_WIDTH[1] + 1
         assert read_at(sock, width, 4) == (24).to_bytes(4, "little")
 
 
@@ -1181,7 +1166,7 @@ def test_this_worlds_own_trap_goes_off_at_its_pickup(game: Game) -> None:
         assert read_at(sock, stand_in("zap_sound_id"), 4) == (82).to_bytes(4, "little")
 
 
-@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+@pytest.mark.parametrize("game", [SELF], indirect=True)
 def test_an_own_disk_picked_up_with_no_client_shows_its_count(game: Game) -> None:
     # Game::watch_own_disks: the seed's own disks' cells watched with a client or none; a pickup
     # with one queues nothing (the client's follow-up shows it), one after the client has gone
@@ -1248,8 +1233,7 @@ def test_with_a_seed_file_and_no_client_the_helper_configures_itself(tmp_path: P
     seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
     (data / "ZexionAP" / "seeds").mkdir(parents=True)
     (data / "ZexionAP" / "seeds" / "S-0-1.txt").write_text(seed)
-    started = Game(HOOKTEST, data, **SELF_CONFIG)
-    try:
+    with Game(HOOKTEST, data, player=True) as started:
         at = config_addresses()
         with started.connect() as sock:  # reads only: no config
             assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # its save
@@ -1257,10 +1241,6 @@ def test_with_a_seed_file_and_no_client_the_helper_configures_itself(tmp_path: P
             wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
             assert ask(sock, f"write {at['map_grid'] + cell:#x} 1b") == "written 1"  # picked up
             assert wait_for(sock, "trap_status", lambda r: "set 103" in r).endswith("set 103")
-    finally:
-        if started.proc.poll() is None:
-            started.proc.kill()
-            started.proc.wait()
 
 
 def test_an_ap_save_gets_its_look_with_no_client_and_its_notices(tmp_path: Path) -> None:
@@ -1273,8 +1253,7 @@ def test_an_ap_save_gets_its_look_with_no_client_and_its_notices(tmp_path: Path)
     seed = offline.seed_text([0] * 154, (0, 0, 0), True, False, None, None)
     (data / "ZexionAP" / "seeds").mkdir(parents=True)
     (data / "ZexionAP" / "seeds" / "S-0-1.txt").write_text(seed)
-    started = Game(HOOKTEST, data, **SELF_CONFIG)
-    try:
+    with Game(HOOKTEST, data, player=True) as started:
         at = config_addresses()
         record = stand_in("zap_record_table") + 49 * 100
         shown = stand_in("zap_shown")
@@ -1307,10 +1286,6 @@ def test_an_ap_save_gets_its_look_with_no_client_and_its_notices(tmp_path: Path)
         with started.connect() as sock:  # that client gone: dressed afresh, its notice again
             assert "NOT CONNECTED" in says(sock, "NOT CONNECTED")
             assert read_at(sock, record + 0x0A, 10) == b"INTEL CHIP"
-    finally:
-        if started.proc.poll() is None:
-            started.proc.kill()
-            started.proc.wait()
 
 
 def test_with_no_client_nothing_runs_while_the_player_pointer_reads_elsewhere(
@@ -1326,10 +1301,9 @@ def test_with_no_client_nothing_runs_while_the_player_pointer_reads_elsewhere(
     seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
     (data / "ZexionAP" / "seeds").mkdir(parents=True)
     (data / "ZexionAP" / "seeds" / "S-0-1.txt").write_text(seed)
-    started = Game(HOOKTEST, data, **SELF_CONFIG)
-    try:
+    with Game(HOOKTEST, data, player=True) as started:
         at = config_addresses()
-        pointer = stand_in("zap_main_character")
+        pointer = stand_in("gMainCharacterSpriteP")
         with started.connect() as sock:
             player = read_at(sock, pointer, 8)
             # Configured itself (a request that needs it taken), its trap's cell looked at.
@@ -1343,10 +1317,6 @@ def test_with_no_client_nothing_runs_while_the_player_pointer_reads_elsewhere(
             assert "set 103" not in ask(sock, "trap_status")
             assert ask(sock, f"write {pointer:#x} {player.hex()}") == "written 8"  # back
             assert wait_for(sock, "trap_status", lambda r: "set 103" in r).endswith("set 103")
-    finally:
-        if started.proc.poll() is None:
-            started.proc.kill()
-            started.proc.wait()
 
 
 def test_a_seed_taken_but_not_kept_stays_the_helpers_when_its_client_goes(tmp_path: Path) -> None:
@@ -1362,8 +1332,7 @@ def test_a_seed_taken_but_not_kept_stays_the_helpers_when_its_client_goes(tmp_pa
     data = tmp_path / "data"
     (data / "ZexionAP").mkdir(parents=True)
     (data / "ZexionAP" / "seeds").write_text("not a folder")
-    started = Game(HOOKTEST, data)
-    try:
+    with Game(HOOKTEST, data, player=True) as started:
         at = config_addresses()
         with started.connect() as sock:
             config = config_request(at)
@@ -1375,10 +1344,6 @@ def test_a_seed_taken_but_not_kept_stays_the_helpers_when_its_client_goes(tmp_pa
             wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
             assert ask(sock, f"write {at['map_grid'] + cell:#x} 1b") == "written 1"
             assert wait_for(sock, "trap_status", lambda r: "set 103" in r).endswith("set 103")
-    finally:
-        if started.proc.poll() is None:
-            started.proc.kill()
-            started.proc.wait()
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
@@ -1423,7 +1388,7 @@ def test_an_ap_saves_ending_is_patched_over_its_feats_and_put_back_after(game: G
     from client import offline
 
     at = config_addresses()
-    site = stand_in("zap_ending")
+    site = stand_in(ENDING[0]) + ENDING[1]
     seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
     put = offline.put_request("seed", seed, offline.seed_file_name("S", 0, 1))
     with game.connect() as sock:
@@ -1505,7 +1470,7 @@ def test_a_start_with_no_seed_file_and_no_client_configures_itself(tmp_path: Pat
     # Windows helper does from its scan (what runs once configured, the title's lines among it, is
     # the stand-in's no more than the other tests here: the stand-in has no title to show).
     data = tmp_path / "data"
-    started = Game(HOOKTEST, data, **SELF_CONFIG)
+    started = Game(HOOKTEST, data, player=True)
     try:
         at = config_addresses()
         with started.connect() as sock:  # the token's folder is the only thing there
@@ -1549,7 +1514,7 @@ def test_a_plain_randomizer_save_is_left_alone_by_a_helper_with_no_seed_file(
     # save in play (marker 1, the stand-in's zeros as its section) shows no notice, keeps its item
     # names, and Steam's achievements still reach Steam (no Feats guard).
     data = tmp_path / "data"
-    started = Game(HOOKTEST, data, **SELF_CONFIG)
+    started = Game(HOOKTEST, data, player=True)
     try:
         at = config_addresses()
         count, achieve = stand_in("zap_achievements"), stand_in("zap_achieve")
@@ -1756,7 +1721,7 @@ def test_a_deathlink_death_is_dealt_as_the_damage_code_deals_one(game: Game) -> 
         assert ask(sock, "die") == "died"
         assert read_at(sock, deaths, 4) == (1).to_bytes(4, "little")
         player = int.from_bytes(read_at(sock, stand_in("zap_death_player"), 8), "little")
-        assert player == stand_in("zap_player")
+        assert player == stand_in("gGameState") + PLAYER_STATE
         assert read_at(sock, stand_in("zap_death_kind"), 4) == (0).to_bytes(4, "little")
         assert player_word(sock, at, ENERGY) == 0
 

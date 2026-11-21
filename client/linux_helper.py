@@ -1,9 +1,9 @@
 """The Linux helper (native/linux/, native/README.md "The Linux helper") from outside the game:
 find the running game, check its build, talk to the helper's socket, read the game's memory
 through it, and drive the helper's own parts (``LinuxMod``: its ``config``, new games,
-``apply``, ``ap_labels``, ``offline_put seed``, ``discs``, ``lang``, ``shield``, ``die``,
-``intel on``/``intel off``, ``assists lock``/``assists free``, ``client_back``, ``other_save``
-and RETURN HOME's ``mission_*`` requests).
+``apply``, ``ap_labels``, ``offline_put seed``, ``discs``, ``hello``'s ``lang``, ``shield``,
+``die``, ``intel on``/``intel off``, ``assists lock``/``assists free``, ``client_back``,
+``other_save`` and RETURN HOME's ``mission_*`` requests).
 
 The game is found in the host's ``/proc`` by its kernel name or its binary's (``procfs``; not
 by command line, which Steam's launch wrappers share) and its build checked by the binary it
@@ -83,6 +83,15 @@ class LinuxGame:
     build: patterns.LinuxBuild
     image: elf.Image
     started: int = 0  # its start time (start_time), which a new process of the same pid lacks
+
+
+def parse_hello(reply: str) -> dict[str, str]:
+    """The helper's ``hello``: its version and each ``key=value`` after it (``build``,
+    ``platform``, ``folder``; ``lang`` once the connection has shown the token)."""
+    words = reply.split()
+    if len(words) < 2 or words[0] != "zexion-ap":
+        raise LinuxHelperError(f"an unreadable hello: {' '.join(words)[:80]!r}")
+    return {"version": words[1], **dict(w.split("=", 1) for w in words[2:] if "=" in w)}
 
 
 def _stat_fields(pid: int, proc: Path) -> list[str]:
@@ -392,10 +401,7 @@ class LinuxHelper:
         return self.request_bytes(text.encode()).decode("utf-8", "replace")
 
     def hello(self) -> dict[str, str]:
-        words = self.request("hello").split()
-        if len(words) < 2 or words[0] != "zexion-ap":
-            raise LinuxHelperError(f"an unreadable hello: {' '.join(words)[:80]!r}")
-        return {"version": words[1], **dict(w.split("=", 1) for w in words[2:] if "=" in w)}
+        return parse_hello(self.request("hello"))
 
     def frames(self) -> int:
         reply = self.request("ping")
@@ -534,8 +540,9 @@ class LinuxProcess:
 
 class LinuxMod:
     """The parts of the Linux helper the client drives (native/README.md, "The Linux helper"),
-    over ``pm``, the game's connection, configured when made with their addresses from the
-    game's binary (linux_targets.helper_config): new games (``request``, for the client's
+    over ``pm``, the game's connection, configured when made (``config``: the client's targets'
+    addresses from the game's binary, which the helper checks against its own,
+    linux_targets.config_request): new games (``request``, for the client's
     newgame_tick), grants with their popups, traps among them (``apply``, for
     session.give_through_helper), other players' items' labels (``request``, for
     ticks.labels_tick), the seed's own traps (``request``, for ticks.linux_seed_tick),
@@ -553,7 +560,7 @@ class LinuxMod:
 
         self.pm = pm
         self.told = state.HelperState()
-        reply = pm.request(linux_targets.helper_config(pm.game.image))
+        reply = pm.request(linux_targets.config_request(pm.game.image))
         if reply != "ok":
             raise LinuxHelperError(f"the helper did not take the game's addresses: {reply}")
         self.connection = pm.connection
@@ -565,6 +572,11 @@ class LinuxMod:
 
     def request(self, text: str) -> str:
         return self.pm.request(text)
+
+    def hello(self) -> dict[str, str]:
+        """As native.Helper.hello: the helper's version and fields, with ``lang`` (the language
+        the game shows) as the Windows helper's."""
+        return parse_hello(self.pm.request("hello"))
 
     def apply(self, text: str) -> str:
         """As native.Helper.apply: "applied", or "refused <why>" (nothing was written);

@@ -102,6 +102,31 @@ def linux_sources() -> str:
     )
 
 
+def linux_config_table() -> list[tuple[str, str, str, int]]:
+    """The Linux helper's ``kConfigKeys`` (helper.cpp), one row per key: its name, the
+    ``GameAddresses`` field, the game's symbol and the offset past it, in order."""
+    table = without_comments(
+        braced(linux_source("helper.cpp"), "constexpr ConfigKey kConfigKeys[] = {")
+    )
+    rows = re.findall(
+        r'\{"(\w+)", &G::(\w+), [^,]+,\s*"(\w+)",\s*(0x[0-9A-Fa-f]+|\d+)(?:,\s*\w+)?\}', table
+    )
+    assert rows, "no rows read from kConfigKeys"
+    return [(name, field, symbol, int(offset, 0)) for name, field, symbol, offset in rows]
+
+
+def linux_client_keys() -> tuple[list[str], list[tuple[str, str, int]]]:
+    """The keys a client's ``config`` must give (helper.cpp's ``kClientKeys``), in order, and the
+    ones of them that are not ``kConfigKeys`` rows (``kClientOnly``: name, symbol, offset)."""
+    text = linux_source("helper.cpp")
+    keys = re.findall(r'"(\w+)"', braced(text, "constexpr const char* kClientKeys[] = {"))
+    only = re.findall(
+        r'\{"(\w+)", "(\w+)", (0x[0-9A-Fa-f]+|\d+)\}',
+        without_comments(braced(text, "constexpr ClientOnlyKey kClientOnly[] = {")),
+    )
+    return keys, [(name, symbol, int(offset, 0)) for name, symbol, offset in only]
+
+
 def game_requests() -> set[str]:
     """The requests the shared table (game_requests.cpp) names, by name: both helpers answer the
     ones that have a handler, and ``config`` and ``offline_put`` are each helper's own."""

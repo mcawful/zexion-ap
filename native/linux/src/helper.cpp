@@ -126,47 +126,30 @@ __attribute__((init_priority(101))) Kept<zap::Game> g_game;  // game thread only
 std::atomic<bool> g_client_left{false};
 
 // The game's own function that swaps its window once a frame (docs/re/linux.md, "The per-frame
-// call"): frame work runs only for its calls, by their return address. In the test build, the
-// stand-in game's (tests/fake_game.cpp).
-#ifdef ZAP_HOOKTEST
-constexpr char kFrameFunction[] = "draw_frame";
-#else
+// call"): frame work runs only for its calls, by their return address. The tests' stand-in game
+// (native/linux/tests/fake_game.cpp) exports this and every other symbol the helper reads under
+// the game's own names, so one set of names serves the release and the test build.
 constexpr char kFrameFunction[] = "_Z13SWHardwareEndP14SpriteWorldRec";
-#endif
 zap::linux_helper::SymbolSpan g_frame_function;  // from the game's own symbols at start-up
 
 // The game's count of sprite definitions: the translations' icon sheets are definitions count + 5
 // and + 8 (loadSprites: docs/re/linux.md, "Mapped by disassembly: the helper's translated text"),
-// 101 and 104 as the helper paints them only with 96 (apitem.h, kHdIconSheet). In the test build,
-// the stand-in game's.
-#ifdef ZAP_HOOKTEST
-constexpr char kSpriteDefCount[] = "zap_sprite_def_count";
-#else
+// 101 and 104 as the helper paints them only with 96 (apitem.h, kHdIconSheet).
 constexpr char kSpriteDefCount[] = "gSpriteDefCount";
-#endif
 constexpr int16_t kTracedSpriteDefs = zap::kHdIconSheet - 5;
 uint64_t g_sprite_def_count = 0;
 
 // The game's pointer to the player in play: the helper configures itself (at the first frames,
-// seed file or not), and runs with no client configured, only while it points at the player state the config's `inventory` lies in, as the
-// client checks before it attaches (client/game.py; docs/re/linux.md, "Read from the running
-// game"). In the test build, the stand-in game's.
-#ifdef ZAP_HOOKTEST
-constexpr char kPlayerPointer[] = "zap_main_character";
-#else
+// seed file or not), and runs with no client configured, only while it points at the player state
+// the config's `inventory` lies in, as the client checks before it attaches (client/game.py;
+// docs/re/linux.md, "Read from the running game").
 constexpr char kPlayerPointer[] = "gMainCharacterSpriteP";
-#endif
 uint64_t g_player_pointer = 0;
 
 // SteamUserStats()'s context, the one the Feats guard's export answers for (feats.h,
-// feats_context_init). In the test build, the stand-in game's.
-#ifdef ZAP_HOOKTEST
-constexpr char kStatsContext[] = "zap_stats_context";
-constexpr char kSetAchievement[] = "zap_set_the_achievement";
-#else
+// feats_context_init), and the ending's call's target.
 constexpr char kStatsContext[] = "_ZZ14SteamUserStatsvE27s_CallbackCounterAndContext";
-constexpr char kSetAchievement[] = "_Z17setTheAchievementi";  // the ending's call's target
-#endif
+constexpr char kSetAchievement[] = "_Z17setTheAchievementi";
 
 // More than any program's notes come to: a PT_NOTE this long is not read.
 constexpr size_t kMaxNotesBytes = 64 * 1024;
@@ -237,12 +220,12 @@ std::string own_folder() {
 // This process's memory, copied by the kernel: an address not mapped is EFAULT, not a fault.
 bool read_own(uint64_t address, size_t size, std::string& out) {
     out.assign(size, '\0');
-    iovec local{out.data(), size};
-    iovec remote{reinterpret_cast<void*>(static_cast<uintptr_t>(address)), size};
-    ssize_t n = process_vm_readv(getpid(), &local, 1, &remote, 1, 0);
-    if (n == static_cast<ssize_t>(size)) return true;
-    out = n < 0 ? std::string(std::strerror(errno)) : "read " + std::to_string(n) + " of " +
-                                                           std::to_string(size) + " bytes";
+    errno = 0;  // safe_read's call leaves its own on a failure
+    if (zap::safe_read(reinterpret_cast<const void*>(static_cast<uintptr_t>(address)), out.data(),
+                       size)) {
+        return true;
+    }
+    out = errno != 0 ? std::string(std::strerror(errno)) : "short read";
     for (char& c : out) {
         if (c == ' ') c = '_';  // one word, as the Windows helper's errors' fields
     }
@@ -298,10 +281,10 @@ State state() {
     return s;
 }
 
-// `config name=ADDRESS ...`: the addresses of the parts Game runs here, the game's own by its
-// symbols (the client resolves them: client/linux_targets.py). Each data one must lie in the
-// game's .bss at its full size (and `before` bytes before it) and each function in its code; all
-// of them, or nothing changes.
+// The addresses of the parts Game runs here, the game's own by its symbols, read from its binary
+// at start-up (read_own_symbols), which checks each: a data one must lie in the game's .bss at its
+// full size (and `before` bytes before it), a function in its code. A client's `config` does not
+// carry them (check_client_config): it activates these.
 struct ConfigKey {
     const char* name;
     BYTE* zap::GameAddresses::*field;
@@ -322,10 +305,9 @@ constexpr size_t kItemPool = zap::ItemLooks::kSlots * zap::obj::kItemSize;
 constexpr size_t kObjectPool = zap::ItemLooks::kObjectSlots * zap::obj::kGeneralSize;
 constexpr size_t kPaletteTable = zap::sprite::kPaletteCount * sizeof(void*),
                  kEventHandlers = 48 * sizeof(void*);
-// Keep in step with client/linux_targets.py (TARGETS and HELPER_TARGETS, by CONFIG_KEYS);
-// tests/test_linux_targets.py checks them. The test build's are the stand-in game's.
+// Keep in step with docs/re/linux.md's "Lookup: targets" and client/linux_targets.py (TARGETS,
+// the client's own, a subset of these and kClientOnly); tests/test_linux_targets.py checks them.
 using G = zap::GameAddresses;
-#ifndef ZAP_HOOKTEST
 constexpr ConfigKey kConfigKeys[] = {
     {"rando_blob", &G::rando_blob, zap::kSectionSize, "gCurrentRando", 0},
     {"randomizer_menu", &G::randomizer_menu, zap::kMenuSize, "gRandoPreferences", 0},
@@ -455,102 +437,29 @@ constexpr ConfigKey kConfigKeys[] = {
     {"text_cut_code", &G::text_cut_code, 0, "_Z28setGameMessageStringClippingP9SpriteRecii",
      0x661},
 };
-#else
-constexpr ConfigKey kConfigKeys[] = {
-    {"rando_blob", &G::rando_blob, zap::kSectionSize, "zap_section", 0},
-    {"randomizer_menu", &G::randomizer_menu, zap::kMenuSize, "zap_menu", 0},
-    {"transition_fn", &G::transition_fn, sizeof(void*), "zap_transition", 0},
-    {"transition_timer", &G::transition_timer, sizeof(int32_t), "zap_timer", 0},
-    {"newgame_fn", &G::newgame_fn, 0, "zap_new_game", 0},
-    {"placement_fn", &G::placement_fn, 0, "zap_placement", 0},
-    {"rando_marker", &G::rando_marker, sizeof(uint16_t), "zap_marker", 0},
-    {"current_slot", &G::current_slot, sizeof(int32_t), "zap_slot", 0},
-    {"start_count", &G::start_count, sizeof(int16_t), "zap_start_count", 0},
-    {"start_cells", &G::start_cells, 4 * zap::kStartTableMax, "zap_start_cells", 0},
-    {"start_flags", &G::start_flags, zap::kStartTableMax, "zap_start_flags", 0},
-    {"current_menu", &G::current_menu, sizeof(void*), "zap_menu_top", 0},
-    {"rando_menu_fn", &G::rando_menu_fn, 0, "zap_rando_menu", 0},
-    {"widget_handler_fn", &G::widget_handler_fn, 0, "zap_widget_handler", 0},
-    {"panel_handler_fn", &G::panel_handler_fn, 0, "zap_panel_handler", 0},
-    {"rando_newgame_fn", &G::rando_newgame_fn, 0, "zap_force_seed", 0},
-    {"tr_flag", &G::tr_flag, 1, "zap_translation", 0x91},
-    {"translation", &G::translation, zap::tr::kSize, "zap_translation", 0},
-    {"small_text", &G::small_text, sizeof(void*), "zap_translation", 0x30},
-    {"small_offsets", &G::small_offsets, sizeof(void*), "zap_translation", 0x58},
-    {"item_names", &G::item_names, sizeof(void*), "zap_translation", 0x48},
-    {"item_name_offsets", &G::item_name_offsets, sizeof(void*), "zap_translation", 0x78},
-    {"small_count", &G::small_count, sizeof(int16_t), "zap_small_count", 0},
-    {"item_name_count", &G::item_name_count, sizeof(int16_t), "zap_item_name_count", 0},
-    {"hd_text_fn", &G::hd_text_fn, 0, "zap_hd_text", 0},
-    {"hd_build_fn", &G::hd_build_fn, 0, "zap_build_text", 0},
-    {"inventory", &G::inventory, kPlayerStateSize - kInventoryInPlayer, "zap_player",
-     kInventoryInPlayer, kInventoryInPlayer},
-    {"save_loaded", &G::save_loaded, 1, "zap_save_loaded", 0},
-    {"menu_state", &G::menu_state, 1, "zap_cursor", 0},
-    {"item_records", &G::item_records, sizeof(void*), "zap_records", 0},
-    {"last_message", &G::last_message, kLastMessage, "zap_last_message", 0},
-    {"weapon_strip_gate", &G::weapon_strip_gate, 1, "zap_strip_gate", 0},
-    {"sound_system", &G::sound_system, 1, "zap_sounds", 0},
-    {"message_fn", &G::message_fn, 0, "zap_message", 0},
-    {"sound_fn", &G::sound_fn, 0, "zap_sound", 0},
-    {"hud_number_fn", &G::hud_number_fn, 0, "zap_hud_number", 0},
-    {"hud_layout_fn", &G::hud_layout_fn, 0, "zap_hud_layout", 0},
-    {"energy_hud_fn", &G::energy_hud_fn, 0, "zap_energy_hud", 0},
-    {"weapon_strip_fn", &G::weapon_strip_fn, 0, "zap_weapon_strip", 0},
-    {"suit_color_fn", &G::suit_color_fn, 0, "zap_suit_color", 0},
-    {"hd_messages", &G::hd_messages, kHdMessages, "zap_hd_messages", 0},
-    {"message_slots", &G::message_slots, kMessageSlots, "zap_message_slots", 0},
-    {"sprite_texture", &G::sprite_texture, sizeof(void*), "zap_sprite_world", 0},
-    {"popup_width_code", &G::popup_width_code, 0, "zap_pickup", 0},
-    {"item_pool", &G::item_pool, kItemPool, "zap_item_pool", 0},
-    {"palette_table", &G::palette_table, kPaletteTable, "zap_palettes", 0},
-    {"frame_clock", &G::frame_clock, sizeof(int64_t), "zap_frame_clock", 0},
-    {"sprite_templates", &G::sprite_templates, sizeof(void*), "zap_templates", 0},
-    {"object_pool", &G::object_pool, kObjectPool, "zap_object_pool", 0},
-    {"flags", &G::flags, zap::kFlagCount, "zap_flags", 0},
-    {"map_grid", &G::map_grid, zap::kMapCells, "zap_map_grid", 0},
-    {"event_table", &G::event_table, sizeof(void*), "zap_events", 0},
-    {"event_count", &G::event_count, sizeof(int16_t), "zap_event_count", 0},
-    {"event_handlers", &G::event_handlers, kEventHandlers, "zap_event_procs", 0},
-    {"ailments", &G::ailments, sizeof(int16_t), "zap_ailments", 0},
-    {"ailments_hit_code", &G::ailments_hit_code, 0, "zap_weapon_cool", 0},
-    {"ailments_wave_code", &G::ailments_wave_code, 0, "zap_weapon_cool", 0x35},
-    {"halt_flag", &G::halt_flag, 1, "zap_halt", 0},
-    {"seen_marker_code", &G::seen_marker_code, 0, "zap_power_up", 0},
-    {"map_handler", &G::map_handler, sizeof(void*), "zap_move_procs", 0x3C0},
-    {"text_set_fn", &G::text_set_fn, 0, "zap_text_set", 0},
-    {"text_table", &G::text_table, sizeof(void*), "zap_text_table", 0},
-    {"equipment_fn", &G::equipment_fn, 0, "zap_equipment_menu", 0},
-    {"equip_panel_fn", &G::equip_panel_fn, 0, "zap_equipment_frame", 0},
-    {"widget_move_fn", &G::widget_move_fn, 0, "zap_widget_move", 0},
-    {"text_place_fn", &G::text_place_fn, 0, "zap_text_place", 0},
-    {"widget_new_fn", &G::widget_new_fn, 0, "zap_widget_new", 0},
-    {"sprite_sheet_fn", &G::sprite_sheet_fn, 0, "zap_sprite_sheet", 0},
-    {"panel_link_fn", &G::panel_link_fn, 0, "zap_panel_link", 0},
-    {"keys_branch", &G::keys_branch, 0, "zap_pause_game", 0},
-    {"options_back_fn", &G::options_back_fn, 0, "zap_options_back", 0},
-    {"fade", &G::fade, zap::fade_state::kSize, "zap_fade", 0},
-    {"fade_level", &G::fade_level, 1, "zap_fade_level", 0},
-    {"routine_table", &G::routine_table, 16 * sizeof(void*), "zap_routines", 0},
-    {"death_fn", &G::death_fn, 0, "zap_death", 0},
-    {"assist_menu_fn", &G::assist_menu_fn, 0, "zap_assist_menu", 0},
-    {"draw_layer", &G::draw_layer, sizeof(void*), "zap_draw_layer", 0},
-    {"text_new_fn", &G::text_new_fn, 0, "zap_text_new", 0},
-    {"text_link_fn", &G::text_link_fn, 0, "zap_text_link", 0},
-    {"slot_array", &G::slot_array, zap::slot::kCount * zap::slot::kStride, "zap_save_games", 0},
-    {"rando_slots", &G::rando_slots, zap::slot::kCount * zap::kSectionSize, "zap_saved_randos", 0},
-    {"ending_unlocks", &G::ending_unlocks, 0, "zap_ending", 0},
-    {"ending_join", &G::ending_join, 0, "zap_ending_join", 0},
-    {"large_count", &G::large_count, sizeof(int16_t), "zap_large_count", 0},
-    {"file_panel_fn", &G::file_panel_fn, 0, "zap_file_panel", 0},
-    {"file_entry_fn", &G::file_entry_fn, 0, "zap_file_entry", 0},
-    {"copy_entry_fn", &G::copy_entry_fn, 0, "zap_copy_entry", 0},
-    {"delete_entry_fn", &G::delete_entry_fn, 0, "zap_delete_entry", 0},
-    {"pickup_list", &G::pickup_list, zap::pickups::kSize, "zap_pickup_list", 0},
-    {"text_cut_code", &G::text_cut_code, 0, "zap_text_cut", 0},
-};
-#endif
 constexpr size_t kConfigKeyCount = sizeof(kConfigKeys) / sizeof(kConfigKeys[0]);
+
+// The keys a client's `config` must give, and no others: its own targets (client/linux_targets.py,
+// TARGETS), each at the address the game's own symbols put it. The helper activates its own
+// addresses (g_own), whatever the client sends; the client's give the check that matters for its
+// own reads and writes: a client whose mapping of the game drifted from the helper's changes
+// nothing. Most are kConfigKeys' rows; the two the client reads and the helper does not are
+// kClientOnly's.
+constexpr const char* kClientKeys[] = {
+    "map_grid", "cell_state", "inventory", "pickup_counter", "rando_blob", "slot_array",
+    "menu_state", "save_loaded", "rando_marker", "last_message", "transition_timer", "flags",
+    "item_pool", "current_slot",
+};
+struct ClientOnlyKey {
+    const char* name;
+    const char* symbol;
+    uint64_t offset;
+};
+constexpr ClientOnlyKey kClientOnly[] = {
+    {"cell_state", "gGameState", 0x15B61},     // the map cells' item states (core.cpp, kCellStates)
+    {"pickup_counter", "gGameState", 0xAC8},
+};
+constexpr size_t kClientOnlyCount = sizeof(kClientOnly) / sizeof(kClientOnly[0]);
 
 // The game's object `write` is bounded by (kWriteBase): gGameState, which the client's writes lie
 // in. In the test build the stand-in's `zap_no_write` is the one place in its .bss not written.
@@ -597,20 +506,26 @@ void set_client_writes(const zap::linux_helper::SymbolSpan& base) {
                  g_client_writes->size(), static_cast<unsigned long long>(bytes));
 }
 
-// Each key's address by the game's own symbols (kConfigKeys), read from its binary at start-up:
-// a config must give these and no others, so a client whose mapping drifted changes nothing.
-uint64_t g_expected[kConfigKeyCount] = {};
-uint64_t g_expected_inventory = 0;  // the `inventory` key's, for player_where_expected
-bool g_expected_known = false;
+// The helper's own addresses, read from the game's symbols and checked once at start-up
+// (read_own_symbols): g_own is what a config activates, g_own_problem why it cannot be ("" when
+// the game is as recorded), g_expected_client the client's keys' addresses (kClientKeys' order).
+// Both built ahead of the helper's constructor, like the other globals it sets (kept.h).
+constinit zap::GameAddresses g_own;
+__attribute__((init_priority(101))) Kept<std::string> g_own_problem;
+uint64_t g_expected_client[std::size(kClientKeys)] = {};
+bool g_own_known = false;  // the symbols were read
 
 // The game binary's symbols the helper uses, from /proc/self/exe: the config keys' and the frame
-// function's. False, nothing set, if any is missing.
+// function's. False, nothing set, if any is missing. Each key's address is checked here: a data
+// one in the game's .bss at its full size (and `before` bytes before it), a function in its code;
+// the first that is not is g_own_problem, and nothing is configured.
 bool read_own_symbols() {
     std::ifstream file("/proc/self/exe", std::ios::binary);
     std::string elf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     std::vector<std::string> names{kFrameFunction, kSpriteDefCount, kPlayerPointer, kStatsContext,
                                    kSetAchievement, kWriteBase};
     for (const ConfigKey& key : kConfigKeys) names.emplace_back(key.symbol);
+    for (const ClientOnlyKey& key : kClientOnly) names.emplace_back(key.symbol);
     auto found = zap::linux_helper::find_symbols(elf, names);
     for (const std::string& name : names) {
         if (found.find(name) == found.end()) return false;
@@ -620,16 +535,46 @@ bool read_own_symbols() {
     g_player_pointer = found[kPlayerPointer].value;
     zap::set_feats_stats_context(reinterpret_cast<const void*>(found[kStatsContext].value));
     zap::set_feats_achievement_fn(reinterpret_cast<const void*>(found[kSetAchievement].value));
+    uint64_t expected[kConfigKeyCount] = {}, only[kClientOnlyCount] = {};
+    g_own_problem->clear();
     for (size_t i = 0; i < kConfigKeyCount; ++i) {
-        g_expected[i] = found[kConfigKeys[i].symbol].value + kConfigKeys[i].offset;
-        if (std::strcmp(kConfigKeys[i].name, "inventory") == 0) g_expected_inventory = g_expected[i];
+        const ConfigKey& key = kConfigKeys[i];
+        expected[i] = found[key.symbol].value + key.offset;
+        auto* at = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(expected[i]));
+        g_own.*key.field = at;
+        const bool ok = key.size == 0
+                            ? zap::in_image_code(at)
+                            : expected[i] >= key.before &&
+                                  in_game_data(expected[i] - key.before, key.before + key.size);
+        if (!ok && g_own_problem->empty()) {
+            *g_own_problem = std::string(key.name) +
+                             (key.size == 0 ? " is not in the game's code"
+                                            : " is not in the game's data");
+        }
+    }
+    for (size_t i = 0; i < kClientOnlyCount; ++i) {
+        only[i] = found[kClientOnly[i].symbol].value + kClientOnly[i].offset;
+    }
+    for (size_t i = 0; i < std::size(kClientKeys); ++i) {  // a kConfigKeys row's, else kClientOnly's
+        for (size_t row = 0; row < kConfigKeyCount; ++row) {
+            if (std::strcmp(kConfigKeys[row].name, kClientKeys[i]) == 0) {
+                g_expected_client[i] = expected[row];
+            }
+        }
+        for (size_t row = 0; row < kClientOnlyCount; ++row) {
+            if (std::strcmp(kClientOnly[row].name, kClientKeys[i]) == 0) {
+                g_expected_client[i] = only[row];
+            }
+        }
     }
     set_client_writes(found[kWriteBase]);
-    g_expected_known = true;
+    g_own_known = true;
     return true;
 }
 
-std::string parse_config(std::string_view request, zap::GameAddresses& out) {
+// A client's `config name=ADDRESS ...`: "" if it gives exactly kClientKeys, each at the address the
+// game's symbols put it, and the helper's own addresses are sound; else why not (nothing changes).
+std::string check_client_config(std::string_view request) {
     std::map<std::string, uint64_t> given;
     std::istringstream words{std::string(request.substr(std::string_view("config").size()))};
     std::string word;
@@ -639,28 +584,24 @@ std::string parse_config(std::string_view request, zap::GameAddresses& out) {
         char* end = nullptr;
         uint64_t address = std::strtoull(word.c_str() + eq + 1, &end, 0);
         if (end == nullptr || *end != '\0' || address == 0) return "a bad address for " + word;
-        given[word.substr(0, eq)] = address;  // a name the helper doesn't use: ignored
+        given[word.substr(0, eq)] = address;
     }
-    if (!g_expected_known) return "the game's symbols were not read";
-    for (size_t i = 0; i < kConfigKeyCount; ++i) {
-        const ConfigKey& key = kConfigKeys[i];
-        auto found = given.find(key.name);
-        if (found == given.end()) return std::string("missing ") + key.name;
-        if (found->second != g_expected[i]) {
-            return std::string(key.name) + " is not where the game's symbols put it";
+    if (!g_own_known) return "the game's symbols were not read";
+    for (const auto& pair : given) {  // a key the client's targets do not name: another version's
+        if (std::find_if(std::begin(kClientKeys), std::end(kClientKeys), [&](const char* name) {
+                return pair.first == name;
+            }) == std::end(kClientKeys)) {
+            return "unknown key " + pair.first;
         }
-        auto* at = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(found->second));
-        bool ok = key.size == 0 ? zap::in_image_code(at)
-                                : found->second >= key.before &&
-                                      in_game_data(found->second - key.before,
-                                                   key.before + key.size);
-        if (!ok) {
-            return std::string(key.name) +
-                   (key.size == 0 ? " is not in the game's code" : " is not in the game's data");
-        }
-        out.*key.field = at;
     }
-    return "";
+    for (size_t i = 0; i < std::size(kClientKeys); ++i) {
+        auto found = given.find(kClientKeys[i]);
+        if (found == given.end()) return std::string("missing ") + kClientKeys[i];
+        if (found->second != g_expected_client[i]) {
+            return std::string(kClientKeys[i]) + " is not where the game's symbols put it";
+        }
+    }
+    return *g_own_problem;
 }
 
 // Each part on its own, so one that throws keeps none of the others from running, and nothing
@@ -793,9 +734,9 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config,
     return ran ? result : "refused no frame";
 }
 
-// Game thread: the game configured with `found` (parse_config's: always the game's own, so one
-// after the first changes nothing the choice or the popups hold), a client's (`active`) or the
-// helper's own (configure_self).
+// Game thread: the game configured with `found` (g_own, always the game's own, so one after the
+// first changes nothing the choice or the popups hold), for a client (`active`, its `config`) or
+// the helper's own (configure_self).
 void install_config(const zap::GameAddresses& found, bool active) {
     g_game->set_hooks(
         {.panel = reinterpret_cast<void*>(&Wrapper<void*, int>::run<&panel_game, &panel_after>),
@@ -834,12 +775,12 @@ std::string bytes_of(const std::wstring& path) {
 }
 
 // Whether the game's player pointer reads the player state `inventory` (the game's own symbols'
-// address, g_expected) lies in.
+// address, g_own) lies in.
 bool player_where_expected() {
-    const uint64_t inventory = g_expected_inventory;
+    const auto inventory = reinterpret_cast<uint64_t>(g_own.inventory);
     uint64_t player = 0;
     auto* pointer = reinterpret_cast<const BYTE*>(g_player_pointer);
-    return g_expected_known && inventory != 0 && pointer != nullptr &&
+    return g_own_known && inventory != 0 && pointer != nullptr &&
            zap::read(pointer, 0, player) && player == inventory - kInventoryInPlayer;
 }
 
@@ -863,7 +804,7 @@ __attribute__((init_priority(101))) Kept<std::string> g_token;
 
 // Serving thread (file I/O; never the frame call). A file that could not be read is said once.
 void read_offline() {
-    const std::vector<zap::OfflineSeed> saved = g_saved->get();
+    const std::vector<zap::SeedKey> saved = g_saved->get();
     zap::OfflineFiles files = zap::read_offline_files(*g_offline_folder, g_build, *g_save_folder,
                                                       true, &saved);
     static Kept<std::string> said;  // as the globals above: never destroyed under this thread
@@ -874,44 +815,26 @@ void read_offline() {
     g_inbox->set_files(std::move(files));
 }
 
-// Game thread: with no client yet, the helper configured from the game's own symbols (the
-// addresses a client's config must give: parse_config), inactive, as the Windows helper's own scan's
-// is: only what runs with no client uses it.
+// Game thread: with no client yet, the helper configured with its own addresses (g_own), inactive,
+// as the Windows helper's own scan's is: only what runs with no client uses it.
 // From the first frames, whether or not any seed file has been read (a game with none has no AP
 // save: nothing is dressed, no Feats are held, and the title's lines and the text window's repair
 // run, as on Windows with no client), and only once the game's player pointer reads where the
 // config's player state is (tried again each frame until then). The stderr line says when no seed
 // file had been taken by that frame (the serving thread's read at start may not be, yet).
 bool g_seed_files = false;  // a seed file has been taken (the stderr line only)
-#ifdef ZAP_HOOKTEST
-// Tests only (ZAP_TEST_NO_SELF_CONFIG=1, read in the constructor): the stand-in game starts
-// unconfigured, for the tests of a client's `config` and of the requests refused before it.
-bool g_test_no_self_config = false;
-#endif
 void configure_self() {
     static bool failed = false;
-    if (failed || g_game->configured() || !g_expected_known) return;
-#ifdef ZAP_HOOKTEST
-    if (g_test_no_self_config) return;
-#endif
+    if (failed || g_game->configured() || !g_own_known) return;
     if (!player_where_expected()) return;
-    std::string request = "config";
-    char address[32];
-    for (size_t i = 0; i < kConfigKeyCount; ++i) {
-        std::snprintf(address, sizeof address, "%#llx",
-                      static_cast<unsigned long long>(g_expected[i]));
-        request += std::string(" ") + kConfigKeys[i].name + "=" + address;
-    }
-    zap::GameAddresses found;
-    std::string why = parse_config(request, found);
-    if (why.empty()) {
-        install_config(found, false);
+    if (g_own_problem->empty()) {
+        install_config(g_own, false);
         std::fprintf(stderr, "zexion-ap %s: configured from the game's symbols, no client%s\n",
                      kVersion, g_seed_files ? "" : ", no seed file taken yet");
     } else {
         failed = true;  // the same symbols would fail the same: not tried again
         std::fprintf(stderr, "zexion-ap %s: not configured with no client: %s\n", kVersion,
-                     why.c_str());
+                     g_own_problem->c_str());
     }
 }
 
@@ -929,28 +852,32 @@ void take_offline() {
 }
 
 // The requests that act on the game (game_requests.h's table, which the Windows helper runs too),
-// and the Linux helper's own: `config`, `lang` and `offline_put`. Nothing for one core.cpp answers.
+// and the Linux helper's own: `config`, `hello` and `offline_put`. Nothing for one core.cpp
+// answers.
 std::optional<std::string> game_request(std::string_view request) {
     if (request == "config" || request.starts_with("config ")) {
-        zap::GameAddresses found;
-        std::string error = parse_config(request, found);
+        // The client's agreement with the helper's own addresses, then the helper's own are
+        // activated for it (check_client_config).
         return on_game(
-            [&] {
-                install_config(found, true);
+            [] {
+                install_config(g_own, true);
                 return std::string("ok");
             },
-            false, error);
+            false, check_client_config(request));
     }
-    if (request == "lang") {
-        // The language the game shows, one word (as the Windows helper's hello's `lang`): "?"
-        // unconfigured or with no translation's name readable.
-        return on_game(
+    if (request == "hello") {
+        // A connection that has shown the token: core.cpp's hello and the language the game shows,
+        // one word, as the Windows helper's hello's `lang` ("?" unconfigured, with no translation's
+        // name readable, or no frame to ask on).
+        std::string lang = on_game(
             [] {
                 std::string name = g_game->language();
                 std::replace(name.begin(), name.end(), ' ', '_');
-                return "lang " + name;
+                return name;
             },
             false);
+        if (lang.starts_with("refused ") || lang.starts_with("error ")) lang = "?";
+        return reply(request, state(), read_own, write_own) + " lang=" + lang;
     }
 #ifdef ZAP_HOOKTEST
     if (request == "frame_calls") {  // the calls frame work was taken for (tests only)
@@ -963,7 +890,7 @@ std::optional<std::string> game_request(std::string_view request) {
         // (take_offline) whether the file could be kept or not.
         zap::OfflineSeed seed;
         std::string save_error;
-        const std::vector<zap::OfflineSeed> saved = g_saved->get();
+        const std::vector<zap::SeedKey> saved = g_saved->get();
         std::string reply = zap::put_offline_file(*g_offline_folder, g_build, std::string(request),
                                                   &seed, *g_save_folder, &save_error, &saved);
         if (!save_error.empty()) {
@@ -1260,12 +1187,6 @@ void start_inside() {
 #else
     *g_offline_folder = zap::offline_folder();  // here, before the game's threads (getenv)
     *g_save_folder = zap::save_folder();
-#endif
-#ifdef ZAP_HOOKTEST
-    {  // here, before the game's threads (getenv)
-        const char* hold = std::getenv("ZAP_TEST_NO_SELF_CONFIG");
-        g_test_no_self_config = hold != nullptr && std::strcmp(hold, "1") == 0;
-    }
 #endif
     g_game->set_title_version(kVersion);  // the title's version line (title.h), as on Windows
     if (!read_own_symbols()) {

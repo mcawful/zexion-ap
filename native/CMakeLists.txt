@@ -74,7 +74,7 @@ target_link_libraries(zexion_ap_hooktest PRIVATE zap_core_test)
 enable_testing()
 # Single-program tests on zap_core_test: NAME builds tests/NAME_tests.cpp as zap_NAME_tests.
 set(ZAP_TESTS parts game requests menu apitem equip mission pause files intel title mapmarks
-    offline translation findaddr inbox)
+    offline offline_look translation findaddr inbox)
 foreach(name IN LISTS ZAP_TESTS)
   add_executable(zap_${name}_tests tests/${name}_tests.cpp)
   target_link_libraries(zap_${name}_tests PRIVATE zap_core_test)

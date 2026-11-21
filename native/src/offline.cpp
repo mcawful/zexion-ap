@@ -133,17 +133,23 @@ std::string parse_offline_seed(const std::string& text, OfflineSeed& out) {
     return "";
 }
 
-bool offline_matches(const OfflineSeed& seed, const OfflineSeed& other) {
+bool offline_matches(const SeedKey& seed, const SeedKey& other) {
     return seed.locations == other.locations &&
            std::memcmp(seed.table, other.table, sizeof(seed.table)) == 0 &&
            std::memcmp(seed.start, other.start, sizeof(seed.start)) == 0;
 }
 
+SeedKey seed_key_of(const uint8_t* section) {
+    SeedKey key;
+    key.locations = rando::locations(section);
+    std::memcpy(key.table, section + rando::kItemTable, static_cast<size_t>(key.locations));
+    std::memcpy(key.start, section + rando::kStart, sizeof(key.start));
+    return key;
+}
+
 OfflineSeed offline_seed_of(const uint8_t* section) {
     OfflineSeed seed;
-    seed.locations = rando::locations(section);
-    std::memcpy(seed.table, section + rando::kItemTable, static_cast<size_t>(seed.locations));
-    std::memcpy(seed.start, section + rando::kStart, sizeof(seed.start));
+    static_cast<SeedKey&>(seed) = seed_key_of(section);
     return seed;
 }
 
@@ -292,9 +298,9 @@ std::string read_synced_copy(const std::wstring& save, const std::string& base,
 }
 
 // Whether a save of `seed` is among `saved` (Game::saved_seeds, published through SavedSeeds).
-bool in_use(const std::vector<OfflineSeed>& saved, const OfflineSeed& seed) {
+bool in_use(const std::vector<SeedKey>& saved, const SeedKey& seed) {
     return std::any_of(saved.begin(), saved.end(),
-                       [&](const OfflineSeed& s) { return offline_matches(s, seed); });
+                       [&](const SeedKey& s) { return offline_matches(s, seed); });
 }
 
 // `seed`'s copy written into the save folder, under its own name only, whole or not at all: ""
@@ -319,7 +325,7 @@ std::string write_synced_copy(const std::wstring& save, const std::string& base,
 // its memory holds them: nothing of the game's save files is opened); else it waits for the copy
 // thread's pass (join_saves), when the game has saved it. "" or what failed.
 std::string put_synced_copy(const std::wstring& save, const std::string& base,
-                            const OfflineSeed& seed, const std::vector<OfflineSeed>* saved) {
+                            const OfflineSeed& seed, const std::vector<SeedKey>* saved) {
     if (save.empty() || saved == nullptr || !in_use(*saved, seed)) return "";
     return write_synced_copy(save, base, seed);
 }
@@ -378,7 +384,7 @@ void join_synced(const std::wstring& save, OfflineSeed& seed, std::string& body)
 // that does not read is not trusted, and is replaced by a good local one (a half-synced file), else
 // left alone. With `write` false nothing is written anywhere: the seeds are only made one.
 void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstring& save,
-                bool write, const std::vector<OfflineSeed>* saved) {
+                bool write, const std::vector<SeedKey>* saved) {
     if (save.empty() || !folder_exists(save)) return;
     auto used = [&](const OfflineSeed& seed) { return saved != nullptr && in_use(*saved, seed); };
     // The local file, written whole, but never over one that is there and was not read (a file
@@ -517,7 +523,7 @@ OfflineFiles read_local_files(const std::wstring& folder, const char* build) {
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request, OfflineSeed* seed_out,
                              const std::wstring& save, std::string* save_error,
-                             const std::vector<OfflineSeed>* saved) {
+                             const std::vector<SeedKey>* saved) {
     std::lock_guard<std::mutex> files_lock(g_files_mutex);
     if (save_error != nullptr) save_error->clear();
     const size_t eol = request.find('\n');
@@ -575,7 +581,7 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
 
 OfflineFiles read_offline_files(const std::wstring& folder, const char* build,
                                 const std::wstring& save, bool write,
-                                const std::vector<OfflineSeed>* saved) {
+                                const std::vector<SeedKey>* saved) {
     std::lock_guard<std::mutex> files_lock(g_files_mutex);
     OfflineFiles files = read_local_files(folder, build);
     join_saves(files, folder, save, write, saved);
@@ -584,16 +590,16 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build,
 
 std::string copy_pass(const std::wstring& folder, const char* build, const std::wstring& save,
                       const SavedSeeds& saved) {
-    const std::vector<OfflineSeed> slots = saved.get();
+    const std::vector<SeedKey> slots = saved.get();
     return read_offline_files(folder, build, save, true, &slots).error;
 }
 
-bool SavedSeeds::publish(const std::vector<OfflineSeed>& seeds) {
+bool SavedSeeds::publish(const std::vector<SeedKey>& seeds) {
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
     if (!lock.owns_lock()) return false;  // a reader has it: the next call publishes
     const bool same = generation_.load() != 0 && seeds.size() == seeds_.size() &&
                       std::equal(seeds.begin(), seeds.end(), seeds_.begin(),
-                                 [](const OfflineSeed& a, const OfflineSeed& b) {
+                                 [](const SeedKey& a, const SeedKey& b) {
                                      return offline_matches(a, b);
                                  });
     if (same) return false;
@@ -602,7 +608,7 @@ bool SavedSeeds::publish(const std::vector<OfflineSeed>& seeds) {
     return true;
 }
 
-std::vector<OfflineSeed> SavedSeeds::get() const {
+std::vector<SeedKey> SavedSeeds::get() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return seeds_;
 }

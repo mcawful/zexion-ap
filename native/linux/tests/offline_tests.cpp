@@ -47,23 +47,15 @@ uint8_t table_of(int variant, int index) {
     return static_cast<uint8_t>(index % 47 + (index == 0 ? variant : 0));
 }
 
-// A seed file as the client writes it (client/offline.py, seed_text), `count` disks.
+// A seed file as the client writes it (check.h's client_text), `count` disks, of the table `variant`.
 std::string client_text(int count, int labels, int variant = 0) {
-    std::string text = "zexion-ap offline 1\ntable ";
-    for (int i = 0; i < 154; ++i) {
-        const char* digits = "0123456789abcdef";
-        text += digits[table_of(variant, i) >> 4];
-        text += digits[table_of(variant, i) & 15];
-    }
-    text += "\nstart 0600bf004901\nintel 1\nassists lock\ndiscs " + std::to_string(count) +
-            " 12 434f4c4c454354\nunfound 40,1312\ntraps -\n";
-    if (labels > 0) text += "ap_labels\n";
-    for (int i = 0; i < labels; ++i) text += "label " + std::to_string(20 + i) + " 14 41\n";
-    return text;
+    std::string table;
+    for (int i = 0; i < 154; ++i) table += static_cast<char>(table_of(variant, i));
+    return ::client_text(table, std::string("\x06\x00\xbf\x00\x49\x01", 6), count, false, labels);
 }
 
 // The seeds of the game's slots (Game::saved_seeds) as a list, for the seed files `variants` make.
-using Saved = std::vector<zap::OfflineSeed>;
+using Saved = std::vector<zap::SeedKey>;
 
 Saved saved_of(std::initializer_list<int> variants) {
     Saved saved;

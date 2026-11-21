@@ -21,7 +21,10 @@ Each Windows target in `client/patterns.py`, where it is on Linux, and how sure 
 row naming a section: the evidence is that section's row for it). "Shift" means the Windows
 address less `0x3CF6A0`, plus `gGameState`'s address ("`gGameState` has the Windows layout");
 "refs" counts the instructions in `all.asm` whose operand is exactly that `gGameState+offset`.
-`tests/test_patterns.py` fails while a target has no row here.
+`tests/test_patterns.py` fails while a target has no row here. The Linux helper's own table
+(`native/linux/src/helper.cpp`, `kConfigKeys`, with `kClientOnly`) is these rows' symbols and offsets:
+`tests/test_linux_targets.py` checks that each of its keys is a measured row, and that the client's
+`TARGETS` (what a client's `config` carries, for the helper to check) agree with it.
 
 | Target | Windows (B1) | Linux (B1) | How | Status |
 |---|---|---|---|---|

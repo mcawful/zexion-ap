@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from fakes import b1_like  # tests/test_cross_checks.py and test_game_linux.py take it from here
+from native_source import linux_client_keys, linux_config_table
 
 from client import elf, linux_targets
 
@@ -68,42 +69,36 @@ def test_a_target_is_writable_only_where_the_lookup_says_measured() -> None:
         assert target.measured == measured, (target.name, status)
 
 
-def test_the_helpers_targets_resolve_to_their_b1_addresses() -> None:
-    image = b1_like(extra=True)
-    resolved = linux_targets.resolve(image, linux_targets.HELPER_TARGETS)
-    assert resolved == {t.name: t.b1 for t in linux_targets.HELPER_TARGETS}
-
-
-def test_the_helpers_config_names_every_key_once() -> None:
-    config = linux_targets.helper_config(b1_like(extra=True))
+def test_the_config_names_every_target_once_in_order() -> None:
+    config = linux_targets.config_request(b1_like())
     words = config.split()
     assert words[0] == "config"
-    assert [w.split("=")[0] for w in words[1:]] == list(linux_targets.CONFIG_KEYS)
-    assert "placement_fn=0x5abd55" in words and "newgame_fn=0x563363" in words
+    assert [w.split("=")[0] for w in words[1:]] == [t.name for t in linux_targets.TARGETS]
+    assert "rando_blob=0x12f6e00" in words and "current_slot=0x14945a0" in words
 
 
-def test_the_helpers_config_keys_are_the_clients() -> None:
-    """native/linux/src/helper.cpp's kConfigKeys (the game's build, not the test build's): the
-    same keys in the same order, each at the same symbol and offset as here."""
-    helper = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text("utf-8")
-    table = helper.split("#ifndef ZAP_HOOKTEST\nconstexpr ConfigKey kConfigKeys[] = {", 1)[1]
-    table = table.split("};", 1)[0]
-    rows = re.findall(
-        r'\{"(\w+)", &G::\w+, [^,]+,\s*"(\w+)",\s*(0x[0-9A-Fa-f]+|\d+)(?:,\s*\w+)?\}', table
-    )
-    assert [name for name, _, _ in rows] == list(linux_targets.CONFIG_KEYS)
-    ours = {
-        t.name: (t.symbol, t.offset) for t in linux_targets.TARGETS + linux_targets.HELPER_TARGETS
-    }
-    for name, symbol, offset in rows:
-        assert ours[name] == (symbol, int(offset, 0)), name
+def test_the_helpers_client_keys_are_the_clients_targets() -> None:
+    """native/linux/src/helper.cpp's kClientKeys are exactly the client's targets, each in the
+    helper's own table (kConfigKeys, or kClientOnly) at the same symbol and offset as here: what
+    a config's agreement check compares."""
+    keys, only = linux_client_keys()
+    ours = {t.name: (t.symbol, t.offset) for t in linux_targets.TARGETS}
+    assert keys == list(ours), "the keys, in the order the client sends them"
+    rows = {name: (symbol, offset) for name, _, symbol, offset in linux_config_table()}
+    rows.update({name: (symbol, offset) for name, symbol, offset in only})
+    for name in keys:
+        assert rows[name] == ours[name], name
+    assert {name for name, _, _ in only} == set(keys) - {n for n, *_ in linux_config_table()}
 
 
-def test_every_helper_target_is_in_the_lookup() -> None:
+def test_every_helper_key_is_a_measured_row_of_the_lookup() -> None:
+    """The helper's own addresses (kConfigKeys) and the client-only ones are all in
+    docs/re/linux.md's Lookup, and each is measured."""
     doc = (ROOT / "docs" / "re" / "linux.md").read_text("utf-8")
     start = doc.index("## Lookup: targets")
     lookup = doc[start : doc.index("\n## ", start + 1)]
-    for target in linux_targets.HELPER_TARGETS:
-        row = next(r for r in lookup.splitlines() if r.startswith(f"| `{target.name}` |"))
-        assert f"0x{target.b1:X}" in row.replace("`", ""), target.name
-        assert row.rstrip(" |").rsplit(" | ", 1)[1].startswith("measured"), target.name
+    _, only = linux_client_keys()
+    names = [name for name, *_ in linux_config_table()] + [name for name, *_ in only]
+    for name in names:
+        row = next(r for r in lookup.splitlines() if r.startswith(f"| `{name}` |"))
+        assert row.rstrip(" |").rsplit(" | ", 1)[1].startswith("measured"), name

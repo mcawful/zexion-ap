@@ -258,7 +258,7 @@ The requests (`src/requests.cpp` parses them; `src/game_requests.cpp` is their t
   where it is read. 1.1.0's `text_cut_code` is the second kind (`optional` in
   `kConfigKeys`, `src/game_calls.cpp`): without it the rest configures (`hello` `configured=1`, no
   `read_error`) and the text window's cut stays the game's ("Popups", "Tall text") until a
-  client's config, which holds it (stand-in tests, `tests/offline_tests.cpp`). `ailments`,
+  client's config, which holds it (stand-in tests, `tests/offline_look_tests.cpp`). `ailments`,
   `ailments_hit_code` and `ailments_wave_code`, added after 1.1.0 for the traps, are too: without
   them a trap runs with AILMENTS as the game applies it ("Traps");
 - each lies inside the game's image: functions in its code, data outside it and writable;
@@ -1721,7 +1721,7 @@ ending writes its save was not measured). In such an old save the goal is sent a
 game has saved the pickup: kept so (the owner's decision, 2026-11-15: once the ending has
 begun, how the count is reached no longer matters). The server's checked locations and the
 client's found record no longer count a disk. Stand-in tests (`tests/test_ticks.py`,
-`test_discs.py`, `test_zexion_client.py`; `tests/offline_tests.cpp` for the file select).
+`test_discs.py`, `test_zexion_client.py`; `tests/offline_look_tests.cpp` for the file select).
 Working in game, 2026-11-14 (B1, slot 6, the seed `lab/ap/live64`; the owner's reports and a
 read-only watcher's times, `lab/ingame-collected-checks.md`). With the client and
 `zexion_ap.dll` `5f19e4d4…` (bbaf3c5): the own disk at Kresezoa 24,24 picked up, reloaded
@@ -1881,7 +1881,7 @@ game" line below about the look, the file select's counts or a client going on W
   (working in game 2026-10-29, 1.0.0 (b790be9): `docs/re/memory.md`, "AP saves without the
   client"). While the save stays dressed, each look sets that look again where it was changed: a
   client of another seed, attaching with the save in play, takes its own look back, which is not
-  this save's (stand-in tests, `tests/offline_tests.cpp`; working in game 2026-10-26). A client
+  this save's (stand-in tests, `tests/offline_look_tests.cpp`; working in game 2026-10-26). A client
   with no server connection (the server down, say) lets the helper go, as if it had closed (on
   Linux it closes the Linux helper's connection, and configures it again on connecting, before
   that poll's step: the step waits for it as after an attach), while
@@ -1909,7 +1909,7 @@ game" line below about the look, the file select's counts or a client going on W
 - **Put back:** leaving the save undresses it: no save loaded, or in play reading as no known seed.
   With a menu up, a save in play since its load that reads as no known seed is held as it is until
   play, so the lock never lifts in the options menu for one read (none such is known; stand-in
-  tests, `tests/offline_tests.cpp`). A client's `config` takes the offline look off first and
+  tests, `tests/offline_look_tests.cpp`). A client's `config` takes the offline look off first and
   withdraws the notices not yet shown (the not-connected warning, and the last client's other-seed
   notice and CLIENT CONNECTED.); the client then asks `client_back`, which pops up ARCHIPELAGO
   CLIENT CONNECTED. once if that save was dressed. It asks once a poll has found the save in play,
@@ -2080,7 +2080,7 @@ copies, a cut copy's refusal and that `helper.py status` writes nothing.
     copies of one seed differ only in what each has seen), and only with no client.
 - **Limits:** 48 KB a file (`kMaxFile`), and 256 seed files read from each folder. Steam's quota
   for the game is 97.7 MiB and 640 files, and it tracks the 30 saves and two more already.
-- **Tests:** `native/tests/inbox_tests.cpp` (the seeds the serving thread hands the game's thread: the files, the puts, a seed not kept; both helpers), `native/tests/requests_tests.cpp` (the shared request table and `sets_client_state`), `native/tests/offline_tests.cpp` (also the watches' order, a watch or a client-gone part that throws, through `Game::set_step_hook`; the text, the crc, the merge, the slots' seeds from
+- **Tests:** `native/tests/inbox_tests.cpp` (the seeds the serving thread hands the game's thread: the files, the puts, a seed not kept; both helpers), `native/tests/requests_tests.cpp` (the shared request table and `sets_client_state`), `native/tests/offline_look_tests.cpp` (the look, the watches' order, a watch or a client-gone part that throws, through `Game::set_step_hook`; the text window's cut under a cache's config) and `native/tests/offline_tests.cpp` (the seed file, the folder and its puts; the text, the crc, the merge, the slots' seeds from
   the stand-in game's memory and `SavedSeeds`, the put and the read with a stand-in save folder and
   lists, `restrict_to_test_folder` with junctions, the write primitives' refusal),
   `apply_test.cpp` (through the loaded helper: the frame calls publish the slots and the copy thread
@@ -2354,7 +2354,7 @@ Not seen in game:
 
 `src/translation.cpp`; the game's side is `docs/re/memory.md`, "Translations" and the sections
 after it. Run in game 2026-11-02, below ("Run in game"). Stand-in tests (`tests/translation_tests.cpp`, and the
-translation cases in `offline_tests.cpp`, `mission_tests.cpp`, `equip_tests.cpp`,
+translation cases in `mission_tests.cpp`, `equip_tests.cpp`,
 `feats_tests.cpp`, `pause_tests.cpp` and `apitem_tests.cpp`) cover all but the map cursor's
 name (by disassembly only: "The helper's calls in a translation"). Their builder lays out a stand-in font's glyphs
 from the place it is given, wrapping as the game's does, so they check where a rebuilt text
@@ -2910,13 +2910,13 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
 
   | Request | Reply |
   |---|---|
-  | `hello` | `zexion-ap <version> build=<B1\|unknown> hooked=<0\|1> platform=linux folder=<0\|1>` (`folder=1`: the `.so` is in the game binary's own folder) |
+  | `hello` | `zexion-ap <version> build=<B1\|unknown> hooked=<0\|1> platform=linux folder=<0\|1>` (`folder=1`: the `.so` is in the game binary's own folder); from a connection that has shown the token, ` lang=<name>` too (frame): the language the game shows as the Windows helper's `hello`'s `lang` does (`-` the default English, else the translation's folder name, spaces as underscores; `?` unconfigured, with no name readable, or with no frame to ask on) |
   | `auth TOKEN` (first, after `hello` if the client likes) | `ok`, or `error auth refused` and the connection closed; every request below is `error auth required`, and the connection closed, before it |
   | `ping` | `pong frames=<calls since load>` |
   | `callers` | `callers` and `0x<return address>=<calls>` for each call site of the frame call, lowest first (eight at most; ` other=<calls>` for the calls from sites past that) |
   | `read ADDRESS SIZE` (hex after `0x`, or decimal; 1 to 32768 bytes) | `data ` and the bytes, or `error <why>` |
   | `write ADDRESS HEX` (1 to 16384 bytes, as hex) | `written <bytes>`, or `error <why>` (`error not_in_the_game's_writable_data` outside it, `error not_in_what_the_client_writes` inside it, outside the ranges the client writes ("Reading and writing the game")) |
-  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the 90 addresses of the parts it runs (`linux/src/helper.cpp`, `kConfigKeys`), each the one the helper finds itself from the game's own symbols (read from `/proc/self/exe` at start-up), each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code, all or none |
+  | `config name=ADDRESS …` (frame) | `ok`, or `error <why>`: the client's own targets' addresses (`client/linux_targets.py`, `TARGETS`; `kClientKeys`), exactly those and no other (`error missing <key>`, `error unknown key <key>`), each the one the helper's own symbols give (`error <key> is not where the game's symbols put it`). It carries no address the helper uses: the helper's 90 (`linux/src/helper.cpp`, `kConfigKeys`) it found itself from the game's own symbols (read from `/proc/self/exe` at start-up) and checked there once, each data one inside the game's `.bss` at its full size (the inventory with the player state before it) and each function in its code (a game as not recorded fails every `config`, and the self-configuring start, with that reason), and `ok` makes the client the active one with those. All or none |
   | `ap_newgame` and its lines (frame) | `armed`, `refused not configured`, `refused no frame`, `error <why>`: as the Windows helper's ("New games") |
   | `apply` and its lines (frame) | as the Windows helper's ("The pipe", "Grants"), traps among the popups ("Traps") |
   | `ap_labels` and its lines (frame) | as the Windows helper's ("The pipe", "Other players' items") |
@@ -2932,7 +2932,6 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   | `intel on`, `intel off` (frame) | as the Windows helper's ("The pipe", "Intel Chips") |
   | `assists lock`, `assists free` (frame) | as the Windows helper's ("The pipe", "The assist menu") |
   | `mission_prompt COLUMN ROW`, `mission_status`, `mission_black` (frame) | as the Windows helper's ("The pipe", "The OS Install Disks goal") |
-  | `lang` (frame) | `lang <name>`: the language the game shows, spaces as underscores (the Windows helper's `hello`'s `lang`); `lang ?` unconfigured or with no name readable |
   | `newgame_status`, `disarm` (frame) | as the Windows helper's |
 
   Anything else gets `error unknown request`.
@@ -2989,7 +2988,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     before it takes the next one: so a client that comes back at once (a request with no reply
     ends a connection and the client makes another) never has its `config` followed by the last
     one's clean-up. A connection that set nothing (`tools/helper.py status`, a probe: `hello`,
-    `ping`, `callers`, `read`, the `*_status` requests, `lang`) leaves nothing to put back, and
+    `ping`, `callers`, `read`, the `*_status` requests) leaves nothing to put back, and
     its closing changes nothing in the game or in the look of an AP save with no client.
   - The handshake through `/proc/<pid>/root` with Flatpak's Steam run in the game, 2026-11-20
     (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"): `helper.py status` and the
@@ -3027,10 +3026,11 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   is refused and leaves it as it was, a dropped connection is made again, and the game's exit
   is noticed (by its pid's start time).
 - **New games.** The Windows helper's new-game logic (`src/newgame.cpp`: the plan, the seed's
-  placement over the game's, the RANDOMIZER route) runs here unchanged once a `config` gave its
-  addresses (with the rest of the 90), which the client resolves from the game's symbols
-  (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
-  them, so a client and a helper that disagree change nothing (the client also refuses a helper of
+  placement over the game's, the RANDOMIZER route) runs here unchanged on the helper's own
+  addresses (the 90 of `kConfigKeys`, from its own symbols) once a `config` has agreed with them:
+  the client resolves its own targets from the game's symbols (`client/linux_targets.py`,
+  `config_request`) and the helper checks them against its own reading, so a client and a helper
+  that disagree change nothing (the client also refuses a helper of
   another version; it asks nothing else to tell a build, so a `config` reply other than `ok`,
   such as `refused no frame`, is the one check, and a configuration tried again). "Frame" requests
   and the watch run on the game's thread through `src/mailbox.h` (`src/mailbox_linux.cpp`), only
@@ -3136,7 +3136,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   definitions 101 and 104, the game's count of definitions plus 5 and 8: the helper reads that
   count, `gSpriteDefCount`, at each `config` and paints no icons unless it is 96,
   `Game::hold_icon_sheets`); and the client asks the language
-  (`lang`) to warn in any but English(HD), as from the Windows helper's `hello`. What differs on
+  (`hello`'s `lang`) to warn in any but English(HD), from either helper. What differs on
   Linux (`docs/re/linux.md`, "Mapped by disassembly: translations"):
   - the tables hold 4-byte characters, which is `wchar_t` in the helper's GCC build, so the same
     code reads and writes them; the translation object is `0x40150` bytes (`tr::kSize`);
@@ -3431,10 +3431,14 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   slot in use seen and a seed file for it copied, none before one, and a client's `config` still
   taking over; the stand-in has no title, so the title lines are not shown by these; the client's
   attach tests for an apply, for labels and for a client that goes with its plan run both from a
-  helper that has not configured and from one that configured itself. The test build configures
-  itself like the release helper unless `ZAP_TEST_NO_SELF_CONFIG=1`; `tests/test_native_linux.py`
-  sets it to 1 for every test except those that pass `SELF_CONFIG` (the `self-configured`
-  parameter), so a client's `config` and the requests refused before it stay tested);
+  helper that has not configured and from one that configured itself. The test build is the
+  release helper's code (its one table of keys, symbols and checks: only the `write` rule and the
+  test folders differ); it configures itself once the stand-in's player pointer
+  (`gMainCharacterSpriteP`) reads the player state, which the stand-in leaves null under
+  `ZAP_FAKE_NO_PLAYER=1`, as at the title screen before any save. `tests/test_native_linux.py` sets
+  it for every test except those that start `Game` with `player=True` (the `self-configured`
+  parameter), so a client's `config` and the requests refused before it stay tested, and a test
+  can write the pointer later to let the helper configure);
   the helper configured from a seed's file, run in the game, 2026-11-19 ("The Linux helper",
   above); configured with no seed file at all is stand-in tests only, not yet run in the game.
   The same holds for the title lines on a first start, below.
@@ -3699,7 +3703,12 @@ ctest --test-dir native/build --output-on-failure
 That builds `native/build/libzexion_ap.so` (the Linux helper), the test build
 `libzexion_ap_hooktest.so`, which serves any program, and the stand-in game `zap_fake_game`, a
 fixed-address executable as the game is, calling `SDL_GL_SwapWindow` from a stand-in
-`libzap_sdl_stub.so`. ctest runs `tests/core_tests.cpp` (build ids, replies);
+`libzap_sdl_stub.so`. The stand-in exports the game's own symbol names, the mangled ones as asm
+labels, at the game's own offsets (`gGameState` one array in `.bss` with the flags, the player state, the
+pools and the message slots at their offsets, and the code the helper patches at its real offsets
+within the functions that hold it: `fake_game.cpp`), so the helper's one table finds everything by
+the names `docs/re/linux.md` gives and the client's own `linux_targets.resolve` gives the stand-in's
+`config`. ctest runs `tests/core_tests.cpp` (build ids, replies);
 `tests/test_native_linux.py` preloads both builds into the stand-in game ("The Linux helper"),
 `zap_newgame_tests` runs the shared new-game logic (`linux/tests/newgame_tests.cpp`), and
 `zap_patch_tests` runs the Linux build's code patches side by side with the game's bytes

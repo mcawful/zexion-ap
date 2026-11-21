@@ -60,9 +60,21 @@ void test_configure() {
     zap::Game game;
     HMODULE self = GetModuleHandleW(nullptr);
     auto config = stand_in_config();
-    auto missing = config;
-    missing.erase("sound_fn");
-    check(game.configure(self, missing) == "missing sound_fn", "every key is required");
+    // Every key but the optional text_cut_code (offline_look_tests.cpp) and the three AILMENTS keys
+    // (the traps run without them) is required, from a client's config and from the helper's own
+    // (active false): one missing refuses, and leaves it unconfigured.
+    for (const auto& [key, rva] : config) {
+        if (key == "text_cut_code" || key.rfind("ailments", 0) == 0) continue;  // optional
+        auto missing = config;
+        missing.erase(key);
+        for (const bool active : {true, false}) {
+            zap::Game refused;
+            if (refused.configure(self, missing, active) != "missing " + key ||
+                refused.configured()) {
+                check(false, ("a config missing " + key + " refuses").c_str());
+            }
+        }
+    }
     auto swapped = config;
     swapped["message_fn"] = config["inventory"];
     check(game.configure(self, swapped).find("not in code") != std::string::npos,

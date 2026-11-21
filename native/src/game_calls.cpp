@@ -385,9 +385,9 @@ std::string Game::apply(const Batch& batch) {
     }
     // Each for this save: kept for its next load, never shown in another (pump_popups), as the
     // client counts them handed over and never sends them again.
-    std::shared_ptr<const OfflineSeed> origin;
+    std::shared_ptr<const SeedKey> origin;
     if (rando_save_loaded()) {
-        origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
+        origin = std::make_shared<const SeedKey>(seed_key_of(at_.rando_blob));
     }
     // A received trap's popup takes its turn with the rest, and its trap goes off as it shows
     // (pump_traps; the owner's choice).
@@ -403,7 +403,7 @@ std::string Game::apply(const Batch& batch) {
 
 bool Game::showable(const Popup& popup) const { return origin_loaded(popup.origin); }
 
-bool Game::origin_loaded(const std::shared_ptr<const OfflineSeed>& origin) const {
+bool Game::origin_loaded(const std::shared_ptr<const SeedKey>& origin) const {
     return !origin || (rando_save_loaded() && section_is(*origin, at_.rando_blob));
 }
 
@@ -1187,12 +1187,12 @@ std::set<int> Game::ap_file_slots() const {
     return slots;
 }
 
-std::vector<OfflineSeed> Game::saved_seeds() const {
-    std::vector<OfflineSeed> seeds;
+std::vector<SeedKey> Game::saved_seeds() const {
+    std::vector<SeedKey> seeds;
     if (!configured_) return seeds;
     for (int n = 1; n <= slot::kCount; ++n) {
         const BYTE* section = slot_section(n);
-        if (section != nullptr) seeds.push_back(offline_seed_of(section));
+        if (section != nullptr) seeds.push_back(seed_key_of(section));
     }
     return seeds;
 }
@@ -1214,7 +1214,7 @@ const BYTE* Game::slot_section(int n) const {
 bool Game::known_section(const BYTE* section) const {
     if (labels_seed_ && section_is(*labels_seed_, section)) return true;
     // The offline look's seeds are among the known ones (set_offline adds them).
-    for (const OfflineSeed& seed : known_seeds_) {
+    for (const SeedKey& seed : known_seeds_) {
         if (section_is(seed, section)) return true;
     }
     return false;
@@ -1241,18 +1241,13 @@ bool Game::ap_save_loaded() const {
     return configured_ && rando_save_loaded() && known_section(at_.rando_blob);
 }
 
-void Game::add_known_seeds(const std::vector<OfflineSeed>& seeds) {
+void Game::add_known_seeds(const std::vector<SeedKey>& seeds) {
     constexpr size_t kMaxKnownSeeds = 1024;
-    for (const OfflineSeed& seed : seeds) {
+    for (const SeedKey& seed : seeds) {
         bool known = std::any_of(known_seeds_.begin(), known_seeds_.end(), [&](const auto& k) {
             return offline_matches(k, seed);
         });
-        if (known) continue;
-        OfflineSeed key;
-        key.locations = seed.locations;
-        std::memcpy(key.table, seed.table, sizeof(key.table));
-        std::memcpy(key.start, seed.start, sizeof(key.start));
-        known_seeds_.push_back(std::move(key));
+        if (!known) known_seeds_.push_back(seed);
     }
     if (known_seeds_.size() > kMaxKnownSeeds) {
         known_seeds_.erase(known_seeds_.begin(),
@@ -1335,15 +1330,11 @@ bool Game::seed_look_loaded() const {
     return labels_seed_loaded();
 }
 
-void Game::note_client_seed(const OfflineSeed& seed) {
+void Game::note_client_seed(const SeedKey& seed) {
     // A put taken after its client went away (the game was in the background meanwhile) is no
     // client's seed: the next client puts its own.
     if (!active_) return;
-    OfflineSeed key;
-    key.locations = seed.locations;
-    std::memcpy(key.table, seed.table, sizeof(key.table));
-    std::memcpy(key.start, seed.start, sizeof(key.start));
-    client_seed_ = std::move(key);
+    client_seed_ = seed;
 }
 
 void Game::watch_map_names() {
@@ -1472,7 +1463,7 @@ void Game::equipment_event(void* widget, intptr_t event) {
 
 void Game::set_labels(std::map<int, Label> labels) {
     labels_seed_.reset();
-    if (!labels.empty() && rando_save_loaded()) labels_seed_ = offline_seed_of(at_.rando_blob);
+    if (!labels.empty() && rando_save_loaded()) labels_seed_ = seed_key_of(at_.rando_blob);
     if (labels.empty()) {
         restore_ap_items();  // no labels: Scrap Energy is Scrap Energy again
         return;
