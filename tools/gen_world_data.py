@@ -1,13 +1,13 @@
 """Generate worlds/zexion/data.py, the APWorld's map and rules, from the game's own files.
 
-    gen_world_data.py [--cells FILE] [--starts FILE] [--mode NAME=SAVE ...]
+    gen_world_data.py [--cells FILE] [--starts FILE] [--backup FOLDER] [--mode NAME=SAVE ...]
 
 Reads (all copies in lab/, never the game folder):
 
 - RandoCells (``game_data.py RandoCells`` copies it to lab/data/<build>/);
 - for each of the three modes, a randomizer save made right at the start of a seed in that
   mode, for its item pool, starting inventory and settings (by default Easy: slot 28's and
-  Standard: slot 29's fresh saves of a backup in lab/backups/, and OHKO:
+  Standard: slot 29's fresh saves of a backup in lab/backups/, ``--backup`` names it, and OHKO:
   lab/work/slot5-ohko-fresh.sav; docs/re/randocells.md, "The randomizer's modes"); ``--mode``
   replaces one mode's save; the location list is the same in every seed;
 - the start-room candidates (lab/data/<build>/start-candidates.json, docs/re/save-format.md);
@@ -42,26 +42,37 @@ from collections import Counter
 from pathlib import Path
 
 import randocells as rc
-from protected import ROOT, assert_writable
+from protected import ROOT, assert_writable, lab_dir
 
 sys.path.insert(0, str(ROOT))  # the client package
 from client import newgame, pe  # noqa: E402
 from client import save_patch as sp  # noqa: E402
 
 OUT = ROOT / "worlds" / "zexion" / "data.py"
-BACKUP = ROOT / "lab" / "backups" / "20261020-212018"
-# Fresh saves matched to the modes (docs/re/randocells.md, "The randomizer's modes").
-DEFAULT_MODES = {
-    "easy": BACKUP / "Save Game 28.sav",
-    "standard": BACKUP / "Save Game 29.sav",
-    "ohko": ROOT / "lab" / "work" / "slot5-ohko-fresh.sav",
-}
+# The backup in lab/backups/ whose slots 28 and 29 are the fresh Easy and Standard saves
+# (docs/re/locations.md names it as the evidence); ``--backup`` takes another.
+BACKUP = "20261020-212018"
+MODES = ("easy", "standard", "ohko")
+
+
+def default_modes(backup: str = BACKUP) -> dict[str, Path]:
+    """Fresh saves matched to the modes (docs/re/randocells.md, "The randomizer's modes"): Easy's
+    and Standard's from ``backup`` (a name under lab/backups/, or an absolute path), OHKO's from
+    lab/work/."""
+    folder = Path(backup)
+    if not folder.is_absolute():
+        folder = lab_dir() / "backups" / backup
+    return {
+        "easy": folder / "Save Game 28.sav",
+        "standard": folder / "Save Game 29.sav",
+        "ohko": lab_dir() / "work" / "slot5-ohko-fresh.sav",
+    }
 
 
 def full_inventory(start: Counter, pool: list[int]) -> Counter:
     have = Counter(start)
     for item in pool:
-        rc.logic.collect(have, item)
+        rc.logic.collect(have, item, guns_first=True)
     return have
 
 
@@ -528,15 +539,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cells", type=Path)
     parser.add_argument("--starts", type=Path)
     parser.add_argument("--mode", type=parse_mode, action="append", help="NAME=SAVE")
+    parser.add_argument(
+        "--backup", default=BACKUP, help="the lab/backups/ folder of Easy and Standard's saves"
+    )
     parser.add_argument("--exe", type=Path, help="default: Zexion.exe next to RandoCells")
     parser.add_argument("--map-data", type=Path, help="default: MapData next to RandoCells")
     parser.add_argument("--text", type=Path, help="default: Text next to RandoCells")
     args = parser.parse_args(argv)
-    unknown = sorted({name for name, _ in args.mode or []} - set(DEFAULT_MODES))
+    unknown = sorted({name for name, _ in args.mode or []} - set(MODES))
     if unknown:
         # data.py needs every mode the world's Mode option offers (generate_early reads it).
-        raise SystemExit(f"no such mode {unknown}: the modes are {sorted(DEFAULT_MODES)}")
-    mode_saves = {**DEFAULT_MODES, **dict(args.mode or [])}
+        raise SystemExit(f"no such mode {unknown}: the modes are {sorted(MODES)}")
+    mode_saves = {**default_modes(args.backup), **dict(args.mode or [])}
     cells_path = rc.find_randocells(args.cells)
     starts_path = args.starts or cells_path.parent / "start-candidates.json"
     exe_path = args.exe or cells_path.parent / "Zexion.exe"

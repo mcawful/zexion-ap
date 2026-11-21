@@ -7,7 +7,7 @@ must stay 'preset' with them: a line says where they are instead.
     .venv/Scripts/python tools/gen_sample_yamls.py
 
 They go into samples/ as zexion-<preset>.yaml (zexion-easy.yaml, zexion-standard.yaml,
-zexion-ohko.yaml, zexion-custom.yaml), which tools/build_apworld.py copies beside the apworld.
+zexion-ohko.yaml, zexion-custom.yaml), which tools/build_apworld.py puts into each archive.
 It runs Archipelago's Options.generate_yaml_templates (what the Launcher's Generate Template
 Options runs) in .ap/Archipelago (tools/ap_checkout.py, with the world linked in), and keeps
 Zexion's preset files with LF line ends and no byte-order mark, removing a sample whose preset
@@ -23,7 +23,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from protected import ROOT
+from protected import ROOT, assert_writable
 
 AP = ROOT / ".ap" / "Archipelago"
 SAMPLES = ROOT / "samples"
@@ -83,9 +83,9 @@ def main(argv: list[str] | None = None) -> int:
     SAMPLES.mkdir(exist_ok=True)
     for old in SAMPLES.glob("*.yaml"):
         if old.name not in written:
-            old.unlink()  # a preset no longer there
+            assert_writable(old).unlink()  # a preset no longer there
     for name, text in written.items():
-        (SAMPLES / name).write_bytes(text.encode("utf-8"))
+        assert_writable(SAMPLES / name).write_bytes(text.encode("utf-8"))
     print(f"Wrote {', '.join(written)} into {SAMPLES}")
     return 0
 

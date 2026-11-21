@@ -3,8 +3,9 @@
 ``tools/release_notes.py`` puts it after the version's notes, with ``{{VERSION}}`` and
 ``{{PREVIOUS}}`` filled in and the notes' own update steps at ``{{UPDATE_STEPS}}``
 (``tests/test_release_notes.py``: the workflow publishes that). These keep it honest: every file
-it names is one the release has (the Linux helper, ``libzexion_ap.so``, among them), its links
-lead somewhere in the repo, and its game build is the setup guide's.
+it names is one the release has, as an asset (the archive for each system, and the apworld on its
+own) or in an archive (the Linux helper, ``libzexion_ap.so``, among them), its links lead
+somewhere in the repo, and its game build is the setup guide's.
 """
 
 from __future__ import annotations
@@ -24,21 +25,26 @@ def footer() -> str:
 
 
 def released_names() -> set[str]:
-    """Every file name build_apworld.py puts into dist/, so into the release."""
-    names = {"zexion.apworld", bap.HELPER.name, bap.PROXY.name, bap.LINUX_HELPER.name}
+    """Every file name in the release: its assets (build_apworld.py's dist/, the archives named
+    for the version placeholder) and what the archives hold."""
+    names = {"zexion.apworld", bap.README}
+    names |= {bap.archive_name(platform, "{{VERSION}}") for platform in bap.PLATFORMS}
+    names |= {path.name for platform in bap.PLATFORMS for path in bap.helpers(platform)}
     names |= set(bap.GUIDES.values())
     names |= {path.name for path in bap.SAMPLES.glob("*.yaml")}
     return names
 
 
 def test_every_file_it_names_is_in_the_release() -> None:
-    named = set(re.findall(r"`([\w.-]+\.(?:apworld|dll|so|md|yaml))`", footer()))
+    named = set(re.findall(r"`([\w.{}-]+\.(?:apworld|dll|so|md|yaml|zip|tar\.gz))`", footer()))
     assert {
         "zexion.apworld",
         "zexion_ap.dll",
         "version.dll",
         "libzexion_ap.so",
         "zexion-setup-guide.md",
+        "zexion-ap-{{VERSION}}-windows.zip",
+        "zexion-ap-{{VERSION}}-linux.tar.gz",
     } <= named
     assert named <= released_names(), named - released_names()
 

@@ -10,10 +10,13 @@ you need your own copy of Zexion. The code is under the [MIT license](LICENSE).
 
 ## Download
 
-Get the latest release from the [Releases page](https://github.com/mcawful/zexion-ap/releases).
-It has `zexion.apworld`, `zexion_ap.dll` and `version.dll` (the mod for Windows),
-`libzexion_ap.so` (the mod for Linux and the Steam Deck), the two player guides and a sample
-YAML for each mode (Easy, Standard, OHKO and Custom).
+Get the latest release from the [Releases page](https://github.com/mcawful/zexion-ap/releases):
+the archive for your system, `zexion-ap-<version>-windows.zip` for Windows or
+`zexion-ap-<version>-linux.tar.gz` for Linux and the Steam Deck. Each holds `zexion.apworld`, the
+mod for that system (`zexion_ap.dll` and `version.dll`, or `libzexion_ap.so`), the two player
+guides, a sample YAML for each mode (Easy, Standard, OHKO and Custom) and a short `README.md`
+with the install steps. `zexion.apworld` is also on the release on its own, for anyone who needs
+only the world to generate a game.
 
 Seeds have been played start to finish in testing.
 It supports one version of Zexion, Steam build 23943567, on Windows, Linux and the Steam Deck; if
@@ -49,7 +52,7 @@ Steam updates the game, the client tells you when your version isn't supported.
 ## Quickstart
 
 1. Install [Archipelago](https://github.com/ArchipelagoMW/Archipelago/releases) 0.6.8 or newer,
-   and download the latest release of this project (above).
+   then download the latest release's archive for your system (above) and unpack it.
 2. In the Archipelago Launcher, choose Install APWorld and pick `zexion.apworld`.
 3. Install the mod: with Zexion closed, copy `zexion_ap.dll` and `version.dll` into Zexion's
    folder (in Steam: right-click Zexion, Manage, Browse local files). The mod is required. On
@@ -62,7 +65,7 @@ Steam updates the game, the client tells you when your version isn't supported.
    player name.
 6. In Zexion, pick an empty save slot and choose **ARCHIPELAGO**.
 
-Each release comes with the full player guides: `zexion-setup-guide.md` (setup, updating,
+Each release's archives come with the full player guides: `zexion-setup-guide.md` (setup, updating,
 troubleshooting) and `zexion-game-page.md` (goals, options, what changes in the game).
 
 ## Help

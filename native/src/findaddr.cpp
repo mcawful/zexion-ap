@@ -6,10 +6,8 @@
 
 #include "findaddr_patterns.h"
 
-#ifdef _WIN32
 #include "build.h"
 #include "game_mem.h"
-#endif
 
 namespace zap::find {
 
@@ -182,7 +180,6 @@ std::string failed_names(const Found& found) {
     return names;
 }
 
-#ifdef _WIN32
 std::string find_in_image(HMODULE image, Found& found) {
     found = {};
     if (identify_build(image) == nullptr) return "not a build the helper knows";
@@ -207,6 +204,5 @@ std::string find_in_image(HMODULE image, Found& found) {
     found = find_all(code, text->VirtualAddress, game_targets());
     return "";
 }
-#endif
 
 }  // namespace zap::find

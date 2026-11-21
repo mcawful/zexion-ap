@@ -37,9 +37,10 @@ STATES = {"start": (1, 0), "random": (1, 1), "pool": (0, 1), "excluded": (0, 0)}
 # Settings bytes t (docs/re/randocells.md, "Where each setting is stored").
 FIRST_SETTING = 10  # the menu holds t10 to t73
 GUNS_FIRST, SAFETY, GATES = logic.GUNS_FIRST, logic.SAFETY, logic.GATES  # logic.Settings.of reads
-COLORIZER, RANDOM_GUN = 12, 15
+SECRET_SHUFFLE = logic.SECRET_SHUFFLE  # reach.seed_locations reads it
+RANDOM_GUN = 15
 BULK_MISSILES, BULK_BOMBS, BOX_COMPRESSION = 16, 17, 28
-X_CRYSTALS, X_BLOCKS, ABRIDGED_FINALE, DOUBLE_TELEPORT, SECRET_SHUFFLE = 30, 31, 32, 33, 37
+X_CRYSTALS, X_BLOCKS, ABRIDGED_FINALE, DOUBLE_TELEPORT = 30, 31, 32, 33
 HINTS = (18, 19, 20, 21)
 START_LOCATION = (22, 23, 24, 25, 26, 27)
 START_KEYS = (34, 35, 36)
@@ -274,7 +275,7 @@ def resolve(menu: Menu, rng: random.Random) -> tuple[list[int], list[int]]:
     return start, pool
 
 
-def as_progressive(code: int, guns_first: bool = True) -> int:
+def as_progressive(code: int, *, guns_first: bool) -> int:
     """With Guns First, an upgrade as its gun's progressive item: the world holds each gun and
     its upgrade as two copies of one item (worlds/zexion/items.py). Without it, each upgrade is
     an item of its own."""
@@ -291,7 +292,7 @@ def starting_items(menu: Menu, start: Sequence[int]) -> dict[int, int]:
     have: Counter[int] = Counter()
     for i, on in enumerate(start):
         if on:
-            have[as_progressive(MENU_CODES[i], guns_first)] += 1
+            have[as_progressive(MENU_CODES[i], guns_first=guns_first)] += 1
     a = menu.amounts
     have[ENERGY_TANK] += a[START_ENERGY]
     have[MISSILE_BOX] += a[START_MISSILES] // 10
@@ -389,7 +390,7 @@ def pool_items(menu: Menu, pool: Sequence[int], rng: random.Random) -> list[int]
             f"more than its {menu.places} places, and the game would drop some at random"
         )
     items += [rng.choice(FILLER_ODDS) for _ in range(menu.places - len(items))]
-    return [as_progressive(code, guns_first) for code in items]
+    return [as_progressive(code, guns_first=guns_first) for code in items]
 
 
 def compress(items: list[int], needed: int, filler: Iterable[int]) -> list[int]:

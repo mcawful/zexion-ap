@@ -192,6 +192,12 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build,
                                 const std::wstring& save = L"", bool write = true,
                                 const std::vector<OfflineSeed>* saved = nullptr);
 
+// The copy thread's pass, the same on both helpers (a thread of its own, started by the host): the
+// seed files read as read_offline_files does, with the copy of each seed a slot in `saved` now
+// uses written into the save folder. The last copy that could not be written, or "".
+std::string copy_pass(const std::wstring& folder, const char* build, const std::wstring& save,
+                      const SavedSeeds& saved);
+
 // Pipe thread: an `offline_put` request, "offline_put config" or "offline_put seed NAME" then
 // the file's text, checked as the reader checks it and written in place of the old one, whole
 // or not at all: "stored", "unchanged" or "error <why>". A seed that reads right is also

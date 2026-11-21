@@ -1,6 +1,6 @@
 import contextlib
+import itertools
 import random
-import types
 import unittest
 from argparse import Namespace
 from collections import Counter
@@ -22,13 +22,14 @@ from test.general import gen_steps, setup_multiworld
 from worlds.AutoWorld import call_all
 from worlds.generic.Rules import add_item_rule, exclusion_rules, locality_rules
 
-from .. import data, reach, rules
+from .. import custom, data, reach, rules
 from ..items import (
     AREA_MAP,
     DATA_DISC,
     DRAWN_AS,
     GAME,
     INTEL_CHIP,
+    KEY_CODES,
     NAMES,
     SCRAP_CHUNK,
     SCRAP_ENERGY,
@@ -53,82 +54,22 @@ from ..world import (
     NOT_HINTED,
     START_REACH,
     ZexionWorld,
+    filler_needed,
+    goal_pool,
 )
-from .bases import ZexionTestBase, every_list
-from .test_plando import generate
-
-
-def fake_world(**options: Any) -> ZexionWorld:
-    """A world with these options, every other one at its default, to run generate_early alone."""
-    world = ZexionWorld.__new__(ZexionWorld)
-    world.options = types.SimpleNamespace(
-        **{
-            name: option.from_any(options.get(name, option.default))
-            for name, option in ZexionWorld.options_dataclass.type_hints.items()
-        }
-    )
-    world.random = random.Random(1)
-    world.player = 1
-    world.multiworld = types.SimpleNamespace(get_player_name=lambda player: "Z")
-    return world
-
-
-# Standard's Random Gun draws its starting gun among these four (the Machine Gun start-only and
-# the other three pool-only in its menu; the Arc Plasma, set both ways, always goes in the pool),
-# with the start rooms each gun's starting items take (docs/re/locations.md, "Which start rooms
-# the world offers").
-STANDARD_GUNS = {
-    "Progressive Machine Gun": 17,
-    "Progressive Force Blaster": 19,  # the fresh save's draw (data.MODES)
-    "Progressive Snake": 17,
-    "Progressive Lance": 20,
-}
-
-
-def drawn_gun(world: ZexionWorld) -> str:
-    """The gun a Standard world's starting items hold."""
-    (gun,) = [NAMES[c] for c in world.start_inventory if NAMES[c] in STANDARD_GUNS]
-    return gun
-
-
-def seed_drawing(gun: str) -> int:
-    """The first seed whose Standard draw, with the default options, starts with ``gun``."""
-    for seed in range(100):
-        probe = fake_world()
-        probe.random = random.Random(seed)
-        probe.generate_early()
-        if drawn_gun(probe) == gun:
-            return seed
-    raise AssertionError(f"no seed drew the {gun}")
-
-
-def drawing(gun: str, **options: Any) -> ZexionWorld:
-    """A Standard fake_world with these options whose Random Gun drew ``gun``, generate_early
-    run. The seed is found with the default options: a start_room that suits the first draw
-    does not change it (asserted)."""
-    world = fake_world(**options)
-    world.random = random.Random(seed_drawing(gun))
-    world.generate_early()
-    assert drawn_gun(world) == gun, (gun, options)
-    return world
-
-
-class RefusalTestCase(unittest.TestCase):
-    def refused(self, start_inventory: dict[str, int] | None = None, **options: Any) -> str:
-        """The error generate_early refuses these options with."""
-        with self.assertRaises(OptionError) as caught:
-            fake_world(start_inventory=start_inventory or {}, **options).generate_early()
-        return str(caught.exception)
-
-
-def disks(mode: str = "standard", placed: int = 20, required: int = 15) -> dict[str, Any]:
-    """Options for the OS Install Disks goal."""
-    return {
-        "mode": mode,
-        "goal": "os_install_disks",
-        "os_install_disks": placed,
-        "os_install_disks_required": required,
-    }
+from .bases import (
+    STANDARD_GUNS,
+    RefusalTestCase,
+    ZexionTestBase,
+    disks,
+    drawing,
+    drawn_gun,
+    every_list,
+    fake_world,
+    generate,
+    pool_names,
+    seed_drawing,
+)
 
 
 def two_zexion_players(options: dict[str, Any]) -> MultiWorld:
@@ -1152,10 +1093,6 @@ class TestAssistUnlockStaysOutOfItsOwnWorld(ZexionTestBase):
                 self.assertTrue(location.can_fill(state, scrap, check_access=False))
 
 
-def pool_names(test: ZexionTestBase) -> list[str]:
-    return [i.name for i in test.multiworld.itempool if i.player == test.player]
-
-
 def own_locations(test: ZexionTestBase, name: str) -> list[int]:
     """The location indices holding this player's item ``name`` (one player in these tests)."""
     found = test.multiworld.find_item_locations(name, test.player)
@@ -1328,6 +1265,69 @@ class TestDiscOptionsChecked(unittest.TestCase):
         # is not the Energy Shield.
         items = {c for entries in every_list() for c, _ in entries if c < FIRST_SPECIAL}
         self.assertFalse(items & (set(DISC_REPLACES) | {27, 28, 29, 30, 44}))
+
+
+class TestGoalPool(unittest.TestCase):
+    """``goal_pool``, which create_items and start_problems shape the pool with, and
+    ``filler_needed``, which fit_pool makes the pool fit by."""
+
+    def test_the_core_goal_only_leaves_the_locations_out(self) -> None:
+        codes = [*KEY_CODES, SCRAP_METAL, AREA_MAP, SCRAP_METAL]
+        self.assertEqual(goal_pool(codes, 0, None), codes)
+        self.assertEqual(goal_pool(codes, 2, None), [*KEY_CODES, AREA_MAP])  # Scrap first
+
+    def test_the_disks_take_the_keys_places_first_and_the_shields_last(self) -> None:
+        codes = [*KEY_CODES, SCRAP_METAL, AREA_MAP, custom.ENERGY_SHIELD]
+        self.assertEqual(
+            Counter(goal_pool(codes, 0, 0)), {SCRAP_METAL: 5, AREA_MAP: 1, custom.ENERGY_SHIELD: 1}
+        )
+        left_after = {
+            2: {SCRAP_METAL: 3, AREA_MAP: 1, custom.ENERGY_SHIELD: 1},
+            5: {AREA_MAP: 1, custom.ENERGY_SHIELD: 1},  # the Scrap, keys' places included, gone
+            6: {custom.ENERGY_SHIELD: 1},
+            7: {},
+        }
+        for placed, left in left_after.items():
+            self.assertEqual(Counter(goal_pool(codes, 0, placed)), {**left, DATA_DISC: placed})
+
+    def test_filler_needed(self) -> None:
+        codes = [*KEY_CODES, custom.ENERGY_SHIELD, custom.ENERGY_SHIELD, SCRAP_METAL]
+        self.assertEqual(filler_needed(codes, 3, None), 3)
+        self.assertEqual(filler_needed(codes, 3, 1), 3)  # the spare (6) covers it
+        self.assertEqual(filler_needed(codes, 3, 10), 7)  # 3 and 4 more than the spare
+
+    def test_it_raises_only_below_the_filler_needed(self) -> None:
+        # Four keys and two shields are spare: 6 disks need no filler past the locations left out.
+        for left_out in (0, 5):
+            codes = [*KEY_CODES, *[custom.ENERGY_SHIELD] * 2, *[SCRAP_METAL] * left_out]
+            self.assertEqual(filler_needed(codes, left_out, 6), left_out)
+            self.assertEqual(Counter(goal_pool(codes, left_out, 6)), {DATA_DISC: 6})
+            self.assertEqual(filler_needed(codes, left_out, 7), left_out + 1)
+            with self.assertRaises(StopIteration):
+                goal_pool(codes, left_out, 7)
+
+    def test_it_never_raises_once_the_filler_needed_is_met(self) -> None:
+        # Drawn pools of every preset, with the locations left out and the disks of each case,
+        # made to hold the filler it needs where compression can (as fit_pool does).
+        cases = list(itertools.product((0, 1, 7, 15, 40), (None, 1, 16, 30)))
+        made_any = 0
+        for mode in ("easy", "standard", "ohko"):
+            menu = custom.Menu.preset(mode)
+            for seed in range(25):
+                rng = random.Random(seed)
+                drawn = custom.pool_items(menu, custom.resolve(menu, rng)[1], rng)
+                for left_out, placed in cases:
+                    needed = filler_needed(drawn, left_out, placed)
+                    try:
+                        codes = custom.compress(drawn, needed, FILLER_ORDER)
+                    except custom.PoolError:
+                        continue
+                    made = goal_pool(codes, left_out, placed)
+                    made_any += 1
+                    self.assertEqual(len(made), len(codes) - left_out, (mode, seed, left_out))
+                    self.assertEqual(made.count(DATA_DISC), placed or 0)
+                    self.assertEqual(any(c in KEY_CODES for c in made), placed is None)
+        self.assertGreater(made_any, 1000)  # most cases are pools the filler is enough for
 
 
 class TestDrawsFitTheStartOptions(unittest.TestCase):

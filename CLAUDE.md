@@ -130,7 +130,8 @@ helper also built and tested in the Steam Runtime's SDK (`native-linux-runtime`,
 (`native-linux-runtime-check`, "Linux helper (Steam Runtime) loads": `tools/build_apworld.py
 --check-linux-helper`, then `tests/test_native_linux.py` and
 `tests/test_native_linux_init_order.py` against that build), and a dry run of the release's build
-with it (`release-dry-run`, "release build, dry run"). A pull request into `main` also runs the release gate
+with it (`release-dry-run`, "release build, dry run", which keeps what it built as the
+`release-dry-run` artifact for 7 days). A pull request into `main` also runs the release gate
 (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
@@ -207,7 +208,7 @@ game or save folders.
 | `save_lab.py slots`, `backup`, `copy`, `diff`, `patch` | saves, on copies (`/save-lab`); `slots` lists a save deleted in the game as empty: it keeps its data, but the game marks it empty | no |
 | `save_lab.py install`, `restore` | write the save folder, and refuse while the game runs; `install` fills an empty slot, a deleted save's too | **yes: ask** |
 | `memscan.py find`, `snap`, `cmp`, `read`, `classify`, `record` | search live memory (`/find-address`) | no |
-| `memscan.py write ADDR HEX --yes` | write live memory | **yes: ask** |
+| `memscan.py write ADDR HEX --yes` | write live memory (logs to `lab/memscan.jsonl`) | **yes: ask** |
 | `grant.py show`, `watch` | the live inventory by name | no |
 | `grant.py set ITEM VALUE --expect N --yes` | grant by hand (inventory byte only; logs to `lab/grants.jsonl`) | **yes: ask** |
 | `helper.py status` | is the helper loaded; its frame rate (on Linux, the Linux helper's, and whether the game's memory reads through it) | no |
@@ -216,10 +217,10 @@ game or save folders.
 | `game_data.py NAMES --exe` | copy game data into `lab/data/<exe-hash-12>/` | no |
 | `make_pattern.py EXE RVA` | candidate byte patterns | no |
 | `randocells.py SAVE --fresh` | reachable locations of a new seed | no |
-| `gen_world_data.py` | regenerate `worlds/zexion/data.py` | no |
+| `gen_world_data.py [--backup FOLDER]` | regenerate `worlds/zexion/data.py` (Easy's and Standard's fresh saves come from a `lab/backups/` folder, `--backup`) | no |
 | `gen_native_patterns.py [--check]` | regenerate `native/src/findaddr_patterns.h` from `client/patterns.py` (after any change to it) | no |
 | `gen_sample_yamls.py` | regenerate `samples/` (needs `.ap/`) | no |
-| `build_apworld.py` | a release into `dist/` | no |
+| `build_apworld.py` | a release into `dist/`: the apworld and an archive for each system | no |
 | `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF`, and its notes are written | no |
 | `release_notes.py [VERSION] [--previous TAG] [--notes FILE] [--out FILE]` | the release's message, to check before it is published | no |
 
@@ -237,17 +238,26 @@ those folders.
 
 ## Releases and versions
 
-`tools/build_apworld.py` writes into `dist/`: `zexion.apworld` (the world without its tests, with
-`client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, `libzexion_ap.so` (the Linux
-helper, as the release workflow builds it in the Steam Runtime's SDK), and the player guides
-`zexion-setup-guide.md` and `zexion-game-page.md` (copies of `worlds/zexion/docs/setup_en.md` and
-`en_Zexion.md`, which name each other by those names), and the sample YAMLs from `samples/`, one
-per mode. It packs only git-tracked files and refuses missing, stale or mismatched DLLs or Linux
+`tools/build_apworld.py` writes the release's three files into `dist/`: `zexion.apworld` (the
+world without its tests, with `client` as `worlds.zexion.client`), on its own for anyone who needs
+only the world, and an archive for each system, `zexion-ap-<version>-windows.zip` and
+`zexion-ap-<version>-linux.tar.gz` (Linux and the Steam Deck). Each unpacks into a folder of its
+own name and holds `zexion.apworld`, the mod for that system (`zexion_ap.dll` and `version.dll`, or
+`libzexion_ap.so`, the Linux helper as the release workflow builds it in the Steam Runtime's SDK,
+marked executable in the tarball), the player guides `zexion-setup-guide.md` and
+`zexion-game-page.md` (copies of `worlds/zexion/docs/setup_en.md` and `en_Zexion.md`, which name
+each other by those names), the sample YAMLs from `samples/`, one per mode, and a `README.md`
+made at build time from the setup guide's section for that system ("Install", or "Linux and Steam
+Deck"), never kept by hand. It makes and reads back each archive before it writes anything, dates
+every file by `SOURCE_DATE_EPOCH` or else the commit's time (two builds of one commit are the
+same bytes), and refuses an `--out` holding any other file. It packs only git-tracked
+files and refuses missing, stale or mismatched DLLs or Linux
 helper, a Linux helper that would not load in the Steam Runtime (a glibc symbol version newer
 than its 2.31, an unnumbered one such as `GLIBC_PRIVATE`, or a version of any library but glibc's:
 `libc`, `libm`, `ld-linux`, and `libdl`, `libpthread` and `librt`, which 2.31 keeps out of `libc`;
-so no libstdc++, whose runtime is linked in), a mismatched `world_version`, and samples that are
-missing, untracked or for another version (its docstring): rebuild `native/` first.
+so no libstdc++, whose runtime is linked in), a mismatched `world_version`, samples that are
+missing, untracked or for another version, and a setup guide without a README's section (its
+docstring): rebuild `native/` first.
 `--check-linux-helper PATH` checks one Linux helper alone, as the build would, and builds nothing.
 Run locally, the builder needs a Linux helper it accepts: Windows can't build one, and a build on
 a newer distribution is refused when it asks for a newer glibc (one on glibc 2.44 asked for 2.38),
@@ -329,23 +339,32 @@ rebuild 1.0.0's published message (the later ones carry an install guide that ha
   `version.dll`; in `linux/`, the Linux helper `libzexion_ap.so`, which also builds the sources of
   `src/` it shares (`Game`, through `src/platform.h`) and configures itself from the game's own
   symbols at every start, like the Windows helper from its scan (stand-in tests only, not yet run
-  in the game from a first start). What each does: [`native/README.md`](native/README.md), and
-  [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms".
+  in the game from a first start). The helpers share, in `src/`: the requests that act on the game
+  and which of them set something a client's going puts back (`game_requests.cpp`), what the
+  serving thread hands the game's thread of the seeds (`offline_inbox.cpp`), `Game::client_gone`
+  and the frame's watch order (`Game::watch_rest`), and the seed files (`offline.cpp`, over a file
+  system a platform: `offline_fs_win.cpp`, `offline_fs_posix.cpp`); the Windows helper's own seed
+  state, scan and copy thread are `host_offline.cpp`. What each does:
+  [`native/README.md`](native/README.md), and [`docs/DEVELOPING.md`](docs/DEVELOPING.md),
+  "Platforms".
 - `samples/`: the release's sample YAMLs, one per mode: Archipelago's template of each of the
   world's presets (`web_world.py`, `options_presets`), Easy's, Standard's and OHKO's without
   Custom mode's own options, written by `tools/gen_sample_yamls.py`;
   `worlds/zexion/test/test_samples.py` fails while one is out of date (after a change to the
   options, their descriptions or the version: run the tool again).
 - `tools/`: RE and save tooling, and the release builder and its checks. `tools/protected.py`
-  defines the protected folders (for the tools and the write guard) and `append_log`.
+  defines the protected folders (for the tools and the write guard) and `append_log`;
+  `tools/versions.py` reads the release version and the versions the release tools are given.
 - `docs/re/`: the reverse-engineering record.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a binary of B1's
   symbols, a `/proc`, `Answering` for a helper that answers by script and keeps its requests,
   `LinuxPm` for the Linux helper's connection, the client's context on Archipelago's stand-ins:
   `zc`, `context`, `stepping`; a seed's plan, a fresh save). `test_ticks_linux.py` holds the
-  Linux build's ticks, helper and poll. `test_cross_checks.py` reads `native/src` and `native/linux/src` for what the
-  client and the helpers must agree on (version, builds, `config` keys, the request names and the
+  Linux build's ticks, helper and poll. `test_cross_checks.py` reads `native/src` and
+  `native/linux/src` (through `native_source.py`, which knows where the sources are and which
+  files each platform builds) for what the client and the helpers must agree on (version, builds,
+  `config` keys, the request names and the
   replies the client branches on, the offline seed's header and keys, the label separator, the
   font's punctuation, the item record count, the flags and layouts both read), and the world's
   `world_version`. `test_gen_native_patterns.py` fails while `native/src/findaddr_patterns.h` is out of
@@ -392,16 +411,18 @@ Committed under `.claude/`, so they apply to anyone working here:
   call through, so the guard's own protection is its deadline of about a second, which blocks
   when it runs out. It answers within about a second (two at most: one read, the lexing of one
   word and the scan for heredocs are not interrupted): a command
-  over 100,000 characters is blocked unread; one over a size budget (many different words,
-  counting a word with a wildcard and each redirect target for more, many commands, or many
-  different folders a `cd` goes to) counts as reaching a protected folder, so only a read-only
-  one passes; and one that takes over a second to read is blocked (the lexer, the heredoc pass
-  and each read of a word or pattern look at the clock). A long commit message or PR body is
-  one word to it, a script counts its different words against the budget (a word with a
-  wildcard for more, at most 125), and long text goes to a file with the Write tool. More than
-  32 heredocs, or a heredoc saved to or copied to more than 64 files, count as code (they are
-  not cut out as data). `deny` rules for Edit and Write back it up for the save folder, the
-  game install and the cloud cache (not the offline files); only the game-install one has been
+  over `MAX_COMMAND` characters is blocked unread; one over a size budget (`MAX_WORK`: many
+  different words, counting a word with a wildcard and each redirect target for more;
+  `MAX_SEGMENTS`: many commands; `MAX_FOLDERS`: many different folders a `cd` goes to) counts as
+  reaching a protected folder, so only a read-only one passes; and one that takes over `DEADLINE`
+  to read is blocked (the lexer, the heredoc pass and each read of a word or pattern look at the
+  clock). A long commit message or PR body is one word to it, a script counts its different words
+  against the budget, and long text goes to a file with the Write tool. More than `MAX_HEREDOCS`
+  heredocs, or a heredoc saved to or copied to more than `MAX_SAVED_NAMES` files, count as code
+  (they are not cut out as data). The links in a command's words are followed only for its first
+  `MAX_LINK_WORDS` different words (a known gap: every word is still read for a parent of a
+  protected folder). The values are at the top of `guard_protected.py`, with what each limit
+  does. `deny` rules for Edit and Write back it up for the save folder, the game install and the cloud cache (not the offline files); only the game-install one has been
   seen to fire.
   `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist runs `git status`, `diff`,
   `log` and `show`, the read-only forms of `git branch` (bare, `-a`, `-r`, `-v`, `-vv`,

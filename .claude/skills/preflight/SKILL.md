@@ -23,7 +23,7 @@ helper's build, its ctest tests, and `tests/test_native_linux.py` and
 SDK, as a release builds it), a `native-linux-runtime-check` job (that build checked as a
 release checks it, `tools/build_apworld.py --check-linux-helper`, then those two Python files run
 against it) and a Windows `release-dry-run` job (the release's build with that artifact, into a
-scratch folder) that preflight does not run.
+scratch folder, kept as the `release-dry-run` artifact for 7 days) that preflight does not run.
 Locally, `tests/test_native_linux.py` skips unless `native/build/` holds
 `libzexion_ap.so`, `libzexion_ap_hooktest.so` and `zap_fake_game` (or `ZEXION_NATIVE_BUILD`
 names another build folder); build them as `CLAUDE.md` ("Checks") shows when `native/linux/` or

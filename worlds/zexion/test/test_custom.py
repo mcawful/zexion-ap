@@ -22,8 +22,16 @@ from ..custom import (
 from ..items import NAMES
 from ..locations import LOCATION_ID_BASE
 from ..options import CustomItems
-from .bases import FLAGGED, ZexionTestBase
-from .test_world import STANDARD_GUNS, RefusalTestCase, drawing, drawn_gun, fake_world, pool_names
+from .bases import (
+    FLAGGED,
+    STANDARD_GUNS,
+    RefusalTestCase,
+    ZexionTestBase,
+    drawing,
+    drawn_gun,
+    fake_world,
+    pool_names,
+)
 
 FILLER = {46, 47, 48, 49, 50}
 ENTRY = {name: i for i, (name, _) in enumerate(custom.MENU_ITEMS)}
@@ -886,7 +894,7 @@ class EveryStartFills(ZexionTestBase):
                     self.assertTrue(self.multiworld.fulfills_accessibility())
 
 
-class TestTheLogicReviewsFindings(unittest.TestCase):
+class TestTheCoresListsAreJudgedWithTheStart(unittest.TestCase):
     def test_the_cores_own_lists_are_judged_with_the_start(self) -> None:
         # Into the core: code 51 (Wall Jump Boots with G-Diffuser or Gravity Harness, or the
         # Zenith Thrusters) or the Jump Booster (data.CORE).

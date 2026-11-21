@@ -11,19 +11,11 @@
 #include <cstring>
 #include <vector>
 
+#include "../../tests/check.h"
 #include "mapmarks.h"
 #include "text.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        ++g_failures;
-        std::printf("FAIL: %s\n", what);
-    }
-}
 
 // B1's two tests, as the game has them (PowerUpMoveProc, 0x53DB6C and 0x53DC7E), and how far
 // past each its minor write is.
@@ -155,6 +147,5 @@ void test_the_text_cut_patch_cuts_every_row_as_the_first() {
 int main() {
     test_the_seen_marker_patch_makes_item_48_a_major_and_nothing_else();
     test_the_text_cut_patch_cuts_every_row_as_the_first();
-    if (g_failures == 0) std::printf("patch: all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("patch");
 }

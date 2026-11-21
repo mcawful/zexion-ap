@@ -71,11 +71,9 @@ std::string failure_of(const Found& found, const std::string& refusal);
 // The names of the targets in `found.failed`, comma-separated: "" if none.
 std::string failed_names(const Found& found);
 
-#ifdef _WIN32
 // "" if `image`, the game's loaded exe, is a build the helper knows (build.h) and its .text was
 // read and scanned for game_targets(), `found` then holding the result; else why it was not (and
 // `found` empty). Any thread; never under the loader lock.
 std::string find_in_image(HMODULE image, Found& found);
-#endif
 
 }  // namespace zap::find

@@ -47,17 +47,7 @@ bool Mailbox::call(std::function<std::string()> work, DWORD timeout_ms, std::str
     return true;
 }
 
-void Mailbox::serve() {
-    int expected = kPending;
-    if (!state_.compare_exchange_strong(expected, kRunning, std::memory_order_acq_rel)) return;
-    try {
-        result_ = work_();
-    } catch (const std::exception& e) {
-        result_ = std::string("error ") + e.what();
-    } catch (...) {
-        result_ = "error exception";
-    }
-    state_.store(kDone, std::memory_order_release);
+void Mailbox::signal_done() {
     {
         std::lock_guard<std::mutex> lock(lock_);
         signaled_ = true;

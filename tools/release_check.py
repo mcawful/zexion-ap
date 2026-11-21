@@ -27,22 +27,13 @@ publishing, against the latest release).
 from __future__ import annotations
 
 import argparse
-import re
 import subprocess
 import sys
 from pathlib import Path
 
-from build_apworld import client_version, version_in
 from protected import ROOT
 from release_notes import problems as notes_problems
-
-
-def parse(text: str) -> tuple[int, ...]:
-    """``0.29.0`` or ``v0.29.0`` as a tuple of numbers; ValueError for anything else."""
-    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", text.strip())
-    if not match:
-        raise ValueError(f"not a version: {text!r}")
-    return tuple(int(part) for part in match.groups())
+from versions import client_version, parse, version_in
 
 
 def version_at(ref: str, repo: Path = ROOT) -> str:

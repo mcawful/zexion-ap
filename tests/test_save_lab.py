@@ -42,8 +42,8 @@ def saves(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def test_empty_template_is_the_shared_content(saves: Path) -> None:
     template_hash = save_lab.empty_template_hash()
-    assert save_lab.is_empty_slot(saves / "Save Game 2.sav", template_hash)
-    assert not save_lab.is_empty_slot(saves / "Save Game 1.sav", template_hash)
+    assert save_lab.slot_state(saves / "Save Game 2.sav", template_hash) in save_lab.EMPTY_STATES
+    assert save_lab.slot_state(saves / "Save Game 1.sav", template_hash) == save_lab.IN_USE
 
 
 def test_no_template_when_too_few_slots_agree(saves: Path) -> None:
@@ -140,8 +140,14 @@ def _backups(tmp_path: Path) -> list[Path]:
     return sorted((tmp_path / "lab" / "backups").iterdir())
 
 
-def test_install_refuses_a_backup_older_than_12_hours(saves: Path, tmp_path: Path) -> None:
+def _install_refused(saves: Path, tmp_path: Path, slot: int = 3) -> None:
+    """``install`` into the empty slot is refused, and the slot is left as it was."""
     patched = _patched(tmp_path)
+    assert save_lab.main(["install", str(patched), str(slot), "--yes"]) == 1
+    assert (saves / f"Save Game {slot}.sav").read_bytes() == template()
+
+
+def test_install_refuses_a_backup_older_than_12_hours(saves: Path, tmp_path: Path) -> None:
     old = save_lab.backup()
     age = save_lab.BACKUP_MAX_AGE_HOURS * 3600 + 60
 
@@ -149,39 +155,32 @@ def test_install_refuses_a_backup_older_than_12_hours(saves: Path, tmp_path: Pat
         manifest["created"] -= age
 
     _edit_manifest(old, make_old)
-    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
-    assert (saves / "Save Game 3.sav").read_bytes() == template()
+    _install_refused(saves, tmp_path)
     save_lab.backup()  # a fresh one is enough
-    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 0
+    assert save_lab.main(["install", str(_patched(tmp_path)), "3", "--yes"]) == 0
 
 
 def test_install_refuses_a_slot_changed_since_the_backup(saves: Path, tmp_path: Path) -> None:
-    patched = _patched(tmp_path)
     (saves / "Save Game 4.sav").write_bytes(b"x" * SIZE)
     save_lab.backup()
     (saves / "Save Game 4.sav").write_bytes(template())  # emptied after the backup
-    assert save_lab.main(["install", str(patched), "4", "--yes"]) == 1
-    assert (saves / "Save Game 4.sav").read_bytes() == template()
+    _install_refused(saves, tmp_path, slot=4)
 
 
 def test_install_refuses_a_manifest_without_the_slot_as_it_is(saves: Path, tmp_path: Path) -> None:
-    patched = _patched(tmp_path)
     backup = save_lab.backup()
 
     def misstate_slot_3(manifest: dict) -> None:
         manifest["files"]["Save Game 3.sav"] = "0" * 64
 
     _edit_manifest(backup, misstate_slot_3)  # the copy itself still matches the slot
-    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
-    assert (saves / "Save Game 3.sav").read_bytes() == template()
+    _install_refused(saves, tmp_path)
 
 
 def test_install_refuses_a_backup_copy_unlike_its_manifest(saves: Path, tmp_path: Path) -> None:
-    patched = _patched(tmp_path)
     backup = save_lab.backup()
     (backup / "Save Game 3.sav").write_bytes(b"y" * SIZE)  # the manifest still holds the slot
-    assert save_lab.main(["install", str(patched), "3", "--yes"]) == 1
-    assert (saves / "Save Game 3.sav").read_bytes() == template()
+    _install_refused(saves, tmp_path)
 
 
 def test_a_save_write_that_reads_back_wrong_fails(
@@ -483,7 +482,10 @@ def test_slots_shows_a_deleted_save_as_empty(
     assert lines["Save Game 2"].endswith("  empty")
     assert lines["Save Game 1"].endswith("  IN USE")
     assert lines["Save Game 6"].endswith("  IN USE")
-    assert save_lab.is_empty_slot(saves / "Save Game 5.sav", save_lab.empty_template_hash())
+    assert (
+        save_lab.slot_state(saves / "Save Game 5.sav", save_lab.empty_template_hash())
+        == save_lab.DELETED
+    )
 
 
 @pytest.mark.parametrize("size", [RANDO_SIZE, 75_794], ids=["randomizer", "normal"])
@@ -535,7 +537,10 @@ def test_a_short_or_odd_file_is_never_empty(saves: Path, tmp_path: Path, data: b
     patched = _patched(tmp_path)
     (saves / "Save Game 5.sav").write_bytes(data)
     save_lab.backup()
-    assert not save_lab.is_empty_slot(saves / "Save Game 5.sav", save_lab.empty_template_hash())
+    assert (
+        save_lab.slot_state(saves / "Save Game 5.sav", save_lab.empty_template_hash())
+        not in save_lab.EMPTY_STATES
+    )
     assert save_lab.main(["install", str(patched), "5", "--yes"]) == 1
     assert (saves / "Save Game 5.sav").read_bytes() == data
 
@@ -547,7 +552,10 @@ def test_an_unreadable_slot_is_in_use(
     lines = _slot_lines(capsys)
     assert lines["Save Game 7"].endswith("  IN USE (unreadable)")
     assert lines["Save Game 2"].endswith("  empty")  # the others still listed
-    assert not save_lab.is_empty_slot(saves / "Save Game 7.sav", save_lab.empty_template_hash())
+    assert (
+        save_lab.slot_state(saves / "Save Game 7.sav", save_lab.empty_template_hash())
+        == save_lab.UNREADABLE
+    )
     save_lab.backup()
     assert save_lab.main(["install", str(_patched(tmp_path)), "7", "--yes"]) == 1
     assert (saves / "Save Game 7.sav").is_dir()

@@ -1,7 +1,30 @@
-"""Build a release: the world and its client in ``zexion.apworld``, beside the two helper DLLs,
-the Linux helper, the player guides and the sample YAMLs.
+"""Build a release: the world and its client in ``zexion.apworld``, and an archive for each
+system with what a player there needs to start.
 
     .venv/Scripts/python tools/build_apworld.py [--out dist]
+
+It writes three files into ``--out``, the release's assets (``.github/workflows/release.yml``
+publishes them as they are):
+
+- ``zexion.apworld``, on its own, for anyone who needs only the world (to generate a game);
+- ``zexion-ap-<version>-windows.zip``, for Windows;
+- ``zexion-ap-<version>-linux.tar.gz``, for Linux and the Steam Deck.
+
+Each archive unpacks into a folder of its own name without the extension
+(``zexion-ap-<version>-windows/``) holding ``zexion.apworld``, the mod for that system
+(``helpers``: ``zexion_ap.dll`` and ``version.dll``, or ``libzexion_ap.so``, which the tarball
+marks executable, 0755, whatever the file's own mode: the release is built on Windows), the
+player guides (GUIDES),
+the sample YAMLs and a ``README.md``. The README is made here, never kept by hand: a title naming
+the version and the system, a line sending the player to the setup guide, then the setup guide's
+own section for that system as it is (PLATFORMS: "Install" for Windows, "Linux and Steam Deck" for
+Linux), so it says what the guide says; a guide without that section stops the build. Each
+archive is made in memory and read back, and one whose files or modes are not these stops the
+build, all before anything is written: a refused build leaves ``--out`` as it was. So does an
+``--out`` holding any file but these three (an earlier build's, or another version's), since the
+release publishes all it holds: remove them, or build into another folder. Every file in them is
+dated by ``SOURCE_DATE_EPOCH`` if set, else the commit's time (``build_time``), and the zip and
+gzip headers too, so two builds of one commit are the same bytes.
 
 The apworld is the world package (``worlds/zexion``, without its tests) with the client package
 (``client/*.py``, its ``__init__.py`` included) in ``zexion/client/``, so it is the subpackage
@@ -9,10 +32,9 @@ The apworld is the world package (``worlds/zexion``, without its tests) with the
 (``worlds/zexion/__init__.py``, ``run_client``). Archipelago's launcher installs the apworld;
 the player copies ``zexion_ap.dll`` and ``version.dll`` into Zexion's folder (the setup guide),
 or on Linux ``libzexion_ap.so`` with the game's launch options, which only the player does: no
-tool here writes there. The player guides go beside them as
-plain files (GUIDES), so a player has them with the download: ``zexion-setup-guide.md`` and
-``zexion-game-page.md``, copies of ``worlds/zexion/docs/setup_en.md`` and ``en_Zexion.md``. So
-do the sample YAMLs, one per mode, as they are in ``samples/`` (tools/gen_sample_yamls.py):
+tool here writes there. The player guides are ``zexion-setup-guide.md`` and
+``zexion-game-page.md``, copies of ``worlds/zexion/docs/setup_en.md`` and ``en_Zexion.md``. The
+sample YAMLs, one per mode, are as they are in ``samples/`` (tools/gen_sample_yamls.py):
 ``zexion-easy.yaml``, ``zexion-standard.yaml``, ``zexion-ohko.yaml`` and ``zexion-custom.yaml``.
 
 The DLLs are the CMake Release builds (``native/build``), and the Linux helper the Linux
@@ -29,9 +51,9 @@ the runtime's (GLIBC_MAX, the sniper runtime's 2.31), no glibc version but a num
 ``--check-linux-helper PATH`` runs those checks, and the version's, on one file alone (CI's
 Steam Runtime build). It also refuses a
 manifest (``worlds/zexion/archipelago.json``) that does not name the game Zexion or whose
-``world_version`` is not ``VERSION`` (a release has one number), and two files that would
-share a name in the apworld, no sample YAML, and a sample that requires another version of the
-world than ``VERSION`` (made before the version was raised: run gen_sample_yamls.py again).
+``world_version`` is not ``VERSION`` (a release has one number), two files that would share a
+name in the apworld or in an archive, no sample YAML, and a sample that requires another version
+of the world than ``VERSION`` (made before the version was raised: run gen_sample_yamls.py again).
 
 The apworld's ``archipelago.json`` is the world's, with the container keys Archipelago's own
 builder adds (CONTAINER_KEYS; docs/DEVELOPING.md, "Branches and releases", says why). Reads
@@ -43,15 +65,21 @@ folder (``tools/protected.py``). Only files git tracks are packed: an untracked 
 from __future__ import annotations
 
 import argparse
+import gzip
+import io
 import json
+import os
 import re
-import shutil
 import subprocess
 import sys
+import tarfile
+import time
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from protected import ROOT, assert_writable
+from versions import client_version
 
 sys.path.insert(0, str(ROOT))  # the client package
 from client import elf  # noqa: E402
@@ -81,29 +109,43 @@ GLIBC_LIBRARIES = {
     "librt.so.1",
 }
 SKIP_DIRS = {"__pycache__", "test"}
-# The player guides, copied beside the apworld under these names (setup_en.md names the game
-# page's file, and en_Zexion.md the setup guide's).
+# The player guides, put into each archive under these names (setup_en.md names the game page's
+# file, and en_Zexion.md the setup guide's).
+SETUP_GUIDE = WORLD / "docs" / "setup_en.md"
 GUIDES = {
-    WORLD / "docs" / "setup_en.md": "zexion-setup-guide.md",
+    SETUP_GUIDE: "zexion-setup-guide.md",
     WORLD / "docs" / "en_Zexion.md": "zexion-game-page.md",
 }
-SAMPLES = ROOT / "samples"  # the sample YAMLs, copied beside the apworld as they are
+SAMPLES = ROOT / "samples"  # the sample YAMLs, put into each archive as they are
+
+
+@dataclass(frozen=True)
+class Platform:
+    """One system's archive: its file's extension, the system as its README names it, and the
+    setup guide's section (its ``## `` heading) the README copies."""
+
+    suffix: str
+    system: str
+    section: str
+
+
+PLATFORMS = {
+    "windows": Platform(".zip", "Windows", "Install"),
+    "linux": Platform(".tar.gz", "Linux and the Steam Deck", "Linux and Steam Deck"),
+}
+FILE_MODE, EXECUTABLE = 0o644, 0o755  # the modes the tarball gives its files, and the .so
+README = "README.md"
+APWORLD = "zexion.apworld"
+README_INTRO = (
+    "How to install it, from the setup guide, `zexion-setup-guide.md` in this folder. The guide "
+    'has the rest, with each of its sections named here ("the setup guide\'s ..."): what you '
+    "need, making your YAML, generating and hosting, playing, updating and troubleshooting. The "
+    "game page, `zexion-game-page.md`, has the goals and options."
+)
 MANIFEST = "zexion/archipelago.json"
 # The keys APWorldContainer.get_manifest() gives in AP 0.6.8 besides "game", which the world's
 # has, merged as worlds/LauncherComponents.py's Build APWorlds does.
 CONTAINER_KEYS = {"version": 7, "compatible_version": 7}
-
-
-def version_in(text: str, where: str) -> str:
-    """The ``VERSION`` that ``text``, client/native.py here or at a commit (``where``), sets."""
-    match = re.search(r'^VERSION = "([0-9.]+)"', text, re.M)
-    if not match:
-        raise SystemExit(f"{where} has no VERSION")
-    return match.group(1)
-
-
-def client_version() -> str:
-    return version_in((CLIENT / "native.py").read_text(encoding="utf-8"), "client/native.py")
 
 
 def helper_has_version(dll: Path, version: str) -> bool:
@@ -210,7 +252,8 @@ def sample_files(version: str) -> list[Path]:
     return files
 
 
-def build(out: Path) -> Path:
+def build(out: Path) -> list[Path]:
+    """The release's assets in ``out``: the apworld, then each platform's archive."""
     info = manifest()
     version = client_version()
     if info.get("world_version") != version:
@@ -227,38 +270,170 @@ def build(out: Path) -> Path:
             raise SystemExit(f"{dll.name} is older than {listed}: rebuild native/")
     if not helper_has_version(HELPER, version):
         raise SystemExit(f"the built helper is not version {version}: rebuild native/")
-    if not helper_has_version(LINUX_HELPER, version):
-        raise SystemExit(f"the built Linux helper is not version {version}: rebuild native/")
-    problem = linux_helper_problem(LINUX_HELPER)
+    problem = check_linux_helper(LINUX_HELPER, version)
     if problem:
-        raise SystemExit(f"{LINUX_HELPER.name} would not load in the Steam Runtime: {problem}")
+        raise SystemExit(f"{LINUX_HELPER.name}: {problem}: rebuild native/")
     files = packed_files()  # the guides among them: tracked
     samples = sample_files(version)
     names = [name for _, name in files] + [MANIFEST]
     if len(names) != len(set(names)):
         raise SystemExit("two files would share a name in the apworld")
+    stamp = build_time()
+    entries = [(name, path.read_bytes(), FILE_MODE) for path, name in files]
+    entries.append((MANIFEST, json.dumps(info, indent=4).encode("utf-8"), FILE_MODE))
+    # Everything is made, and each archive read back, before anything is written.
+    assets = {APWORLD: zip_bytes(entries, stamp)}
+    shared = [(APWORLD, assets[APWORLD], FILE_MODE)]
+    shared += [(name, path.read_bytes(), FILE_MODE) for path, name in GUIDES.items()]
+    shared += [(path.name, path.read_bytes(), FILE_MODE) for path in samples]
+    for platform in PLATFORMS:
+        mod = [
+            (p.name, p.read_bytes(), EXECUTABLE if p.suffix == ".so" else FILE_MODE)
+            for p in helpers(platform)
+        ]
+        contents = [(README, readme(platform, version).encode("utf-8"), FILE_MODE), *mod, *shared]
+        name, data = archive(platform, version, contents, stamp)
+        assets[name] = data
     out = assert_writable(out)
+    if out.is_dir():
+        others = sorted(p.name for p in out.iterdir() if p.name not in assets)
+        if others:
+            raise SystemExit(
+                f"{out} holds files that are not this release's: {', '.join(others)} (remove "
+                "them, or build into another --out): the release publishes all it holds"
+            )
     out.mkdir(parents=True, exist_ok=True)
-    apworld = out / "zexion.apworld"
-    with zipfile.ZipFile(apworld, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path, name in files:
-            zf.write(path, name)
-        zf.writestr(MANIFEST, json.dumps(info, indent=4))
-    for dll in dlls:
-        shutil.copy2(dll, out / dll.name)
-    for guide, name in GUIDES.items():
-        shutil.copyfile(guide, out / name)
-    for sample in samples:
-        shutil.copyfile(sample, out / sample.name)
-    return apworld
+    written = []
+    for name, data in assets.items():
+        path, part = out / name, out / f"{name}.part"
+        part.write_bytes(data)
+        part.replace(path)
+        written.append(path)
+    return written
 
 
-def check_linux_helper(path: Path) -> str | None:
-    """Why the Linux helper at ``path`` can't be released, or None: the build's checks of it
-    (``build``) but its age, which a file made elsewhere (CI's artifact) can't be judged by."""
+def helpers(platform: str) -> tuple[Path, ...]:
+    """The mod for ``platform``: the helper and its proxy on Windows, the Linux helper on Linux."""
+    return (HELPER, PROXY) if platform == "windows" else (LINUX_HELPER,)
+
+
+def archive_folder(platform: str, version: str) -> str:
+    """The folder ``platform``'s archive unpacks into, and its file's name without the suffix."""
+    return f"zexion-ap-{version}-{platform}"
+
+
+def archive_name(platform: str, version: str) -> str:
+    return archive_folder(platform, version) + PLATFORMS[platform].suffix
+
+
+def guide_section(heading: str) -> str:
+    """The setup guide's ``## heading`` section, its heading included, as it is in the guide."""
+    text = SETUP_GUIDE.read_text(encoding="utf-8")
+    match = re.search(rf"^## {re.escape(heading)}[ \t]*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    if not match or not match.group(1).strip():
+        raise SystemExit(
+            f'{SETUP_GUIDE.name} has no "## {heading}" section, which the archives\' '
+            f"{README} copies"
+        )
+    return f"## {heading}\n\n{match.group(1).strip()}\n"
+
+
+def readme(platform: str, version: str) -> str:
+    """The ``README.md`` in ``platform``'s archive: a title, README_INTRO, the guide's section."""
+    system = PLATFORMS[platform].system
+    section = guide_section(PLATFORMS[platform].section)
+    return f"# Zexion AP {version} for {system}\n\n{README_INTRO}\n\n{section}"
+
+
+def build_time() -> int:
+    """The time every file in the release is stamped with, so that two builds of one commit are
+    the same bytes: ``SOURCE_DATE_EPOCH`` if set, else the commit's time."""
+    env = os.environ.get("SOURCE_DATE_EPOCH")
+    if env:
+        try:
+            return int(env)
+        except ValueError:
+            raise SystemExit(f"SOURCE_DATE_EPOCH is not a number of seconds: {env!r}") from None
+    try:
+        out = subprocess.run(
+            ["git", "log", "-1", "--format=%ct"],
+            cwd=ROOT,
+            capture_output=True,
+            check=True,
+            text=True,
+        ).stdout
+        return int(out.strip())
+    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+        raise SystemExit(f"cannot read the commit's time ({exc}): build from a checkout") from exc
+
+
+Entry = tuple[str, bytes, int]  # a file's name in an archive, its bytes and its mode
+
+
+def zip_bytes(entries: list[Entry], stamp: int) -> bytes:
+    """A zip of ``entries``, each dated ``stamp`` and with its Unix mode."""
+    # A zip's dates are local times from 1980 on, with no zone: given as UTC here.
+    date = max(time.gmtime(stamp)[:6], (1980, 1, 1, 0, 0, 0))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data, mode in entries:
+            info = zipfile.ZipInfo(name, date_time=date)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 3  # Unix, so its mode is read on every system
+            info.external_attr = (0o100000 | mode) << 16
+            zf.writestr(info, data)
+    return buf.getvalue()
+
+
+def tar_bytes(folder: str, entries: list[Entry], stamp: int) -> bytes:
+    """A gzipped tarball of ``folder`` and ``entries`` in it, each dated ``stamp``, owned by
+    root (0/0) and with its own mode."""
+    buf = io.BytesIO()
+    with (
+        gzip.GzipFile(filename="", mode="wb", fileobj=buf, mtime=stamp) as gz,
+        tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tf,
+    ):
+        top = tarfile.TarInfo(folder)
+        top.type, top.mode, top.mtime = tarfile.DIRTYPE, EXECUTABLE, stamp
+        tf.addfile(top)
+        for name, data, mode in entries:
+            info = tarfile.TarInfo(name)
+            info.size, info.mode, info.mtime = len(data), mode, stamp
+            tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def listing(name: str, data: bytes) -> dict[str, int]:
+    """Each file in the archive ``name`` (``data``), with its mode."""
+    if name.endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            return {i.filename: i.external_attr >> 16 & 0o7777 for i in zf.infolist()}
+    with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+        return {m.name: m.mode for m in tf.getmembers() if m.isfile()}
+
+
+def archive(platform: str, version: str, contents: list[Entry], stamp: int) -> tuple[str, bytes]:
+    """``platform``'s archive, its name and its bytes: ``contents`` in the archive's folder.
+    Read back, and refused unless it holds just them, with their modes."""
+    folder = archive_folder(platform, version)
+    entries = [(f"{folder}/{name}", data, mode) for name, data, mode in contents]
+    names = [name for name, _, _ in entries]
+    if len(names) != len(set(names)):
+        raise SystemExit(f"two files would share a name in the {platform} archive")
+    name = archive_name(platform, version)
+    data = zip_bytes(entries, stamp) if name.endswith(".zip") else tar_bytes(folder, entries, stamp)
+    if listing(name, data) != {entry: mode for entry, _, mode in entries}:
+        raise SystemExit(f"{name} does not hold what was put into it")
+    return name, data
+
+
+def check_linux_helper(path: Path, version: str | None = None) -> str | None:
+    """Why the Linux helper at ``path`` can't be released as ``version`` (the client's by
+    default), or None. ``build`` runs it after its own check of the file's age, which a file
+    made elsewhere (CI's artifact, ``--check-linux-helper``) can't be judged by."""
     if not path.is_file():
         return f"{path} is missing"
-    version = client_version()
+    version = version or client_version()
     if not helper_has_version(path, version):
         return f"it is not version {version}"
     problem = linux_helper_problem(path)
@@ -281,11 +456,11 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"{args.check_linux_helper.name}: {problem}")
         print(f"{args.check_linux_helper}: version {client_version()}, loads in the Steam Runtime")
         return 0
-    apworld = build(args.out)
-    print(
-        f"{apworld} ({client_version()}), with zexion_ap.dll, version.dll, libzexion_ap.so, the "
-        "player guides and the sample YAMLs"
-    )
+    for asset in build(args.out):
+        print(asset)
+        if asset.name != APWORLD:
+            for name, mode in listing(asset.name, asset.read_bytes()).items():
+                print(f"  {name} ({mode:o})")
     return 0
 
 

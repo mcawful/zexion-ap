@@ -1,10 +1,12 @@
-// What the native tests share: check() and report(), unaligned field access, code bytes and a
-// code patch's test, hex and the stand-in items' records. The tests write offsets as raw hex, so
-// they cross-check src/game_layout.h rather than repeat it.
+// What the native tests share, on Windows and Linux alike: check() and report(), unaligned field
+// access, hex and the stand-in items' records. On Windows also the code bytes and a code patch's
+// test (VirtualProtect). The tests write offsets as raw hex, so they cross-check
+// src/game_layout.h rather than repeat it.
 #pragma once
 
-#include <windows.h>
+#include "platform.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -48,6 +50,7 @@ void put(BYTE* p, ptrdiff_t offset, T value) {
     std::memcpy(p + offset, &value, sizeof(value));
 }
 
+#ifdef _WIN32
 // Byte `i` of code the helper patches, through volatile: the compiler would otherwise take the
 // array's initial bytes as constants.
 inline unsigned char code_byte(const unsigned char* code, int i) {
@@ -139,6 +142,7 @@ void check_code_patch(const char* name, const unsigned char (&game)[N],
     expect(!p.patched() && reads(site, other), "rewritten by something else: not put back over");
     VirtualFree(page, 0, MEM_RELEASE);
 }
+#endif  // _WIN32
 
 // The item update's write of an on-screen item's square as on B1 (src/mapmarks.h), as an
 // array's initializer. src/mapmarks.cpp keeps its own copy, so the two check each other.

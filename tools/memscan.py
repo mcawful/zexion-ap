@@ -4,7 +4,8 @@
     memscan.py snap NAME [--module-only]     snapshot writable memory into lab/mem/NAME/
     memscan.py cmp A B [--from X --to Y] [--max N]   bytes that changed between two snapshots
     memscan.py read ADDR LEN                 hex dump of live memory
-    memscan.py write ADDR HEX --yes          write live memory, then read it back
+    memscan.py write ADDR HEX --yes          write live memory, then read it back (logs to
+                                             lab/memscan.jsonl)
     memscan.py classify LABEL=SNAP,SNAP ... [--target LABEL] [--out NAME]
                                              bytes that tell one game state from the others
     memscan.py record NAME (--candidates NAME | --rva RVA,...) [--interval S] [--seconds S]
@@ -31,12 +32,12 @@ from pathlib import Path
 
 import numpy as np
 
-from protected import ROOT, assert_writable, lab_dir
+from protected import ROOT, append_log, assert_writable, lab_dir
 
 sys.path.insert(0, str(ROOT))  # the client package
 from client import pe, process  # noqa: E402
+from client.game import PROCESS  # noqa: E402
 
-PROCESS = "Zexion.exe"
 MEM_COMMIT = 0x1000
 WRITABLE = {0x04, 0x08, 0x40, 0x80}  # READWRITE, WRITECOPY, EXECUTE_READWRITE, EXECUTE_WRITECOPY
 PAGE_GUARD = 0x100
@@ -192,7 +193,8 @@ def cmd_cmp(args: argparse.Namespace) -> int:
 
 def cmd_read(args: argparse.Namespace) -> int:
     pm, _, _ = attach()
-    addr, data = int(args.addr, 0), pm.read_bytes(int(args.addr, 0), args.length)
+    addr = int(args.addr, 0)
+    data = pm.read_bytes(addr, args.length)
     for i in range(0, len(data), 16):
         print(f"0x{addr + i:012x}  {data[i : i + 16].hex(' ')}")
     return 0
@@ -205,6 +207,11 @@ def cmd_write(args: argparse.Namespace) -> int:
     pm, _, _ = attach()
     addr, new = int(args.addr, 0), bytes.fromhex(args.hex)
     old = pm.read_bytes(addr, len(new))
+    # Logged first, as grant.py and helper.py do: a log that cannot be written stops the write.
+    append_log(
+        lab_dir() / "memscan.jsonl",
+        {"event": "write", "addr": f"0x{addr:x}", "old": old.hex(), "new": new.hex()},
+    )
     pm.write_bytes(addr, new)
     back = pm.read_bytes(addr, len(new))
     print(f"0x{addr:012x}: {old.hex(' ')} -> {back.hex(' ')}")

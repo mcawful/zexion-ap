@@ -8,6 +8,7 @@
 
 #include <sys/mman.h>
 
+#include "../../tests/check.h"
 #include "game_mem.h"  // writable: the memory map, kept a moment
 #include "newgame.h"
 #include "requests.h"
@@ -15,14 +16,6 @@
 using namespace zap;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what, const std::string& detail = "") {
-    if (ok) return;
-    std::printf("FAIL: %s %s\n", what, detail.c_str());
-    ++g_failures;
-}
 
 // The stand-in game's state.
 uint8_t g_section[kSectionSize];
@@ -182,6 +175,5 @@ int main() {
     test_another_seeds_text_is_left_alone();
     test_a_placement_not_the_seeds_puts_the_players_back();
     test_nothing_happens_until_a_randomizer_game_is_queued();
-    if (g_failures == 0) std::printf("newgame: all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("newgame");
 }

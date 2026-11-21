@@ -96,6 +96,11 @@ int wmain(int argc, wchar_t** argv) {
           "hello: no scan in a stand-in game", hello);
     std::string reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused not configured", "apply before config", reply);
+    // A status asks no config: the same reply on both helpers (game_requests.cpp).
+    reply = zap_test::ask(pipe, "trap_status");
+    check(reply == "queued 0; last none", "trap_status before config", reply);
+    reply = zap_test::ask(pipe, "intel on");
+    check(reply == "refused not configured", "a request that sets state needs the config", reply);
     reply = zap_test::ask(pipe, config_request());
     check(reply == "ok", "config", reply);
     hello = zap_test::ask(pipe, "hello");
@@ -149,6 +154,21 @@ int wmain(int argc, wchar_t** argv) {
     check(slot != nullptr && zap::swap_slot(slot, other, g_next.load()), "the other hook gone");
     Sleep(50);  // no call left in chained_tick
 
+    // A client that set something goes: at the next frame, before the next client's first request,
+    // Game::client_gone puts its plan back and it is inactive until a client configures again.
+    // (The Linux helper runs the same Game::client_gone: tests/test_native_linux.py.)
+    CloseHandle(pipe);
+    pipe = zap_test::connect(zap::pipe_name(GetCurrentProcessId()));
+    check(pipe != INVALID_HANDLE_VALUE, "connects again");
+    reply = zap_test::ask(pipe, "newgame_status");
+    check(reply == "idle", "a client that went takes its plan with it", reply);
+    hello = zap_test::ask(pipe, "hello");
+    check(hello.find(" active=0") != std::string::npos, "hello: no client", hello);
+    reply = zap_test::ask(pipe, config_request());
+    check(reply == "ok", "config again", reply);
+    hello = zap_test::ask(pipe, "hello");
+    check(hello.find(" active=1") != std::string::npos, "hello: a client again", hello);
+
     // The client of another seed puts seed B's file (a seed it started earlier in its run).
     reply = zap_test::ask(pipe, "other_save");
     check(reply == "unknown", "no file for seed B: unknown", reply);
@@ -181,6 +201,46 @@ int wmain(int argc, wchar_t** argv) {
     check(reply == "told", "known to the look from the next frame: told", reply);
     hello = zap_test::ask(pipe, "hello");
     check(hello.find(" offline=1") != std::string::npos, "hello: one seed", hello);
+
+    // A connection that sets nothing (`hello`, a status: what `tools/helper.py status` sends) and
+    // goes is no client going (zap::sets_client_state, and dllmain's pipe thread): the frame does
+    // not run Game::client_gone for it (the hook-test helper counts those: `client_gone_count`),
+    // and the look stays as it was. The connection that put the seed goes first, and does count.
+    auto gones = [&] { return std::stoi(zap_test::ask(pipe, "client_gone_count")); };
+    CloseHandle(pipe);
+    pipe = zap_test::connect(zap::pipe_name(GetCurrentProcessId()));
+    check(pipe != INVALID_HANDLE_VALUE, "connects as a probe");
+    hello = zap_test::ask(pipe, "hello");  // a frame has run client_gone for the one that went
+    check(hello.find(" active=0") != std::string::npos, "no client after the last went", hello);
+    for (int i = 0; i < 200 && hello.find(" offline=1:12345-0-1") == std::string::npos; ++i) {
+        Sleep(5);
+        hello = zap_test::ask(pipe, "hello");
+    }
+    check(hello.find(" offline=1:12345-0-1") != std::string::npos,
+          "the save dressed offline with no client", hello);
+    Sleep(100);
+    const int before = gones();
+    const int messages = stand_in::g_messages;
+    reply = zap_test::ask(pipe, "trap_status");
+    CloseHandle(pipe);  // a probe goes
+    pipe = zap_test::connect(zap::pipe_name(GetCurrentProcessId()));
+    check(pipe != INVALID_HANDLE_VALUE, "connects again after the probe");
+    hello = zap_test::ask(pipe, "hello");
+    Sleep(100);
+    check(gones() == before, "a probe went: no client_gone", std::to_string(gones()));
+    check(hello.find(" offline=1:12345-0-1") != std::string::npos,
+          "the look still dressed", hello);
+    check(stand_in::g_messages == messages, "and no notice shown again");
+    reply = zap_test::ask(pipe, config_request());
+    check(reply == "ok", "a client's config", reply);
+    CloseHandle(pipe);  // a connection that set something goes
+    pipe = zap_test::connect(zap::pipe_name(GetCurrentProcessId()));
+    check(pipe != INVALID_HANDLE_VALUE, "connects after the client");
+    hello = zap_test::ask(pipe, "hello");
+    check(gones() == before + 1, "a connection that set something went: one client_gone",
+          std::to_string(gones()));
+    reply = zap_test::ask(pipe, config_request());
+    check(reply == "ok", "config for what follows", reply);
 
     // This world's own trap, as seed B's file lists it (map cell 5), picked up in the frames the
     // game makes: the helper sets it off itself, with no request. It holds an unload while it
