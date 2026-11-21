@@ -194,14 +194,27 @@ Zexion:
     # Standard 27 filler items, on average about 17 Scrap (traps take some of it: Trap Percentage),
     # 5 Area Maps and 5 Energy Shields, and OHKO 32, 4 of them for the locations it leaves out. In
     # Easy, Standard and OHKO the 30 disks always fit; in Custom your pool sets the numbers.
-    # Excluded locations can hold only filler: Scrap, traps and Area Maps (Intel Chips with Area Map
-    # Hints on). A seed has about 26 of them, counting the keys' places (as few as 17), and the
-    # disks take some, so many excluded locations can stop one seed and not another: generation
-    # then stops with an error saying so, unless the other players' filler makes up the difference.
-    # Where there is not enough filler for the disks, ten Missile Containers or Mega Bombs become a
-    # box and nine Scrap Metal, as the game makes filler when it runs short. The disks placed and
-    # any in start_inventory can be 99 at most, the most the pause screen and the file select
-    # show.
+    # Excluded locations can hold only filler: Scrap, traps, Area Maps (Intel Chips with Area Map
+    # Hints on) and Energy Shields. An Easy or Standard seed has 31 of them (32 in OHKO; in Custom
+    # your pool sets it), counting the keys' places, and each disk takes one, so many excluded
+    # locations can stop a seed with many disks:
+    # generation then stops with an error saying so, unless the other players' filler makes up the
+    # difference. Where there is not enough filler for the disks, ten Missile Containers or Mega
+    # Bombs become a box and nine Scrap Metal, as the game makes filler when it runs short. The
+    # disks placed and any in start_inventory can be 99 at most, the most the pause screen and the
+    # file select show.
+    # 
+    # A limit with other players: once progression is placed, Archipelago lets only filler, traps
+    # and the items of players on accessibility minimal go in the locations of a player on minimal
+    # that are still empty and that it finds unreachable (none in most seeds, up to about 35 in
+    # the others, in the runs below). With this goal and accessibility full, in a multiworld with
+    # such a player, the disks take the filler those locations need, and generation can stop with
+    # "No more spots to place 1 items", naming a Navcore (your only item classified useful), or
+    # with "Unable to fill all locations" or "Not enough locations for progression items". With
+    # two Zexion players, one on full and one on minimal, both at 16 disks 1 seed in 100 stopped,
+    # and both at 30, 28 in 100 (5 in 100 with the other player on the core goal). Fewer disks
+    # make it rarer. It did not happen in 100 seeds with the other player on accessibility items,
+    # or with you on the core goal.
     #
     # You can define additional values between the minimum and maximum values.
     # Minimum value is 1

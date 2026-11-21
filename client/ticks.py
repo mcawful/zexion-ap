@@ -16,7 +16,6 @@ except linux_keepalive_tick, which zexion_client's ``keepalive_loop`` runs as a 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 import stat
@@ -726,6 +725,14 @@ async def newgame_tick(ctx: ZexionContext, helper=None, offer_choice: bool = Tru
 
 
 LINUX_HOLD_SECONDS = 30.0  # as zexion_client's HELPER_RETRY_SECONDS for the Windows helper
+# The steps in a row that fail with a real error (an unexpected reply or a reply lost: a
+# ``refused`` is no failure and is not counted), each on a connection configured afresh (a failed
+# step drops the mod, linux_mod_lost), after which the next step's items are written directly,
+# even if that poll configured a fresh mod: a mod that answers ``config`` but fails ``apply``
+# would else hold the items back for good. Fewer failures than that, the step goes through the
+# mod configured afresh, so its traps and popups are not lost to a direct write; and that step
+# going through (or the direct one) ends the count.
+LINUX_DIRECT_AFTER = 3
 
 
 async def linux_newgame_tick(ctx: ZexionContext) -> None:
@@ -914,13 +921,17 @@ async def linux_keepalive_tick(ctx: ZexionContext) -> None:
     without a client). The game loop's own requests and reads keep it busy as a rule, but one
     poll can wait on the server longer (a stored-data reply, say), and this runs on its own
     (zexion_client.keepalive_loop). Only for a connection the helper was configured on: one lost
-    is found by the poll's ticks (``current``, linux_newgame_tick), not here. An error is left to
-    them too."""
+    is found by the poll's ticks (``current``, linux_newgame_tick), not here. A ping that fails
+    is linux_mod_lost, as any tick's: the next request would else make the connection again,
+    which never sent ``config``, and the poll's ticks would use it as configured."""
     mod = ctx.linux_mod
     if mod is None or not mod.current():
         return
-    with contextlib.suppress(linux_helper.LinuxHelperError):
+    try:
         await asyncio.to_thread(mod.request, "ping")
+    except linux_helper.LinuxHelperError as exc:
+        if ctx.linux_mod is mod:  # not one the poll replaced while the ping waited
+            linux_mod_lost(ctx, exc)
 
 
 async def linux_language_tick(ctx: ZexionContext) -> None:
@@ -1043,6 +1054,8 @@ async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> N
                 home.again()
             elif reply == "shown":
                 home.shown_on = here
+            elif reply.startswith("refused"):
+                pass  # no news (no frame yet, say): asked again next poll, not given up on
             elif not reply.startswith(("asked", "opening", "yes")):
                 home.queued = False
         await followups_tick(ctx, p, step, mod, mod.told)

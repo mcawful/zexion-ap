@@ -7,8 +7,8 @@ up, but lets Archipelago decide what is at each of the game's 154 item locations
 are 150, and in Custom the ones your settings and start room can reach, plus a 155th with
 Secret Shuffle. A location the seed can't reach holds Scrap, as in the game's own randomizer.
 Items found in Zexion can belong to other players, and their games can send items to
-you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, traps, Area Maps or
-Intel Chips): exclude more locations than you have filler, and generation stops with an error that
+you. Excluded locations (`exclude_locations`) can hold only filler (Scrap, traps, Area Maps,
+Intel Chips or Energy Shields): exclude more locations than you have filler, and generation stops with an error that
 says so, unless the other players' filler makes up the difference (not Area Maps kept in their
 own world: "What do Area Maps and Intel Chips do?").
 
@@ -62,6 +62,19 @@ Set with the Goal option.
     stop generation, as above (the OS Install Disks option gives the numbers). Where filler
     runs short, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, in any
     mode ("Which modes are there?").
+  - A limit with other players: if you play this goal with accessibility full in a multiworld
+    with a player on accessibility minimal, generation can stop. Once progression is placed,
+    Archipelago lets only filler, traps and the items of players on minimal go in the locations
+    of a player on minimal that are still empty and that it finds unreachable (none in most
+    seeds, up to about 35 in the others, in the runs below), and your disks take the filler
+    those locations need. Your Navcore, your only item classified useful, may then have no place
+    (the error says "No more spots to place 1 items" and names it; "Unable to fill all
+    locations" and "Not enough locations for progression items" also happen). Measured with
+    two Zexion players, 100 seeds each, one on full and one on minimal: both at 16 disks, 1 in
+    100 stopped, and both at 30, 28 in 100; at 30 with the other player on the core goal, 5 in
+    100. Nothing in the world keeps it from happening: fewer disks make it rarer. It did not
+    happen in 100 seeds with the other player on accessibility items, or with you on the core
+    goal.
 
 ## Which modes are there?
 

@@ -54,8 +54,8 @@ Where things are:
   2026-11-20): the Windows helper and the Linux helper write `ZexionAP-seed-<NAME>.sav` there, so
   Steam Cloud carries a seed's file with the saves to another machine. They write only a name
   that starts with `ZexionAP-seed-` and ends in `.sav`, never a `Save Game`, `GameUnlocks` or
-  `Preferences` file or any other the game uses, delete nothing there, and never open a save
-  file. Which seeds, when, how and the cap of 30: [`docs/DEVELOPING.md`](docs/DEVELOPING.md),
+  `Preferences` file or any other the game uses, delete nothing there but their own `.sav.tmp`
+  after a write that failed, and never open a save file. Which seeds, when, how and the cap of 30: [`docs/DEVELOPING.md`](docs/DEVELOPING.md),
   "How it fits together" ("The seed copies in the save folder"), and `native/README.md`, "Seed
   files in the save folder". The client and Claude never write the save folder, and the tools only
   through `save_lab.py install` and `restore`. The write guard stays as it is for Claude's own
@@ -128,7 +128,9 @@ Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native builds be
 helper also built and tested in the Steam Runtime's SDK (`native-linux-runtime`, "Linux helper
 (Steam Runtime)": it must load on glibc 2.31) and that build then checked as a release checks it
 (`native-linux-runtime-check`, "Linux helper (Steam Runtime) loads": `tools/build_apworld.py
---check-linux-helper`). A pull request into `main` also runs the release gate
+--check-linux-helper`, then `tests/test_native_linux.py` and
+`tests/test_native_linux_init_order.py` against that build), and a dry run of the release's build
+with it (`release-dry-run`, "release build, dry run"). A pull request into `main` also runs the release gate
 (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
@@ -156,7 +158,7 @@ The Linux helper, on Linux (GCC or Clang, and CMake 3.20 or later:
 .venv/bin/cmake -S native -B native/build
 .venv/bin/cmake --build native/build -j
 .venv/bin/ctest --test-dir native/build --output-on-failure
-.venv/bin/python -m pytest tests/test_native_linux.py
+.venv/bin/python -m pytest tests/test_native_linux.py tests/test_native_linux_init_order.py
 ```
 
 Nothing in `tests/` needs the game, and CI never runs it.
@@ -358,7 +360,29 @@ Committed under `.claude/`, so they apply to anyone working here:
 - `.claude/settings.json`: the hook `guard_protected.py` blocks writes into the game install,
   the save folder, Steam's cloud cache for the game and the mod's offline files
   (`%LOCALAPPDATA%\ZexionAP`, and Linux's) (rules: its docstring; cases:
-  `tests/test_guard_hook.py`). The guard also reads Monitor's and the terminal tool's
+  `tests/test_guard_hook.py`). So does a command that deletes, moves out, changes or searches and
+  acts on a folder above them (`~`, `$APPDATA`, `%LOCALAPPDATA%`, `/`, a drive's root, Roaming,
+  `.var`, Steam's own folders; `..` or a last name that is only a wildcard up to one: `rm -rf ~`,
+  `mv "$APPDATA" x`, `find ~ -delete`, `gci $env:APPDATA -r | ri`, `cd ~ && rm -rf *`), and one
+  with a name pattern that may match the files in them (`*.sav`, `Save*`, `*seed*`, `token`, a
+  bare `*`: `find lab -name '*.sav' -delete` blocks, use `rm` with the paths). Reads, creating
+  files in such a folder and copying into it pass (`find "$APPDATA" -name x -print`, `ls -R ~`,
+  `cd ~ && git clone`, `cp a ~`). A `cd` into a folder the guard can't know (a variable, which
+  may be empty and then goes home; a substitution) counts as unknown, so a glob or a clean right
+  after it blocks, a temporary folder's too: `d=$(mktemp -d) && cd "$d" && rm -rf *`, `cd "$(git
+  rev-parse --show-toplevel)" && git clean -fdx` and `cd "$RUNNER_TEMP" && rm -rf *` are false
+  positives; name the folder instead (`rm -rf "$d"/*`, `git -C "$d" clean -fdx`). The guard's
+  docstring lists what each verb does to count and what it misses: wrappers it does not know (`chrt`, `flock`, `strace`, `parallel`, `wsl`) and
+  shell forms that hide the verb (`command cd`, a script piped into a shell), PowerShell and .NET
+  calls, other tools (`takeown`, `icacls`, `Clear-Content`), code in other languages
+  (`python -c shutil.rmtree`), other variables (`$PUBLIC/..`, `$HOMEDRIVE$HOMEPATH`, `~+`), UNC
+  admin shares and links, a script word over 2000 characters (`sh -c`, `eval`, `cmd /c`), cmd
+  forms like `@rd`, `rd/s/q` and `if errorlevel`, and a subshell in the middle of a pipeline
+  (`ls ~ | (cat) | xargs rm -rf`); and
+  archives or tree copies into the home folder (`tar -x -C ~`, `rsync -a x ~/`, `cp -r x ~`)
+  pass: they add files and overwrite only what the archive holds, unless the overwrite is asked
+  for (`unzip -o`, `tar --overwrite`, `Expand-Archive -Force`). The
+  guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
   The hook has a 120 s timeout in `settings.json`, a backstop: a hook that times out lets the

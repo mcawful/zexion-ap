@@ -18,7 +18,15 @@ Cloud carries them (native/README.md, "Seed files in the save folder"). The guar
 it watches Claude's tool calls, and those it blocks as before, these names included. The tools
 write the save folder only through ``save_lab.py install`` and ``restore``.
 
-Matching is by pattern rather than by this machine's paths, so the same rules hold on any PC.
+A folder that holds one of them at any depth (Roaming, the home folder and what is above it, ``/``,
+a drive's root, Steam's own folders: ``holds_protected``) and a name pattern that may match the
+name of a file in one (``Save Game 1.sav``, ``token``, …: ``pattern_may_name_protected``) count
+for the hook too: deleting the first, moving it out or changing it, or searching it and acting on
+what is found, reaches the folders (creating files in it, copying into it and reading it do not).
+
+Matching is by pattern rather than by this machine's paths, so the same rules hold on any PC,
+but for the home folder and the folders of the environment's variables (``APPDATA``, ``HOME``, …),
+which are this machine's.
 The write-guard hook (``.claude/hooks/guard_protected.py``) and the tools in this folder share
 this one definition. Only ``save_lab.py install`` and ``save_lab.py restore`` write into the
 save folder, and only after a verified backup; the Archipelago client never writes it.
@@ -103,13 +111,23 @@ _ENV_SPELLINGS = [
     )
     for name in _ENV_NAMES
 ]
-_TILDE = re.compile(r"(^|[\s\"'=])~(?=[/\\])")
+# ``~`` as a word's start or alone: the home folder (``~/x``, ``~``, ``"~"``, ``(cd ~)``).
+_TILDE = re.compile(r"(^|[\s\"'=])~(?=[/\\\s\"');&|]|$)")
+
+
+# ``${NAME:-x}``, ``${NAME%/}``, ``${NAME/a/b}``: a parameter expansion with an operator, read as
+# the variable itself.
+_PARAM_OPERATOR = re.compile(
+    r"\$\{(" + "|".join(re.escape(n) for n in _ENV_NAMES) + r")(?::?[-=+?]|[%#/^,@:])[^{}]*\}",
+    re.IGNORECASE,
+)
 
 
 def _expand(text: str) -> str:
     """Expand the env-var spellings of cmd, PowerShell and sh, and a leading ``~``."""
     if not re.search(r"[$%~]", text):
         return text
+    text = _PARAM_OPERATOR.sub(lambda m: "${" + m.group(1) + "}", text)
     for name, spellings in _ENV_SPELLINGS:
         value = os.environ.get(name)
         if value:
@@ -289,6 +307,202 @@ def may_be_above_protected(path: str) -> bool:
     return False
 
 
+# Folders above a protected one that no chain of ``_PROTECTED_PARTS`` leads through, by the
+# names they end in: Roaming (``Gallant Leaf``'s parent), Flatpak's ``.var/app``, and Steam's own
+# folders (the cloud cache and the install are inside them). A Steam folder elsewhere, by its own
+# name, is not named here.
+_ANCESTOR_TAILS: list[tuple[str, ...]] = [
+    ("appdata", "roaming"),
+    (".var",),
+    (".var", "app"),
+    (".steam",),
+    (".steam", "steam"),
+    (".steam", "root"),
+    (".steam", "debian-installation"),
+    (".local", "share", "steam"),
+    ("snap", "steam"),
+    ("snap", "steam", "common"),
+    ("program files (x86)",),
+    ("program files (x86)", "steam"),
+]
+# The variables whose folder, and every folder above it, may hold a protected one: where the
+# saves, the offline folder and Steam usually are (``Gallant Leaf`` in Roaming, ``ZexionAP`` in
+# Local, ``~/.local/share``), and the home folder.
+_ANCESTOR_ENV = ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME", "XDG_DATA_HOME",
+                 "PROGRAMFILES(X86)")  # fmt: skip
+_DRIVE = re.compile(r"[a-z]:")
+
+
+def _drive_parts(path: str) -> tuple[list[str], bool]:
+    """``path``'s components as ``_path_parts`` reads them, with a drive written as Git Bash,
+    WSL or Cygwin write it (``/c/Users``, ``/mnt/c/Users``, ``/cygdrive/c/Users``) and the
+    extended-length prefix (``//?/C:/``) as the Windows drive they name, and whether the path
+    is absolute (it starts with a separator or a drive)."""
+    parts = _path_parts(path)
+    absolute = normalize(path).startswith("/")
+    if absolute and parts[:1] == ["?"]:
+        parts = parts[1:]
+    while absolute and parts[:1] == [".."]:
+        parts = parts[1:]  # ``/..`` is ``/``
+    if absolute and len(parts) > 1 and parts[0] in ("mnt", "cygdrive") and len(parts[1]) == 1:
+        parts = parts[1:]
+    if absolute and parts and re.fullmatch(r"[a-z]", parts[0]):
+        parts = [parts[0] + ":", *parts[1:]]
+    return parts, absolute or bool(parts and _DRIVE.fullmatch(parts[0]))
+
+
+@_by_env
+def _ancestor_chains() -> list[list[str]]:
+    """The folders the environment names in ``_ANCESTOR_ENV``, and the home folder, as the
+    components of their paths; each of their first parts is a folder above a protected one too."""
+    values = [os.environ.get(name) or "" for name in _ANCESTOR_ENV]
+    chains = []
+    for value in [*values, os.path.expanduser("~")]:
+        parts, absolute = _drive_parts(value) if value else ([], False)
+        if absolute and parts and not any(re.search(r"[*?\[{$%~]", p) for p in parts):
+            chains.append(parts)
+    # ``~/snap`` holds Snap Steam's data; a folder named ``snap`` elsewhere does not count.
+    home = os.path.expanduser("~")
+    for value in (os.environ.get("HOME") or "", os.environ.get("USERPROFILE") or "", home):
+        parts, absolute = _drive_parts(value) if value else ([], False)
+        if absolute and parts and not any(re.search(r"[*?\[{$%~]", p) for p in parts):
+            chains.append([*parts, "snap"])
+    return chains
+
+
+def _is_ancestor_token(part: str) -> bool:
+    """``~``, ``~user``, or one of ``_ANCESTOR_ENV`` written as a variable (``$HOME``,
+    ``%APPDATA%``, ``$env:LOCALAPPDATA``), which the environment here did not expand; a
+    wildcard after it too (``%APPDATA%\\*`` in Bash reads ``%APPDATA%*``)."""
+    part = part.rstrip("*?")
+    return re.fullmatch(r"~[\w.-]*", part) is not None or any(
+        spelling.fullmatch(part) for name, spelling in _ENV_SPELLINGS if name in _ANCESTOR_ENV
+    )
+
+
+def holds_protected(path: str) -> bool:
+    """True when a folder could hold a protected one at any depth, so that deleting, moving or
+    copying it, or searching it and acting on what is found, reaches the saves, the install, the
+    cloud cache or the offline files: a folder ``may_be_above_protected`` names, or one of
+    ``is_ancestor_folder``."""
+    return may_be_above_protected(path) or is_ancestor_folder(path)
+
+
+def is_ancestor_folder(path: str) -> bool:
+    """True when a folder is one that no name in a protected folder's own path leads to, but
+    that holds one at some depth: Roaming, the home folder (``~``, ``/home/name``,
+    ``C:/Users/name``) and what is above it, ``/``, a drive's root, ``/home``, ``C:/Users``,
+    Steam's own folders and the folders the environment gives for the variables of
+    ``_ANCESTOR_ENV`` (also written unexpanded: ``$HOME``, ``%APPDATA%``) with each one above
+    them, each read as ``word_may_name_protected`` reads a path (wildcards, 8.3 short names,
+    ``..``). A last name that is only a wildcard (``~/*``, ``$APPDATA/.*``) stands for any
+    folder in the one before it, which may be the one. Other folders do not count (a project
+    folder under the home folder), and the check is by the folder's own name: what a link in it
+    leads to is not followed.
+    """
+    raw = [p for p in normalize(path).split("/") if p not in ("", ".")]
+    if len(raw) > 1 and "*" in raw[-1] and not re.search(r"[a-z0-9_]", _CLASS.sub("?", raw[-1])):
+        raw.pop()  # ``$APPDATA/../*``: any folder in it
+    if raw and _is_ancestor_token(raw[0]) and all(p == ".." for p in raw[1:]):
+        return True  # ``$APPDATA/..``: the variable, then folders up
+    parts, absolute = _drive_parts(path)
+    if parts and not re.search(r"[a-z0-9_]", _CLASS.sub("?", parts[-1])) and "*" in parts[-1]:
+        parts = parts[:-1]
+    n = len(parts)
+    if n == 0:
+        return absolute  # ``/``
+    drive = _DRIVE.fullmatch(parts[0]) is not None
+    if n == 1 and (drive or (absolute and parts[0] in ("home", "users"))):
+        return True
+    # A user's home folder: ``/home/name``, ``/Users/name``, ``C:/Users/name``, and ``C:/Users``.
+    if absolute and (
+        (n == 2 and (parts[0] in ("home", "users") or (drive and parts[1] == "users")))
+        or (n == 3 and drive and parts[1] == "users")
+    ):
+        return True
+    if n == 1 and _is_ancestor_token(parts[0]):
+        return True
+    for tail in _ANCESTOR_TAILS:
+        k = len(tail)
+        if n >= k and all(
+            _part_matches(parts[n - k + j], tail[j], first=False, last=False) for j in range(k)
+        ):
+            return True
+    return absolute and any(
+        n <= len(chain)
+        and all(_part_matches(parts[j], chain[j], first=False, last=False) for j in range(n))
+        for chain in _ancestor_chains()
+    )
+
+
+# Names of the files in the protected folders, as they are on disk: the saves (the game's 30
+# slots), its other files, the helpers' copies of the seeds, Steam's, and the offline files (the
+# per-build configuration; the socket's token and the folder the seeds' files are in). A name
+# pattern that may match one of them counts as naming a protected folder
+# (``pattern_may_name_protected``): ``*.sav``, ``Save*``, ``*seed*`` and a bare ``*`` do, ``*.py``
+# and ``*foo*`` do not.
+_FILE_NAMES = (
+    *(f"Save Game {n}.sav" for n in range(1, 31)),
+    "Save Game 00.sav",
+    "GameUnlocks.sav",
+    "PreferencesSynced.sav",
+    "PreferencesLocal",
+    "Preferences",
+    "ZexionAP-seed-12345-0-1.sav",
+    "steam_autocloud.vdf",
+    "token",
+    "seeds",
+    "config-B1.txt",
+)
+# The longest name pattern part read against them: a longer one is read as a file's name.
+_MAX_FILE_PART = 200
+
+
+def _glob_matches(tokens: tuple[str, ...], name: str) -> bool:
+    """Whether a name pattern (``tokens`` as ``_wildcard_tokens`` reads it: ``*`` a run, ``?`` one
+    character, any other token itself) matches ``name`` whole. The name's positions are kept in a
+    bit set, so a long pattern is read in time linear in its length."""
+    n = len(name)
+    literal: dict[str, int] = {}
+    for j, c in enumerate(name):
+        literal[c] = literal.get(c, 0) | (1 << j)
+    states = 1  # the positions the tokens so far can have reached
+    for tok in tokens:
+        if tok == "*":  # any run, even none: every position from the first on
+            states = ~((states & -states) - 1) & ((1 << (n + 1)) - 1)
+        else:
+            states = (states & ((1 << n) - 1 if tok == _ANY else literal.get(tok, 0))) << 1
+        if not states:
+            return False
+    return bool(states >> n & 1)
+
+
+_FILE_NAMES_BY_FIRST: dict[str, list[str]] = {}
+for _name in _FILE_NAMES:
+    _FILE_NAMES_BY_FIRST.setdefault(_name[0].lower(), []).append(_name)
+
+
+@functools.lru_cache(maxsize=2048)
+def _names_a_file(part: str, ignore_case: bool) -> bool:
+    """Whether a name pattern, read as written, matches the name of a file in ``_FILE_NAMES``:
+    in any case, except the seed copies' name (it starts with ``ZexionAP``, the repo's own name in
+    lower case in ``zexion*.py``) unless ``ignore_case``, as ``_CASED`` says for the folders. A
+    part over ``_MAX_FILE_PART`` characters is read as one."""
+    if len(part) > _MAX_FILE_PART:
+        return True
+    folded, cased = _wildcard_tokens(part.lower()), _wildcard_tokens(part)
+    if not folded:
+        return False
+    # The names that start as the pattern does, or all when it starts with a wildcard.
+    names = _FILE_NAMES if folded[0] in ("*", _ANY) else _FILE_NAMES_BY_FIRST.get(folded[0], ())
+    return any(
+        _glob_matches(cased, name)
+        if name.startswith("ZexionAP") and not ignore_case and "~" not in part
+        else _glob_matches(folded, name.lower())
+        for name in names
+    )
+
+
 # A bracket expression: ``[abc]``, ``[!a-z]``, ``[]x]``, ``[[:upper:]]``, with at most 64
 # members, so a long run of ``[`` is read in linear time. A ``[`` that starts no POSIX class is a
 # member of its own (``[[]``), which keeps the members from being read two ways.
@@ -401,6 +615,11 @@ def pattern_may_name_protected(pattern: str, kind: str = "name", ignore_case: bo
     ``.``, a ``?``) may match a ``/`` too, so the pieces around one are read as names also. A
     pattern over 1000 characters is read as a name, whatever it is. The match is by name alone,
     so ``-name ZexionAP`` counts wherever the search starts.
+
+    A pattern that may match the name of a file in the protected folders counts too
+    (``_FILE_NAMES``, ``_names_a_file``): ``*.sav``, ``Save*``, ``*seed*``, ``Pref*``, ``token``
+    and a bare ``*``, but not ``*.py`` or ``*foo*``. Of a ``path`` or a ``regex`` only the last
+    name is read so, and it needs a fixed character (``./build/*`` names no file).
     """
     if len(pattern) > _MAX_PATTERN:
         return True
@@ -422,6 +641,11 @@ def pattern_may_name_protected(pattern: str, kind: str = "name", ignore_case: bo
             readings += [text.replace("*", "/"), text.replace("?", "/")]
     leaves = [names[-1] for names in _PROTECTED_PARTS + _offline_parts()]
     for reading in readings:
+        names = _path_parts(reading, fold=False)
+        if kind in ("path", "regex"):  # the file's name is the last; ``./build/*`` names none
+            names = [p for p in names[-1:] if _literal_len(p) >= 1]
+        if any(_names_a_file(p, ignore_case) for p in names):
+            return True
         cased = [p for p in _path_parts(reading, fold=False) if _literal_len(p) >= 3]
         parts = [p.lower() for p in cased]
         for i, part in enumerate(parts):

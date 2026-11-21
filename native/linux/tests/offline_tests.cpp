@@ -174,6 +174,22 @@ void test_a_put_and_a_read_with_a_save_folder() {
     check(read_all(local / "seeds" / "AP_1-0-1.txt") == "not a seed\n",
           "an unread local file is left alone");
     write_all(local / "seeds" / "AP_1-0-1.txt", client_text(9, 1));
+    // A copy that cannot be opened (no permission) is not read, and so not written over: left as
+    // it is and said, the local file's seed used (root opens it anyway: skipped for root).
+    if (geteuid() != 0) {
+        const std::string held = read_all(save / kCopy);
+        write_all(local / "seeds" / "AP_1-0-1.txt", client_text(11, 1));  // a result that differs
+        chmod((save / kCopy).c_str(), 0);
+        files = zap::read_offline_files(wide(local), "", wide(save), true, &used);
+        chmod((save / kCopy).c_str(), 0600);
+        check(files.error.find("unreadable") != std::string::npos && files.seeds.size() == 1 &&
+                  files.seeds[0].count == 11 && read_all(save / kCopy) == held,
+              "a copy that cannot be opened is said and not replaced");
+        files = zap::read_offline_files(wide(local), "", wide(save), true, &used);
+        check(zap::parse_synced_file(read_all(save / kCopy), copy).empty() && copy.count == 11,
+              "once it can be opened the pass writes the result");
+        write_all(local / "seeds" / "AP_1-0-1.txt", client_text(9, 1));
+    }
     // A copy cut short is refused and replaced; other names are not read.
     const std::string good = read_all(save / kCopy);
     write_all(save / kCopy, good.substr(0, good.size() - 30));

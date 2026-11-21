@@ -461,6 +461,21 @@ def test_the_helper_serves_no_one_without_a_folder_for_its_token(tmp_path: Path)
             started.proc.wait()
 
 
+def test_a_token_folder_open_to_others_is_made_private(tmp_path: Path) -> None:
+    # (A link in the folder's place is refused: native/linux/tests/core_tests.cpp, the folder's
+    # own checks; the test build resolves links before it gets there.)
+    folder = tmp_path / "data" / "ZexionAP"
+    folder.mkdir(parents=True)
+    folder.chmod(0o755)  # as an older run or the user left it
+    started = Game(HOOKTEST, tmp_path / "data")
+    try:
+        started.connect().close()
+        assert folder.stat().st_mode & 0o777 == 0o700
+    finally:
+        started.proc.kill()
+        started.proc.wait()
+
+
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_a_client_with_another_token_is_refused(game: Game, monkeypatch) -> None:
     found = game.as_found()
@@ -983,11 +998,14 @@ def test_a_client_that_goes_takes_its_plan_with_it(game: Game) -> None:
 def test_a_helper_of_another_version_is_not_used(game: Game, monkeypatch) -> None:
     from client import native as client_native
 
+    built = client_native.VERSION  # the helper under test is built at the client's version
     monkeypatch.setattr(client_native, "VERSION", "9.9.9")
     found = game.as_found()
     game.connect().close()
     with (
-        pytest.raises(linux_helper.LinuxHelperError, match="version 1.2.0, this client 9.9.9"),
+        pytest.raises(
+            linux_helper.LinuxHelperError, match=f"version {re.escape(built)}, this client 9.9.9"
+        ),
         linux_helper.LinuxHelper(found),
     ):
         pass

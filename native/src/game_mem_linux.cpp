@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "game_mem.h"
+#include "kept.h"
 
 namespace zap {
 
@@ -48,8 +49,9 @@ struct Span {
 // Read by the helper's serving thread, which its library constructor starts: built before that
 // constructor runs (init_priority puts them ahead of its default priority), whether or not this
 // compiler's library builds them at load time, so none is built afresh over what a thread holds.
-__attribute__((init_priority(101))) std::vector<Span> g_loads;
-__attribute__((init_priority(101))) std::vector<Span> g_code;
+// Kept, so none is destroyed at exit() under a thread that still reads it either (kept.h).
+__attribute__((init_priority(101))) Kept<std::vector<Span>> g_loads;
+__attribute__((init_priority(101))) Kept<std::vector<Span>> g_code;
 __attribute__((init_priority(101))) std::once_flag g_spans_once;
 
 int main_program_spans(dl_phdr_info* info, size_t, void*) {
@@ -58,8 +60,8 @@ int main_program_spans(dl_phdr_info* info, size_t, void*) {
         const ElfW(Phdr)& ph = info->dlpi_phdr[i];
         if (ph.p_type != PT_LOAD) continue;
         uintptr_t start = info->dlpi_addr + ph.p_vaddr;
-        g_loads.push_back({start & ~(page - 1), (start + ph.p_memsz + page - 1) & ~(page - 1)});
-        if (ph.p_flags & PF_X) g_code.push_back({start, start + ph.p_memsz});
+        g_loads->push_back({start & ~(page - 1), (start + ph.p_memsz + page - 1) & ~(page - 1)});
+        if (ph.p_flags & PF_X) g_code->push_back({start, start + ph.p_memsz});
     }
     return 1;
 }
@@ -72,7 +74,7 @@ void find_spans() {
 // that does not change under a running game, so a cached answer for it does not go stale.
 bool in_main_program(uintptr_t start, uintptr_t end) {
     find_spans();
-    for (const Span& span : g_loads) {
+    for (const Span& span : *g_loads) {
         if (start >= span.start && end <= span.end) return true;
     }
     return false;
@@ -112,14 +114,14 @@ std::vector<Region> read_map() {
 // drops it.
 constexpr uint64_t kMapCacheMs = 250;
 __attribute__((init_priority(101))) std::mutex g_map_mutex;  // built first, as g_loads above
-__attribute__((init_priority(101))) std::vector<Region> g_map;
+__attribute__((init_priority(101))) Kept<std::vector<Region>> g_map;
 uint64_t g_map_at = 0;
 bool g_map_kept = false;
 
 // Whether every byte of [p, end) lies in a region of g_map that is settled.
 bool settled_range(uintptr_t p, uintptr_t end) {
     uintptr_t q = p;
-    for (const Region& r : g_map) {  // in address order
+    for (const Region& r : *g_map) {  // in address order
         if (q >= r.start && q < r.end) {
             if (!r.settled) return false;
             q = r.end;
@@ -152,11 +154,11 @@ bool mapped_with(const void* at, size_t size, int prot) {
     const uint64_t now = ticks_ms();
     if (!g_map_kept || now - g_map_at >= kMapCacheMs || !settled_range(p, end) ||
         !still_mapped(p, size)) {
-        g_map = read_map();
+        *g_map = read_map();
         g_map_at = now;
         g_map_kept = true;
     }
-    for (const Region& r : g_map) {  // in address order
+    for (const Region& r : *g_map) {  // in address order
         if (q >= r.start && q < r.end) {
             if ((r.prot & prot) != prot) return false;
             q = r.end;
@@ -189,7 +191,7 @@ bool writable(const void* at, size_t size) { return mapped_with(at, size, PROT_R
 bool in_image_code(const void* p) {
     find_spans();
     auto address = reinterpret_cast<uintptr_t>(p);
-    for (const Span& span : g_code) {
+    for (const Span& span : *g_code) {
         if (address >= span.start && address < span.end) return true;
     }
     return false;
