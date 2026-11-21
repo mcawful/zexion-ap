@@ -115,8 +115,10 @@ client, not yet; run 3 (2026-11-20) then checked, in the game, the attach with t
 the look's gate on the client's seed (#162), the file select's fixes, DeathLink's death count and
 the client's seed file and labels, and a release's Steam Runtime build ran there too
 (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the review's other later fixes
-(`native/README.md`, "The Linux helper", lists them) have run on stand-ins only), and so do
-`grant.py`, `check_patterns.py --live` and `helper.py status`
+(`native/README.md`, "The Linux helper", lists them) have run on stand-ins only; a Steam Deck then
+loaded the mod with the relative launch option, 2026-11-20, and a CachyOS PC showed AP saves
+synced from Windows as AP saves, 2026-11-21, both as the owner reported: `docs/re/linux.md`, "Seen
+on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21"), and so do `grant.py`, `check_patterns.py --live` and `helper.py status`
 ([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
 
 uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
@@ -209,7 +211,9 @@ Nothing in `tests/` needs the game, and CI never runs it.
   seed (#162), the file select's fixes, DeathLink's death count and the client's seed file and
   labels, and a release's Steam Runtime build ran there too (`docs/re/linux.md`, "Seen in the
   running game, 2026-11-20"); the review's other later fixes (`native/README.md`, "The Linux
-  helper", lists them) have run on stand-ins only):
+  helper", lists them) have run on stand-ins only; a Steam Deck loaded the mod with the relative
+  launch option and a CachyOS PC showed synced AP saves, 2026-11-20 and 2026-11-21: `docs/re/linux.md`,
+  "Seen on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21"):
   [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and loads it
   again a few seconds later (for a misbehaving mod; popups still queued are lost); on Linux, where
   the Linux helper stays for the game's run, it says to restart Zexion instead.
@@ -218,7 +222,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
   `ZEXION_DLL`, still loads). On Linux a `zexion_ap.disabled` beside `libzexion_ap.so` turns the
   preloaded helper off, and the client then can't reach the game: it says only "Can't reach the
   running game", and its log that it found no helper in Zexion, asking whether `libzexion_ap.so`
-  is in the game's launch options.
+  is in the game's launch options (the setup guide gives the relative `LD_PRELOAD="./libzexion_ap.so:$LD_PRELOAD"
+  %command%`, with the full path as a fallback).
 
 ### Tools
 

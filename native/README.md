@@ -154,7 +154,8 @@ know where the game's state and functions are.
   client: a first start on a machine no client has run on (no data folder, no seed file, no synced
   copy in the save folder: a fresh Steam Deck) configures from the first frames, once the game's
   player pointer reads the player state, so the title lines show with no client having connected
-  (stand-in tests only, not yet run in the game from a first start). It used to wait for a seed
+  (stand-in tests only; the Steam Deck run of 2026-11-20 loaded the mod, but whether the title
+  lines showed with no client was not reported). It used to wait for a seed
   file to have been read; that rule dated from before the Windows scan, when a config came only
   from files a client had written.
 - **Cost, and the pipe's start:** the pipe comes up after the scan, so a helper loaded late (the
@@ -1912,10 +1913,13 @@ disconnected.
 itself". Working in game on Windows, between two PCs (2026-11-20, B1, develop bf86eb5,
 `zexion_ap.dll` `2d8b696f…`, `version.dll` `b5a196b2…`, `zexion.apworld` `a2bcc022…`; the owner's
 report, `docs/re/save-format.md`, "The helpers keep the file of each seed a save uses here"): AP
-saves made on one PC showed as AP saves on the other after Steam Cloud synced them. Not run in
-the game, so stand-in tests only: Linux and Windows with Linux, whether a client ran on the second
-PC first, which seeds and slots (neither was reported), the new-seed step below, the merge of two
-machines' copies, a cut copy's refusal and that `helper.py status` writes nothing.
+saves made on one PC showed as AP saves on the other after Steam Cloud synced them. Seen once,
+Windows to Linux (2026-11-21, a CachyOS PC, B1 assumed; the owner's report: AP saves synced from
+Windows showed as AP saves there, after the owner cleared some things out, what not reported;
+"Seen on a Steam Deck, and a Linux PC's sync", above). Not run in the game, so stand-in tests only: Linux's
+own writing of the copies and Linux to Windows, whether a client ran on the second PC first,
+which seeds and slots (neither was reported), the new-seed step below, the merge of two machines'
+copies, a cut copy's refusal and that `helper.py status` writes nothing.
 
 - **Why:** Steam Cloud syncs the game's saves, so a save made on one machine is on the next, but
   the seeds' files, which make it an AP save, are in a folder it does not sync. On that machine
@@ -2597,7 +2601,8 @@ completed their goal." `GameUnlocks.sav` as the ending wrote it was byte for byt
 before the run (`cmp`; the title's fold of a run's Feats comes later, and an unlock already set
 before could not show). Not run in the game yet: this world's own traps and disks counted with no
 client, the scanner's line and the equipment screen's disk (not reached), the Steam Runtime
-without Flatpak, a Steam Deck. What both runs saw, with the build and what was not seen, is
+without Flatpak, a Steam Deck (a Steam Deck run came later: "Seen on a Steam Deck, and a Linux
+PC's sync", below). What both runs saw, with the build and what was not seen, is
 recorded in `docs/re/linux.md`, "Seen in the running game, 2026-11-19".
 
 Both runs predate the socket's token, the client's keep-alive and let-go, and the review fixes
@@ -2610,6 +2615,27 @@ Run 3 (2026-11-20, develop at 5611378) checked the attach with the token, #162, 
 fixes (#164, #165), DeathLink's death count (#169) and the client's seed and labels (#170, #171)
 in the game (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the rest of the list has
 run on stand-ins only.
+
+**Seen on a Steam Deck, and a Linux PC's sync (2026-11-20 and 2026-11-21).** Two short runs the
+owner reported (the Deck's helper is `develop` at 246c850, with the self-configure of #189 and the
+seed copies of #187; the CachyOS PC's build was not reported). Recorded in `docs/re/linux.md`,
+"Seen on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21", with what was not reported:
+
+- *Steam Deck, late on 2026-11-20 (local time).* Zexion's native Linux version installed on the SD
+  card; the helper of 246c850, built by CI in the Steam Runtime (`libzexion_ap.so` SHA-256
+  `92cc1b438ba154c66fc989929f6bddd1cb37378ca7db609236ca2d4165b84364`), copied into the game's
+  folder by the owner. The absolute launch option the guide gave did not match the SD-card
+  install; `LD_PRELOAD="./libzexion_ap.so:$LD_PRELOAD" %command%` "seems to work just fine": the
+  mod loaded. That is all that was reported: the first run of #189's helper, and the first on a
+  Deck. Not recorded: whether the title lines
+  showed with no client, whether synced AP saves showed as AP saves there, the game's build id.
+- *CachyOS PC, 2026-11-21.* A machine that had run an earlier version of the Linux helper. At
+  first the save sync did not work: AP saves synced from Windows did not show as AP saves. The
+  owner then "cleared some stuff out and it worked fine": AP saves synced through Steam Cloud
+  showed as AP saves (the Linux half of "Seed files in the save folder", below). Not recorded:
+  what was cleared, whether Steam is native or Flatpak there, which helper build ran, which
+  saves. (A guess, not seen: that the earlier helper, which ignores the `ZexionAP-seed-*.sav`
+  copies yet reports the same 1.2.0, was still the one loaded until it was replaced.)
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
@@ -2632,7 +2658,8 @@ its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
    client of another version refuses it (the client says it can't reach the running game, and its
    log names both versions).
 3. The owner sets the game's launch options in Steam, the helper first in `LD_PRELOAD` ("Getting
-   in", below), at its path in that folder (the same inside Steam's container).
+   in", below): the relative `./libzexion_ap.so` the setup guide gives, or, as the fallback, its
+   full path in that folder (the same inside Steam's container).
 4. Start the game and read its stderr (Steam passes it on as its own: start Steam from a
    terminal; assumed, not tried here). Each of the helper's lines begins `zexion-ap <version>: `:
    `serving build B1` once it is in; `not a known build of Zexion (build id <hex>)` for another
@@ -2698,10 +2725,21 @@ grant: load a save, and with no menu open move the mouse, reading the state thro
 `tools/grant.py watch` prints `state: in play -> menu` if the mouse sets it. With no client
 connected: the helper serves one at a time, so `grant.py` (`set` too) waits while the client is.
 
-- **Getting in.** The game's launch options in Steam preload it:
-  `LD_PRELOAD="/path/to/libzexion_ap.so:$LD_PRELOAD" %command%`. The game's folder is at the
-  same path inside Steam's runtime container as outside, and the container passed the preload on
-  (seen with Flatpak's Steam, 2026-11-18). Every program the launch starts loads it, so it does
+- **Getting in.** The game's launch options in Steam preload it. The setup guide gives the
+  relative form, `LD_PRELOAD="./libzexion_ap.so:$LD_PRELOAD" %command%`, which finds the file
+  in Zexion's folder wherever the Steam library is; it relies on Steam starting the game with
+  its install folder as the working directory (inferred from the run that worked, not measured on
+  its own). A Steam Deck with Zexion on the SD card ran it so, the mod loading (2026-11-20, late,
+  local time; "Seen on a Steam Deck, and a Linux PC's sync", above). The absolute form,
+  `LD_PRELOAD="/path/to/libzexion_ap.so:$LD_PRELOAD" %command%`, which the guide gives as the
+  fallback (the folder's full path from the file manager's address bar), was the one run on
+  Flatpak's Steam: the game's folder is at the same path inside Steam's runtime container as
+  outside, and the container passed the preload on (seen with Flatpak's Steam, 2026-11-18). The
+  Deck's SD-card install did not match the absolute path the guide gave then, which is why the
+  relative form replaced it. The whole launch chain inherits the preload, and a program started
+  in another working directory can't find `./libzexion_ap.so`: glibc's loader prints a warning for
+  it and goes on (expected from glibc's behavior, not seen). Every program that does find it
+  loads it, so it does
   nothing unless the program it is in is a known Linux build, told by the main program's GNU
   build id (`src/core.cpp`, `kKnownBuilds`, kept in step with `KNOWN_LINUX_BUILDS` in
   `client/patterns.py`; `tests/test_cross_checks.py` checks them). In a known build it writes
@@ -3549,7 +3587,7 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   `helper.py status` answered (`zexion-ap 1.2.0 build=B1 hooked=1`, 165 frame calls a second from
   `SWHardwareEnd`), the helper dressed run 3's save before the client attached, then, with it,
   ARCHIPELAGO CLIENT CONNECTED., a received Missile Container's popup opening and closing, and the
-  title screen's lines, as the owner saw them; native Steam and the Steam Deck not tried. Read on
+  title screen's lines, as the owner saw them; native Steam not tried (a Steam Deck run of a later CI build, 2026-11-20, loaded the mod: "Seen on a Steam Deck, and a Linux PC's sync", above). Read on
   the
   test PC, 2026-11-18: the Steam Runtime installed there (sniper 3.0.20261021) ships glibc 2.31
   (its `usr-mtree.txt.gz` lists `libc-2.31.so`); Flatpak's Steam runs on the Flatpak runtime
