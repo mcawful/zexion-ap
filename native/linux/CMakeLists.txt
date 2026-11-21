@@ -27,9 +27,9 @@ target_include_directories(zap_linux_core PUBLIC src)
 # parser, and the platform layer under them (game_mem_linux.cpp, mailbox_linux.cpp in place of
 # the Windows parts). GCC warns where MSVC does not on partly initialized structs.
 # zap_shared is built twice from the same objects: zap_shared is the release's, zap_shared_test
-# the test-only build, whose offline.cpp is built with ZAP_TEST_BUILD set (src/offline_test_build.cpp):
-# each write primitive then refuses a folder that is not a test's own (inside the temporary
-# folder, never a real one). Every test program and the test build of the helper link
+# the test-only build, whose seed files' sources (offline.cpp, offline_fs_posix.cpp) are built with
+# ZAP_TEST_BUILD set: each write primitive then refuses a folder that is not a test's own (inside
+# the temporary folder, never a real one). Every test program and the test build of the helper link
 # zap_shared_test; the release links zap_shared.
 add_library(zap_shared_objs OBJECT
             ../src/game_calls.cpp ../src/game_offline.cpp ../src/newgame.cpp ../src/choice.cpp
@@ -45,8 +45,10 @@ foreach(core IN ITEMS zap_shared zap_shared_test)
   target_include_directories(${core} PUBLIC ../src)
   target_compile_options(${core} PRIVATE -Wno-missing-field-initializers)
 endforeach()
-target_sources(zap_shared PRIVATE ../src/offline.cpp)
-target_sources(zap_shared_test PRIVATE ../src/offline_test_build.cpp)
+foreach(core IN ITEMS zap_shared zap_shared_test)
+  target_sources(${core} PRIVATE ../src/offline.cpp ../src/offline_fs_posix.cpp)
+endforeach()
+target_compile_definitions(zap_shared_test PRIVATE ZAP_TEST_BUILD)
 # dlsym and dlopen (apitem.cpp, feats.cpp), std::call_once and threads: on a glibc before 2.34,
 # the Steam Runtime's 2.31 among them, those are libdl's and libpthread's, not libc's. -pthread
 # (Threads, preferring the flag) keeps libpthread linked into a program that calls none of its
