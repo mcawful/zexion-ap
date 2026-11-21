@@ -1917,6 +1917,20 @@ def test_a_link_is_followed_for_the_first_words_of_a_command_only(linked) -> Non
     assert run("Bash", command=command(many), cwd="X:/lab") is None
 
 
+@pytest.mark.parametrize("tool", ["Bash", "PowerShell"])
+def test_a_parent_of_a_protected_folder_is_read_whatever_comes_before_it(tool: str) -> None:
+    # Only the following of links stops at ``MAX_LINK_WORDS``: ``Gallant Leaf`` (the save
+    # folder's parent) is named however many words come first.
+    fillers = " ".join(f"w{i}" for i in range(guard_protected.MAX_LINK_WORDS + 6))
+    roaming = "C:/Users/someone/AppData/Roaming"
+    for command in (
+        f'rm -rf {fillers} "Gallant Leaf"',
+        f'mv {fillers} "Gallant Leaf" /tmp/y',
+        f'Copy-Item x {fillers} "Gallant Leaf"',
+    ):
+        assert run(tool, command=command, cwd=roaming), command
+
+
 POSIX_HOME = "/home/u"
 POSIX_DATA = f"{POSIX_HOME}/.local/share"
 TWO_BACKSLASHES = "\\\\"  # a folder name on Linux and macOS, a separator on Windows

@@ -49,6 +49,8 @@ Documented false positives (name the folder in the command instead):
   the folder; that blocks only in a command that is not read-only.
 - ``ls``, ``dir`` or ``gci`` inside a quoted PowerShell string (``Write-Host "run ls zexion";
   Remove-Item …``) counts as a call.
+- A scratch script written by a heredoc and run in the same command is code, like ``python -
+  <<'EOF'``, so it blocks when it names the saves, even to read them or in a comment.
 
 Known gaps. This is a tripwire against mistakes, not a sandbox. It fails closed: if the guard
 itself breaks while looking at a call that mentions the saves, a Steam folder or ``ZexionAP``, the
@@ -60,10 +62,12 @@ call is blocked. It can't see:
   script written by a heredoc and run in the same command is code, but the run is tied to the
   heredoc only by the file's name: ``sh *.sh`` or a variable holding it is missed);
 - links in a command's words past the first ``MAX_LINK_WORDS`` different ones (the file system is
-  asked about each, which costs about half a millisecond a word): ``cp`` with 64 filler words
-  before an operand in a link in the working folder that leads into a protected folder passes;
-  nor a link in a UNC path on Windows (``protected.is_network_path``: asking would resolve it over
-  the network, seconds a host; ``//?/C:/x`` and ``//./C:/x`` are local and are followed);
+  asked about each, which costs time a word; only the following of links is cut, a word that names
+  a parent of a protected folder is read wherever it comes): ``cp`` with ``MAX_LINK_WORDS`` filler
+  words before an operand in a link in the working folder that leads into a protected folder
+  passes; nor a link in a UNC path on Windows (``protected.is_network_path``: asking would
+  resolve it over the network, seconds a host; ``//?/C:/x`` and ``//./C:/x`` are local and are
+  followed);
 - a Steam library folder by its own name (only its ``steamapps`` and what is below, and Steam's
   own folders in the usual places: a Steam folder at ``D:/Steam`` is missed), a home folder that
   neither the environment nor a ``/home/name``, ``/Users/name`` or ``C:/Users/name`` path gives,
@@ -91,7 +95,8 @@ call is blocked. It can't see:
   $HOME, $true)``, ``gci ~ -r | % Delete``), unless the command names a protected folder itself;
 - a name picked by another tool than ``find`` and PowerShell's ``-Filter`` and ``-Include``
   (``locate``, ``find lab/x | grep ZexionAP | xargs rm`` from a folder that is not above a
-  protected one; ``Where-Object Name -like``, ``cmd /c for /d``); a name from a variable or an
+  protected one: from ``~`` it blocks; ``Where-Object Name -like``, ``cmd /c for /d``, a .NET
+  search); a name from a variable or an
   expression (``find -name "$n"``, ``"Zexion$(echo AP)"``, a ``$'…'`` string with escapes, text
   after a backtick); a regular expression's quantifier (``-regex 'Zex(ion)?AP'``) or an
   alternation inside a group that splits a name (``(Z|z)exion``); a brace expansion past five
@@ -149,7 +154,7 @@ MAX_WORK = 6000  # over the different words (``_work``) and redirect targets (8 
 MAX_FOLDERS = 16  # different folders the command's ``cd`` goes to
 MAX_HEREDOCS = 32  # Bash heredocs; with more, none is cut out as data
 MAX_SAVED_NAMES = 64  # files a heredoc is saved to and copied to; with more it counts as code
-MAX_LINK_WORDS = 64  # different words followed through links and read as paths (a known gap)
+MAX_LINK_WORDS = 64  # different words whose links are followed (a known gap); other reads: all
 MAX_NAME_TEXT = 1000  # what is read of a name or a list of them; a longer one counts as a name
 # Past ``DEADLINE`` of reading, whatever the budget says, the command is blocked too: the lexer
 # (per word), the heredoc pass (per heredoc and per saved file's later commands), the final pass
@@ -2201,10 +2206,10 @@ def _may_reach_protected(text, words, targets, folders, protected, unknown_cd: b
       ``steam-achievements`` works as any other);
     - a word could name one as a path (``..``, wildcards, 8.3 short names:
       ``protected.word_may_name_protected``), leads into one from where the command runs, also
-      through an existing link, or names a parent of one (``"$APPDATA/Gallant Leaf"``,
-      ``…/steamapps/common``, ``…/userdata/123``: ``protected.may_be_above_protected``,
-      ``_names_parent``), so copying into, moving or deleting the parent blocks while reading it
-      does not (``MAX_LINK_WORDS``);
+      through an existing link (only for the first ``MAX_LINK_WORDS`` different words: a known
+      gap), or names a parent of one (``"$APPDATA/Gallant Leaf"``, ``…/steamapps/common``,
+      ``…/userdata/123``: ``protected.may_be_above_protected``, ``_names_parent``, for every
+      word), so copying into, moving or deleting the parent blocks while reading it does not;
     - it may build one from pieces (``_builds_from_pieces``, the app id as a path component:
       ``_names_app_id``), or makes a link (``LINK_WORDS``) next to a folder named like ``gallant``
       or ``steam``;
@@ -2221,12 +2226,10 @@ def _may_reach_protected(text, words, targets, folders, protected, unknown_cd: b
         or any(protected.word_may_name_protected(w) for w in every)
         or _builds_from_pieces(text, every, protected)
         or (links and any(_dir_is_suspect(w, protected) for w in words))
+        or any(_names_parent(w, folders, protected) for w in every)
         # Each word is read from every folder, with the file system asked about links: only the
         # first ``MAX_LINK_WORDS`` are (a known gap: the docstring).
-        or any(
-            _reaches_protected(w, folders, protected) or _names_parent(w, folders, protected)
-            for w in every[:MAX_LINK_WORDS]
-        )
+        or any(_reaches_protected(w, folders, protected) for w in every[:MAX_LINK_WORDS])
         or (unknown_cd and any(_goes_up_to_protected(str(w), protected) for w in every))
     )
 

@@ -397,10 +397,10 @@ Committed under `.claude/`, so they apply to anyone working here:
   clock). A long commit message or PR body is one word to it, a script counts its different words
   against the budget, and long text goes to a file with the Write tool. More than `MAX_HEREDOCS`
   heredocs, or a heredoc saved to or copied to more than `MAX_SAVED_NAMES` files, count as code
-  (they are not cut out as data). Links are followed only through a command's first
-  `MAX_LINK_WORDS` different words (a known gap). The values are at the top of
-  `guard_protected.py`, with what each limit does. `deny` rules for Edit and Write back it up for the save folder, the
-  game install and the cloud cache (not the offline files); only the game-install one has been
+  (they are not cut out as data). The links in a command's words are followed only for its first
+  `MAX_LINK_WORDS` different words (a known gap: every word is still read for a parent of a
+  protected folder). The values are at the top of `guard_protected.py`, with what each limit
+  does. `deny` rules for Edit and Write back it up for the save folder, the game install and the cloud cache (not the offline files); only the game-install one has been
   seen to fire.
   `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist runs `git status`, `diff`,
   `log` and `show`, the read-only forms of `git branch` (bare, `-a`, `-r`, `-v`, `-vv`,

@@ -57,9 +57,10 @@ MODES = ("easy", "standard", "ohko")
 
 def default_modes(backup: str = BACKUP) -> dict[str, Path]:
     """Fresh saves matched to the modes (docs/re/randocells.md, "The randomizer's modes"): Easy's
-    and Standard's from ``backup`` (a folder of lab/backups/, or a path), OHKO's from lab/work/."""
+    and Standard's from ``backup`` (a name under lab/backups/, or an absolute path), OHKO's from
+    lab/work/."""
     folder = Path(backup)
-    if not folder.is_absolute() and not folder.exists():
+    if not folder.is_absolute():
         folder = lab_dir() / "backups" / backup
     return {
         "easy": folder / "Save Game 28.sav",
