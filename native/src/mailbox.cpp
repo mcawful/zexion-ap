@@ -2,7 +2,7 @@
 
 #include <exception>
 
-#ifdef _WIN32  // the Linux build's: mailbox_linux.cpp
+// The Windows build's mailbox (the Linux build's is mailbox_linux.cpp).
 namespace zap {
 
 Mailbox::Mailbox() { done_ = CreateEventW(nullptr, FALSE, FALSE, nullptr); }
@@ -49,4 +49,3 @@ void Mailbox::serve() {
 }
 
 }  // namespace zap
-#endif

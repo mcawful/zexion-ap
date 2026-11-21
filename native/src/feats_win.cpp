@@ -1,0 +1,262 @@
+// The Feats guard's Windows half: the ending's patch and the stub that stands in for Steam's
+// SteamInternal_ContextInit in the game's import slot (feats.h). The Linux build's own is
+// feats_linux.cpp.
+
+#include <cstring>
+
+#include "feats.h"
+#include "feats_ending.h"
+#include "game_layout.h"
+#include "game_mem.h"
+#include "iat.h"
+
+namespace zap {
+
+namespace {
+
+using namespace feats_ending;
+
+constexpr BYTE kCallIndirect[] = {0xFF, 0x15};  // call [rip+rel32]: 6 bytes
+constexpr ptrdiff_t kCallSize = 6;
+constexpr BYTE kMovRdx[] = {0x48, 0x8B, 0x15};
+constexpr BYTE kMovsxdRdx[] = {0x48, 0x63, 0x15};
+constexpr ptrdiff_t kFlag250Store = 0x11;  // from the join
+
+// The stats context's init function loads this interface's name within its first bytes.
+constexpr char kStatsInterface[] = "STEAMUSERSTATS_INTERFACE_VERSION";
+constexpr size_t kInitScan = 32;
+constexpr BYTE kLeaRdx[] = {0x48, 0x8D, 0x15};  // lea rdx, [rip+rel32]: 7 bytes
+constexpr size_t kLeaSize = 7;
+
+// The stub's two pages (feats.h): code, then data, adjacent.
+constexpr size_t kPage = 0x1000;
+// Data: the original function, the stats context, the switch (blocking always), the holder the
+// stub returns (-> the object -> the vtable), the vtable; then the load test: the marker word's
+// place (null: no test), current_slot's, save_loaded's, and a byte per slot, set for an AP save.
+constexpr ptrdiff_t kOriginal = 0x00, kContext = 0x08, kBlocked = 0x10, kHolder = 0x18,
+                    kObject = 0x20, kVtable = 0x28;
+constexpr int kVtableEntries = 64;  // ISteamUserStats v013 has 51; the game calls 6, 7 and 9
+constexpr ptrdiff_t kMarker = kVtable + kVtableEntries * 8, kSlot = kMarker + 8,
+                    kSaved = kSlot + 8, kApSlots = kSaved + 8;
+static_assert(kApSlots + slot::kCount <= static_cast<ptrdiff_t>(kPage), "in the data page");
+// Code: the stub at 0, the stand-in's every method at kReturnZero.
+constexpr ptrdiff_t kReturnZero = 90;
+
+}  // namespace
+
+void* FeatsGuard::stand_in() const { return data_ == nullptr ? nullptr : data_ + kHolder; }
+
+bool FeatsGuard::load_test() const {
+    return data_ != nullptr && at<BYTE*>(data_, kMarker) != nullptr;
+}
+
+void FeatsGuard::patch_ending(const GameAddresses& a) {
+    BYTE* site = a.ending_unlocks;
+    BYTE* join = a.ending_join;
+    BYTE now[kEndingPatchSize];
+    if (site == nullptr || join == nullptr || !safe_read(site, now, sizeof(now))) {
+        ending_error_ = "the ending cannot be read";
+        return;
+    }
+    if (ending_patched_ && site == site_ && std::memcmp(now, written_, sizeof(now)) == 0) return;
+    // The call as traced: through the configured import slot, then the mov after it.
+    if (std::memcmp(now, kCallIndirect, sizeof(kCallIndirect)) != 0 ||
+        site + kCallSize + field<int32_t>(now, 2) != a.context_init_slot ||
+        std::memcmp(now + kCallSize, kMovRdx, sizeof(kMovRdx)) != 0) {
+        ending_error_ = "the ending's call reads otherwise";
+        return;
+    }
+    // The join after it, between the flag stores as traced.
+    BYTE around[kStoreSize + kFlag250Store + kStoreSize];
+    if (join <= site || join - site > kMaxStretch ||
+        !safe_read(join - kStoreSize, around, sizeof(around))) {
+        ending_error_ = "the ending's join is not after its call";
+        return;
+    }
+    BYTE* flag250 = a.flags + flag::kEnding;
+    BYTE* flag251 = a.flags + flag::kFeat;
+    const BYTE* at_join = around + kStoreSize;
+    if (store_target(join - kStoreSize, around, 1) != flag251 ||
+        std::memcmp(at_join, kMovsxdRdx, sizeof(kMovsxdRdx)) != 0 ||
+        store_target(join + kFlag250Store, at_join + kFlag250Store, 1) != flag250) {
+        ending_error_ = "the ending's join reads otherwise";
+        return;
+    }
+    // mov byte [rip+flag 251], 0; jmp join.
+    BYTE patch[kEndingPatchSize];
+    if (!fits_rel32(site + kStoreSize, flag251) || !fits_rel32(site + kEndingPatchSize, join)) {
+        ending_error_ = "the ending is out of reach";
+        return;
+    }
+    std::memcpy(patch, kStoreByte, sizeof(kStoreByte));
+    put_rel32(patch, 2, site + kStoreSize, flag251);
+    patch[6] = 0;
+    patch[7] = kJmp;
+    put_rel32(patch, 8, site + kEndingPatchSize, join);
+    if (!patch_code(site, patch, sizeof(patch))) {
+        ending_error_ = "the ending could not be written";
+        return;
+    }
+    std::memcpy(original_, now, sizeof(now));
+    std::memcpy(written_, patch, sizeof(patch));
+    site_ = site;
+    ending_patched_ = true;
+    ending_error_.clear();
+}
+
+
+std::string FeatsGuard::check_steam(const GameAddresses& a) {
+    auto** slot = reinterpret_cast<void**>(a.context_init_slot);
+    if (slot == nullptr || slot != by_name_) {
+        return "the slot is not steam_api64's SteamInternal_ContextInit";
+    }
+    HMODULE steam = GetModuleHandleW(L"steam_api64.dll");
+    real_ = steam == nullptr ? nullptr
+                             : reinterpret_cast<void*>(
+                                   GetProcAddress(steam, "SteamInternal_ContextInit"));
+    if (real_ == nullptr) return "steam_api64 is not loaded";
+    // The context's first quadword is its init function, in the game's code, which asks for the
+    // user-stats interface by name.
+    BYTE* init = pointer_at(a.stats_context);
+    if (init == nullptr || !in_image_code(image_, init)) return "the context has no init";
+    BYTE code[kInitScan];
+    if (!safe_read(init, code, sizeof(code))) return "the context's init cannot be read";
+    for (size_t i = 0; i + kLeaSize <= sizeof(code); ++i) {
+        if (std::memcmp(code + i, kLeaRdx, sizeof(kLeaRdx)) != 0) continue;
+        const auto rel = field<int32_t>(code, static_cast<ptrdiff_t>(i + sizeof(kLeaRdx)));
+        const BYTE* name = init + i + kLeaSize + rel;
+        char text[sizeof(kStatsInterface) - 1];
+        if (safe_read(name, text, sizeof(text)) &&
+            std::memcmp(text, kStatsInterface, sizeof(text)) == 0) {
+            return "";
+        }
+    }
+    return "the context is not the user stats'";
+}
+
+bool FeatsGuard::make_pages() {
+    if (code_ != nullptr) return true;
+    auto* page = static_cast<BYTE*>(
+        VirtualAlloc(nullptr, 2 * kPage, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    if (page == nullptr) return false;
+    BYTE* data = page + kPage;
+    // cmp rcx, [rip+context]          48 3B 0D rel32     0..6
+    // jne pass                         75 4B              7..8
+    // cmp dword [rip+blocked], 0       83 3D rel32 00     9..15
+    // jne block                        75 3A              16..17
+    // mov rax, [rip+marker]            48 8B 05 rel32     18..24   the load test (feats.h)
+    // test rax, rax                    48 85 C0           25..27
+    // jz pass                          74 36              28..29
+    // cmp word [rax], 1                66 83 38 01        30..33
+    // jne pass                         75 30              34..35
+    // mov rax, [rip+saved]             48 8B 05 rel32     36..42
+    // cmp byte [rax], kNoSaveLoaded    80 38 FF           43..45   (the title keeps the marker)
+    // je pass                          74 24              46..47
+    // mov rax, [rip+slot]              48 8B 05 rel32     48..54
+    // mov eax, [rax]                   8B 00              55..56
+    // cmp eax, slot::kCount            83 F8 1E           57..59
+    // jae pass                         73 16              60..61   (a negative one too)
+    // lea r10, [rip+ap_slots]          4C 8D 15 rel32     62..68
+    // cmp byte [r10+rax], 0            41 80 3C 02 00     69..73
+    // je pass                          74 08              74..75
+    // block: lea rax, [rip+holder]     48 8D 05 rel32     76..82
+    // ret                              C3                 83
+    // pass: jmp [rip+original]         FF 25 rel32        84..89
+    // return_zero: xor eax, eax        31 C0              90..91
+    // ret                              C3                 92
+    // No stack is touched, so it needs no unwind information: a stack walk takes it as a leaf.
+    // Only rax and r10 are changed before the pass, both volatile and neither an argument.
+    static_assert(slot::kCount == 0x1E && kNoSaveLoaded == 0xFF, "the cmps' imm8s");
+    const BYTE code[] = {
+        0x48, 0x3B, 0x0D, 0,    0,    0,    0,    0x75, 0x4B, 0x83, 0x3D, 0,    0,    0,
+        0,    0x00, 0x75, 0x3A, 0x48, 0x8B, 0x05, 0,    0,    0,    0,    0x48, 0x85, 0xC0,
+        0x74, 0x36, 0x66, 0x83, 0x38, 0x01, 0x75, 0x30, 0x48, 0x8B, 0x05, 0,    0,    0,
+        0,    0x80, 0x38, 0xFF, 0x74, 0x24, 0x48, 0x8B, 0x05, 0,    0,    0,    0,    0x8B,
+        0x00, 0x83, 0xF8, 0x1E, 0x73, 0x16, 0x4C, 0x8D, 0x15, 0,    0,    0,    0,    0x41,
+        0x80, 0x3C, 0x02, 0x00, 0x74, 0x08, 0x48, 0x8D, 0x05, 0,    0,    0,    0,    0xC3,
+        0xFF, 0x25, 0,    0,    0,    0,    0x31, 0xC0, 0xC3};
+    static_assert(sizeof(code) == kReturnZero + 3, "as laid out");
+    std::memcpy(page, code, sizeof(code));
+    put_rel32(page, 3, page + 7, data + kContext);
+    put_rel32(page, 11, page + 16, data + kBlocked);
+    put_rel32(page, 21, page + 25, data + kMarker);
+    put_rel32(page, 39, page + 43, data + kSaved);
+    put_rel32(page, 51, page + 55, data + kSlot);
+    put_rel32(page, 65, page + 69, data + kApSlots);
+    put_rel32(page, 79, page + 83, data + kHolder);
+    put_rel32(page, 86, page + 90, data + kOriginal);
+    at<BYTE*>(data, kHolder) = data + kObject;
+    at<BYTE*>(data, kObject) = data + kVtable;
+    for (int i = 0; i < kVtableEntries; ++i) {
+        at<BYTE*>(data, kVtable + static_cast<ptrdiff_t>(i) * 8) = page + kReturnZero;
+    }
+    DWORD old = 0;
+    if (!VirtualProtect(page, kPage, PAGE_EXECUTE_READ, &old)) {
+        VirtualFree(page, 0, MEM_RELEASE);
+        return false;
+    }
+    FlushInstructionCache(GetCurrentProcess(), page, kPage);
+    code_ = page;
+    data_ = data;
+    return true;
+}
+
+void FeatsGuard::hook_steam(const GameAddresses& a, bool on, const std::set<int>& loading) {
+    if (!steam_checked_) {
+        steam_error_ = check_steam(a);
+        steam_checked_ = true;
+    }
+    if (!steam_error_.empty()) return;
+    auto** slot = reinterpret_cast<void**>(a.context_init_slot);
+    void* current = nullptr;
+    // Only over steam_api64's own function, so nobody else's hook is lost (looked at again each
+    // frame: something else may let go of it).
+    if (!safe_read(slot, &current, sizeof(current)) || current != real_) {
+        steam_slot_error_ = "the slot does not hold steam_api64's function";
+        return;
+    }
+    if (!make_pages()) {
+        steam_slot_error_ = "no memory for the stand-in";
+        return;
+    }
+    at<void*>(data_, kOriginal) = real_;
+    at<void*>(data_, kContext) = a.stats_context;
+    set_switch(a, on, loading);
+    if (!swap_slot(slot, real_, code_)) {
+        set_switch(a, false, {});
+        steam_slot_error_ = "the slot could not be written";
+        return;
+    }
+    slot_ = slot;
+    steam_slot_error_.clear();
+}
+
+void FeatsGuard::set_switch(const GameAddresses& a, bool on, const std::set<int>& loading) {
+    InterlockedExchange(&at<LONG>(data_, kBlocked), on ? 1 : 0);
+    auto* marker = reinterpret_cast<void* volatile*>(data_ + kMarker);
+    BYTE* table = data_ + kApSlots;
+    if (loading.empty()) {
+        // The test off before its table is cleared.
+        InterlockedExchangePointer(marker, nullptr);
+        std::memset(table, 0, slot::kCount);
+        return;
+    }
+    // The table and the places before the marker's, which turns the test on.
+    at<BYTE*>(data_, kSlot) = a.current_slot;
+    at<BYTE*>(data_, kSaved) = a.save_loaded;
+    for (int n = 1; n <= slot::kCount; ++n) table[n - 1] = loading.count(n) != 0 ? 1 : 0;
+    InterlockedExchangePointer(marker, a.rando_marker);
+}
+
+void FeatsGuard::release_steam() {
+    void** slot = slot_;
+    if (slot == nullptr) return;
+    // Off first (the load test too): a call already past the slot passes through.
+    set_switch({}, false, {});
+    // Back only if it still holds the stub; if something hooked over it since, the stub stays in
+    // its chain, passing everything through.
+    swap_slot(slot, code_, at<void*>(data_, kOriginal));
+    slot_ = nullptr;
+}
+
+}  // namespace zap

@@ -23,7 +23,7 @@ What this covers, exactly:
   checked below). Not seen by this scan: a type declared together with its object
   (``struct { ... } g;``), a direct-initialized object (``T g(call());``, read as a function), and
   an initializer naming a non-constexpr variable that is not a ``g_`` global.
-* ``feats.cpp``'s stand-in holder, which the Steam export answers with from any thread, must be
+* ``feats_linux.cpp``'s stand-in holder, which the Steam export answers with from any thread, must be
   ``constinit``.
 * With a Linux build (``native/build``, or ``ZEXION_NATIVE_BUILD``), the order itself, in each
   helper's own ``.init_array``: after the constructor come only the C++ runtime's own initializers
@@ -177,7 +177,7 @@ def test_the_scan_finds_the_globals_the_serving_thread_reads() -> None:
 def test_the_steam_exports_stand_in_is_built_at_load_time() -> None:
     # The export may be called by a constructor of another library, before the helper's own runs:
     # its holder is never zero then (a constinit object is a compile error if it is not constant).
-    source = (ROOT / "native/src/feats.cpp").read_text(encoding="utf-8")
+    source = (ROOT / "native/src/feats_linux.cpp").read_text(encoding="utf-8")
     assert re.search(r"^constinit StandIn g_stand_in;", source, re.MULTILINE)
 
 

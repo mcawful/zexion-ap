@@ -36,7 +36,7 @@ add_library(zap_shared_objs OBJECT
             ../src/requests.cpp ../src/game_requests.cpp ../src/offline_inbox.cpp ../src/text.cpp ../src/menu.cpp ../src/scan.cpp ../src/equip.cpp
             ../src/mission.cpp ../src/pause.cpp ../src/files.cpp ../src/intel.cpp
             ../src/title.cpp ../src/mapmarks.cpp ../src/trap.cpp
-            ../src/apitem.cpp ../src/looks.cpp ../src/feats.cpp ../src/translation.cpp
+            ../src/apitem.cpp ../src/looks.cpp ../src/feats.cpp ../src/feats_linux.cpp ../src/translation.cpp
             ../src/game_mem.cpp ../src/game_mem_linux.cpp ../src/mailbox_linux.cpp)
 target_include_directories(zap_shared_objs PUBLIC ../src)
 target_compile_options(zap_shared_objs PRIVATE -Wno-missing-field-initializers)

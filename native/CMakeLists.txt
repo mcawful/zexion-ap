@@ -36,11 +36,11 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 # (inside the temporary folder, never a real one). Every test program and the test builds of the
 # helper link zap_core_test; the release links zap_core.
 add_library(zap_core_objs OBJECT
-            src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp src/game_mem.cpp
+            src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp src/game_mem.cpp src/game_mem_win.cpp
             src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/game_requests.cpp src/offline_inbox.cpp src/host_offline.cpp src/text.cpp src/newgame.cpp src/choice.cpp
             src/menu.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
             src/files.cpp src/intel.cpp src/title.cpp src/mapmarks.cpp src/trap.cpp
-            src/apitem.cpp src/looks.cpp src/feats.cpp src/translation.cpp src/findaddr.cpp)
+            src/apitem.cpp src/looks.cpp src/feats.cpp src/feats_win.cpp src/translation.cpp src/findaddr.cpp)
 target_include_directories(zap_core_objs PUBLIC src)
 foreach(core IN ITEMS zap_core zap_core_test)
   add_library(${core} STATIC $<TARGET_OBJECTS:zap_core_objs>)
