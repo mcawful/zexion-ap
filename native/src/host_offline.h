@@ -26,16 +26,20 @@ class HostOffline {
 public:
     explicit HostOffline(Game& game) : game_(game) {}
 
-    // The build the helper hooked, once known (null: a program that is not the game, which has
-    // no save folder and takes no seed). `test_build`: the hook-test build, a host program's and
-    // never the game's, which takes every folder it writes through restrict_to_test_folder:
-    // inside the temporary folder, never the real ones. Its save folder is only what a test names
-    // in ZAP_TEST_SAVE_DIR (not ZEXION_SAVE_DIR, which the repo's tools define as the real one),
-    // its own folder only what LOCALAPPDATA names if that is such a folder: else none, and then
-    // nothing is read or written.
-    void set_build(const char* build, bool test_build) {
+    // The two folders the files live in, chosen by the target at compile time (dllmain.cpp: the
+    // release's are the real ones, the hook-test build's only a test's own, through
+    // restrict_to_test_folder), so the release DLL holds none of the test build's rules. `save`
+    // is given the build (null: a program that is not the game, which has no save folder).
+    struct Folders {
+        std::wstring (*offline)();
+        std::wstring (*save)(const char* build);
+    };
+
+    // The build the helper hooked, once known (null: a program that is not the game, which takes
+    // no seed), and where the files go.
+    void set_build(const char* build, const Folders& folders) {
         build_ = build;
-        test_build_ = test_build;
+        folders_ = folders;
     }
 
     // Helper's thread: the helper's own scan of the game's code for its addresses (findaddr.h).
@@ -101,7 +105,7 @@ private:
 
     Game& game_;
     const char* build_ = nullptr;
-    bool test_build_ = false;
+    Folders folders_{};
 
     OfflineInbox inbox_;
     // The seeds of the game's randomizer saves, as its memory holds the slots (Game::saved_seeds),

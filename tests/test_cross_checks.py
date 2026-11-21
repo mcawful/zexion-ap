@@ -552,8 +552,10 @@ def test_the_test_builds_read_their_folders_only_through_the_guard() -> None:
     # A test run must never write the real save folder or per-user folder (CLAUDE.md, "Rules"):
     # the test builds take them through restrict_to_test_folder and name their save folder only in
     # ZAP_TEST_SAVE_DIR, never ZEXION_SAVE_DIR (which the repo's tools define as the real one).
-    windows = source("host_offline.cpp")
-    assert "restrict_to_test_folder(offline_folder())" in windows
+    windows = source("dllmain.cpp")
+    assert "zap::restrict_to_test_folder(zap::offline_folder())" in windows
+    # Chosen at compile time by the target, so the release DLL has no test-folder rule.
+    assert "restrict_to_test_folder" not in source("host_offline.cpp")
     assert 'L"ZAP_TEST_SAVE_DIR"' in windows and 'L"ZEXION_SAVE_DIR"' not in windows
     linux = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text(encoding="utf-8")
     assert "zap::restrict_to_test_folder(zap::offline_folder())" in linux

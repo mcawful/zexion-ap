@@ -27,13 +27,11 @@
 #include "pipe.h"
 
 #ifdef ZAP_HOOKTEST
-#define ZAP_TEST_BUILD_HOST true
 #define ZAP_TARGET_DLL "kernel32.dll"
 #define ZAP_TARGET_DLL_W L"kernel32.dll"
 #define ZAP_TARGET_FUNCTION "GetTickCount"
 #define ZAP_CHECK_BUILD 0
 #else
-#define ZAP_TEST_BUILD_HOST false
 #define ZAP_TARGET_DLL "SDL2.dll"
 #define ZAP_TARGET_DLL_W L"SDL2.dll"
 #define ZAP_TARGET_FUNCTION "SDL_GL_SwapWindow"
@@ -41,6 +39,29 @@
 #endif
 
 namespace {
+
+// The folders of the seed files (host_offline.h). The hook-test build is a host program's, never
+// the game's, and takes every folder it writes through restrict_to_test_folder: inside the
+// temporary folder, never the real ones. Its save folder is only what a test names in
+// ZAP_TEST_SAVE_DIR (not ZEXION_SAVE_DIR, which the repo's tools define as the real one), its own
+// folder only what LOCALAPPDATA names if that is such a folder: else none, and then nothing is
+// read or written. The release has none of that: with no known build it has no save folder.
+#ifdef ZAP_HOOKTEST
+std::wstring host_offline_folder() { return zap::restrict_to_test_folder(zap::offline_folder()); }
+
+std::wstring host_save_folder(const char*) {
+    wchar_t folder[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"ZAP_TEST_SAVE_DIR", folder, MAX_PATH);
+    return n != 0 && n < MAX_PATH ? zap::restrict_to_test_folder(std::wstring(folder, n))
+                                  : std::wstring();
+}
+#else
+std::wstring host_offline_folder() { return zap::offline_folder(); }
+
+std::wstring host_save_folder(const char* build) {
+    return build == nullptr ? std::wstring() : zap::save_folder();
+}
+#endif
 
 constexpr char kVersion[] = "1.2.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
@@ -254,7 +275,7 @@ uintptr_t frame(void* argument) {
 void hook() {
     HMODULE exe = GetModuleHandleW(nullptr);
     g_build = zap::identify_build(exe);
-    g_host.set_build(g_build, ZAP_TEST_BUILD_HOST);
+    g_host.set_build(g_build, {&host_offline_folder, &host_save_folder});
     // The real helper hooks only a known build; the hook-test build never hooks the game.
     if (ZAP_CHECK_BUILD ? g_build == nullptr : g_build != nullptr) return;
     HMODULE target_dll = GetModuleHandleW(ZAP_TARGET_DLL_W);

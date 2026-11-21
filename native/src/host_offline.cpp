@@ -30,17 +30,9 @@ void HostOffline::run_self_scan() {
     }
 }
 
-std::wstring HostOffline::offline_dir() const {
-    return test_build_ ? restrict_to_test_folder(offline_folder()) : offline_folder();
-}
+std::wstring HostOffline::offline_dir() const { return folders_.offline(); }
 
-std::wstring HostOffline::save_dir() const {
-    if (!test_build_) return build_ == nullptr ? std::wstring() : save_folder();
-    wchar_t folder[MAX_PATH];
-    DWORD n = GetEnvironmentVariableW(L"ZAP_TEST_SAVE_DIR", folder, MAX_PATH);
-    return n != 0 && n < MAX_PATH ? restrict_to_test_folder(std::wstring(folder, n))
-                                  : std::wstring();
-}
+std::wstring HostOffline::save_dir() const { return folders_.save(build_); }
 
 void HostOffline::note_error(std::string error) {
     std::lock_guard<std::mutex> lock(error_lock_);

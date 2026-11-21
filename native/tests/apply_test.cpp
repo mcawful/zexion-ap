@@ -202,6 +202,36 @@ int wmain(int argc, wchar_t** argv) {
     hello = zap_test::ask(pipe, "hello");
     check(hello.find(" offline=1") != std::string::npos, "hello: one seed", hello);
 
+    // A connection that sets nothing (`hello`, a status: what `tools/helper.py status` sends) and
+    // goes is no client going (zap::sets_client_state, and dllmain's pipe thread): the look is as
+    // it was, no notice shows again. The connection that put the seed goes first, and the look
+    // dresses the save with no client.
+    CloseHandle(pipe);
+    pipe = zap_test::connect(zap::pipe_name(GetCurrentProcessId()));
+    check(pipe != INVALID_HANDLE_VALUE, "connects as a probe");
+    hello = zap_test::ask(pipe, "hello");
+    check(hello.find(" active=0") != std::string::npos, "no client after the last went", hello);
+    reply.clear();
+    for (int i = 0; i < 200 && hello.find(" offline=1:12345-0-1") == std::string::npos; ++i) {
+        Sleep(5);
+        hello = zap_test::ask(pipe, "hello");
+    }
+    check(hello.find(" offline=1:12345-0-1") != std::string::npos,
+          "the save dressed offline with no client", hello);
+    Sleep(100);
+    const int messages = stand_in::g_messages;
+    reply = zap_test::ask(pipe, "trap_status");
+    CloseHandle(pipe);  // a probe goes
+    pipe = zap_test::connect(zap::pipe_name(GetCurrentProcessId()));
+    check(pipe != INVALID_HANDLE_VALUE, "connects again after the probe");
+    hello = zap_test::ask(pipe, "hello");
+    Sleep(100);
+    check(hello.find(" offline=1:12345-0-1") != std::string::npos,
+          "after a probe went: the look still dressed", hello);
+    check(stand_in::g_messages == messages, "and no notice shown again");
+    reply = zap_test::ask(pipe, config_request());
+    check(reply == "ok", "config for what follows", reply);
+
     // This world's own trap, as seed B's file lists it (map cell 5), picked up in the frames the
     // game makes: the helper sets it off itself, with no request. It holds an unload while it
     // waits (halted here) and while it runs, so undo_for_unload never drops it nor puts its

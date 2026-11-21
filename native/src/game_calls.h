@@ -84,6 +84,10 @@ public:
     // After configure (which loads the OpenGL functions): the OpenGL functions to paint with (tests).
     void set_gl(const GlFunctions& gl) { gl_ = gl; }
 
+    // Tests only: `hook` runs before each guarded step (watch_rest's watches, client_gone's parts)
+    // and may throw, to see that the steps after it still run.
+    void set_step_hook(void (*hook)()) { step_hook_ = hook; }
+
     // Game thread: puts back everything the helper changed in the game's memory (unload, a
     // client going away); a change held by a closed menu is gone with it. What the client asked
     // for is kept, so the watches apply it again (a refused unload); the offline look is left,
@@ -519,12 +523,14 @@ private:
     // `work` run on its own: one that throws keeps none of the others from running, and nothing
     // reaches the game (the frame's watches and what a client's going puts back).
     template <class Work>
-    static void step(Work&& work) {
+    void step(Work&& work) {
         try {
+            if (step_hook_ != nullptr) step_hook_();
             work();
         } catch (...) {
         }
     }
+    void (*step_hook_)() = nullptr;
     // configure's tail, both builds': the addresses kept, a client's config (`active`) taking over
     // from the offline look.
     std::string use(const GameAddresses& found, bool active);
