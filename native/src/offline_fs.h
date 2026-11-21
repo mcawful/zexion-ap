@@ -19,13 +19,14 @@ namespace zap::fs {
 // Under the pipe's 64 KB message limit; the client's MAX_FILE (client/offline.py).
 inline constexpr size_t kMaxFile = 48 * 1024;
 
-// What a missing folder is called in a reply: "error no LOCALAPPDATA" on Windows, "error no folder"
-// on Linux (the client reads the second as the first, tests/test_cross_checks.py).
+// The reply for a missing folder, a platform's own (the client reads either: tests/test_cross_checks.py);
+// kNoFolder is its reason alone.
 #ifdef _WIN32
-inline constexpr char kNoFolder[] = "no LOCALAPPDATA";
+inline constexpr char kNoFolderError[] = "error no LOCALAPPDATA";
 #else
-inline constexpr char kNoFolder[] = "no folder";
+inline constexpr char kNoFolderError[] = "error no folder";
 #endif
+inline constexpr const char* kNoFolder = kNoFolderError + 6;
 
 // ASCII text (a build's name, a seed file's name: good_seed_name) as a path's characters, and a
 // path's characters as ASCII text (anything else a `?`).

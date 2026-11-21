@@ -17,9 +17,20 @@ import importlib
 import json
 import re
 import string
-from pathlib import Path
 
 import pytest
+from native_source import (
+    LINUX_SRC,
+    ROOT,
+    SRC,
+    braced,
+    function_body,
+    game_requests,
+    linux_sources,
+    source,
+    windows_sources,
+    without_comments,
+)
 
 from client import (
     aplabels,
@@ -37,23 +48,11 @@ from client import (
 )
 from client import save_patch as sp
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "native" / "src"
 MANIFEST = ROOT / "worlds" / "zexion" / "archipelago.json"
 
 
-def source(name: str) -> str:
-    return (SRC / name).read_text(encoding="utf-8")
-
-
-def braced(text: str, opening: str) -> str:
-    """What lies between ``opening`` (ending in ``{``) and the ``};`` that closes it."""
-    assert text.count(opening) == 1, opening
-    return text.split(opening, 1)[1].split("};", 1)[0]
-
-
 def test_the_client_knows_the_helpers_size_limits() -> None:
-    kept = re.findall(r"constexpr size_t kMaxFile = (\d+) \* 1024;", source("offline.cpp"))
+    kept = re.findall(r"constexpr size_t kMaxFile = (\d+) \* 1024;", source("offline_fs.h"))
     assert [int(n) * 1024 for n in kept] == [offline.MAX_FILE]
     pipe = re.findall(r"constexpr DWORD kBufferSize = (\d+) \* 1024;", source("pipe.cpp"))
     assert [int(n) * 1024 for n in pipe] == [offline.MAX_REQUEST]
@@ -104,13 +103,13 @@ def test_the_traps_are_the_same_codes_and_names_in_the_client_and_the_helper() -
     )
     for code in ids.TRAPS:
         assert f'"{ids.TRAP_NAMES[code]}"' in text
-    assert '{"trap_status", ' in source("dllmain.cpp")
+    assert '{"trap_status", ' in source("game_requests.cpp")
 
 
 def test_the_client_reads_the_ending_started_as_the_helper_says_it() -> None:
     said = re.findall(r'const char kEndingStarted\[\] = "([^"]+)";', source("mission.cpp"))
     assert said == [discs.ENDING_STARTED]
-    assert f'{{"{discs.MISSION_STATUS}", ' in source("dllmain.cpp")
+    assert f'{{"{discs.MISSION_STATUS}", ' in source("game_requests.cpp")
 
 
 @pytest.mark.skipif(not MANIFEST.is_file(), reason="worlds/zexion is missing")
@@ -136,7 +135,7 @@ def test_the_helper_knows_the_builds_the_client_knows() -> None:
 def config_table() -> str:
     """The helper's kConfigKeys entries, comments stripped."""
     table = braced(source("game_calls.cpp"), "constexpr ConfigKey kConfigKeys[] = {")
-    return re.sub(r"//[^\n]*", "", table)
+    return without_comments(table)
 
 
 def config_keys() -> dict[str, str]:
@@ -173,16 +172,17 @@ def test_the_helper_says_when_its_addresses_differ_from_the_clients_as_the_clien
     None
 ):
     dllmain = source("dllmain.cpp")
+    host = source("host_offline.cpp")
     assert f'"{native.DIFFERS}" + differs' in dllmain
     assert native.DIFFERS.endswith(" ")
     # `hello` gives the scan's outcome and where the addresses came from (native/README.md).
     for field in (" scan=", " addresses="):
-        assert f'"{field}' in dllmain, field
+        assert f'"{field}' in host, field
     for where in ("scan", "cache", "client"):
-        assert f'g_addresses = "{where}";' in dllmain, where
+        assert f'addresses_ = "{where}";' in host, where
     # The scan's note for optional addresses not found, as hello sends it: spaces made underscores.
-    assert '"ok without " + lacking' in dllmain
-    one_word = dllmain.split("std::string one_word(std::string text) {", 1)[1].split("}", 1)[0]
+    assert '"ok without " + lacking' in host
+    one_word = host.split("std::string one_word(std::string text) {", 1)[1].split("}", 1)[0]
     assert "std::replace(text.begin(), text.end(), ' ', '_')" in one_word
     assert "ok without ".replace(" ", "_") == native.SCAN_OK_WITHOUT
 
@@ -244,56 +244,6 @@ def test_the_save_slots_are_laid_out_alike() -> None:
     assert (slot["kEmpty"], slot["kRandoMarker"]) == (0x935E, 0x9400)
 
 
-LINUX_SRC = ROOT / "native" / "linux" / "src"
-
-
-def for_platform(text: str, windows: bool) -> str:
-    """``text`` without the lines only the other platform builds: the regions of ``#ifdef _WIN32``
-    and ``#ifndef _WIN32`` (and their ``#else``) the platform does not take. Other conditionals
-    (ZAP_HOOKTEST's, ZAP_TEST_BUILD's) keep both branches, and the directives themselves go."""
-    kept: list[str] = []
-    stack: list[tuple[bool, bool]] = []  # (a _WIN32 test, the branch now open is taken)
-    for line in text.splitlines():
-        found = re.match(r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b\s*(\S*)", line)
-        if found is None:
-            if all(taken for _, taken in stack):
-                kept.append(line)
-            continue
-        directive, word = found.groups()
-        if directive in ("ifdef", "ifndef", "if"):
-            platform = directive != "if" and word == "_WIN32"
-            stack.append((platform, windows == (directive == "ifdef") if platform else True))
-        elif directive == "elif":
-            raise AssertionError(f"an #elif this cannot follow: {line}")
-        elif directive == "else":
-            platform, taken = stack.pop()
-            stack.append((platform, (not taken) if platform else True))
-        else:  # endif
-            stack.pop()
-    assert not stack, "an #if left open"
-    return "\n".join(kept)
-
-
-def windows_sources() -> str:
-    """The Windows helper's sources (native/src), as it builds them."""
-    paths = sorted(SRC.glob("*.[ch]*"))
-    return "\n".join(for_platform(path.read_text(encoding="utf-8"), True) for path in paths)
-
-
-def linux_sources() -> str:
-    """The Linux helper's own sources and the shared ones of native/src its build compiles
-    (native/linux/CMakeLists.txt's ``../src/NAME.cpp``, with their headers), as it builds them
-    (not the shared files' Windows branches)."""
-    cmake = (ROOT / "native" / "linux" / "CMakeLists.txt").read_text(encoding="utf-8")
-    shared = sorted(set(re.findall(r"\.\./src/(\w+)\.cpp", cmake)))
-    assert {"game_calls", "offline", "mission"} <= set(shared), shared
-    paths = sorted(LINUX_SRC.glob("*.[ch]*"))
-    paths += [SRC / f"{name}{ext}" for name in shared for ext in (".cpp", ".h")]
-    return "\n".join(
-        for_platform(path.read_text(encoding="utf-8"), False) for path in paths if path.exists()
-    )
-
-
 def says(text: str, reply: str) -> bool:
     """Whether ``text`` gives ``reply``: as a string literal, whole or as its start (a reply may
     go on past it), or, for ``error <why>``, built as ``"error " + why`` from a ``return`` of a
@@ -306,9 +256,7 @@ def says(text: str, reply: str) -> bool:
 
 
 def test_every_request_the_client_sends_is_one_the_helper_knows() -> None:
-    dllmain = source("dllmain.cpp")
-    known = set(re.findall(r'^    \{"([a-z_ ]+)", (?:true|false), ', dllmain, re.MULTILINE))
-    known |= {"hello", "ping", "unload", "offline_put"}  # handled before the table
+    known = game_requests() | {"hello", "ping", "unload"}  # the table's, and handled before it
     assert {"shield", "config", "apply", "ap_newgame", "intel on"} <= known
     sent = {
         "hello", "unload", "shield", "die", "disarm", "newgame_status", "other_save",
@@ -336,18 +284,6 @@ def test_every_request_the_client_sends_is_one_the_helper_knows() -> None:
     assert named(discs.request(1, 2))
 
 
-def function_body(text: str, signature: str) -> str:
-    """The body of the one function whose definition starts with ``signature``."""
-    assert text.count(signature) == 1, signature
-    start = text.index("{", text.index(signature) + len(signature))
-    depth = 0
-    for at in range(start, len(text)):
-        depth += {"{": 1, "}": -1}.get(text[at], 0)
-        if depth == 0:
-            return text[start : at + 1]
-    raise AssertionError(f"{signature} is not closed")
-
-
 def linux_requests() -> set[str]:
     """The requests the Linux helper answers: its dispatchers, helper.cpp's ``game_request`` and
     core.cpp's ``reply`` (a request one of them dropped is no longer known here), and the auth
@@ -358,7 +294,11 @@ def linux_requests() -> set[str]:
     text += function_body(core, "std::string reply(")
     names = re.findall(r'request(?: == |\.starts_with\()"([a-z_ ]+?)(?:\\n)?"', text)
     auth = re.findall(r'kAuthRequest\[\] = "(\w+) "', (LINUX_SRC / "core.h").read_text("utf-8"))
-    return {name.strip() for name in names} | set(auth)
+    # The shared table's, which game_request hands on to (prepare_game_request).
+    assert "zap::prepare_game_request(request)" in function_body(
+        helper, "std::optional<std::string> game_request("
+    )
+    return {name.strip() for name in names} | set(auth) | game_requests()
 
 
 def test_every_request_the_client_sends_the_linux_helper_is_one_it_knows() -> None:
@@ -393,10 +333,11 @@ def test_every_request_the_client_sends_the_linux_helper_is_one_it_knows() -> No
 
 def test_the_linux_dispatchers_alone_name_the_requests_it_knows() -> None:
     # Not the pre-auth gate's ``hello`` (helper.cpp's serving loop) or any other comparison in
-    # the files: a request dropped from game_request or reply is no longer known.
+    # the files: a request dropped from game_request, the shared table or reply is no longer
+    # known.
     helper = (LINUX_SRC / "helper.cpp").read_text(encoding="utf-8")
     body = function_body(helper, "std::optional<std::string> game_request(")
-    assert 'request == "mission_status"' in body and 'request == "hello"' not in body
+    assert "mission_status" in linux_requests() and 'request == "hello"' not in body
     assert 'request == "hello"' in helper  # the gate's own, outside game_request
     assert "hello" in linux_requests()  # from core.cpp's reply
     assert "lang" in linux_requests()
@@ -583,8 +524,8 @@ def test_the_seed_copy_in_the_save_folder_has_the_name_steam_cloud_syncs() -> No
     assert not any(prefix[0].startswith(name) for name in game_names)
     # The one write into the save folder goes through write_synced_copy, under that name.
     code = source("offline.cpp")
-    assert code.count("write_whole(join(save,") == 1
-    assert "write_whole(join(save, synced_file_name(base))" in code
+    assert code.count("write_whole(present,") == 1
+    assert "const std::wstring present = join(save, synced_file_name(base));" in code
     # The Linux build lists the same names, so a file one writes is read by the other.
     assert code.count("kSyncedPrefix") >= 3
     claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
@@ -598,26 +539,27 @@ def test_the_helper_never_opens_the_games_save_files() -> None:
     code = source("offline.cpp")
     assert "Save Game" not in code.replace("`Save Game N.sav`", "")
     assert "read_prefix" not in code and "saved_seeds(save" not in code
-    frame = source("dllmain.cpp")
-    assert "g_game.saved_seeds()" in frame and "g_saved.publish(" in frame
+    host = source("host_offline.cpp")
+    assert "game_.saved_seeds()" in host and "saved_.publish(" in host
+    assert "g_host.snapshot_saves()" in source("dllmain.cpp")
     linux = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text(encoding="utf-8")
     assert "g_game->saved_seeds()" in linux and "g_saved->publish(" in linux
     # Both helpers write a copy from a thread of their own, never the frame call.
-    assert "copy_thread" in frame and "copy_loop" in linux
+    assert "copy_thread" in host and "copy_loop" in linux
 
 
 def test_the_test_builds_read_their_folders_only_through_the_guard() -> None:
     # A test run must never write the real save folder or per-user folder (CLAUDE.md, "Rules"):
     # the test builds take them through restrict_to_test_folder and name their save folder only in
     # ZAP_TEST_SAVE_DIR, never ZEXION_SAVE_DIR (which the repo's tools define as the real one).
-    windows = source("dllmain.cpp")
-    assert "zap::restrict_to_test_folder(zap::offline_folder())" in windows
+    windows = source("host_offline.cpp")
+    assert "restrict_to_test_folder(offline_folder())" in windows
     assert 'L"ZAP_TEST_SAVE_DIR"' in windows and 'L"ZEXION_SAVE_DIR"' not in windows
     linux = (ROOT / "native" / "linux" / "src" / "helper.cpp").read_text(encoding="utf-8")
     assert "zap::restrict_to_test_folder(zap::offline_folder())" in linux
     assert '"ZAP_TEST_SAVE_DIR"' in linux and 'getenv("ZEXION_SAVE_DIR")' not in linux
     # And the production build in no known build takes no seed.
-    assert 'return "error not the game";' in windows
+    assert 'return "error not the game";' in source("dllmain.cpp")
 
 
 def test_no_name_the_client_puts_in_a_label_has_the_helpers_separator() -> None:

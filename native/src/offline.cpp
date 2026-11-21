@@ -558,7 +558,7 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
     if (parsed && seed_out != nullptr) *seed_out = std::move(*parsed);
     if (folder.empty()) {
         if (may_wait) pend(name, *waiting);
-        return std::string("error ") + kNoFolder;
+        return kNoFolderError;
     }
     if (body.size() > kMaxFile) return "error too large";
     make_folder(folder);
