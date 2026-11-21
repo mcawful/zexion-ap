@@ -179,8 +179,8 @@ syncs it with them. This has been tried between two Windows PCs, where saves mad
 as AP saves on the other, and from Windows to a Linux PC, where it didn't work at first on a
 machine that had run an earlier version of the mod, and did after the player cleared some things
 out (what, wasn't recorded). If saves synced from another machine show as plain randomizer
-games, first make sure the mod there is this release's `libzexion_ap.so`: an earlier one may not
-read the copies (a guess, not seen). It has not been tried between a Steam Deck and another
+games, first make sure the mod there is this release's `libzexion_ap.so`: an earlier one doesn't
+read the copies. It has not been tried between a Steam Deck and another
 machine, or from Linux to Windows, yet.
 
 - Both machines need the mod, from a release with this feature.

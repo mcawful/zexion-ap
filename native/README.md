@@ -1916,7 +1916,7 @@ report, `docs/re/save-format.md`, "The helpers keep the file of each seed a save
 saves made on one PC showed as AP saves on the other after Steam Cloud synced them. Seen once,
 Windows to Linux (2026-11-21, a CachyOS PC, B1 assumed; the owner's report: AP saves synced from
 Windows showed as AP saves there, after the owner cleared some things out, what not reported;
-"Seen on a Steam Deck, and a Linux PC's sync", above). Not run in the game, so stand-in tests only: Linux's
+"Seen on a Steam Deck, and a Linux PC's sync", below). Not run in the game, so stand-in tests only: Linux's
 own writing of the copies and Linux to Windows, whether a client ran on the second PC first,
 which seeds and slots (neither was reported), the new-seed step below, the merge of two machines'
 copies, a cut copy's refusal and that `helper.py status` writes nothing.

@@ -1286,8 +1286,8 @@ in the game on the same setup, as the owner saw them and the client's lines and 
 
 ## Seen on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21
 
-Two short runs the owner reported after the first release with the Linux helper, in their own
-words as the planning session relayed them. They are all that was reported: no screenshot, log or
+Two short runs the owner reported, on test builds from `develop` (no release has carried the
+Linux helper yet; 1.2.0 came before it), in their own words as the planning session relayed them. They are all that was reported: no screenshot, log or
 output is kept in the repo, and what was not reported is not known.
 
 | Field | |
