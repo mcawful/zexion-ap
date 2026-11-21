@@ -400,8 +400,12 @@ Committed under `.claude/`, so they apply to anyone working here:
   with a name pattern that may match the files in them (`*.sav`, `Save*`, `*seed*`, `token`, a
   bare `*`: `find lab -name '*.sav' -delete` blocks, use `rm` with the paths). Reads, creating
   files in such a folder and copying into it pass (`find "$APPDATA" -name x -print`, `ls -R ~`,
-  `cd ~ && git clone`, `cp a ~`); the guard's docstring lists what each verb does to count and
-  what it misses: wrappers it does not know (`chrt`, `flock`, `strace`, `parallel`, `wsl`) and
+  `cd ~ && git clone`, `cp a ~`). A `cd` into a folder the guard can't know (a variable, which
+  may be empty and then goes home; a substitution) counts as unknown, so a glob or a clean right
+  after it blocks, a temporary folder's too: `d=$(mktemp -d) && cd "$d" && rm -rf *`, `cd "$(git
+  rev-parse --show-toplevel)" && git clean -fdx` and `cd "$RUNNER_TEMP" && rm -rf *` are false
+  positives; name the folder instead (`rm -rf "$d"/*`, `git -C "$d" clean -fdx`). The guard's
+  docstring lists what each verb does to count and what it misses: wrappers it does not know (`chrt`, `flock`, `strace`, `parallel`, `wsl`) and
   shell forms that hide the verb (`command cd`, a script piped into a shell), PowerShell and .NET
   calls, other tools (`takeown`, `icacls`, `Clear-Content`), code in other languages
   (`python -c shutil.rmtree`), other variables (`$PUBLIC/..`, `$HOMEDRIVE$HOMEPATH`, `~+`), UNC

@@ -2137,12 +2137,24 @@ FAKE_ENV = {
 }
 
 
+HOST_FOLDER_VARS = (
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "RUNNER_TEMP",
+    "GITHUB_WORKSPACE",
+    "CLAUDE_PROJECT_DIR",
+)
+
+
 @pytest.fixture(params=["set", "unset", "posix"])
 def home_env(request, monkeypatch) -> str:
     """The three ways the environment tells the guard where Roaming and the home folder are: set
     as on Windows, not set at all (the variables are read as written), and Linux's."""
     if request.param == "posix":
         request.getfixturevalue("posix")
+    for name in HOST_FOLDER_VARS:  # the host's own, which a ``cd`` would expand: not these tests'
+        monkeypatch.delenv(name, raising=False)
     for name, value in FAKE_ENV.items():
         if request.param == "set":
             monkeypatch.setenv(name, value)
@@ -2445,6 +2457,16 @@ ABOVE_BLOCKED = [
     ("Bash", 'cd "$RUNNER_TEMP" && find .. -delete'),
     ("PowerShell", "cd $env:TEMP; ri -r ..\\*"),
     ("Bash", "cd $(mktemp -d) && cd ../.. && rm -rf ZexionAP"),
+    # no known-folder rule: an unset variable is a bare ``cd`` (home), a name may come before ``..``
+    ("Bash", "cd $RUNNER_TEMP && rm -rf *"),
+    ("Bash", "cd $GITHUB_WORKSPACE && git clean -fdx"),
+    ("Bash", "cd $TMPDIR && rm -rf *"),
+    ("Bash", "cd $(mktemp -d) && rm -rf a/../../.."),
+    ("Bash", 'cd "$TMPDIR" && echo x > a/../../ZexionAP/seeds.json'),
+    ("Bash", 'cd "$TMPDIR" && cp x a/../../ZexionAP/'),
+    ("PowerShell", "$global:TEMP = $HOME; cd $TEMP; ri -r *"),
+    ("PowerShell", "${env:TEMP} = $HOME; cd $env:TEMP; ri -r *"),
+    ("PowerShell", "[Environment]::SetEnvironmentVariable('TEMP', $HOME); cd $env:TEMP; ri -r *"),
     ("Bash", "d=$(mktemp -d)/...; cd $d && rm -rf *"),
     # a safe-listed name set by read, for, printf -v, Set-Variable, New-Variable, Set-Item
     ("Bash", "read -r TMPDIR <<< ~; cd $TMPDIR && rm -rf *"),
@@ -2619,14 +2641,14 @@ ABOVE_ALLOWED = [
     ("Bash", "robocopy a b /MIR"),
     ("PowerShell", "robocopy a b /MIR"),
     ("Bash", "tar -cf x.tar --remove-files lab/x"),
-    # an unknown cd that is a temporary folder or the repo is not the home folder (M4)
-    ("Bash", 'd=$(mktemp -d) && cd "$d" && rm -rf *'),
-    ("Bash", 'cd "$(git rev-parse --show-toplevel)" && git clean -fdx'),
-    ("Bash", "cd $(git rev-parse --show-toplevel) && git clean -fdx"),
-    ("Bash", 'cd "$RUNNER_TEMP" && rm -rf *'),
-    ("Bash", "cd $TMPDIR && rm -rf *"),
-    ("Bash", 'cd "$TEMP" && find . -delete'),
-    ("Bash", 't=$TMPDIR/x && cd "$t" && rm -rf *'),
+    # The workarounds for the documented false positives of an unknown ``cd``
+    # (``KNOWN_FALSE_POSITIVES``): name the folder in the command instead of ``cd``-ing into it.
+    ("Bash", 'd=$(mktemp -d) && rm -rf "$d"/*'),
+    ("Bash", 'd=$(mktemp -d) && git -C "$d" clean -fdx'),
+    ("Bash", 'git -C "$(git rev-parse --show-toplevel)" clean -fdx'),
+    ("Bash", 'rm -rf "$RUNNER_TEMP"/*'),
+    ("Bash", 'rm -rf "$TMPDIR"/*'),
+    ("Bash", 'find "$TEMP" -mindepth 1 -delete'),
     ("Bash", "cd $d && rm -rf build"),
     # only the pipeline that feeds a command counts (Low 4)
     ("Bash", "ls ~ ; find lab -name x.tmp | xargs rm"),
@@ -2658,10 +2680,6 @@ ABOVE_ALLOWED = [
     ("Bash", 'cmd /c "dir lab"'),
     ("Bash", 'cmd /c "rd /s /q lab\\x"'),
     ("Bash", "cmd //c dir"),
-    ("Bash", 'd=$(mktemp -d) && cd "$d" && git init && git clean -fdx'),
-    ("Bash", 'cd "$TMPDIR/work" && rm -rf *'),
-    ("Bash", 'cd "$(mktemp -d)/work" && rm -rf *'),
-    ("Bash", 'd=$(mktemp -d)/work; cd "$d" && rm -rf *'),
     ("Bash", 'cmd /c "dir /s /b"'),
     ("Bash", 'cmd //c "rd /s /q build"'),
     ("Bash", 'cmd /c "cd /d native && build.bat"'),
@@ -2675,13 +2693,8 @@ ABOVE_ALLOWED = [
     ("PowerShell", "$x = gci lab; $x | ri -r"),
     ("PowerShell", "gci lab -OutVariable o | Out-Null; $o | ri -r"),
     ("Bash", "x=$(ls lab); echo $x | xargs rm -rf"),
-    ("Bash", 'cd "$TMPDIR/zap" && rm -rf *'),
-    ("Bash", 'cd "$TEMP" && rm -rf work *'),
-    ("Bash", 'cd "$TEMP" && cd sub && rm -rf *'),
-    ("Bash", 'cd "$(mktemp -d)" && mkdir x && cd x && rm -rf *'),
     ("Bash", 'cd "$TEMP" && rm -rf ./x'),
     ("Bash", 'cd "$TEMP" && echo x > out.txt'),
-    ("Bash", 'read -r line; cd "$TMPDIR" && rm -rf *'),
     ("Bash", 'for f in a b; do cd "$TMPDIR" && rm -rf x; done'),
     ("PowerShell", "cd ~; ls; Remove-Item x"),
     # Work in the repo and in the project folders under the home folder.
@@ -2752,10 +2765,18 @@ ABOVE_ALLOWED = [
 ]
 
 
+# Commands that name a protected folder through ``%TEMP%``, which is under ``%LOCALAPPDATA%`` on
+# Windows only: they are run with both set, so that they read the same on every platform.
+NEEDS_TEMP_UNDER_LOCALAPPDATA = {'cd "$TEMP" && echo x > ../ZexionAP/seeds.json'}
+
+
 @pytest.mark.parametrize(("tool", "command"), ABOVE_BLOCKED)
 def test_a_write_that_reaches_a_folder_above_a_protected_one_blocked(
-    tool: str, command: str, home_env: str
+    tool: str, command: str, home_env: str, monkeypatch
 ) -> None:
+    if command in NEEDS_TEMP_UNDER_LOCALAPPDATA:
+        monkeypatch.setenv("LOCALAPPDATA", FAKE_ENV["LOCALAPPDATA"])
+        monkeypatch.setenv("TEMP", FAKE_ENV["LOCALAPPDATA"] + "\\Temp")
     assert run(tool, command=command), (home_env, command)
 
 
@@ -2802,6 +2823,62 @@ def test_a_relative_operand_is_joined_to_where_the_command_runs(home_env: str) -
     assert run("Bash", command="rm -rf ../x", cwd=deep) is None
     assert run("Bash", command="cd .. && rm -rf *", cwd=deep) is None
     assert run("Bash", command="cd ../.. && ls", cwd=deep) is None
+
+
+# Documented false positives: a ``cd`` to a folder the guard can't know (a variable, which may be
+# empty, and then ``cd`` goes home; a substitution) counts as unknown, so a glob or a clean after
+# it blocks. The workarounds, in ``ABOVE_ALLOWED``, name the folder in the command.
+KNOWN_FALSE_POSITIVES = [
+    'd=$(mktemp -d) && cd "$d" && rm -rf *',
+    'cd "$(git rev-parse --show-toplevel)" && git clean -fdx',
+    "cd $(git rev-parse --show-toplevel) && git clean -fdx",
+    'cd "$RUNNER_TEMP" && rm -rf *',
+    'cd "$GITHUB_WORKSPACE" && git clean -fdx',
+    "cd $TMPDIR && rm -rf *",
+    't=$TMPDIR/x && cd "$t" && rm -rf *',
+    'd=$(mktemp -d) && cd "$d" && git init && git clean -fdx',
+    'cd "$TMPDIR/work" && rm -rf *',
+    'cd "$(mktemp -d)/work" && rm -rf *',
+    'cd "$(mktemp -d)" && mkdir x && cd x && rm -rf *',
+    'read -r line; cd "$TMPDIR" && rm -rf *',
+    # and the holes that a "known folder" rule opened: the variable may be unset, a name may
+    # come before ``..``
+    "cd $(mktemp -d) && rm -rf a/../../..",
+    "cd $(mktemp -d) && rm -rf ../../ZexionAP",
+    'cd "$TMPDIR" && rm -rf ../ZexionAP',
+]
+
+
+def test_a_cd_to_an_unknown_folder_counts_as_unknown(home_env: str) -> None:
+    for command in KNOWN_FALSE_POSITIVES:
+        assert run("Bash", command=command), (home_env, command)
+
+
+def test_a_cd_to_a_folder_the_environment_knows_is_judged_by_its_real_path(monkeypatch) -> None:
+    monkeypatch.setenv("TMPDIR", "/var/tmp/x")
+    assert run("Bash", command='cd "$TMPDIR" && rm -rf *') is None
+    monkeypatch.delenv("TMPDIR")
+    assert run("Bash", command='cd "$TMPDIR" && rm -rf *')  # unset: a bare cd, which goes home
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'cd "$TEMP" && echo x > ../ZexionAP/seeds.json',
+        'cd "$TEMP" && echo x > ../ZexionAP/seeds/p.txt',
+        "cd $TEMP && cp a ../ZexionAP/config-B1.txt",
+        'cd "$TEMP" && rm -rf ../ZexionAP',
+        'cd "$TEMP" && cd .. && rm -rf *',
+        'cd "$TEMP" && rm -rf ../*',
+    ],
+)
+def test_dot_dot_from_the_temp_folder_reaches_the_offline_folder(monkeypatch, command: str) -> None:
+    # On Windows %TEMP% is %LOCALAPPDATA%\Temp: its parent holds ZexionAP. The variables are set
+    # here, so the test reads the same on every platform.
+    monkeypatch.setenv("LOCALAPPDATA", "C:\\Users\\someone\\AppData\\Local")
+    monkeypatch.setenv("TEMP", "C:\\Users\\someone\\AppData\\Local\\Temp")
+    assert run("Bash", command=command), command
+    assert run("Bash", command='cd "$TEMP" && echo x > out.txt') is None
 
 
 def test_a_lexed_cd_chain_and_unknown_folders() -> None:
