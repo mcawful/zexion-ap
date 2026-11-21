@@ -2,247 +2,112 @@
 the game, and the mod's offline files (``%LOCALAPPDATA%\\ZexionAP``: the seed list, labels and
 disk counts the helper keeps; on Linux the seeds' files and the helper's socket token, in
 ``$XDG_DATA_HOME/ZexionAP``, else ``~/.local/share/ZexionAP``, and Flatpak's default data
-folder; only the helper writes them).
-
-The save folder is no exception for Claude's own calls, though the Windows and Linux helpers
-themselves write ``ZexionAP-seed-<NAME>.sav`` into it (a copy of the file of each seed one of the
-saves uses, which Steam Cloud carries with the saves: ``native/README.md``, "Seed files in the
-save folder"): they are
-the game's own process, not a tool call, so this hook never sees them, and it blocks the same
-writes of Claude's as before, those files' names included.
+folder; only the helper writes them). ``tools/protected.py`` defines these folders, and says why
+the helpers' own ``ZexionAP-seed-<NAME>.sav`` copies in the save folder change nothing here.
 
 Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows stderr to Claude.
+``check`` is the entry point, ``_check`` the rules, in this order:
 
 - Write, Edit, MultiEdit, NotebookEdit: blocked when the target file is in a protected folder.
 - Shell commands: the ``command`` of Bash and Monitor (read as Bash), and of PowerShell and the
-  terminal tool ``mcp__terminal__run_in_terminal`` (read as PowerShell). Other tools pass.
-  The command runs in the tool's ``cwd`` if it has one, else in the payload's own ``cwd`` (the
+  terminal tool ``mcp__terminal__run_in_terminal`` (read as PowerShell). Other tools pass. The
+  command runs in the tool's ``cwd`` if it has one, else in the payload's own ``cwd`` (the
   session's working folder, which a ``cd`` in an earlier call may have moved).
-  A command that may reach a protected folder is allowed only when every simple command in it
-  is recognizably read-only, a ``.venv`` Python run of a script in ``tools/`` (those scripts
-  enforce their own rules through ``tools/protected.py``; after a ``cd``, only when every
-  ``cd`` goes to a checkout of this repo), or a ``git`` or ``gh`` command that names no
-  protected folder or parent of one, and no output is redirected into a protected folder.
 
-  - Text that is only data is left out, so commit messages and PR text may name the folders:
-    a PowerShell here-string's quotes; the message values of ``git`` and ``gh`` (``-m``,
-    ``--title``, ``--body`` and the like: ``_text_words``); and the body of a Bash heredoc
-    that nothing can run (``_heredoc_is_data``): its reader and any command it pipes into are
-    data readers (``_data_reader``: ``cat``, ``grep``, … that write no file; ``git commit -F
-    -``; ``gh`` but not ``gh alias`` or ``extension``), nothing else follows the ``<<`` on its
-    line, no parenthesis or substitution is around it but a git or gh message value (the
-    ``"$(cat <<'EOF' … EOF)"`` form), and a file it is saved to is not run later in the
-    command (``_saved_and_used``: ``git commit -F x`` and ``wc x`` are fine, ``sh x``, ``.
-    x``, ``cat x | sh`` and ``cp x y && sh y`` are not). Heredocs are found as Bash finds them
-    (``_heredocs``). Every other body is judged as commands.
-  - It *may reach* one (``_may_reach_protected``) when its text names one, also with quotes
-    removed and pieces joined (``protected.mentions_protected``); when a word could name one as
-    a path (``..``, wildcards, 8.3 short names: ``protected.word_may_name_protected``), leads
-    into one from where the command runs, also through an existing link, or names a parent of
-    one (``"$APPDATA/Gallant Leaf"``, ``…/steamapps/common``, ``…/userdata/123``:
-    ``protected.may_be_above_protected``, ``_names_parent``), so copying into, moving or
-    deleting the parent blocks while reading it does not; when it may build one from pieces
-    (``_builds_from_pieces``, the app id as a path component: ``_names_app_id``); when it makes
-    a link next to a folder named like ``gallant`` or ``steam``; when it goes through another
-    process's view in ``/proc`` (its ``cwd``, ``root``, ``fd``, ``map_files``, ``exe`` or
-    ``task``), whatever its pid (the game's install is the game's ``cwd``, and a pid the command
-    works out can't be told from the game's), so a command that isn't read-only is blocked
-    wherever it leads, while reads and a redirect's target resolve to where they lead
-    (``/proc/self`` is the shell's own; quotes, ``//`` and ``/./`` don't hide it, and a ``proc``
-    piece with a view's name anywhere in the command counts too, for a path built from pieces:
-    ``_through_proc``); when a name predicate of ``find`` (``-name``, ``-iname``, ``-path``,
-    ``-regex``, …) or PowerShell's ``-Filter`` or ``-Include`` (also as ``-Filter:name``, as a
-    list, and ``Get-ChildItem``'s operands that are no path) takes a pattern that may match the
-    name of a protected folder or one above it, wherever the search starts, with the name alone
-    (``find ~ -name ZexionAP -delete``: ``_selects_protected_name``,
-    ``protected.pattern_may_name_protected``; ``find``'s two regular expression syntaxes,
-    groups, braces, escapes and classes are read; a name pattern with fewer than three fixed
-    characters, ``*`` or ``Z*``, is no folder's name, but it may be a file's: below).
-    ``Zexion`` and ``ZexionAP`` are also this repo's
-    names in lower case (``worlds/zexion``, ``zexion*.py``), so ``find``'s predicates that
-    compare case match them only as written, and ``-iname`` and PowerShell, which don't, in
-    any case (``find dist -name 'zexion*' -delete`` passes, ``find / -name Zexion -delete``
-    and ``gci ~ -r -Filter zexion | ri`` block). A pattern that may match the name of a file
-    in these folders counts too, wherever the search starts (``protected._FILE_NAMES``: ``Save
-    Game N.sav``, ``GameUnlocks.sav``, ``PreferencesSynced.sav``, ``PreferencesLocal``,
-    ``ZexionAP-seed-<NAME>.sav``, ``steam_autocloud.vdf``, ``token``, ``seeds``,
-    ``config-<build>.txt``): ``*.sav``, ``Save*``, ``*seed*``, ``Pref*``, ``*.txt``, ``?????`` and
-    a bare ``*`` do, so ``find lab -name '*.sav' -delete`` and ``find . -name '*' -delete``
-    block, while ``*.py``, ``*.pyc`` and ``*foo*`` pass. The seed copies' name is matched only as
-    written unless ``-iname`` or PowerShell, as ``Zexion*`` above; a ``-path`` or ``-regex`` is
-    read at its last name, which needs a fixed character (``./build/*`` names no file); a name
-    over 200 characters is read as a file's. It reads also inside a word that holds the
-    command (``sh -c``, ``eval``) or a substitution's backticks, so ``-print`` and the reads
-    pass while ``-delete``, ``-exec``, ``-fprint`` and an ``xargs rm`` after it do not
-    (``find . -iname '*zexion*' -delete`` and ``gci . zexion | ri`` in this repo block too:
-    they can't be told from ``ZexionAP``). A name or a list of names over 1000 characters is
-    read as a name. A redirect's target is read as an argument is (``echo x > "$(find ~ -name
-    ZexionAP)/seeds.json"`` blocks, whatever the operator: ``>``, ``>>``, ``2>``, ``&>``,
-    PowerShell's ``*>``). A reach by a name alone lets a command substitution through, as the
-    guard did before, when every command in the command line reads, and so does every one in
-    the substitution (plain ones: none inside another): ``ls -ld $(find ~
-    -name ZexionAP)`` passes, ``cd $(find …) && git clean -fdx`` does not. Or when it runs in
-    or changes directory to a folder in a protected one or a parent of one. Other names in
-    the folder's path don't count, so a worktree named ``steam-achievements`` works as any
-    other.
-  - A command that deletes, moves out, changes or searches-and-acts on a *folder above a
-    protected one* at any depth blocks (``_ancestor_violation``, ``_segment_violation``,
-    ``protected.is_ancestor_folder``). Those folders are Roaming, the home folder (``~``,
-    ``$HOME``, ``%USERPROFILE%``, ``C:/Users/name``, ``/home/name``) and what is above it, ``/``, a
-    drive's root (``/c`` and ``/mnt/c`` as Git Bash and WSL write it), the folders of the
-    variables ``protected._ANCESTOR_ENV`` lists (``$APPDATA``, ``%LOCALAPPDATA%``,
-    ``$XDG_DATA_HOME``, …, also written as the variable, with ``${APPDATA:-x}`` and
-    ``${APPDATA%/}``, when this machine doesn't set it), ``.var``, ``~/snap``, ``.steam`` and
-    Steam's folders in Program Files (x86); ``..`` or a last name that is only a wildcard (``~/*``)
-    up to one. Only these commands, by what the verb does with the folder it is given, count:
-    ``rm``, ``rmdir``, ``shred``, ``Remove-Item``, cmd's ``rd`` and ``del`` (any operand);
-    ``mv``, ``Move-Item`` and cmd's ``move`` (a source, so not a ``-Destination`` or ``-t``:
-    moving into one is no harm); ``chmod``, ``chown``, ``truncate``, ``Rename-Item``; ``find`` (a
-    start folder, with ``-delete``, ``-fprint``, ``-ok`` or an ``-exec`` of anything but a reader
-    such as ``cat`` and ``grep``) and ``fd -x``; ``git clean``, ``stash -u``, ``reset --hard`` and
-    ``checkout .`` (``-C``, ``--work-tree``, ``GIT_WORK_TREE``, an operand, or where it runs);
-    ``rsync --delete`` (its destination) and ``--remove-source-files`` (its sources), ``tar
-    --remove-files``, ``robocopy /MIR /PURGE /MOVE``; extraction over what is there into one
-    (``unzip -o -d ~``, ``tar --overwrite -C ~``, ``Expand-Archive … -Force``); and ``xargs`` or a
-    ``Remove-Item`` given nothing of its own to remove, fed by a command of its *pipeline* that
-    named such a folder (``ls ~ | xargs rm``, ``gci $env:APPDATA -r | ri``, ``$HOME | ri -r``, a
-    lister with no folder after ``cd ~``, a lone ``/`` piped in; not a command before a ``;`` or
-    ``&&``: ``ls ~ ; find lab | xargs rm`` passes; ``_pipeline_groups``, linear in the line; a
-    ``{ …; }`` or ``while … done`` that a pipe goes on from is part of it, a line continuation
-    after a pipe too). A ``while read f`` fed by such a pipeline, ``set -- ~``, ``for f in $(ls -d
-    ~/*)``, ``x=$(ls ~)`` and PowerShell's ``$x = gci ~`` and ``gci ~ -OutVariable o`` make their
-    variables the folder, as ``H=~`` does. A lone ``/`` or ``/c`` is a root only as an operand of
-    these (``cmd /c``, ``findstr /s`` and ``print(1 / 2)`` name none). Not these: creating files in
-    the folder, copying into or out of it, listing or reading it, ``tar -C ~``, ``unzip -d ~``,
-    ``git clone`` or ``mkdir`` after a ``cd ~`` (``cd ~ && git clone``, ``cp a ~``, ``ls ~ && make
-    clean`` pass).
-    The folder a command runs in is where its ``cd``s left it (``_walk_cds``: each one is read
-    from the one before; a bare ``cd`` and ``cd --`` go home; ``cd /c/Users/x`` is on drive C,
-    not under the cwd's); ``cd -``, ``cd $OLDPWD``, ``cd $d``, a substitution and ``popd`` leave it
-    unknown, and an unknown folder counts as one above a protected one for ``rm *``, ``find .
-    -delete`` and ``git clean`` that follow, so ``cd $d && rm -rf *`` blocks and ``cd $d && rm -rf
-    build`` does not. A ``..``, a wildcard and a name that is a protected folder's or file's
-    count in an unknown folder (``cd $d && rm -rf a/../..``, ``rm -rf ../ZexionAP``), and after
-    such a ``cd`` any word or redirect target that goes up and then names a protected folder
-    (``> a/../../ZexionAP/x``, ``cp x a/../../ZexionAP/``) reaches it. A variable
-    the line sets (``TMPDIR=~``, ``read TMPDIR``, ``for TMPDIR in``, ``printf -v``,
-    ``Set-Variable``, ``Set-Item env:``) is not read from the hook's environment. A ``cd`` to a
-    temporary or workspace folder is no exception: a variable may be empty, and then ``cd`` goes
-    home, so ``cd "$TMPDIR"``, ``cd $RUNNER_TEMP`` and ``cd $(mktemp -d)`` are unknown like any
-    other. That is a documented false positive, for a glob or a clean right after such a ``cd``:
-    ``d=$(mktemp -d) && cd "$d" && rm -rf *``, ``cd "$(git rev-parse --show-toplevel)" && git
-    clean -fdx`` and ``cd "$RUNNER_TEMP" && rm -rf *`` block. Name the folder in the command
-    instead: ``rm -rf "$d"/*``, ``git -C "$d" clean -fdx``, ``rm -rf "$RUNNER_TEMP"/*``,
-    ``git -C "$(git rev-parse --show-toplevel)" clean -fdx`` pass (a variable the environment
-    knows is expanded, and judged by its real path).
-    A relative operand is joined to that folder (``rm -rf ../../..`` from a folder under the home
-    folder). Words are read again as a command's in ``sh -c`` (also ``-lc``, with ``$0``, ``$1``
-    and ``"$@"`` filled from the words after it), ``eval``, ``cmd /c "…"``, ``powershell
-    -Command`` and ``iex`` (a ``cmd /c "…"`` script is lexed as PowerShell from the source text,
-    so its backslashes stay); ``sudo``, ``env``, ``nice``, ``timeout 5``, ``nohup``, ``command``,
-    ``cmd /v:on /c`` (also Git Bash's ``//c``), and cmd's ``call``, ``start /b`` and ``if [not]
-    exist X`` are taken off first (``_unwrap``). A backtick or
-    ``$(…)`` operand that names one (``rm -rf `echo ~```, ``rm -rf $(echo ~)``), a parenthesis
-    (``ri -r ($HOME)``, ``@(~)``), PowerShell's ``-Path:~`` and a comma list (``x,$HOME``) count,
-    and so does a variable the line sets to one (``H=~; rm -rf "$H"``, ``for d in ~ /; do rm -rf
-    "$d"; done``, PowerShell's ``$d =``).
-  - *Read-only* means the verb is on a short list and nothing in its arguments makes it write
-    (``_bash_args_write``: ``find -delete``, ``sort -o``, ``sed -i`` and the like); ``git
-    diff``, ``log`` and ``show`` count unless an argument starts with ``--output``,
-    ``--ext-diff``, ``--exec-path``, ``--config-env`` or ``-c``. PowerShell's rules for script
-    blocks, ``ForEach-Object``, expressions and ``&``: ``_ps_segment_is_read_only``.
-  - Blocked outright, when the command may reach a protected folder: command substitution
-    (``$(``, Bash arithmetic ``$((`` included, or a backtick in Bash; ``xxd -s 0x9360`` takes
-    the offset itself), in Bash also once its quoting is taken off (``_quotes_taken_off``: a
-    ``$(`` split by quotes in a value Bash later reads as arithmetic, through ``$[x]``,
-    ``${s:x}`` or ``${a[x]}``), but the message form above and PowerShell's ``"$($_.Name)"``,
-    which only reads a member; a PowerShell ``::`` call other than a known reader or a method call
-    other than a few string and date ones (``_ps_calls_block``); output redirected to a path
-    that still holds a variable, a substitution or a backtick after the hook's own environment
-    is applied, or to PowerShell's ``> (expression)`` (the guard can't see where it leads:
-    ``_DYNAMIC_TARGET``; a parenthesis inside quotes is part of a name). That also blocks a
-    target that is no file, Bash's ``> >(cat)`` and PowerShell's ``> (Join-Path $env:TEMP x)``,
-    in a command that already names a protected folder; and in Bash an environment prefix or
-    ``export`` of a variable that names a program (``_PROGRAM_VAR``: ``GIT_PAGER``,
-    ``LESSOPEN``, ``PATH``, …), even before a read-only command.
-  - Answers within about a second whatever the command, as a hook that times out lets the call
-    through (``settings.json`` gives the hook 120 s, a backstop: the deadline below is the
-    protection). Past a budget the words are not read one by one: the command counts as reaching a
-    protected folder, so only a read-only one passes (a redirect, a substitution, and the
-    ``tools/`` scripts and ``git`` and ``gh`` commands that are trusted otherwise are blocked:
-    ``Too long or too complex to check``). The budget: ``MAX_WORK`` (the different words, 1
-    each, and for a word with a wildcard, which is read as a pattern, 8 or an eighth of its
-    length if more, at most an eighth of ``MAX_NAME_TEXT``; 8 for each redirect target;
-    message text is no word), ``MAX_SEGMENTS`` and ``MAX_FOLDERS`` (different folders a ``cd``
-    goes to). Two limits do not make a command count as reaching a folder, they make a
-    heredoc count as code: more than ``MAX_HEREDOCS`` of them (none is cut out as data), and a
-    heredoc saved to, or copied to, more than ``MAX_SAVED_NAMES`` files (it may be run later).
-    A command over ``MAX_COMMAND`` (100 000 characters) is blocked unread: write long text to
-    a file with the Write tool. A commit message or a PR body is one word to it, and a
-    script's words count once each. Past ``DEADLINE`` (one second) of reading, whatever the
-    budget says, the command is blocked too: the lexer (per word), the heredoc pass (per
-    heredoc and per saved file's later commands), the final pass (per command) and each read
-    of a word or name pattern that ``protected`` has not already answered (``_Memo``) look at
-    the clock (``_tick``). Not interrupted: one read (a word of 96 000 characters with a
-    wildcard is read in full, 0.8 s; a command with several such passes takes up to about two
-    seconds), the lexing of one word, and ``_heredocs``, which is linear in the length. So the
-    answer is within about a second, and a little over two at most.
-    Nothing asks the file system about a UNC path on Windows (``protected.is_network_path``:
-    ``//host/x`` is resolved over the network, seconds a host), so a link in one is not
-    followed; ``//?/C:/x`` and ``//./C:/x`` are local paths and are.
+  1. ``_parse`` splits the command into simple commands, redirect targets and words. Text that is
+     only data is left out, so commit messages and PR text may name the folders: a PowerShell
+     here-string's quotes, the message values of ``git`` and ``gh`` (``_text_words``) and the
+     body of a Bash heredoc that nothing can run (``_heredoc_is_data``).
+  2. ``_reach``: whether the command *may reach* a protected folder (``_may_reach_protected``,
+     ``_selects_protected_name``), or deletes, moves out, changes or searches-and-acts on a folder
+     *above* one (``_ancestor_violation``). One that cannot is allowed.
+  3. One that may is allowed only when every simple command in it is recognizably read-only
+     (``_segment_is_read_only``), a ``.venv`` Python run of a script in ``tools/`` (those enforce
+     their own rules through ``tools/protected.py``; after a ``cd``, only when every ``cd`` goes
+     to a checkout of this repo), or a ``git`` or ``gh`` command that names no protected folder
+     or parent of one; and when it holds no command substitution or PowerShell method call
+     (``_substitution_violation``) and no output is redirected into a protected folder or to
+     a path the guard cannot see (``_redirect_violation``, ``_command_violation``).
 
-This is a tripwire against mistakes, not a sandbox. It can't see a path assembled entirely from
-variables or string arithmetic, a link to a parent folder made outside the command, the
-folder behind a ``cd`` into a variable (``cd $d`` is unknown, not the folder the variable holds),
-a Steam library folder by its own name (only its ``steamapps`` and what is below, and Steam's
-own folders in the usual places: a Steam folder at ``D:/Steam`` is missed), a home folder that
-neither the environment nor a ``/home/name``, ``/Users/name`` or ``C:/Users/name`` path gives,
-and the folders above a protected one that other variables name: ``$PUBLIC/..``,
-``$HOMEDRIVE$HOMEPATH``, ``%HOMEDRIVE%%HOMEPATH%``, ``$SYSTEMDRIVE``, ``$ProgramData/..``,
-``$PWD/../..``, ``$env:SystemDrive/``, ``~+``, a variable set by another variable
-(``H=$X``), and UNC admin shares (``//localhost/C$/Users/…``, which the guard does not ask the
-network about). A script that is a word of more than 2000 characters (``sh -c``, ``eval``, ``cmd
-/c``) is not read again. cmd forms beyond the common ones are missed: ``@rd``, ``rd/s/q`` with no
-spaces, ``^"`` escapes, ``if /i a==a``, ``if errorlevel``. A subshell in the middle of a pipeline
-(``ls ~ | (cat) | xargs rm -rf``) cuts the link between ``ls ~`` and ``xargs``. Wrappers it
-does not know (``chrt``, ``taskset``, ``flock``, ``strace``,
-``watch``, ``unbuffer``, ``script -qc``, ``parallel``, ``wsl``) hide the verb; so do
-``command cd`` and ``builtin cd``, ``bash -c --`` and ``-o … -c``, a script piped or here-stringed
-into a shell with no ``-c``, ``xargs … sh -c`` with the listing, ``pwsh -co``, a variable that
-holds an item (``$h = gi ~``), ``foreach (… in @($HOME))``, ``Clear-Item`` and ``Clear-Content``,
-``takeown``, ``icacls``, ``chattr``, ``setfacl -R``, ``rm -rf $(dirname ~/x)`` and a link to the
-home folder followed by an ``rm``, and ``/proc/self/root``. Archives and tree copies into one
-(``tar -x -C ~``, ``rsync -a … ~/``, ``cp -r … ~``, ``Expand-Archive`` without ``-Force``) pass:
-they add files, and overwrite only what the archive holds. It reads shell commands and PowerShell's
-cmdlets, not code in another language:
-``python -c "shutil.rmtree('/')"``, ``Path.home()``, ``os.path.expanduser('~')`` and PowerShell's
-.NET calls and methods (``[IO.Directory]::Delete($HOME, $true)``, ``gci ~ -r | % Delete``)
-are missed unless the command names a protected folder itself. A ``xargs rm`` whose list comes
-from a file (``xargs rm < list``) is not tied to a folder. A name picked by another tool than
-``find`` and PowerShell's ``-Filter`` and ``-Include`` (``locate``, ``find lab/x | grep ZexionAP
-| xargs rm`` from a folder that is not above a protected one: from ``~`` it blocks, ``Where-Object
-Name -like``, ``cmd /c for /d``, a .NET search), a name from a
-variable or an expression (``find -name "$n"``, ``"Zexion$(echo AP)"``, a ``$'…'`` string
-with escapes, text after a backtick), a regular expression's quantifier (``-regex
-'Zex(ion)?AP'``) or an alternation inside a group that splits a name (``(Z|z)exion``), a
-brace expansion past five levels or 32 alternatives, a PowerShell ``@(…)`` list split by
-newlines or ``;``, or what a script file does when it runs (the file's contents are not
-read). ``ls``, ``dir`` or ``gci`` inside a quoted PowerShell string
-(``Write-Host "run ls zexion"; Remove-Item …``) counts as a call, so that command blocks. A
-scratch script written by a heredoc and run in the same command is code, like ``python -
-<<'EOF'``, so it is blocked when it names the saves, even to read them or in a comment; but
-the run is tied to the heredoc only by the file's name, so ``sh *.sh`` or a variable holding
-the name is missed, as is a program variable that is not on the list, set with ``env``
-before a command that is otherwise allowed, or set in PowerShell (``$env:GIT_PAGER = …``).
-A backslash is a separator on every platform (``protected.normalize``), so on Linux and macOS
-a folder named with them is read as a separator, and ``../..`` after it goes one level too
-high: ``cd ~/.local/share/t && echo 1 > '<two backslashes>'/../../ZexionAP/s.json`` passes.
-A ``tools/``
-script is trusted in the session's own ``cwd`` without checking that it is a
-checkout of this repo. The joined reading may take prose such as ``print('Gallant Leaf,
-Zexion')`` for the folder; that blocks only in a command that is not read-only. It fails
-closed: if the guard itself breaks while looking at a call that mentions the saves, a Steam
-folder or ``ZexionAP``, the call is blocked.
+Past a budget (the ``MAX_*`` limits and ``DEADLINE``, with their comments) the guard does not read
+a command word by word: it counts as reaching a protected folder, so only a read-only one passes.
+That keeps its answer within about a second, as a hook that times out lets the call through.
+
+Documented false positives (name the folder in the command instead):
+
+- A ``cd`` to a variable, a substitution or a temporary folder is unknown (a variable may be
+  empty, and then ``cd`` goes home): ``d=$(mktemp -d) && cd "$d" && rm -rf *``, ``cd "$(git
+  rev-parse --show-toplevel)" && git clean -fdx`` and ``cd "$RUNNER_TEMP" && rm -rf *`` block.
+  ``rm -rf "$d"/*`` and ``git -C "$d" clean -fdx`` pass (a variable the environment knows is
+  expanded, and judged by its real path).
+- ``find . -iname '*zexion*' -delete`` and ``gci . zexion | ri`` in this repo block: they can't
+  be told from ``ZexionAP``. ``find dist -name 'zexion*' -delete`` passes: ``-name`` is read as
+  written.
+- A name pattern that may match a file in the protected folders blocks wherever the search starts:
+  ``find lab -name '*.sav' -delete`` and ``find . -name '*' -delete`` (``*.py`` passes).
+- The joined reading of a command may take prose such as ``print('Gallant Leaf, Zexion')`` for
+  the folder; that blocks only in a command that is not read-only.
+- ``ls``, ``dir`` or ``gci`` inside a quoted PowerShell string (``Write-Host "run ls zexion";
+  Remove-Item …``) counts as a call.
+- A scratch script written by a heredoc and run in the same command is code, like ``python -
+  <<'EOF'``, so it blocks when it names the saves, even to read them or in a comment.
+
+Known gaps. This is a tripwire against mistakes, not a sandbox. It fails closed: if the guard
+itself breaks while looking at a call that mentions the saves, a Steam folder or ``ZexionAP``, the
+call is blocked. It can't see:
+
+- a path assembled entirely from variables or string arithmetic; the folder behind a ``cd`` into a
+  variable; a link to a parent folder made outside the command; a link to the home folder
+  followed by an ``rm``; ``/proc/self/root``; the folder a script file's contents name (a scratch
+  script written by a heredoc and run in the same command is code, but the run is tied to the
+  heredoc only by the file's name: ``sh *.sh`` or a variable holding it is missed);
+- links in a command's words past the first ``MAX_LINK_WORDS`` different ones (the file system is
+  asked about each, which costs time a word; only the following of links is cut, a word that names
+  a parent of a protected folder is read wherever it comes): ``cp`` with ``MAX_LINK_WORDS`` filler
+  words before an operand in a link in the working folder that leads into a protected folder
+  passes; nor a link in a UNC path on Windows (``protected.is_network_path``: asking would
+  resolve it over the network, seconds a host; ``//?/C:/x`` and ``//./C:/x`` are local and are
+  followed);
+- a Steam library folder by its own name (only its ``steamapps`` and what is below, and Steam's
+  own folders in the usual places: a Steam folder at ``D:/Steam`` is missed), a home folder that
+  neither the environment nor a ``/home/name``, ``/Users/name`` or ``C:/Users/name`` path gives,
+  and the folders above a protected one that other variables name: ``$PUBLIC/..``,
+  ``$HOMEDRIVE$HOMEPATH``, ``%HOMEDRIVE%%HOMEPATH%``, ``$SYSTEMDRIVE``, ``$ProgramData/..``,
+  ``$PWD/../..``, ``$env:SystemDrive/``, ``~+``, a variable set by another variable (``H=$X``),
+  and UNC admin shares (``//localhost/C$/Users/…``);
+- wrappers it does not know (``chrt``, ``taskset``, ``flock``, ``strace``, ``watch``,
+  ``unbuffer``, ``script -qc``, ``parallel``, ``wsl``), which hide the verb; so do ``command cd``
+  and ``builtin cd``, ``bash -c --`` and ``-o … -c``, a script piped or here-stringed into a shell
+  with no ``-c``, ``xargs … sh -c`` with the listing, ``pwsh -co`` and a script word of more than
+  2000 characters (``sh -c``, ``eval``, ``cmd /c``, which is not read again); cmd forms beyond the
+  common ones (``@rd``, ``rd/s/q`` with no spaces, ``^"`` escapes, ``if /i a==a``, ``if
+  errorlevel``); a subshell in the middle of a pipeline (``ls ~ | (cat) | xargs rm -rf``), which
+  cuts the link between ``ls ~`` and ``xargs``; a ``xargs rm`` whose list comes from a file
+  (``xargs rm < list``); a variable that holds an item (``$h = gi ~``) and ``foreach (… in
+  @($HOME))``;
+- verbs that change a folder that ``_ancestor_violation`` does not list: ``Clear-Item``,
+  ``Clear-Content``, ``takeown``, ``icacls``, ``chattr``, ``setfacl -R``, ``rm -rf $(dirname
+  ~/x)``; archives and tree copies into the home folder (``tar -x -C ~``, ``rsync -a … ~/``, ``cp
+  -r … ~``, ``Expand-Archive`` without ``-Force``) pass: they add files, and overwrite only what
+  the archive holds;
+- code in another language (``python -c "shutil.rmtree('/')"``, ``Path.home()``,
+  ``os.path.expanduser('~')``) and PowerShell's .NET calls and methods (``[IO.Directory]::Delete(
+  $HOME, $true)``, ``gci ~ -r | % Delete``), unless the command names a protected folder itself;
+- a name picked by another tool than ``find`` and PowerShell's ``-Filter`` and ``-Include``
+  (``locate``, ``find lab/x | grep ZexionAP | xargs rm`` from a folder that is not above a
+  protected one: from ``~`` it blocks; ``Where-Object Name -like``, ``cmd /c for /d``, a .NET
+  search); a name from a variable or an
+  expression (``find -name "$n"``, ``"Zexion$(echo AP)"``, a ``$'…'`` string with escapes, text
+  after a backtick); a regular expression's quantifier (``-regex 'Zex(ion)?AP'``) or an
+  alternation inside a group that splits a name (``(Z|z)exion``); a brace expansion past five
+  levels or 32 alternatives; a PowerShell ``@(…)`` list split by newlines or ``;``;
+- a program variable that is not on the list (``_PROGRAM_VAR``), set with ``env`` before a command
+  that is otherwise allowed, or set in PowerShell (``$env:GIT_PAGER = …``);
+- a backslash is a separator on every platform (``protected.normalize``), so on Linux and macOS a
+  folder named with them is read as a separator, and ``../..`` after it goes one level too high:
+  ``cd ~/.local/share/t && echo 1 > '<two backslashes>'/../../ZexionAP/s.json`` passes;
+- a ``tools/`` script is trusted in the session's own ``cwd`` without checking that it is a
+  checkout of this repo.
 """
 
 from __future__ import annotations
@@ -255,6 +120,7 @@ import re
 import sys
 import time
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
 
 _TOOLS_DIR = Path(__file__).resolve().parent.parent.parent / "tools"
@@ -271,6 +137,32 @@ def _tick() -> None:
     """Raise ``_OutOfTime`` when the time for the command in hand is up."""
     if time.monotonic() > _due:
         raise _OutOfTime
+
+
+# What the guard reads of one command, so that it answers in about a second whatever the input
+# (``settings.json`` gives the hook 120 s, but a hook that times out lets the call through: the
+# deadline below is the protection, that a backstop). Past a budget (``MAX_SEGMENTS``,
+# ``MAX_WORK``, ``MAX_FOLDERS``) the words are not read one by one: the command counts as
+# reaching a protected folder, so only a read-only one passes (a redirect, a substitution, and the
+# ``tools/`` scripts and ``git`` and ``gh`` commands that are trusted otherwise are blocked: "Too
+# long or too complex to check"). Normal commands are far below them: a commit message or a PR
+# body is one word, and a heredoc that is only data is cut out before the words are counted.
+# Two limits make a heredoc count as code instead: ``MAX_HEREDOCS`` and ``MAX_SAVED_NAMES``.
+MAX_COMMAND = 100_000  # characters; a longer command is blocked unread (use the Write tool)
+MAX_SEGMENTS = 8000  # simple commands
+MAX_WORK = 6000  # over the different words (``_work``) and redirect targets (8 each)
+MAX_FOLDERS = 16  # different folders the command's ``cd`` goes to
+MAX_HEREDOCS = 32  # Bash heredocs; with more, none is cut out as data
+MAX_SAVED_NAMES = 64  # files a heredoc is saved to and copied to; with more it counts as code
+MAX_LINK_WORDS = 64  # different words whose links are followed (a known gap); other reads: all
+MAX_NAME_TEXT = 1000  # what is read of a name or a list of them; a longer one counts as a name
+# Past ``DEADLINE`` of reading, whatever the budget says, the command is blocked too: the lexer
+# (per word), the heredoc pass (per heredoc and per saved file's later commands), the final pass
+# (per command) and each read of a word or name pattern that ``protected`` has not already
+# answered (``_Memo``) look at the clock (``_tick``). Not interrupted: one read (a word of 96 000
+# characters with a wildcard is read in full, 0.8 s; a command with several such passes takes up
+# to about two seconds), the lexing of one word, and ``_heredocs``, which is linear in the length.
+DEADLINE = 1.0  # seconds; a command whose reading takes longer is blocked
 
 
 BLOCK_HINT = (
@@ -364,6 +256,8 @@ CD_VERBS = {"cd", "pushd", "chdir", "set-location", "sl", "push-location"}
 LINK_WORDS = {"mklink", "ln", "junction", "symboliclink", "hardlink"}
 # Words that only introduce a command and say nothing about what it does.
 PREFIX_WORDS = {"do", "then", "else", "elif", "if", "while", "until", "!", "{", "}", "time"}
+# Words that only introduce ``NAME=value`` (``_sets_program`` adds ``typeset``).
+DECLARE_WORDS = ("export", "local", "declare", "readonly")
 FIND_WRITE_FLAGS = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0",
                     "-fprintf", "-fls"}  # fmt: skip
 # ``find``'s predicates that select by name, with the kind of pattern they take (``-name``, the
@@ -377,13 +271,16 @@ FIND_PREDICATES = {
     "-wholename": ("path", False), "-iwholename": ("path", True),
     "-regex": ("regex", False), "-iregex": ("regex", True),
 }  # fmt: skip
-_PS_NAME_PARAM = re.compile(r"-(?:fi(?:l(?:t(?:e(?:r)?)?)?)?|inc(?:l(?:u(?:d(?:e)?)?)?)?)")
+# ``-Filter`` and ``-Include``, as PowerShell takes them: any unique abbreviation.
+_PS_FILTER = r"fi(?:l(?:t(?:e(?:r)?)?)?)?"
+_PS_INCLUDE = r"inc(?:l(?:u(?:d(?:e)?)?)?)?"
+_PS_NAME_PARAM = re.compile(rf"-(?:{_PS_FILTER}|{_PS_INCLUDE})")
 # PowerShell takes an en or em dash for a parameter's hyphen, and ``-Param:value`` for its value.
 _DASH = "[-–—―]"
 # A word that holds a command with such a predicate, or ``Get-ChildItem`` itself (its second
-# operand is a name filter): it is read again as a command.
+# operand is a name filter): it is read again as a command (any ``-inc…`` counts here).
 _NAME_PREDICATE_IN_TEXT = re.compile(
-    rf"(?:^|\s){_DASH}(?:i?(?:name|path|wholename|regex)|i?lname|fi(?:l|lt|lte|lter)?|inc\w*)"
+    rf"(?:^|\s){_DASH}(?:i?(?:name|path|wholename|regex)|i?lname|{_PS_FILTER}|inc\w*)"
     r"(?:\s|:|$)"
     r"|(?:^|[\s;|&(])(?:get-childitem|gci|dir|ls)\s",
     re.I,
@@ -769,7 +666,9 @@ def _saved_and_used(command: str, doc: Heredoc, piece: str, reader: str) -> bool
 
     A later command may run it when it names the file (any case) and does not only handle it
     (``_handles_without_running``: ``wc``, ``git commit -F``, ``gh pr create --body-file``,
-    ``rm``), names it inside a substitution, or pipes it into a command that does not.
+    ``rm``), names it inside a substitution, or pipes it into a command that does not:
+    ``git commit -F x`` and ``wc x`` are fine, ``sh x``, ``. x``, ``cat x | sh`` and ``cp x y &&
+    sh y`` are not.
     """
     rest = command[doc.op.end() : command.find("\n", doc.op.end())]
     files = re.findall(r"\d?>>?\|?[ \t]*(\"[^\"]*\"|'[^']*'|[^\s;&|<>()]+)", piece + " " + rest)
@@ -1005,6 +904,12 @@ def _git_reads(words: list[Word]) -> bool:
 
 
 def _segment_is_read_only(words: list[Word], powershell: bool) -> bool:
+    """*Read-only* means the verb is on a short list (``READ_ONLY_SH``, ``READ_ONLY_PS``) and
+    nothing in its arguments makes it write (``_bash_args_write``: ``find -delete``, ``sort -o``,
+    ``sed -i`` and the like); ``git diff``, ``log`` and ``show`` count unless an argument starts
+    with ``--output``, ``--ext-diff``, ``--exec-path``, ``--config-env`` or ``-c``. PowerShell's
+    rules for script blocks, ``ForEach-Object``, expressions and ``&``:
+    ``_ps_segment_is_read_only``."""
     stripped = _strip_prefix(words, powershell)
     if not stripped or _git_reads(stripped):
         return True
@@ -1017,7 +922,7 @@ def _segment_is_read_only(words: list[Word], powershell: bool) -> bool:
 def _sets_program(words: list[Word]) -> str:
     """A ``NAME=value`` prefix of a Bash command, or an ``export`` of one, that names a program
     for a command to run (``GIT_PAGER=…``, ``export LESSOPEN=…``), or ""."""
-    if words and words[0] in ("export", "declare", "readonly", "local", "typeset"):
+    if words and words[0] in (*DECLARE_WORDS, "typeset"):
         words = [w for w in words[1:] if not w.startswith("-")]
     for w in words:
         m = re.match(r"([A-Za-z_]\w*)=", w)
@@ -1131,7 +1036,7 @@ POP_VERBS = {"popd", "pop-location"}
 def _assignments(words: list[Word]) -> list[tuple[str, str]]:
     """The variables a simple command sets: ``NAME=value`` words at its start (also after
     ``export``) and PowerShell's ``$name = value`` and ``$env:name = value``."""
-    items = [w for w in words if w not in ("export", "local", "declare", "readonly")]
+    items = [w for w in words if w not in DECLARE_WORDS]
     out = []
     for w in items:
         m = re.fullmatch(r"\$?(?:env:)?([A-Za-z_]\w*)\+?=(.*)", w, re.DOTALL)
@@ -1146,7 +1051,12 @@ def _assignments(words: list[Word]) -> list[tuple[str, str]]:
 
 
 def _walk_cds(
-    segments: list[list[Word]], cwd: str, code: str, protected, powershell: bool = False
+    segments: list[list[Word]],
+    cwd: str,
+    code: str,
+    protected,
+    powershell: bool = False,
+    assigned: set[str] | None = None,
 ) -> tuple[list[str | None], list[str | None]]:
     """The folder each simple command runs in, and the folders the command's ``cd``s go to.
 
@@ -1156,12 +1066,15 @@ def _walk_cds(
     (``cd $d``, ``` cd `echo ~` ```; unless it is one that holds a protected one by name:
     ``cd $APPDATA`` where the variable is not set here), or is ``-``, ``$OLDPWD`` or ``popd``.
 
-    A variable the line sets is not read from the hook's environment, and a ``cd`` to a
-    temporary or workspace folder (``$TMPDIR``, ``$(mktemp -d)``) is no different from any other
-    unknown one: a variable may be empty, and ``cd`` with none goes home.
+    ``assigned`` (``_assigned_names``, worked out when not given) are the variables the line sets
+    itself: they are not read from the hook's environment. A ``cd`` to a variable is unknown
+    whatever it names (``$TMPDIR``, ``$(mktemp -d)``): it may be empty, and ``cd`` with none goes
+    home. ``cd /c/Users/x`` is on drive C, not under the cwd's; a bare ``cd`` and ``cd --`` go
+    home.
     """
     current: str | None = cwd or os.getcwd()
-    assigned = _assigned_names(code, segments)
+    if assigned is None:
+        assigned = _assigned_names(code, segments)
     before: list[str | None] = []
     targets: list[str | None] = []
     for words in segments:
@@ -1194,11 +1107,6 @@ def _walk_cds(
         targets.append(new)
         current = new
     return before, targets
-
-
-def _cd_targets(segments: list[list[Word]], cwd: str, code: str, protected) -> list[str | None]:
-    """The folders the command's ``cd``s go to (``_walk_cds``)."""
-    return _walk_cds(segments, cwd, code, protected)[1]
 
 
 def _folder_is_suspect(folder: str | None, protected) -> bool:
@@ -1234,7 +1142,7 @@ def _names_parent(word: str, folders: list[str | None], protected) -> bool:
     ``…/steamapps/common``, ``rm -r "Gallant Leaf"`` or ``Gall*`` in Roaming): copying into,
     moving or deleting it reaches the folder. A bare ``steamapps`` or ``userdata`` counts only
     when that folder exists where the command runs (it may be a test name)."""
-    word = re.sub(r"^--?[\w-]+=", "", word)  # --target-directory=…
+    word = _OPTION_PREFIX.sub("", word)
     bare = word.lower() in ("steamapps", "userdata")
     return any(
         protected.may_be_above_protected(p)
@@ -1293,11 +1201,14 @@ _VARIABLE = re.compile(r"\$\{?(?:env:)?([\w@*]+)\}?(?:/\*)?|%(\w+)%", re.IGNOREC
 _VALUE_START = re.compile(r"[$~%@(\"'/\\]")  # a word that is a value, not a command
 _PIPELINE_VALUE = re.compile(r"\$(?:_|psitem)\b", re.IGNORECASE)
 _HAS_NAME = re.compile(r"[A-Za-z0-9_]")
+_OPTION_PREFIX = re.compile(r"^--?[\w-]+=")  # ``--target-directory=…``, which a path follows
 
 
 def _unwrap(words: list[Word], powershell: bool) -> list[Word]:
-    """The command a simple command runs: ``sudo``, ``env``, ``nice``, ``timeout 5``, ``nohup``,
-    ``command``, ``busybox`` and ``cmd /c`` taken off, with their options and durations."""
+    """The command a simple command runs: the wrappers of ``WRAPPERS`` (``sudo``, ``env``,
+    ``nice``, ``timeout 5``, ``nohup``, ``command``, ``exec``, ``stdbuf``, ``busybox``, cmd's
+    ``call`` and ``start /b``, …), cmd's ``if [not] exist X`` and ``cmd /c`` (also ``/v:on /c``
+    and Git Bash's ``//c``) taken off, with their options and durations."""
     words = _strip_prefix(words, powershell)
     for _ in range(8):
         if not words:
@@ -1379,10 +1290,13 @@ def _operand_ancestor(
     at any depth (``protected.is_ancestor_folder``: ``~``, ``"$APPDATA"``, ``/``, ``C:\\``,
     ``../..``, ``*`` in one), or a variable the command set to one (``anc_vars``), or a
     substitution that names one (``` `dirname $APPDATA` ```). A relative word is joined to
-    ``folder`` (with names in it only if ``join_names``); with the folder unknown (None) only a
-    word of dots and wildcards counts. A lone ``/`` or ``/c`` counts here: the caller is a verb
-    that deletes, moves or lists for one. Nothing asks the file system."""
-    word = re.sub(r"^--?[\w-]+=", "", word).strip(",;")  # --target-directory=…
+    ``folder`` (with names in it only if ``join_names``). With the folder unknown (None), a word
+    counts when it is only dots and wildcards (``rm *``, ``find .``), has a ``..`` in it, or its
+    last name may be a protected folder's or file's. ``$PWD``, ``%CD%`` and ``$(pwd)`` are ``.``.
+    A lone ``/`` or ``/c`` counts here: the caller is a verb that deletes, moves or lists for
+    one. ``depth`` (0 or 1) stops a substitution from being read inside another. Nothing asks the
+    file system."""
+    word = _OPTION_PREFIX.sub("", word).strip(",;")
     if word.endswith(")") and word.count(")") > word.count("("):
         word = word[:-1]  # ``(Get-Item ~)`` and ``@(~)``; not ``C:/Program Files (x86)``
     if word.startswith("(") and word.count("(") > word.count(")"):
@@ -1459,11 +1373,10 @@ def _find_writes(exprs: list[Word]) -> bool:
     ``-exec`` of anything but a reader (``EXEC_READERS``)."""
     for i, a in enumerate(exprs):
         low = a.lower()
-        if low in ("-delete", "-fprint", "-fprint0", "-fprintf", "-fls", "-ok", "-okdir"):
-            return True
-        if low in ("-exec", "-execdir") and _verb(
-            exprs[i + 1] if i + 1 < len(exprs) else ""
-        ) not in (EXEC_READERS):
+        if low in ("-exec", "-execdir"):
+            if _verb(exprs[i + 1] if i + 1 < len(exprs) else "") not in EXEC_READERS:
+                return True
+        elif low in FIND_WRITE_FLAGS:
             return True
     return False
 
@@ -1562,169 +1475,315 @@ def _body_after(segments: list[list[Word]], i: int, code: str) -> list[Word]:
     return out
 
 
-def _segment_violation(
-    words: list[Word], folder, listed, body, anc_vars, protected, powershell: bool, depth: int,
-    fed: bool = False, unwrapped: list[Word] | None = None,
-) -> str | None:  # fmt: skip
-    """A reason when one simple command, run in ``folder``, deletes, moves out, changes or
-    searches-and-acts on a folder that may hold a protected one (``_operand_ancestor``).
-    ``listed()`` says whether an earlier command of its pipeline named such a folder (what a
+class _Pipelines:
+    """What the simple commands of a line were given, pipeline by pipeline, and the variables the
+    line has set to a folder above a protected one (``anc_vars``). ``at`` is the command being
+    read. ``listed()`` says whether an earlier command of its pipeline named such a folder (what a
     ``Remove-Item`` or ``xargs rm`` with nothing of its own to remove is fed), ``body()`` whether
-    the commands the lexer split off at a parenthesis after it did (``rm -rf $(echo ~)``).
-    ``fed``: it is ``xargs``'s command."""
+    the commands the lexer split off at a parenthesis after it did (``rm -rf $(echo ~)``)."""
+
+    def __init__(self, segments: list[list[Word]], before: list, code: str, protected) -> None:
+        self.segments, self.before, self.code, self.protected = segments, before, code, protected
+        self.groups = _pipeline_groups(segments, code)
+        self.anc_vars: set[str] = set()
+        self.at = 0
+        self._given: dict[int, list[tuple[str, str | None]]] = {}  # per pipeline
+        self._scanned: dict[int, int] = {}
+        self._found: set[int] = set()
+
+    def is_ancestor(self, word: str, folder: str | None, join_names: bool = True) -> bool:
+        return _operand_ancestor(word, folder, self.protected, self.anc_vars, join_names)
+
+    def listed(self) -> bool:
+        gid = self.groups[self.at]
+        if gid in self._found:
+            return True
+        given = self._given.get(gid, [])
+        for a, f in given[self._scanned.get(gid, 0) :]:
+            if self.is_ancestor(a, f, False):
+                self._found.add(gid)
+                return True
+        self._scanned[gid] = len(given)
+        return False
+
+    def body(self) -> bool:
+        folder = self.before[self.at]
+        return any(
+            self.is_ancestor(str(w), folder, False)
+            for w in _body_after(self.segments, self.at, self.code)
+        )
+
+    def give(self, given: list[str], folder: str | None) -> None:
+        """Record what the command being read was given, for the ones after it in its pipeline."""
+        self._given.setdefault(self.groups[self.at], []).extend((a, folder) for a in given)
+
+
+@dataclass
+class _Cmd:
+    """One simple command as ``_segment_violation`` reads it."""
+
+    words: list[Word]  # with its wrappers (``sudo``, ``env``, …) taken off
+    original: list[Word]  # as written: ``GIT_WORK_TREE=…`` is a word of it
+    verb: str
+    args: list[Word]
+    folder: str | None  # where it runs
+    pipes: _Pipelines
+    protected: object
+    powershell: bool
+    depth: int
+    fed: bool  # it is ``xargs``'s command
+
+    def hit(self, word: str, names: bool = True) -> bool:
+        return _operand_ancestor(word, self.folder, self.protected, self.pipes.anc_vars, names)
+
+    def hits(self, words) -> bool:
+        return any(self.hit(w) for w in words)
+
+    @property
+    def reason(self) -> str:
+        shown = " ".join(map(str, self.words))[:200]
+        return f"Reaches a folder above a protected one ({self.verb}): {shown}"
+
+
+def _removes_or_changes(c: _Cmd) -> bool:
+    """``rm``, ``mv`` (its sources: not a destination, named or last), ``chmod`` and the like."""
+    ops = _path_args(c.args, c.verb in CMD_VERBS)
+    if c.verb in MV_VERBS:
+        named = _option_value(c.args, r"-dest\w*|-target\w*|-t|--target-directory")
+        if named:
+            ops = [o for o in ops if o not in named]
+        elif len(ops) > 1:
+            ops = ops[:-1]
+    # The lexer ends the word at a ``$(`` or ``@(`` (``rm -rf $(echo ~)``): what it holds is the
+    # commands that follow.
+    openers = [o for o in ops if o in ("$", "@") or o.endswith("$(")]
+    own = [o for o in ops if o not in openers and not _PIPELINE_VALUE.match(o)]
+    return (
+        c.hits(ops)
+        or ((c.fed or not own) and c.pipes.listed())  # nothing of its own to remove: the pipeline's
+        or ((not own or bool(openers)) and c.pipes.body())
+    )
+
+
+def _finds_and_writes(c: _Cmd) -> bool:
+    args = c.args
+    i = 0
+    while i < len(args):
+        if args[i] in ("-H", "-L", "-P") or re.fullmatch(r"-O\d?", args[i]):
+            i += 1
+        elif args[i] == "-D":
+            i += 2
+        else:
+            break
+    if args[i : i + 1] == ["--"]:
+        i += 1
+    starts = []
+    while i < len(args) and not (args[i].startswith("-") or args[i] in ("(", "!", ",")):
+        starts.append(args[i])
+        i += 1
+    return _find_writes(args[i:]) and any(c.hit(s) for s in starts or ["."])
+
+
+def _fd_executes(c: _Cmd) -> bool:
+    for i, a in enumerate(c.args):
+        if a in ("-x", "-X") or a.startswith("--exec"):
+            return c.hits(_path_args(c.args[:i])[1:] or ["."])
+    return False
+
+
+def _git_empties_tree(c: _Cmd) -> bool:
+    """What empties the working tree: ``clean``, ``stash -u``/``-a``, ``reset --hard``, and
+    ``checkout``/``restore`` of ``.``, in ``-C``, ``--work-tree``, ``GIT_WORK_TREE``, an operand
+    or where it runs."""
+    args = c.args
+    dirs = [m.group(1) for w in c.original if (m := re.fullmatch(r"GIT_WORK_TREE=(.*)", w, re.S))]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-C", "--work-tree") and i + 1 < len(args):
+            dirs.append(args[i + 1])
+            i += 2
+        elif a.startswith("--work-tree="):
+            dirs.append(a.partition("=")[2])
+            i += 1
+        elif a in ("-c", "--git-dir", "--namespace", "--config-env"):
+            i += 2
+        elif a.startswith("-"):
+            i += 1
+        else:
+            break
+    sub, rest = (args[i] if i < len(args) else ""), args[i + 1 :]
+    stash_all = re.compile(r"-[A-Za-z]*[ua][A-Za-z]*|--(?:include-untracked|all)")
+    empties = (
+        sub == "clean"
+        or (sub == "stash" and any(stash_all.fullmatch(a) for a in rest))
+        or (sub == "reset" and "--hard" in rest)
+        or (sub in ("checkout", "restore") and {".", "-f", "--force"} & set(rest))
+    )
+    return bool(empties) and c.hits([*(dirs or ["."]), *_path_args(rest)])
+
+
+def _rsync_deletes(c: _Cmd) -> bool:
+    ops = _path_args(c.args)
+    deletes = ops and any(a.startswith(("--delete", "--del", "--prune")) for a in c.args)
+    return bool(
+        (deletes and c.hit(ops[-1]))  # what is deleted is in the destination
+        or (any(a.startswith("--remove") for a in c.args) and c.hits(ops[:-1]))  # the sources
+    )
+
+
+def _tar_removes_or_overwrites(c: _Cmd) -> bool:
+    return (any(a.startswith("--remove-files") for a in c.args) and c.hits(_path_args(c.args))) or (
+        "--overwrite" in c.args  # extracted over what is there
+        and c.hits(_option_value(c.args, r"-C|--directory"))
+    )
+
+
+def _unzip_overwrites(c: _Cmd) -> bool:
+    return any(re.fullmatch(r"-[A-Za-z]*o[A-Za-z]*", a) for a in c.args) and c.hits(
+        _option_value(c.args, r"-d")
+    )
+
+
+def _expand_archive_forces(c: _Cmd) -> bool:
+    return any(re.fullmatch(r"-f(?:orce)?", a, re.I) for a in c.args) and c.hits(_path_args(c.args))
+
+
+def _robocopy_empties(c: _Cmd) -> bool:
+    """``robocopy empty $HOME /MIR`` empties the destination."""
+    return any(a.upper() in ("/MIR", "/PURGE", "/MOV", "/MOVE") for a in c.args) and c.hits(
+        _path_args(c.args, cmd_switches=True)
+    )
+
+
+# The verbs whose operands are judged: whether the command deletes, moves out, changes or
+# searches-and-acts on a folder above a protected one.
+_OPERAND_RULES = {
+    **dict.fromkeys(RM_VERBS | MV_VERBS | CHANGE_VERBS, _removes_or_changes),
+    **dict.fromkeys(FIND_VERBS, _finds_and_writes),
+    **dict.fromkeys(FD_VERBS, _fd_executes),
+    "git": _git_empties_tree,
+    "rsync": _rsync_deletes,
+    "tar": _tar_removes_or_overwrites,
+    "unzip": _unzip_overwrites,
+    "expand-archive": _expand_archive_forces,
+    "robocopy": _robocopy_empties,
+}
+
+
+def _xargs_runs(c: _Cmd) -> str | None:
+    i = 0
+    while i < len(c.args) and c.args[i].startswith("-"):
+        i += 2 if c.args[i] in XARGS_VALUED else 1
+    if not c.args[i:]:
+        return None
+    return _segment_violation(
+        c.args[i:], c.folder, c.pipes, c.protected, c.powershell, c.depth, fed=True
+    )
+
+
+def _shell_runs(c: _Cmd) -> str | None:
+    """``sh -c 'script' $0 $1``: the script is read again, with ``$0``, ``$@`` filled in."""
+    at = _shell_script_at(c.args)
+    if at is None:
+        return None
+    script, positional = c.args[at], [str(a) for a in c.args[at + 1 :]]
+
+    def argument(m: re.Match) -> str:  # ``rm -rf "$0"``, ``"$@"``
+        n = m.group(1)
+        if n in "@*":
+            return " ".join(positional[1:])
+        return positional[int(n)] if int(n) < len(positional) else ""
+
+    script = re.sub(r"\"?\$\{?([0-9@*])\}?\"?", argument, script)
+    return _script_violation(script, c.folder, c.protected, False, c.depth)
+
+
+def _cmd_script_runs(c: _Cmd) -> str | None:
+    """``cmd /c "…"``: lexed as PowerShell, where a backslash is no escape."""
+    text = c.words[1].raw or str(c.words[1])
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1]
+    return _script_violation(text, c.folder, c.protected, True, c.depth)
+
+
+def _eval_runs(c: _Cmd) -> str | None:
+    if not c.args:
+        return None
+    return _script_violation(" ".join(map(str, c.args)), c.folder, c.protected, False, c.depth)
+
+
+def _ps_shell_runs(c: _Cmd) -> str | None:
+    """``powershell -Command …``."""
+    k = next((i for i, a in enumerate(c.args) if re.fullmatch(r"-c(?:ommand)?", a, re.I)), None)
+    if k is None or k + 1 >= len(c.args):
+        return None
+    script = " ".join(map(str, c.args[k + 1 :]))
+    return _script_violation(script, c.folder, c.protected, True, c.depth)
+
+
+def _iex_runs(c: _Cmd) -> str | None:
+    if not c.args:
+        return None
+    return _script_violation(" ".join(map(str, c.args)), c.folder, c.protected, True, c.depth)
+
+
+# The verbs that run another command: its words are read again (``_script_violation``).
+_COMMAND_RUNNERS = {
+    "xargs": _xargs_runs,
+    **dict.fromkeys(SHELL_VERBS, _shell_runs),
+    "cmd-script": _cmd_script_runs,
+    "eval": _eval_runs,
+    **dict.fromkeys(PS_SHELLS, _ps_shell_runs),
+    "iex": _iex_runs,
+    "invoke-expression": _iex_runs,
+}
+
+
+def _segment_violation(
+    words: list[Word],
+    folder,
+    pipes: _Pipelines,
+    protected,
+    powershell: bool,
+    depth: int,
+    fed: bool = False,
+    unwrapped: list[Word] | None = None,
+) -> str | None:
+    """A reason when one simple command, run in ``folder``, deletes, moves out, changes or
+    searches-and-acts on a folder that may hold a protected one (``_operand_ancestor``): the
+    verbs of ``_OPERAND_RULES``, by what each does with the folders it is given, and what the
+    verbs of ``_COMMAND_RUNNERS`` run. ``fed``: it is ``xargs``'s command. ``pipes`` tells what a
+    ``Remove-Item`` or ``xargs rm`` with nothing of its own to remove is fed.
+
+    By what the verb does with the folder it is given: ``rm``, ``rmdir``, ``shred``,
+    ``Remove-Item``, cmd's ``rd`` and ``del`` (any operand); ``mv``, ``Move-Item`` and cmd's
+    ``move`` (a source, so not a ``-Destination`` or ``-t``: moving into one is no harm);
+    ``chmod``, ``chown``, ``truncate``, ``Rename-Item``; ``find`` (a start folder, with
+    ``-delete``, ``-fprint``, ``-ok`` or an ``-exec`` of anything but a reader such as ``cat``
+    and ``grep``) and ``fd -x``; ``git clean``, ``stash -u``, ``reset --hard`` and ``checkout .``
+    (``-C``, ``--work-tree``, ``GIT_WORK_TREE``, an operand, or where it runs); ``rsync --delete``
+    (its destination) and ``--remove-source-files`` (its sources), ``tar --remove-files``,
+    ``robocopy /MIR /PURGE /MOVE``; extraction over what is there into one (``unzip -o -d ~``,
+    ``tar --overwrite -C ~``, ``Expand-Archive … -Force``); and ``xargs`` or a ``Remove-Item``
+    given nothing of its own to remove, fed by a command of its *pipeline* that named such a
+    folder (``ls ~ | xargs rm``, ``gci $env:APPDATA -r | ri``, ``$HOME | ri -r``, a lister with
+    no folder after ``cd ~``, a lone ``/`` piped in; not a command before a ``;`` or ``&&``:
+    ``ls ~ ; find lab | xargs rm`` passes; a ``{ …; }`` or ``while … done`` that a pipe goes on
+    from is part of it, a line continuation after a pipe too: ``_pipeline_groups``)."""
     original = words
     words = unwrapped if unwrapped is not None else _unwrap(words, powershell)
     if not words:
         return None
     verb = _verb(words[0])
-    args = _join_backticks(words[1:])
-
-    def hit(word: str, names: bool = True) -> bool:
-        return _operand_ancestor(word, folder, protected, anc_vars, names)
-
-    shown = f"{' '.join(map(str, words))[:200]}"
-    reason = f"Reaches a folder above a protected one ({verb}): {shown}"
-    if verb in RM_VERBS | MV_VERBS | CHANGE_VERBS:
-        ops = _path_args(args, verb in CMD_VERBS)
-        if verb in MV_VERBS:  # its sources: not a destination, named or last
-            named = _option_value(args, r"-dest\w*|-target\w*|-t|--target-directory")
-            if named:
-                ops = [o for o in ops if o not in named]
-            elif len(ops) > 1:
-                ops = ops[:-1]
-        # The lexer ends the word at a ``$(`` or ``@(`` (``rm -rf $(echo ~)``): what it holds is
-        # the commands that follow.
-        openers = [o for o in ops if o in ("$", "@") or o.endswith("$(")]
-        own = [o for o in ops if o not in openers and not _PIPELINE_VALUE.match(o)]
-        if any(hit(o) for o in ops):
-            return reason
-        if (fed or not own) and listed():  # nothing of its own to remove: the pipeline's
-            return reason
-        if (not own or openers) and body():
-            return reason
-    elif verb in FIND_VERBS:
-        i = 0
-        while i < len(args):
-            if args[i] in ("-H", "-L", "-P") or re.fullmatch(r"-O\d?", args[i]):
-                i += 1
-            elif args[i] == "-D":
-                i += 2
-            else:
-                break
-        if args[i : i + 1] == ["--"]:
-            i += 1
-        starts = []
-        while i < len(args) and not (args[i].startswith("-") or args[i] in ("(", "!", ",")):
-            starts.append(args[i])
-            i += 1
-        if _find_writes(args[i:]) and any(hit(s) for s in starts or ["."]):
-            return reason
-    elif verb in FD_VERBS:
-        for i, a in enumerate(args):
-            if a in ("-x", "-X") or a.startswith("--exec"):
-                roots = _path_args(args[:i])[1:] or ["."]
-                if any(hit(r) for r in roots):
-                    return reason
-                break
-    elif verb == "git":
-        dirs = [m.group(1) for w in original if (m := re.fullmatch(r"GIT_WORK_TREE=(.*)", w, re.S))]
-        i = 0
-        while i < len(args):
-            a = args[i]
-            if a in ("-C", "--work-tree") and i + 1 < len(args):
-                dirs.append(args[i + 1])
-                i += 2
-            elif a.startswith("--work-tree="):
-                dirs.append(a.partition("=")[2])
-                i += 1
-            elif a in ("-c", "--git-dir", "--namespace", "--config-env"):
-                i += 2
-            elif a.startswith("-"):
-                i += 1
-            else:
-                break
-        sub, rest = (args[i] if i < len(args) else ""), args[i + 1 :]
-        # What empties the working tree: ``clean``, ``stash -u``/``-a``, ``reset --hard``, and
-        # ``checkout``/``restore`` of ``.``.
-        stash_all = re.compile(r"-[A-Za-z]*[ua][A-Za-z]*|--(?:include-untracked|all)")
-        empties = (
-            sub == "clean"
-            or (sub == "stash" and any(stash_all.fullmatch(a) for a in rest))
-            or (sub == "reset" and "--hard" in rest)
-            or (sub in ("checkout", "restore") and {".", "-f", "--force"} & set(rest))
-        )
-        if empties and any(hit(d) for d in [*(dirs or ["."]), *_path_args(rest)]):
-            return reason
-    elif verb == "rsync":
-        ops = _path_args(args)
-        if (
-            ops
-            and any(a.startswith(("--delete", "--del", "--prune")) for a in args)
-            and hit(ops[-1])
-        ):
-            return reason  # what is deleted is in the destination
-        if any(a.startswith("--remove") for a in args) and any(hit(o) for o in ops[:-1]):
-            return reason  # ``--remove-source-files``: the sources
-    elif verb == "tar":
-        if any(a.startswith("--remove-files") for a in args) and any(
-            hit(o) for o in _path_args(args)
-        ):
-            return reason
-        if "--overwrite" in args and any(
-            hit(d) for d in _option_value(args, r"-C|--directory")
-        ):  # extracted over what is there
-            return reason
-    elif verb == "unzip":
-        if any(re.fullmatch(r"-[A-Za-z]*o[A-Za-z]*", a) for a in args) and any(
-            hit(d) for d in _option_value(args, r"-d")
-        ):
-            return reason
-    elif verb == "expand-archive":
-        if any(re.fullmatch(r"-f(?:orce)?", a, re.I) for a in args) and any(
-            hit(o) for o in _path_args(args)
-        ):
-            return reason
-    elif verb == "robocopy":  # ``robocopy empty $HOME /MIR`` empties the destination
-        if any(a.upper() in ("/MIR", "/PURGE", "/MOV", "/MOVE") for a in args) and any(
-            hit(o) for o in _path_args(args, cmd_switches=True)
-        ):
-            return reason
-    elif verb == "xargs":
-        i = 0
-        while i < len(args) and args[i].startswith("-"):
-            i += 2 if args[i] in XARGS_VALUED else 1
-        if args[i:]:
-            return _segment_violation(
-                args[i:], folder, listed, body, anc_vars, protected, powershell, depth, fed=True
-            )
-    elif verb in SHELL_VERBS and _shell_script_at(args) is not None:
-        k = _shell_script_at(args) - 1
-        script, positional = args[k + 1], [str(a) for a in args[k + 2 :]]
-
-        def argument(m: re.Match) -> str:  # ``rm -rf "$0"``, ``"$@"``
-            n = m.group(1)
-            if n in "@*":
-                return " ".join(positional[1:])
-            return positional[int(n)] if int(n) < len(positional) else ""
-
-        script = re.sub(r"\"?\$\{?([0-9@*])\}?\"?", argument, script)
-        return _script_violation(script, folder, protected, False, depth)
-    elif verb == "cmd-script":  # lexed as PowerShell: a backslash is no escape there
-        text = words[1].raw or str(words[1])
-        if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
-            text = text[1:-1]
-        return _script_violation(text, folder, protected, True, depth)
-    elif verb == "eval" and args:
-        return _script_violation(" ".join(map(str, args)), folder, protected, False, depth)
-    elif verb in PS_SHELLS and args:
-        k = next((i for i, a in enumerate(args) if re.fullmatch(r"-c(?:ommand)?", a, re.I)), None)
-        if k is not None and k + 1 < len(args):
-            return _script_violation(
-                " ".join(map(str, args[k + 1 :])), folder, protected, True, depth
-            )
-    elif verb in ("iex", "invoke-expression") and args:
-        return _script_violation(" ".join(map(str, args)), folder, protected, True, depth)
-    return None
+    cmd = _Cmd(
+        words, original, verb, _join_backticks(words[1:]), folder,
+        pipes, protected, powershell, depth, fed,
+    )  # fmt: skip
+    if (rule := _OPERAND_RULES.get(verb)) and rule(cmd):
+        return cmd.reason
+    runner = _COMMAND_RUNNERS.get(verb)
+    return runner(cmd) if runner else None
 
 
 def _ancestor_violation(
@@ -1735,50 +1794,45 @@ def _ancestor_violation(
     powershell: bool,
     code: str,
     depth: int = 0,
+    before: list[str | None] | None = None,
 ) -> str | None:
     """A reason when a simple command of the line deletes, moves out, changes or searches-and-acts
     on a folder above a protected one at any depth (``~``, Roaming, ``/``, a drive's root: the
     saves are inside), in the folder it runs in: where each ``cd`` before it left it, or from
     ``start``. See ``_segment_violation`` for what each verb does to count; a command that
-    creates files in the folder, copies into it, lists or reads it does not.
+    creates files in the folder, copies into it, lists or reads it does not (``cd ~ && git
+    clone``, ``cp a ~``, ``ls ~ && make clean``, ``tar -C ~``, ``unzip -d ~`` pass).
+
+    The folders above a protected one are Roaming, the home folder (``~``, ``$HOME``,
+    ``%USERPROFILE%``, ``C:/Users/name``, ``/home/name``) and what is above it, ``/``, a drive's
+    root (``/c`` and ``/mnt/c`` as Git Bash and WSL write it), the folders of the variables
+    ``protected._ANCESTOR_ENV`` lists (``$APPDATA``, ``%LOCALAPPDATA%``, ``$XDG_DATA_HOME``, …,
+    also written as the variable, with ``${APPDATA:-x}`` and ``${APPDATA%/}``, when this machine
+    doesn't set it), ``.var``, ``~/snap``, ``.steam`` and Steam's folders in Program Files (x86);
+    ``..`` or a last name that is only a wildcard (``~/*``) up to one. A lone ``/`` or ``/c`` is a
+    root only as an operand of these verbs (``cmd /c``, ``findstr /s`` and ``print(1 / 2)`` name
+    none). A relative operand is joined to the folder the command runs in (``rm -rf ../../..``
+    from a folder under the home folder). Words are read again as a command's in ``sh -c`` (with
+    ``$0``, ``$1`` and ``"$@"`` filled from the words after it), ``eval``, ``cmd /c "…"``,
+    ``powershell -Command`` and ``iex``, after the wrappers of ``_unwrap`` are taken off. A
+    backtick or ``$(…)`` operand that names one (``rm -rf `echo ~```, ``rm -rf $(echo ~)``), a
+    parenthesis (``ri -r ($HOME)``, ``@(~)``), PowerShell's ``-Path:~`` and a comma list
+    (``x,$HOME``) count, and so does a variable the line sets to one (``H=~; rm -rf "$H"``,
+    ``for d in ~ /; do …``, PowerShell's ``$d =``).
 
     What feeds a command is the pipeline it is in: ``ls ~ | xargs rm``, ``gci ~ | ri``,
     ``ls ~ | while read f; do rm "$f"; done`` (``read`` and ``set --`` make their variables the
     folder, as ``H=~`` does), not a command before a ``;`` or ``&&``. A variable set on the line
     to such a folder (``H=~; rm -rf "$H"``, ``for d in ~ /; do …``) is read as the folder.
     Each command's arguments are read once, so the time is linear in the line."""
-    before, _ = _walk_cds(segments, start, code, protected, powershell)
-    groups = _pipeline_groups(segments, code)
-    anc_vars: set[str] = set()
-    seen: dict[int, list[tuple[str, str | None]]] = {}  # per pipeline: what its commands were given
-    scanned: dict[int, int] = {}
-    found_in: set[int] = set()
-    current = {"si": 0}
-
-    def listed() -> bool:
-        gid = groups[current["si"]]
-        if gid in found_in:
-            return True
-        args = seen.get(gid, [])
-        for a, f in args[scanned.get(gid, 0) :]:
-            if _operand_ancestor(a, f, protected, anc_vars, False):
-                found_in.add(gid)
-                return True
-        scanned[gid] = len(args)
-        return False
-
-    def body() -> bool:
-        si = current["si"]
-        return any(
-            _operand_ancestor(str(w), before[si], protected, anc_vars, False)
-            for w in _body_after(segments, si, code)
-        )
-
+    if before is None:
+        before, _ = _walk_cds(segments, start, code, protected, powershell)
+    pipes = _Pipelines(segments, before, code, protected)
     for si, (words, folder) in enumerate(zip(segments, before, strict=True)):
         _tick()
-        current["si"] = si
+        pipes.at = si
         words = [w for w in words if id(w) not in text_ids]
-        _note_assignment(words, folder, protected, anc_vars, body)
+        _note_assignment(words, folder, pipes)
         stripped = _unwrap(words, powershell)
         if not stripped:
             continue
@@ -1786,59 +1840,55 @@ def _ancestor_violation(
         if verb in CD_VERBS or verb in POP_VERBS:
             continue
         given = [str(a) for a in stripped[1:] if not a.startswith("-")]
-        if verb == "read" and listed():  # ``ls ~ | while read f``
-            anc_vars.update(a.lower() for a in given if re.fullmatch(r"\w+", a))
-        if verb == "set" and any(
-            _operand_ancestor(a, folder, protected, anc_vars, False) for a in given
-        ):  # ``set -- ~``: the positional parameters
-            anc_vars.update([*"123456789", "@", "*"])
+        if verb == "read" and pipes.listed():  # ``ls ~ | while read f``
+            pipes.anc_vars.update(a.lower() for a in given if re.fullmatch(r"\w+", a))
+        if verb == "set" and any(pipes.is_ancestor(a, folder, False) for a in given):
+            pipes.anc_vars.update([*"123456789", "@", "*"])  # ``set -- ~``: the positionals
         found = _segment_violation(
-            words, folder, listed, body, anc_vars, protected, powershell, depth, unwrapped=stripped
-        )  # fmt: skip
+            words, folder, pipes, protected, powershell, depth, unwrapped=stripped
+        )
         if found:
             return found
         if verb in LISTERS and not any(not _CMD_SWITCH.fullmatch(a) for a in given):
             given = ["."]  # ``ls | xargs rm`` after ``cd ~``
         if any(a[:3].lower() in ("-ov", "-ou") for a in stripped[1:]) and any(
-            _operand_ancestor(a, folder, protected, anc_vars, False) for a in given
+            pipes.is_ancestor(a, folder, False) for a in given
         ):  # ``gci ~ -OutVariable o``: what ``$o`` holds is what was listed
-            anc_vars.update(
+            pipes.anc_vars.update(
                 v.lstrip("+").lower() for v in _option_value(stripped[1:], r"-ov|-outv\w*")
             )
         if _VALUE_START.match(stripped[0]):  # a value piped in: ``$HOME | ri -r``
             given.append(str(stripped[0]))
-        seen.setdefault(groups[si], []).extend((a, folder) for a in given)
+        pipes.give(given, folder)
     return None
 
 
-def _note_assignment(words: list[Word], folder, protected, anc_vars: set[str], body) -> None:
+def _note_assignment(words: list[Word], folder, pipes: _Pipelines) -> None:
     """Remember a variable the line sets to a folder above a protected one: Bash's ``NAME=value``
     (also after ``export``), PowerShell's ``$name = value`` and ``for d in ~ /`` (also over a
     ``$(…)`` that names one: ``for f in $(ls -d ~/*)``)."""
     if not any("=" in w for w in words) and words[:1] != ["for"]:
         return
-    items = [w for w in words if w not in ("export", "local", "declare", "readonly")]
+    items = [w for w in words if w not in DECLARE_WORDS]
     if len(items) >= 4 and items[0] == "for" and items[2] == "in":  # ``for d in ~ /; do``
         values = [str(v) for v in items[3:] if v not in ("do", ";")]
-        if any(_operand_ancestor(v, folder, protected, anc_vars) for v in values) or (
-            any(v == "$" or v.endswith("$(") for v in values) and body()
+        if any(pipes.is_ancestor(v, folder) for v in values) or (
+            any(v == "$" or v.endswith("$(") for v in values) and pipes.body()
         ):
-            anc_vars.add(str(items[1]).lower())
+            pipes.anc_vars.add(str(items[1]).lower())
         return
     for name, value in _assignments(words):
         if value and (
-            _operand_ancestor(value, folder, protected, anc_vars)
-            or (value.endswith("$") and body())  # ``x=$(ls ~)``
+            pipes.is_ancestor(value, folder)
+            or (value.endswith("$") and pipes.body())  # ``x=$(ls ~)``
         ):
-            anc_vars.add(name.lower())
+            pipes.anc_vars.add(name.lower())
     # PowerShell's ``$x = gci ~``: what the variable holds is what the lister listed.
     lister = len(items) >= 4 and items[1] == "=" and _verb(items[2]) in LISTERS | {"gi", "get-item"}
     if lister and any(
-        _operand_ancestor(str(a), folder, protected, anc_vars, False)
-        for a in items[3:]
-        if not a.startswith("-")
+        pipes.is_ancestor(str(a), folder, False) for a in items[3:] if not a.startswith("-")
     ):
-        anc_vars.add(str(items[0]).lstrip("$").removeprefix("env:").lower())
+        pipes.anc_vars.add(str(items[0]).lstrip("$").removeprefix("env:").lower())
 
 
 def _repo_checkout(folder: str | None, protected) -> bool:
@@ -1956,8 +2006,13 @@ _WORKED_OUT = re.compile(r"\$\([^()]*\)|`[^`]*`")
 
 
 def _through_proc(text: str) -> bool:
-    """Whether the command may go through another process's view in /proc (quotes taken off,
-    substitutions as one word, ``//`` and ``/./`` collapsed; the shell's own left alone)."""
+    """Whether the command may go through another process's view in /proc (its ``cwd``, ``root``,
+    ``fd``, ``map_files``, ``exe`` or ``task``; quotes taken off, substitutions as one word, ``//``
+    and ``/./`` collapsed; the shell's own, ``/proc/self``, left alone), whatever its pid: the
+    game's install is the game's ``cwd``, and a pid the command works out can't be told from the
+    game's. A ``proc`` piece with a view's name anywhere in the command counts too, for a path
+    built from pieces. A command that isn't read-only is blocked wherever it leads, while reads
+    and a redirect's target resolve to where they lead."""
     plain = _WORKED_OUT.sub("PID", text.replace("'", "").replace('"', ""))
     plain = re.sub(r"/(?:\.?/)+", "/", plain)
     if _PROC_VIEW.search(plain) is not None:
@@ -2019,12 +2074,9 @@ def _value_after(segments: list[list[Word]], si: int, wi: int, inline: str) -> s
 # PowerShell's ``-Filter`` and ``-Include`` take a list, written with spaces or in parentheses
 # too, and ``Get-ChildItem`` takes its filter by position: read from the text, up to the end of
 # the command or, for a parameter, the next one.
-_PS_LIST_PARAM = re.compile(
-    rf"(?:^|\s){_DASH}(?:fi(?:l(?:t(?:e(?:r)?)?)?)?|inc(?:l(?:u(?:d(?:e)?)?)?)?)[:\s]\s*", re.I
-)
+_PS_LIST_PARAM = re.compile(rf"(?:^|\s){_DASH}(?:{_PS_FILTER}|{_PS_INCLUDE})[:\s]\s*", re.I)
 _PS_LISTER_CALL = re.compile(r"(?:^|[\s;|&({])(?:get-childitem|gci|dir|ls)\s+", re.I)
 _NEXT_PARAM = re.compile(rf"[ \t]+{_DASH}[A-Za-z]")
-MAX_NAME_TEXT = 1000  # what is read of a name or a list of them; a longer one counts as a name
 
 
 def _ps_span(text: str, start: int, params_end: bool) -> str:
@@ -2080,7 +2132,22 @@ def _selects_protected_name(
     command that names it only by that name, from any folder, does not mention the folder's
     path (``find ~ -name ZexionAP -delete``). Whatever the command does with what it finds is
     judged after: ``-print`` and the reads pass, ``-delete``, ``-exec`` and an ``xargs rm`` after
-    it do not. Words with a predicate in them (``sh -c 'find …'``, ``eval``) are read again."""
+    it do not. Words with a predicate in them (``sh -c 'find …'``, ``eval``) are read again.
+
+    ``find``'s regular expression syntaxes, groups, braces, escapes and classes are read. A name
+    pattern with fewer than three fixed characters (``*``, ``Z*``) is no folder's name, but it may
+    be a file's: a pattern that may match the name of a file in these folders counts too,
+    wherever the search starts (``protected._FILE_NAMES``: ``Save Game N.sav``, ``GameUnlocks.sav``,
+    ``PreferencesSynced.sav``, ``ZexionAP-seed-<NAME>.sav``, ``steam_autocloud.vdf``, ``token``,
+    ``seeds``, ``config-<build>.txt``, …): ``*.sav``, ``Save*``, ``*seed*``, ``Pref*``, ``*.txt``,
+    ``?????`` and a bare ``*`` do, while ``*.py``, ``*.pyc`` and ``*foo*`` pass. A ``-path`` or
+    ``-regex`` is read at its last name, which needs a fixed character (``./build/*`` names no
+    file); a name over 200 characters is read as a file's, and a name or list of names over
+    ``MAX_NAME_TEXT`` characters as a name. ``Zexion`` and ``ZexionAP`` are also this repo's
+    names in lower case (``worlds/zexion``, ``zexion*.py``), so the predicates that compare case
+    match them only as written, and ``-iname`` and PowerShell, which don't, in any case. A
+    redirect's target is read as an argument is (``echo x > "$(find ~ -name ZexionAP)/seeds.json"``
+    blocks, whatever the operator: ``>``, ``>>``, ``2>``, ``&>``, PowerShell's ``*>``)."""
     if text and _ps_text_names(text, powershell, protected):
         return True
     for si, words in enumerate(segments):
@@ -2127,8 +2194,29 @@ def _substitutions_only_read(code: str, powershell: bool) -> bool:
     return "$(" not in rest and (powershell or "`" not in rest)
 
 
-def _may_reach_protected(text, words, targets, folders, protected) -> bool:
-    """``folders``: where the command runs (the ``cwd``) and its ``cd`` targets."""
+def _may_reach_protected(text, words, targets, folders, protected, unknown_cd: bool) -> bool:
+    """Whether the command may reach a protected folder by a path. ``folders``: where the command
+    runs (the ``cwd``) and its ``cd`` targets. It may when:
+
+    - its text names one, also with quotes removed and pieces joined
+      (``protected.mentions_protected``), or it goes through another process's view in ``/proc``
+      (``_through_proc``);
+    - it runs in, or changes directory to, a folder in a protected one or a parent of one
+      (``_folder_is_suspect``; other names in the folder's path don't count, so a worktree named
+      ``steam-achievements`` works as any other);
+    - a word could name one as a path (``..``, wildcards, 8.3 short names:
+      ``protected.word_may_name_protected``), leads into one from where the command runs, also
+      through an existing link (only for the first ``MAX_LINK_WORDS`` different words: a known
+      gap), or names a parent of one (``"$APPDATA/Gallant Leaf"``, ``…/steamapps/common``,
+      ``…/userdata/123``: ``protected.may_be_above_protected``, ``_names_parent``, for every
+      word), so copying into, moving or deleting the parent blocks while reading it does not;
+    - it may build one from pieces (``_builds_from_pieces``, the app id as a path component:
+      ``_names_app_id``), or makes a link (``LINK_WORDS``) next to a folder named like ``gallant``
+      or ``steam``;
+    - after a ``cd`` to a folder that is unknown (``unknown_cd``), a ``..`` may lead anywhere: a
+      word that goes up and then names a protected folder (``a/../../ZexionAP/x``) may reach it.
+
+    A name predicate that may match a protected folder's name is ``_selects_protected_name``'s."""
     every = list(dict.fromkeys(words + targets))  # a word again is not read again
     links = any(w.lower() in LINK_WORDS for w in words)
     return (
@@ -2138,10 +2226,11 @@ def _may_reach_protected(text, words, targets, folders, protected) -> bool:
         or any(protected.word_may_name_protected(w) for w in every)
         or _builds_from_pieces(text, every, protected)
         or (links and any(_dir_is_suspect(w, protected) for w in words))
-        or any(
-            _reaches_protected(w, folders, protected) or _names_parent(w, folders, protected)
-            for w in every[:64]
-        )
+        or any(_names_parent(w, folders, protected) for w in every)
+        # Each word is read from every folder, with the file system asked about links: only the
+        # first ``MAX_LINK_WORDS`` are (a known gap: the docstring).
+        or any(_reaches_protected(w, folders, protected) for w in every[:MAX_LINK_WORDS])
+        or (unknown_cd and any(_goes_up_to_protected(str(w), protected) for w in every))
     )
 
 
@@ -2171,7 +2260,7 @@ def _command_assigns(words: list[Word]) -> set[str]:
 
 def _assigned_names(code: str, segments: list[list[Word]]) -> set[str]:
     """Variables the command sets itself, which the hook's environment says nothing about."""
-    names = re.findall(r"(?:^|[\s;&|(])(?:export\s+|local\s+)?([A-Za-z_]\w*)\+?=", code)
+    names = re.findall(r"(?:^|[\s;&|(])([A-Za-z_]\w*)\+?=", code)
     names += re.findall(r"\bfor\s+([A-Za-z_]\w*)\s+in\b", code)
     names += re.findall(
         r"\$(?:(?:global|script|local|private|env):)?(\w+)\s*(?:[-+*/%]|\?\?)?=(?!=)", code, re.I
@@ -2294,20 +2383,6 @@ def _blanked(code: str, words: list[Word]) -> str:
     return "".join(out)
 
 
-# What the guard reads of one command, so that it answers in about a second whatever the input
-# (a hook that times out lets the call through). Past any of these it does not look at the
-# words one by one: the command is taken to reach a protected folder, so only a read-only
-# command passes (``check``). Normal commands are far below them: a commit message or a PR
-# body is one word, and a heredoc that is only data is cut out before the words are counted.
-MAX_COMMAND = 100_000  # characters; a longer command is blocked unread
-MAX_SEGMENTS = 8000  # simple commands
-MAX_WORK = 6000  # over the different words (``_work``) and redirect targets (8 each)
-MAX_FOLDERS = 16  # different folders the command's ``cd`` goes to
-MAX_HEREDOCS = 32  # Bash heredocs; with more, none is cut out as data
-MAX_SAVED_NAMES = 64  # files a heredoc is saved to and copied to; with more it counts as code
-DEADLINE = 1.0  # seconds; a command whose reading takes longer is blocked
-
-
 # A redirect's target that is worked out when the command runs: a variable still unexpanded, a
 # substitution (``$(…)``, a backtick), or PowerShell's ``> (expr)`` (the lexer's ``(``).
 _DYNAMIC_TARGET = re.compile(r"[$%`]")
@@ -2370,7 +2445,162 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
         _due = float("inf")
 
 
+@dataclass
+class _Parsed:
+    """A shell command as ``_check`` reads it."""
+
+    powershell: bool
+    cwd: str  # where it runs, as far as the payload says
+    code: str  # the command, with the heredoc bodies that are only data cut out
+    segments: list[list[Word]]  # its simple commands
+    targets: list[Word]  # its redirects' targets
+    text_ids: set[int]  # the words that are message text (ids), read as no path
+    words: list[Word]  # the others
+    text: str  # ``code`` with the message text blanked
+    over: bool  # past the budget: not read word by word
+    assigned: set[str]  # the variables it sets itself
+    before: list[str | None]  # the folder each simple command runs in
+    cds: list[str | None]  # the folders its ``cd``s go to (None: unknown)
+    folders: list[str | None]  # where it runs, and its ``cd`` targets
+    unknown_cd: bool
+
+
+def _parse(command: str, powershell: bool, cwd: str, protected) -> _Parsed:
+    """Split a shell command into what the rules below read, and see whether it is past the
+    budget (``MAX_SEGMENTS``, ``MAX_WORK``, ``MAX_FOLDERS``)."""
+    code = _here_strings_to_quotes(command) if powershell else _cut_heredocs(command)
+    segments, targets = lex(code, powershell)
+    text_ids = _text_words(segments, powershell)
+    words = [w for s in segments for w in s if id(w) not in text_ids]
+    text = _blanked(code, [w for s in segments for w in s if id(w) in text_ids])
+    unique = {str(w) for w in words}  # message text is read as no path
+    work = sum(_work(w) for w in unique) + 8 * len({str(t) for t in targets})
+    over = len(segments) > MAX_SEGMENTS or work > MAX_WORK
+    assigned: set[str] = set() if over else _assigned_names(code, segments)  # unread when over
+    before, cds = (
+        ([], []) if over else _walk_cds(segments, cwd, code, protected, powershell, assigned)
+    )
+    distinct = list(dict.fromkeys(cds))  # the same folder again is not read again
+    over = over or len(distinct) > MAX_FOLDERS
+    return _Parsed(
+        powershell, cwd, code, segments, targets, text_ids, words, text, over, assigned, before,
+        cds, ([cwd] if cwd else []) + distinct, None in cds,
+    )  # fmt: skip
+
+
+def _reach(p: _Parsed, protected) -> tuple[bool, bool, str | None]:
+    """How the command may reach a protected folder: by a path, by a name alone, and, as a reason,
+    by acting on a folder above one. Past the budget it is not read word by word and is taken to
+    reach one by a path."""
+    if p.over:
+        return True, False, None
+    by_path = _may_reach_protected(p.text, p.words, p.targets, p.folders, protected, p.unknown_cd)
+    kept = [[w for w in s if id(w) not in p.text_ids] for s in p.segments]
+    # A redirect's target is read as an argument is: ``> "$(find ~ -name ZexionAP)/x"``.
+    by_name = _selects_protected_name(
+        kept + [[t] for t in p.targets], protected, p.powershell, text=p.text
+    )
+    # A command that deletes, moves out, changes or searches-and-acts on a folder above a
+    # protected one (``~``, ``"$APPDATA"``, ``/``), where it runs or where its operand is.
+    above = _ancestor_violation(
+        p.segments, p.cwd or os.getcwd(), p.text_ids, protected, p.powershell, p.code,
+        before=p.before,
+    )  # fmt: skip
+    return by_path, by_name, above
+
+
+def _substitution_violation(p: _Parsed, by_name: bool, by_path: bool) -> str | None:
+    """A reason when a command that may reach a protected folder holds a command substitution or,
+    in PowerShell, a method or .NET call that may write. A substitution is ``$(`` (Bash
+    arithmetic ``$((`` included; ``xxd -s 0x9360`` takes the offset itself) or, in Bash, a
+    backtick, and in Bash also once its quoting is taken off (``_quotes_taken_off``: a ``$(``
+    split by quotes in a value Bash later reads as arithmetic, through ``$[x]``, ``${s:x}`` or
+    ``${a[x]}``). Not blocked: the ``"$(cat <<'EOF' … EOF)"`` message form, PowerShell's
+    ``"$($_.Name)"``, which only reads a member, and, in a command reached only by a name whose
+    every command reads, plain substitutions that read (``ls -ld $(find ~ -name ZexionAP)``;
+    ``cd $(find …) && git clean -fdx`` is blocked). A PowerShell ``::`` call other than a known
+    reader or a method call other than a few string and date ones is blocked
+    (``_ps_calls_block``)."""
+    substitution = _CAT_HEREDOC.sub("heredoc", p.code)
+    if p.powershell:  # "$($_.Name)" only reads a member
+        substitution = _PS_MEMBER_SUBEXPR.sub("member", substitution)
+    else:  # also with Bash's quoting taken off: a value Bash later reads as arithmetic runs it
+        substitution += "\n" + _quotes_taken_off(substitution)
+    # Reached only by a name, every command a read and every substitution a plain one of
+    # reads (also as quoting is taken off): ``ls -ld $(find ~ -name X)``, not ``cd $(…) &&
+    # git clean``, which runs in the folder the substitution found.
+    reads = (
+        by_name
+        and not by_path
+        and all(_segment_is_read_only(w, p.powershell) for w in p.segments)
+        and _substitutions_only_read(substitution, p.powershell)
+    )
+    if not reads and ("$(" in substitution or (not p.powershell and "`" in substitution)):
+        return "Command substitution next to a protected path."
+    if p.powershell and (call := _ps_calls_block(p.code)):
+        return f"A method or .NET call next to a protected path: {call}"
+    return None
+
+
+def _redirect_violation(p: _Parsed, protected) -> str | None:
+    """A reason when a redirect's target may be a protected path, or is worked out when the command
+    runs (``_DYNAMIC_TARGET``: a variable, a substitution or a backtick still in it after the
+    hook's own environment is applied, or PowerShell's ``> (expression)``): the guard can't see
+    where it leads. That also blocks a target that is no file (Bash's ``> >(cat)``, PowerShell's
+    ``> (Join-Path $env:TEMP x)``) in a command that already names a protected folder; a
+    parenthesis inside quotes is part of a name."""
+    for target in p.targets:
+        if target.startswith("&") or target.lower() in HARMLESS_TARGETS:
+            continue
+        reason = f"Redirect target: {target}"
+        if p.over:
+            return reason
+        # A variable the command sets itself (``TEMP="<folder>"; … > $TEMP/x``) is not the one
+        # in the hook's environment, which ``protected.normalize`` would put in its place.
+        refs = {next(g for g in m.groups() if g).lower() for m in _ENV_REF.finditer(target)}
+        if refs & p.assigned:
+            return reason
+        expanded = protected.normalize(_expand_env(target, p.assigned))
+        if (
+            protected.is_protected_path(expanded)  # also by its words: Gallant*, GALLAN~1
+            or _reaches_protected(expanded, p.folders, protected)
+            or (p.unknown_cd and _goes_up_to_protected(str(target), protected))
+            or _DYNAMIC_TARGET.search(expanded)
+            or "(" in target.bare  # PowerShell's ``> (expr)``; one in quotes is a name
+        ):
+            return reason
+    return None
+
+
+def _command_violation(p: _Parsed, protected) -> str | None:
+    """A reason when a simple command is not recognizably read-only, a tool of this repo or a
+    ``git`` or ``gh`` command that names no protected folder, or sets a variable that names a
+    program (``_PROGRAM_VAR``: ``GIT_PAGER``, ``LESSOPEN``, ``PATH``, …: in Bash an environment
+    prefix or ``export`` of one blocks, even before a read-only command)."""
+    suspect_dir = p.over or any(_folder_is_suspect(f, protected) for f in p.folders)
+    # After a cd, tools/ is the repo's own only in a checkout of the repo.
+    repo_tools = all(_repo_checkout(f, protected) for f in p.cds)
+    for words in p.segments:
+        _tick()
+        if not p.powershell and (program := _sets_program(words)):
+            return f"An environment prefix that names a program: {program}"
+        if _segment_is_read_only(words, p.powershell):
+            continue
+        if not suspect_dir and (
+            (repo_tools and _is_venv_tool(words, p.powershell))
+            or _is_repo_vcs(words, p.text_ids, p.folders, protected, p.powershell)
+        ):
+            continue
+        shown = " ".join(w for w in words if id(w) not in p.text_ids)
+        return f"Not a read-only command: {shown}"
+    return None
+
+
 def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
+    """``check`` without the deadline. A shell command goes through these phases, each of which
+    gives a reason to block or None: ``_parse``, ``_reach`` (a command that cannot reach a
+    protected folder is allowed here), then ``_substitution_violation``, ``_redirect_violation``
+    and ``_command_violation``."""
     if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"}:
         path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
         if path and protected.is_protected_path(path):
@@ -2385,110 +2615,21 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
         return f"{BLOCK_HINT}\nA command of {len(command):,} characters is too long to check."
     protected = _Memo(protected)
     cwd = str(tool_input.get("cwd") or session_cwd or "")
-    code = _here_strings_to_quotes(command) if powershell else _cut_heredocs(command)
-    segments, targets = lex(code, powershell)
-    text_ids = _text_words(segments, powershell)
-    words = [w for s in segments for w in s if id(w) not in text_ids]
-    text = _blanked(code, [w for s in segments for w in s if id(w) in text_ids])
-    unique = {str(w) for w in words}  # message text is read as no path
-    work = sum(_work(w) for w in unique) + 8 * len({str(t) for t in targets})
-    over = len(segments) > MAX_SEGMENTS or work > MAX_WORK
-    cds = [] if over else _walk_cds(segments, cwd, code, protected, powershell)[1]
-    distinct = list(dict.fromkeys(cds))  # the same folder again is not read again
-    over = over or len(distinct) > MAX_FOLDERS
-    folders = ([cwd] if cwd else []) + distinct
-    kept = [[w for w in s if id(w) not in text_ids] for s in segments]
-    above = None
-    if over:  # not read word by word: taken to reach a protected folder, as far as it goes
-        by_path, by_name = True, False
-    else:
-        by_path = _may_reach_protected(text, words, targets, folders, protected)
-        # After a ``cd`` to a folder that is unknown, a ``..`` may lead anywhere: a word that goes
-        # up and then names a protected folder (``a/../../ZexionAP/x``) may reach it.
-        unknown_cd = None in cds
-        by_path = by_path or (
-            unknown_cd
-            and any(
-                _goes_up_to_protected(str(w), protected) for w in dict.fromkeys(words + targets)
-            )
-        )
-        # A redirect's target is read as an argument is: ``> "$(find ~ -name ZexionAP)/x"``.
-        by_name = _selects_protected_name(
-            kept + [[t] for t in targets], protected, powershell, text=text
-        )
-        # A command that deletes, moves out, changes or searches-and-acts on a folder above a
-        # protected one (``~``, ``"$APPDATA"``, ``/``), where it runs or where its operand is.
-        above = _ancestor_violation(
-            segments, cwd or os.getcwd(), text_ids, protected, powershell, code
-        )
+    p = _parse(command, powershell, cwd, protected)
+    by_path, by_name, above = _reach(p, protected)
     if not (by_path or by_name or above):
         return None
-
-    def block(detail: str) -> str:
-        if over:
-            detail = f"Too long or too complex to check, so read as reaching one. {detail}"
-        return f"{BLOCK_HINT}\n{detail}"
-
-    if above:
-        return block(above)
-
-    substitution = _CAT_HEREDOC.sub("heredoc", code)
-    if powershell:  # "$($_.Name)" only reads a member
-        substitution = _PS_MEMBER_SUBEXPR.sub("member", substitution)
-    else:  # also with Bash's quoting taken off: a value Bash later reads as arithmetic runs it
-        substitution += "\n" + _quotes_taken_off(substitution)
-    # Reached only by a name, every command a read and every substitution a plain one of
-    # reads (also as quoting is taken off): ``ls -ld $(find ~ -name X)``, not ``cd $(…) &&
-    # git clean``, which runs in the folder the substitution found.
-    reads = (
-        by_name
-        and not by_path
-        and all(_segment_is_read_only(w, powershell) for w in segments)
-        and _substitutions_only_read(substitution, powershell)
+    detail = (
+        above
+        or _substitution_violation(p, by_name, by_path)
+        or _redirect_violation(p, protected)
+        or _command_violation(p, protected)
     )
-    if not reads and ("$(" in substitution or (not powershell and "`" in substitution)):
-        return block("Command substitution next to a protected path.")
-    if powershell and (call := _ps_calls_block(code)):
-        return block(f"A method or .NET call next to a protected path: {call}")
-
-    assigned = _assigned_names(code, segments)
-    for target in targets:
-        if target.startswith("&") or target.lower() in HARMLESS_TARGETS:
-            continue
-        if over:
-            return block(f"Redirect target: {target}")
-        # A variable the command sets itself (``TEMP="<folder>"; … > $TEMP/x``) is not the one
-        # in the hook's environment, which ``protected.normalize`` would put in its place.
-        refs = {next(g for g in m.groups() if g).lower() for m in _ENV_REF.finditer(target)}
-        if refs & assigned:
-            return block(f"Redirect target: {target}")
-        expanded = protected.normalize(_expand_env(target, assigned))
-        if (
-            protected.is_protected_path(expanded)  # also by its words: Gallant*, GALLAN~1
-            or _reaches_protected(expanded, folders, protected)
-            or (None in cds and _goes_up_to_protected(str(target), protected))
-            or _DYNAMIC_TARGET.search(expanded)
-            or "(" in target.bare  # PowerShell's ``> (expr)``; one in quotes is a name
-        ):
-            return block(f"Redirect target: {target}")
-
-    suspect_dir = over or any(_folder_is_suspect(f, protected) for f in folders)
-    # After a cd, tools/ is the repo's own only in a checkout of the repo.
-    repo_tools = all(_repo_checkout(f, protected) for f in cds)
-    for words in segments:
-        _tick()
-        if not powershell and (program := _sets_program(words)):
-            return block(f"An environment prefix that names a program: {program}")
-        if _segment_is_read_only(words, powershell):
-            continue
-        if not suspect_dir and (
-            (repo_tools and _is_venv_tool(words, powershell))
-            or _is_repo_vcs(words, text_ids, folders, protected, powershell)
-        ):
-            continue
-        shown = " ".join(w for w in words if id(w) not in text_ids)
-        return block(f"Not a read-only command: {shown}")
-    return None
+    if not detail:
+        return None
+    if p.over:
+        detail = f"Too long or too complex to check, so read as reaching one. {detail}"
+    return f"{BLOCK_HINT}\n{detail}"
 
 
 def _mentions_sensitive(text: str) -> bool:

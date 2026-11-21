@@ -355,19 +355,22 @@ def _drive_parts(path: str) -> tuple[list[str], bool]:
 def _ancestor_chains() -> list[list[str]]:
     """The folders the environment names in ``_ANCESTOR_ENV``, and the home folder, as the
     components of their paths; each of their first parts is a folder above a protected one too."""
-    values = [os.environ.get(name) or "" for name in _ANCESTOR_ENV]
-    chains = []
-    for value in [*values, os.path.expanduser("~")]:
-        parts, absolute = _drive_parts(value) if value else ([], False)
-        if absolute and parts and not any(re.search(r"[*?\[{$%~]", p) for p in parts):
-            chains.append(parts)
-    # ``~/snap`` holds Snap Steam's data; a folder named ``snap`` elsewhere does not count.
     home = os.path.expanduser("~")
-    for value in (os.environ.get("HOME") or "", os.environ.get("USERPROFILE") or "", home):
-        parts, absolute = _drive_parts(value) if value else ([], False)
-        if absolute and parts and not any(re.search(r"[*?\[{$%~]", p) for p in parts):
-            chains.append([*parts, "snap"])
+    values = [os.environ.get(name) or "" for name in _ANCESTOR_ENV]
+    chains = [parts for v in [*values, home] if (parts := _plain_absolute_parts(v))]
+    # ``~/snap`` holds Snap Steam's data; a folder named ``snap`` elsewhere does not count.
+    homes = (os.environ.get("HOME") or "", os.environ.get("USERPROFILE") or "", home)
+    chains += [[*parts, "snap"] for v in homes if (parts := _plain_absolute_parts(v))]
     return chains
+
+
+def _plain_absolute_parts(value: str) -> list[str]:
+    """``value``'s components (``_drive_parts``) when it is an absolute path with no wildcard or
+    variable left in it, else []."""
+    parts, absolute = _drive_parts(value) if value else ([], False)
+    if absolute and parts and not any(re.search(r"[*?\[{$%~]", p) for p in parts):
+        return parts
+    return []
 
 
 def _is_ancestor_token(part: str) -> bool:

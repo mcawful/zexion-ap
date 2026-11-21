@@ -168,3 +168,26 @@ def test_record_refuses_candidates_from_another_build(lab, monkeypatch) -> None:
     monkeypatch.setattr(memscan, "attach", lambda: (FakeProcess(0x100), 0, 0x1000))
     monkeypatch.setattr(memscan, "build_of", lambda pm, base: {"timestamp": 9})
     assert memscan.main(["record", "r", "--candidates", "c"]) == 1
+
+
+def test_write_logs_what_it_changed_and_a_log_that_fails_stops_it(lab, monkeypatch) -> None:
+    pm = FakeProcess(0x100)
+    pm.memory[0x10:0x12] = b"\x01\x02"
+    monkeypatch.setattr(memscan, "attach", lambda: (pm, 0, 0x1000))
+    assert memscan.main(["write", "0x10", "ff00", "--yes"]) == 0
+    entry = json.loads((lab / "memscan.jsonl").read_text(encoding="utf-8"))
+    assert (entry["event"], entry["addr"], entry["old"], entry["new"]) == (
+        "write",
+        "0x10",
+        "0102",
+        "ff00",
+    )
+    assert pm.memory[0x10:0x12] == b"\xff\x00"
+
+    def unwritable(path, entry) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(memscan, "append_log", unwritable)
+    with pytest.raises(OSError, match="disk full"):
+        memscan.main(["write", "0x20", "aa", "--yes"])
+    assert pm.writes == 1  # the second write never happened

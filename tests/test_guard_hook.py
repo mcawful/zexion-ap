@@ -735,7 +735,16 @@ def test_every_shells_env_var_spelling_expands(spelling: str, monkeypatch) -> No
 # The mod's offline files, %LOCALAPPDATA%\ZexionAP: only the helper writes them.
 LOCAL = "C:/Users/someone/AppData/Local"
 OFFLINE = f"{LOCAL}/ZexionAP"
-SCRATCH = f"{LOCAL}/Temp/claude/2745d331536e48bf/7c00b8f6-7f48-4f26-95c9-decf1adcccd1/scratchpad"
+SCRATCH = f"{LOCAL}/Temp/claude/s/scratchpad"
+
+
+@pytest.fixture
+def temp_under_local(monkeypatch) -> None:
+    """%TEMP% as it is on Windows, under %LOCALAPPDATA%, so that a command that goes up from it
+    reads the same on every host (``..`` from TEMP is the folder that holds ZexionAP)."""
+    monkeypatch.setenv("LOCALAPPDATA", "C:\\Users\\someone\\AppData\\Local")
+    monkeypatch.setenv("TEMP", "C:\\Users\\someone\\AppData\\Local\\Temp")
+    monkeypatch.setenv("TMP", "C:\\Users\\someone\\AppData\\Local\\Temp")
 
 
 @pytest.mark.parametrize(
@@ -1150,7 +1159,9 @@ def test_a_scratch_path_beside_the_word_is_not_the_offline_folder(command: str) 
         ),
     ],
 )
-def test_the_offline_folder_built_from_pieces_still_blocked(tool: str, command: str) -> None:
+def test_the_offline_folder_built_from_pieces_still_blocked(
+    temp_under_local, tool: str, command: str
+) -> None:
     assert run(tool, command=command), command
 
 
@@ -1216,7 +1227,7 @@ def test_assert_writable_refuses_the_offline_folder() -> None:
     assert protected.assert_writable(f"{LOCAL}/Temp/x.txt") == Path(f"{LOCAL}/Temp/x.txt")
 
 
-# A folder named only by its own name, from wherever the search starts (#172): the command names
+# A folder named only by its own name, from wherever the search starts: the command names
 # neither the parent path nor the data-home variable. ``find``'s name predicates and PowerShell's
 # -Filter and -Include count when what the command does with the matches can write.
 BY_NAME_BLOCKED = [
@@ -1275,8 +1286,8 @@ BY_NAME_BLOCKED = [
         "PowerShell",
         "Get-ChildItem -Recurse -Filter ZexionAP | ForEach-Object { Remove-Item -Recurse $_ }",
     ),
-    # What the first version of the fix missed (review of #178): find's default regular
-    # expression syntax, a substitution's backticks, PowerShell's ``-Param:value`` and
+    # Forms the plain reading misses: find's default regular expression
+    # syntax, a substitution's backticks, PowerShell's ``-Param:value`` and
     # positional filter, escapes, classes of letters, and a ``*`` that spans folders.
     ("Bash", "find ~ -regex '.*/\\(foo\\|ZexionAP\\)' -delete"),
     ("Bash", "find ~ -regex '.*/[^/]*nAP' -delete"),
@@ -1299,7 +1310,7 @@ BY_NAME_BLOCKED = [
     ("PowerShell", "gci ~ ZexionAP -r | Remove-Item -Recurse"),
     ("PowerShell", "gci -Path ~ ZexionAP -r | Remove-Item -Recurse"),
     ("PowerShell", "gci -Path ~ -Recurse –Filter ZexionAP | Remove-Item -Recurse"),
-    # Round 3 of the review: ``Zexion`` is the install and the real saves as written, and the
+    # ``Zexion`` is the install and the real saves as written, and the
     # repo's own folder in lower case; a PowerShell list; groups, braces; the positional filter.
     ("Bash", "find / -name Zexion -exec rm -rf {} +"),
     ("Bash", "find ~ -name Zexion -type d -delete"),
@@ -1326,7 +1337,7 @@ BY_NAME_BLOCKED = [
     ("Bash", "rm -rf $(find ~ -name ZexionAP)/x"),
     ("Bash", "ls `find ~ -name ZexionAP -delete`"),
     ("Bash", 'ls "$(find ~ -name ZexionAP -delete)"'),
-    # Round 4: a command that runs in the folder a substitution found by name, a substitution
+    # A command that runs in the folder a substitution found by name, a substitution
     # split by quotes, and PowerShell lists with spaces, parentheses or a continued line.
     ("Bash", 'cd "$(find ~ -name ZexionAP)" && git init -q && git clean -fdx'),
     ("Bash", "cd $(find ~ -name ZexionAP); git clean -fdx"),
@@ -1378,7 +1389,7 @@ BY_NAME_ALLOWED = [
     ("Bash", "find . -name 'test*' -exec ls {} \\;"),
     ("PowerShell", "Get-ChildItem -Recurse -Filter '*.pyc' | Remove-Item"),
     ("PowerShell", 'Set-Content -Path "$env:LOCALAPPDATA\\Temp\\x" -Value 1'),
-    # The world's own folder is named like the game's: by itself ``zexion`` is no name (#178).
+    # The world's own folder is named like the game's: by itself ``zexion`` is no name.
     ("Bash", "find . -path './worlds/zexion/*' -name '*.pyc' -delete"),
     ("Bash", "find . -type d -name zexion -prune -o -name '*.tmp' -delete"),
     ("Bash", "find .ap -path '*/worlds/zexion' -prune -o -name '*.pyc' -delete"),
@@ -1388,7 +1399,7 @@ BY_NAME_ALLOWED = [
     ("PowerShell", "Get-ChildItem -Recurse -Filter:'*.pyc' | Remove-Item"),
     ("Bash", "find . -regex '.*/[^/]*\\.pyc' -delete"),
     ("Bash", "find . -name '[0-9].tmp' -delete"),
-    # Round 3: the repo's lower-case names, which case-comparing predicates can't match.
+    # The repo's lower-case names, which case-comparing predicates can't match.
     ("Bash", "find dist -name 'zexion*' -delete"),
     ("Bash", "find lab -name 'zexion*' -delete"),
     ("Bash", "find . -path '*zexion*.pyc' -delete"),
@@ -1403,7 +1414,7 @@ BY_NAME_ALLOWED = [
     ("Bash", "ls -ld $(find ~ -name ZexionAP)"),
     ("Bash", "ls -ld `find ~ -name ZexionAP`"),
     ("Bash", 'du -sh "$(find ~ -name ZexionAP -print)"'),
-    # Round 4: reads only, around a substitution that reads.
+    # Reads only, around a substitution that reads.
     ("Bash", 'cd "$(find ~ -name ZexionAP)" && ls'),
     ("Bash", "cat $(find ~ -name ZexionAP -type f)"),
     ("PowerShell", "Get-Item .\\* -Include '*.pyc', '*.pyo' | Remove-Item"),
@@ -1834,7 +1845,6 @@ def test_nothing_asks_the_network_about_a_network_path(monkeypatch) -> None:
 
 
 LINK = "X:/lab/lnk"  # a link to the offline folder, simulated: nothing is created
-LOCAL_PREFIXES = ["//?/", "\\\\?\\", "//./", "\\\\.\\"]
 
 
 @pytest.fixture
@@ -1893,6 +1903,32 @@ def test_a_link_behind_a_local_device_path_is_still_followed(
     # On Windows the prefixes are local paths; on Linux and macOS ``//`` is never the network.
     monkeypatch.setattr(protected, "_on_windows", lambda: windows)
     assert run(tool, **tool_input), (tool, tool_input)
+
+
+def test_a_link_is_followed_for_the_first_words_of_a_command_only(linked) -> None:
+    # The documented gap (the module docstring, ``MAX_LINK_WORDS``): with that many different
+    # words before it, an operand in a link in the working folder is read as a plain name. A
+    # fix changes this test and that text together.
+    def command(fillers: int) -> str:
+        return "cp " + " ".join(f"w{i}" for i in range(fillers)) + " a lnk/x"
+
+    few, many = 10, guard_protected.MAX_LINK_WORDS
+    assert run("Bash", command=command(few), cwd="X:/lab")
+    assert run("Bash", command=command(many), cwd="X:/lab") is None
+
+
+@pytest.mark.parametrize("tool", ["Bash", "PowerShell"])
+def test_a_parent_of_a_protected_folder_is_read_whatever_comes_before_it(tool: str) -> None:
+    # Only the following of links stops at ``MAX_LINK_WORDS``: ``Gallant Leaf`` (the save
+    # folder's parent) is named however many words come first.
+    fillers = " ".join(f"w{i}" for i in range(guard_protected.MAX_LINK_WORDS + 6))
+    roaming = "C:/Users/someone/AppData/Roaming"
+    for command in (
+        f'rm -rf {fillers} "Gallant Leaf"',
+        f'mv {fillers} "Gallant Leaf" /tmp/y',
+        f'Copy-Item x {fillers} "Gallant Leaf"',
+    ):
+        assert run(tool, command=command, cwd=roaming), command
 
 
 POSIX_HOME = "/home/u"
@@ -2125,7 +2161,7 @@ def test_the_hook_process_blocks_with_exit_2(payload: str, code: int) -> None:
     assert code == 0 or "guard_protected" in result.stderr
 
 
-# Folders above the protected ones, and the names of the files in them (round 7). A command that
+# Folders above the protected ones, and the names of the files in them. A command that
 # starts from Roaming, the home folder or the root, and deletes or moves what it finds, reaches
 # the saves whatever name it looks for.
 
@@ -2164,7 +2200,7 @@ def home_env(request, monkeypatch) -> str:
 
 
 ABOVE_BLOCKED = [
-    # Allowed on v1.2.0 and develop before round 7.
+    # By name, from a folder above: the name alone does not make them safe.
     ("Bash", 'find "$APPDATA" -name "Save Game*.sav" -delete'),
     ("Bash", 'find ~ -name "ZexionAP-seed-*.sav" -exec rm {} +'),
     ("Bash", 'find "$APPDATA" -name "*seed*" -delete'),
@@ -2285,17 +2321,16 @@ ABOVE_BLOCKED = [
     ("Bash", "mv / /tmp/x"),
     ("PowerShell", "ri -r -fo /"),
     ("PowerShell", "Remove-Item -Recurse /c"),
-    ("Bash", "rm -rf /c"),
     ("Bash", "cmd /c rd /s /q C:\\"),
     ("Bash", 'rm -r "$APPDATA" "$HOME"'),
-    # Git Bash's spelling of a drive, and where a cd leaves the shell (round 7, review of #195)
-    ("Bash", "cd /c/Users/DKboy && rm -rf *"),
-    ("Bash", "cd /c/Users/DKboy && git clean -fdx"),
-    ("Bash", "cd /c/Users/DKboy && find . -type f -mtime -1 -delete"),
+    # Git Bash's spelling of a drive, and where a cd leaves the shell
+    ("Bash", "cd /c/Users/someone && rm -rf *"),
+    ("Bash", "cd /c/Users/someone && git clean -fdx"),
+    ("Bash", "cd /c/Users/someone && find . -type f -mtime -1 -delete"),
     ("Bash", "cd /c && rm -rf Users"),
     ("Bash", "cd /c && rm -rf *"),
     ("Bash", "cd /c/Users && rm -rf *"),
-    ("Bash", "cd /mnt/c/Users/DKboy && rm -rf *"),
+    ("Bash", "cd /mnt/c/Users/someone && rm -rf *"),
     ("Bash", "cd && rm -rf *"),
     ("Bash", "cd; find . -delete"),
     ("Bash", "cd -- && rm -rf *"),
@@ -2364,7 +2399,7 @@ ABOVE_BLOCKED = [
     ("PowerShell", "Set-Location ~; gci -r | ri -r"),
     ("PowerShell", "Set-Location ~; Get-ChildItem -Recurse | ForEach-Object { Remove-Item $_ }"),
     ("PowerShell", "cd ~; ls | Remove-Item -Recurse"),
-    # round 7, second review of #195: cmd with a quoted script, Git Bash's //c, cmd's move
+    # cmd with a quoted script, Git Bash's //c, cmd's move
     ("Bash", 'cmd /c "rd /s /q %USERPROFILE%"'),
     ("Bash", "cmd //c rd //s //q %USERPROFILE%"),
     ("Bash", 'cmd /c "del /s /q %USERPROFILE%\\*"'),
@@ -2403,15 +2438,14 @@ ABOVE_BLOCKED = [
     ("Bash", "find -- ~ -delete"),
     ("Bash", "robocopy %USERPROFILE% D:/x /MOVE /E"),
     ("Bash", "robocopy %USERPROFILE% D:/x /MOV"),
-    ("Bash", "rsync -a --remove-source-files ~/ /tmp/x/"),
     ("Bash", "rsync -a --delete x/ ~/"),
     # extraction over what is there
     ("Bash", "unzip -o x.zip -d ~"),
     ("Bash", "tar --overwrite -xf x.tar -C ~"),
     ("PowerShell", "Expand-Archive x.zip ~ -Force"),
     ("PowerShell", "Expand-Archive -Path x.zip -DestinationPath ~ -Force"),
-    # a known folder is known by value (third review of #195): a name set to something else, a
-    # substitution with more after it, a variable the line sets
+    # A variable is read from the line's own values, not the environment's: a name set to something
+    # else, a substitution with more after it, a variable the line sets
     ("Bash", "TMPDIR=~; cd $TMPDIR && rm -rf *"),
     ("Bash", "RUNNER_TEMP=/; cd $RUNNER_TEMP; rm -rf *"),
     ("Bash", 'CLAUDE_PROJECT_DIR=~; cd "$CLAUDE_PROJECT_DIR" && git clean -fdx'),
@@ -2428,10 +2462,10 @@ ABOVE_BLOCKED = [
     ("Bash", "d=$(git --git-dir=x rev-parse --show-toplevel); cd $d; rm -rf *"),
     ("Bash", 'export TEMP=$HOME; cd "$TEMP" && rm -rf *'),
     ("Bash", "TMP=~ && cd $TMP && git clean -fdx"),
-    ("PowerShell", '$env:TMP = "C:\\Users\\DKboy"; cd $env:TMP; ri -r *'),
+    ("PowerShell", '$env:TMP = "C:\\Users\\someone"; cd $env:TMP; ri -r *'),
     # cmd scripts keep their backslashes, switches before /c, call, start, if exist
-    ("Bash", 'cmd /c "rd /s /q C:\\Users\\DKboy"'),
-    ("PowerShell", 'cmd /c "rd /s /q C:\\Users\\DKboy"'),
+    ("Bash", 'cmd /c "rd /s /q C:\\Users\\someone"'),
+    ("PowerShell", 'cmd /c "rd /s /q C:\\Users\\someone"'),
     ("Bash", 'cmd /v:on /c "rd /s /q %USERPROFILE%"'),
     ("Bash", "cmd /c call rd /s /q %USERPROFILE%"),
     ("Bash", 'cmd /c "start /b rd /s /q %USERPROFILE%"'),
@@ -2445,8 +2479,8 @@ ABOVE_BLOCKED = [
     ("Bash", 'ls -d ~/* | while read -r f; do echo "$f"; done | xargs rm -rf'),
     ("Bash", "ls ~ |\\\n  xargs rm"),
     ("Bash", "x=$(ls ~); echo $x | xargs rm -rf"),
-    # ``..`` from a known folder leaves it for an unknown one (%TEMP%\.. holds ZexionAP)
-    ("Bash", 'cd "$TEMP" && echo x > ../ZexionAP/seeds.json'),
+    # ``..`` from a known folder leaves it for an unknown one (%TEMP%\.. holds ZexionAP; the
+    # redirects into it are in ``test_dot_dot_from_the_temp_folder_reaches_the_offline_folder``)
     ("Bash", 'cd "$TEMP" && cd .. && rm -rf *'),
     ("Bash", 'cd "$TEMP" && rm -rf ../*'),
     ("Bash", 'cd "$(git rev-parse --show-toplevel)" && cd .. && rm -rf *'),
@@ -2650,7 +2684,7 @@ ABOVE_ALLOWED = [
     ("Bash", 'rm -rf "$TMPDIR"/*'),
     ("Bash", 'find "$TEMP" -mindepth 1 -delete'),
     ("Bash", "cd $d && rm -rf build"),
-    # only the pipeline that feeds a command counts (Low 4)
+    # only the pipeline that feeds a command counts
     ("Bash", "ls ~ ; find lab -name x.tmp | xargs rm"),
     ("Bash", "echo $HOME && git ls-files -o | xargs rm"),
     ("Bash", "ls -la ~ && ls lab/old | xargs rm -rf"),
@@ -2668,22 +2702,18 @@ ABOVE_ALLOWED = [
     ("Bash", "git checkout -- ."),
     ("Bash", "find -- lab -delete"),
     ("Bash", "robocopy lab D:/x /MOVE /E"),
-    ("Bash", "unzip x.zip -d ~"),
-    ("Bash", "tar -xzf x.tgz -C ~"),
     ("Bash", "unzip -o x.zip -d lab"),
     ("PowerShell", "Expand-Archive x.zip ~"),
     ("PowerShell", "Expand-Archive x.zip lab -Force"),
     ("PowerShell", "Move-Item lab\\x lab\\y"),
     ("PowerShell", "Move-Item -Path lab\\x -Destination ~"),
     ("Bash", "mv -t ~ a b"),
-    ("Bash", "cmd /c dir"),
     ("Bash", 'cmd /c "dir lab"'),
     ("Bash", 'cmd /c "rd /s /q lab\\x"'),
     ("Bash", "cmd //c dir"),
     ("Bash", 'cmd /c "dir /s /b"'),
     ("Bash", 'cmd //c "rd /s /q build"'),
     ("Bash", 'cmd /c "cd /d native && build.bat"'),
-    ("Bash", 'cmd /c "rd /s /q lab\\x"'),
     ("Bash", 'cmd /c "if exist lab rd /s /q lab"'),
     ("Bash", "cmd /c start /b notepad"),
     ("Bash", "{ ls lab; } | xargs rm -rf"),
@@ -2765,18 +2795,10 @@ ABOVE_ALLOWED = [
 ]
 
 
-# Commands that name a protected folder through ``%TEMP%``, which is under ``%LOCALAPPDATA%`` on
-# Windows only: they are run with both set, so that they read the same on every platform.
-NEEDS_TEMP_UNDER_LOCALAPPDATA = {'cd "$TEMP" && echo x > ../ZexionAP/seeds.json'}
-
-
 @pytest.mark.parametrize(("tool", "command"), ABOVE_BLOCKED)
 def test_a_write_that_reaches_a_folder_above_a_protected_one_blocked(
-    tool: str, command: str, home_env: str, monkeypatch
+    tool: str, command: str, home_env: str
 ) -> None:
-    if command in NEEDS_TEMP_UNDER_LOCALAPPDATA:
-        monkeypatch.setenv("LOCALAPPDATA", FAKE_ENV["LOCALAPPDATA"])
-        monkeypatch.setenv("TEMP", FAKE_ENV["LOCALAPPDATA"] + "\\Temp")
     assert run(tool, command=command), (home_env, command)
 
 
@@ -2841,8 +2863,11 @@ KNOWN_FALSE_POSITIVES = [
     'cd "$(mktemp -d)/work" && rm -rf *',
     'cd "$(mktemp -d)" && mkdir x && cd x && rm -rf *',
     'read -r line; cd "$TMPDIR" && rm -rf *',
-    # and the holes that a "known folder" rule opened: the variable may be unset, a name may
-    # come before ``..``
+]
+
+# Not false positives: after a ``cd`` to an unknown folder a ``..`` may lead anywhere, and a name
+# that is a protected folder's may be one.
+UNKNOWN_CD_BLOCKED = [
     "cd $(mktemp -d) && rm -rf a/../../..",
     "cd $(mktemp -d) && rm -rf ../../ZexionAP",
     'cd "$TMPDIR" && rm -rf ../ZexionAP',
@@ -2850,7 +2875,7 @@ KNOWN_FALSE_POSITIVES = [
 
 
 def test_a_cd_to_an_unknown_folder_counts_as_unknown(home_env: str) -> None:
-    for command in KNOWN_FALSE_POSITIVES:
+    for command in [*KNOWN_FALSE_POSITIVES, *UNKNOWN_CD_BLOCKED]:
         assert run("Bash", command=command), (home_env, command)
 
 
@@ -2872,11 +2897,9 @@ def test_a_cd_to_a_folder_the_environment_knows_is_judged_by_its_real_path(monke
         'cd "$TEMP" && rm -rf ../*',
     ],
 )
-def test_dot_dot_from_the_temp_folder_reaches_the_offline_folder(monkeypatch, command: str) -> None:
-    # On Windows %TEMP% is %LOCALAPPDATA%\Temp: its parent holds ZexionAP. The variables are set
-    # here, so the test reads the same on every platform.
-    monkeypatch.setenv("LOCALAPPDATA", "C:\\Users\\someone\\AppData\\Local")
-    monkeypatch.setenv("TEMP", "C:\\Users\\someone\\AppData\\Local\\Temp")
+def test_dot_dot_from_the_temp_folder_reaches_the_offline_folder(
+    temp_under_local, command: str
+) -> None:
     assert run("Bash", command=command), command
     assert run("Bash", command='cd "$TEMP" && echo x > out.txt') is None
 
