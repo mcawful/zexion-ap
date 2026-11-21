@@ -6,6 +6,7 @@
 
 #include "platform.h"
 
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -168,6 +169,23 @@ inline std::string hex(const void* bytes, size_t n) {
     return out;
 }
 inline std::string hex(const std::string& text) { return hex(text.data(), text.size()); }
+
+// A seed file as the client writes it (client/offline.py, seed_text): lower-case hex, the labels
+// last. `table` and `start` are the seed's table and start bytes; `count` disks; Assist Unlock free
+// or locked; `labels` label lines; `traps` the traps line's text.
+inline std::string client_text(const std::string& table, const std::string& start, int count,
+                               bool free_assists, int labels, const std::string& traps = "-") {
+    std::string text = "zexion-ap offline 1\ntable " + hex(table) + "\nstart " + hex(start) +
+                       "\nintel 1\nassists " + (free_assists ? "free" : "lock") + "\ndiscs " +
+                       std::to_string(count) + " 12 434f4c4c454354\nunfound 40,1312\ntraps " +
+                       traps + "\n";
+    if (labels > 0) text += "ap_labels\n";
+    for (int i = 0; i < labels; ++i) {
+        text += "label " + std::to_string(20 + i) + " 14 4150204954454d\n";
+    }
+    for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
+}
 
 // The game's sprite-sheet function (0x74780; object, template): the template's frames.
 inline void sprite_sheet(void* o, void* t) {

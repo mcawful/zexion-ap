@@ -198,7 +198,9 @@ B1_SYMBOLS = [
 ]
 
 
-# The helper's new games' symbols too (linux_targets.HELPER_TARGETS): (name, address, size, type).
+# The rest of B1's symbols the Linux helper's own table (native/linux/src/helper.cpp, kConfigKeys)
+# names: (name, address, size, type). With B1_SYMBOLS they give each row's address on B1, which
+# docs/re/linux.md's Lookup records (tests/test_linux_targets.py).
 B1_HELPER_SYMBOLS = [
     ("gRandoPreferences", 0x12F6CE0, 0x114, 1),
     ("gExitActionP", 0x12F5710, 8, 1),
@@ -278,16 +280,19 @@ B1_HELPER_SYMBOLS = [
 ]
 
 
-def b1_like(drop: str = "", sizes: dict[str, int] | None = None, extra: bool = False) -> elf.Image:
-    """A binary with B1's symbols the targets name (and with ``extra`` the helper's too)."""
+def b1_values() -> dict[str, int]:
+    """Every B1 symbol the helper's table or the client's targets name, by name: its address."""
+    return {n: v for n, v, *_ in B1_SYMBOLS + B1_HELPER_SYMBOLS}
+
+
+def b1_like(drop: str = "", sizes: dict[str, int] | None = None) -> elf.Image:
+    """A binary with B1's symbols the targets name."""
     sizes = sizes or {}
     symbols = [
         (name, value, sizes.get(name, size), 1, True)
         for name, value, size in B1_SYMBOLS
         if name != drop
     ]
-    if extra:
-        symbols += [(n, v, s, t, True) for n, v, s, t in B1_HELPER_SYMBOLS if n != drop]
     return elf.parse(elf_image(symbols=symbols))
 
 
@@ -555,7 +560,7 @@ class LinuxPm(Answering):
 
     def __init__(self, replies: dict | None = None) -> None:
         super().__init__({"config": "ok", **(replies or {})}, default="error unknown request")
-        self.game = types.SimpleNamespace(image=b1_like(extra=True))
+        self.game = types.SimpleNamespace(image=b1_like())
         self.connection = 1  # the connections made
         self.connected = True
         self.disconnects = 0

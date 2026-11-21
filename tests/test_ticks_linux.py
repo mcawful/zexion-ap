@@ -136,8 +136,8 @@ def test_on_linux_the_seed_is_armed_with_archipelago_through_the_linux_helper(ca
     with caplog.at_level("INFO"):
         arm(ctx)
     sent = ctx.game_conn.pm.sent
-    assert sent[0].startswith("config rando_blob=0x12f6e00 randomizer_menu=0x12f6ce0 ")
-    assert "current_menu=0x12f5700" in sent[0] and "tr_flag=0x12b48d1" in sent[0]
+    assert sent[0].startswith("config map_grid=0x9fc83d cell_state=0x9fd3a1 ")
+    assert "rando_blob=0x12f6e00" in sent[0] and "current_slot=0x14945a0" in sent[0]
     assert sent[1].startswith("ap_newgame\n") and sent[1].endswith("\nchoice")  # ARCHIPELAGO
     assert ctx.conn.newgame is state.NewGame.ARMED
     assert ctx.conn.newgame_lines == newgame.choice_message(ctx.conn.plan)
@@ -704,11 +704,12 @@ def test_on_linux_no_tick_goes_through_a_connection_made_again(tick) -> None:
 
 
 def test_on_linux_the_language_is_asked_of_the_linux_helper(caplog) -> None:
-    ctx = linux_ctx({"lang": "lang French"}, configured=True)
+    hello = "zexion-ap 1.0.0 build=B1 hooked=1 platform=linux folder=1 lang=French"
+    ctx = linux_ctx({"hello": hello}, configured=True)
     with caplog.at_level(logging.WARNING, logger="Client"):
         via_link(ctx, lambda link: ticks.language_tick(ctx, link))
         via_link(ctx, lambda link: ticks.language_tick(ctx, link))
-    assert ctx.game_conn.pm.firsts().count("lang") == 1, "asked again only after a few seconds"
+    assert ctx.game_conn.pm.firsts().count("hello") == 1, "asked again only after a few seconds"
     assert [line for line in said(caplog) if line.startswith("Zexion is set to French")]
 
 
@@ -869,8 +870,9 @@ def test_on_linux_the_helper_retry_leaves_the_linux_helpers_plan_alone(caplog) -
 
 
 def test_on_linux_a_save_loaded_while_dropped_lets_the_linux_helper_go(caplog) -> None:
-    # Its lang every 5 s would keep the helper's client open for good: the helper dresses the save
-    # itself once the connection closes, as the Windows helper does when it is let go.
+    # Its language (a hello) every 5 s would keep the helper's client open for good: the helper
+    # dresses the save itself once the connection closes, as the Windows helper does when it is
+    # let go.
     ctx = linux_away()
     ctx.conn.newgame = state.NewGame.ARMED
     with caplog.at_level(logging.DEBUG):

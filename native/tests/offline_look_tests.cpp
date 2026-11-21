@@ -1,0 +1,767 @@
+// Host tests for the offline look (offline.h): a stand-in game dressing a save of a seed with no
+// client and undressing it, the held look, the notices, the file select's logo and counts, and the
+// text window's cut under a cache's config. The seed files and the folder: offline_tests.cpp.
+
+#include <windows.h>
+
+#include <cstring>
+#include <cwctype>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include "check.h"
+#include "game_calls.h"
+#include "offline.h"
+#include "offline_seeds.h"
+#include "stand_in.h"
+#include "stand_in_menu.h"
+#include "fake_gl.h"
+
+using namespace stand_in;
+
+namespace {
+
+void no_callback(void*, int) {}  // ARCHIPELAGO's callback: none here
+
+// The seed's save loaded, in play.
+void load_seed() {
+    std::memset(g_section, 0, sizeof(g_section));
+    put_seed(g_section);
+    g_rando_marker = 1;
+    g_save_loaded = 3;
+    g_menu = 0;
+}
+
+// `game` configured from the cache with `s` known, and s's save in play, dressed.
+void dress_offline(zap::Game& game, const zap::OfflineSeed& s) {
+    configure(game, false);
+    game.set_offline({s});
+    load_seed();
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+}
+
+void test_a_save_of_the_seed_dressed_offline() {
+    reset_game();
+    zap::Game game;
+    check(configure(game, false).empty() && !game.active(), "configured from the cache: inactive");
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    game.set_offline({s});
+
+    std::memset(g_section, 0, sizeof(g_section));
+    g_rando_marker = 1;
+    g_save_loaded = 0xFF;  // the title: nothing
+    game.watch_offline();
+    check(!game.intel_on() && !game.assists_locked() && game.scan_line().empty(), "no save: off");
+
+    put_seed(g_section);
+    g_save_loaded = 3;
+    g_flags[39] = 0;
+    std::memset(g_map_grid, 0, sizeof(g_map_grid));
+    g_menu = 2;  // still loading (a menu up): not yet
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(!game.intel_on() && game.queued_popups() == 0, "not dressed before play");
+    g_menu = 0;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.intel_on() && game.assists_locked(), "the seed's save: INTEL CHIP, ASSIST locked");
+    check(game.queued_popups() == 1, "the warning queued once");
+    for (int i = 0; i < 32; ++i) game.watch_offline();
+    check(game.queued_popups() == 1, "and only once a load");
+    check(game.disc_count() == 3 && game.scan_line() == "COLLECT" && !game.discs_told(),
+          "the disks, not told yet");
+    check(game.offline_state() == "1:", "hello: one seed, its file loaded");
+
+    g_map_grid[1312] = 0x1B;
+    g_flags[39] = 1;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.disc_count() == 4 && game.discs_told(), "a disk found offline, and told");
+
+    g_rando_marker = 0;  // a normal save keeps the old section: the marker tells
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(!game.intel_on() && !game.assists_locked() && game.scan_line().empty(),
+          "another save: all of it put back");
+    check(game.queued_popups() == 0, "the warning not shown yet withdrawn");
+    g_rando_marker = 1;
+
+    // Slot 3 holds the seed, slot 4 another, slot 5 is empty (its section still the seed's).
+    for (int n : {3, 4, 5}) {
+        put<uint16_t>(slot_block(n), 0x9400, 1);
+        slot_block(n)[0x935E] = 0;
+    }
+    slot_block(5)[0x935E] = 0xFF;
+    put_seed(rando_copy(3));
+    put_seed(rando_copy(5));
+    g_save_loaded = 0xFF;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    auto counts = game.files().counts();
+    check(counts.size() == 1 && counts.count(3) == 1 && counts[3] == zap::DiskCount(3, s.unfound),
+          "the file select: the seed's save with its count and own disks' cells");
+
+    check(configure(game).empty() && game.active(), "a client's config");
+    check(game.files().counts().empty(), "the file select's counts dropped with the look, counted again at the next");
+    check(game.queued_popups() == 0, "no notice: no save was dressed (the file select)");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.files().counts().size() == 1 && game.files().counts().at(3) == zap::DiskCount(3, s.unfound),
+          "with a client too: each save's own, from the seed's file (the entry reads its map)");
+
+    zap::Game again;
+    dress_offline(again, s);
+    check(again.intel_on() && again.queued_popups() == 1, "dressed offline, warned");
+    // A client's short first connection (its version check) undresses it; the real one follows.
+    again.leave_offline();
+    configure(again);
+    check(again.queued_popups() == 0 && !again.intel_on(), "a client: the warning withdrawn");
+    check(again.client_back() && again.queued_popups() == 1,
+          "its session sees the save: CLIENT CONNECTED, once");
+    check(!again.client_back() && again.queued_popups() == 1, "not twice");
+
+    zap::Game other;  // a client of another seed
+    configure(other);  // a client, active
+    other.set_offline({s});
+    for (int i = 0; i < 16; ++i) other.watch_offline();
+    check(!other.intel_on(), "a client's own: no offline look by itself");
+    check(other.other_save() == "told" && other.queued_popups() == 1,
+          "told once: the other-seed notice");
+    check(other.other_save() == "already told" && other.queued_popups() == 1,
+          "and not again this load");
+    for (int i = 0; i < 16; ++i) other.watch_offline();
+    check(other.intel_on() && other.assists_locked() && other.queued_popups() == 1,
+          "the other seed's save dressed, with no not-connected warning");
+    // The client takes its own look back (none for this save): the dressed save keeps its own.
+    other.set_labels({});
+    other.set_intel(false);
+    other.set_assists_locked(false);
+    other.set_discs(0, 0, "");
+    for (int i = 0; i < 16; ++i) other.watch_offline();
+    check(other.intel_on() && other.assists_locked() && other.scan_line() == "COLLECT",
+          "a client's look taken back: the dressed save's own again");
+    // A refused unload: the offline look left by the put back, dressed again by its watch.
+    other.put_back_game(nullptr);
+    check(!other.intel_on() && !other.assists_locked(), "put back: the offline look left");
+    for (int i = 0; i < 16; ++i) other.watch_offline();
+    check(other.intel_on() && other.assists_locked(), "the watch dresses it again");
+    g_save_loaded = 0xFF;
+    for (int i = 0; i < 16; ++i) other.watch_offline();
+    check(!other.intel_on() && !other.assists_locked(), "the save gone: undressed");
+    g_save_loaded = 3;
+    for (int i = 0; i < 16; ++i) other.watch_offline();
+    check(!other.intel_on(), "a new load: the client's again until it says otherwise");
+    check(other.other_save() == "told" && other.queued_popups() == 1,
+          "and told again for this load (the last load's notice withdrawn)");
+    configure(other);  // a reconnect
+    check(other.queued_popups() == 0, "the last client's notice withdrawn");
+    check(other.other_save() == "told" && other.queued_popups() == 1, "and told again");
+    {
+        zap::Game plain;  // a randomizer save of no known seed
+        configure(plain);
+        check(plain.other_save() == "unknown" && plain.queued_popups() == 0,
+              "a plain randomizer game: no notice");
+    }
+
+    g_save_loaded = 0xFF;  // the file select
+    for (int i = 0; i < 16; ++i) other.watch_offline();
+    check(other.files().counts().size() == 1 &&
+              other.files().counts().at(3) == zap::DiskCount(3, s.unfound),
+          "the known seed's slot 3 keeps its own count with a client of another seed");
+}
+
+// Each guarded step (Game::step) on its own: one that throws keeps none of the others from running.
+int g_step_calls = 0, g_throw_at = 0;
+zap::Game* g_watched = nullptr;
+std::vector<bool> g_dressed_before;  // the look dressed (INTEL CHIP on) as each step begins
+void step_hook() {
+    if (g_watched != nullptr) g_dressed_before.push_back(g_watched->intel_on());
+    if (++g_step_calls == g_throw_at) throw std::runtime_error("a step");
+}
+
+// The watches' order (Game::watch_rest): the offline look is the third step of the frame, right
+// after the menu's, so the file select's, INTEL CHIP's, the title's and the disks' watches that
+// follow it read what it set in the same frame; the Windows helper ran them before it.
+void test_the_look_is_set_before_the_watches_that_read_it() {
+    reset_game();
+    zap::Game game;
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    configure(game, false);
+    game.set_offline({s});
+    load_seed();
+    game.set_step_hook(&step_hook);
+    g_watched = &game;
+    g_dressed_before.clear();
+    g_step_calls = g_throw_at = 0;
+    game.watch_all(&no_callback);
+    g_watched = nullptr;
+    game.set_step_hook(nullptr);
+    check(g_dressed_before.size() >= 5, "the steps of one frame");
+    if (g_dressed_before.size() >= 5) {
+        // 1 feats, 2 the menu, 3 the offline look, 4 the file select.
+        check(!g_dressed_before[2], "not dressed before its own step");
+        check(g_dressed_before[3], "dressed when the file select's watch begins");
+    }
+    game.put_back_game(&no_callback);
+}
+
+void test_a_watch_that_throws_keeps_the_others_running() {
+    reset_game();
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    zap::Game whole;
+    configure(whole, false);
+    whole.set_offline({s});
+    load_seed();
+    whole.set_step_hook(&step_hook);
+    g_step_calls = g_throw_at = 0;
+    whole.watch_all(&no_callback);
+    const int steps = g_step_calls;
+    check(steps >= 15, "watch_all runs each watch as a step of its own", std::to_string(steps));
+    whole.put_back_game(&no_callback);
+
+    // The second step, the ARCHIPELAGO choice's watch, throws: the offline look after it runs.
+    reset_game();
+    zap::Game game;
+    configure(game, false);
+    game.set_offline({s});
+    load_seed();
+    game.set_step_hook(&step_hook);
+    g_step_calls = 0;
+    g_throw_at = 2;
+    game.watch_all(&no_callback);
+    check(g_step_calls == steps, "every step ran after the one that threw",
+          std::to_string(g_step_calls));
+    check(game.intel_on(), "and the look after it dressed the save");
+    game.set_step_hook(nullptr);
+    game.put_back_game(&no_callback);
+}
+
+void test_a_part_of_a_clients_going_that_throws_keeps_the_others_running() {
+    reset_game();
+    zap::Game game;
+    check(configure(game).empty() && game.active(), "a client's config");
+    zap::NewGamePlan plan;
+    check(zap::parse_newgame("ap_newgame\nidentify 0x658 41\nwrite 0x310 11\nmenu 0x88 03", plan)
+              .empty() &&
+              game.arm_newgame(plan),
+          "a plan armed");
+    game.set_intel(true);
+    game.set_step_hook(&step_hook);
+    g_step_calls = 0;
+    g_throw_at = 1;  // put_back_game, the first part, throws as a whole
+    game.client_gone(&no_callback);
+    check(g_step_calls >= 4, "client_gone ran its other parts", std::to_string(g_step_calls));
+    check(game.newgame_status() == "idle" && !game.intel_on() && !game.active(),
+          "the plan dropped, Intel Chips off and the client gone, whichever part threw");
+    game.set_step_hook(nullptr);
+}
+
+// A dressed save stays dressed, ASSIST locked, through a menu; a client going away with the
+// options menu up locks it again in the same frame call, so the cursor never finds it open.
+void test_assist_locked_again_in_the_same_frame() {
+    reset_game();
+    zap::Game game;
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    dress_offline(game, s);
+    g_menu = 2;  // the pause menu, then the options
+    OptionsMenu options(reinterpret_cast<void*>(&widget_handler_fn),
+                        reinterpret_cast<void*>(&assist_menu_fn));
+    g_current_menu = options.menu;
+    game.watch_all(&no_callback);
+    check(options.callback() == nullptr, "dressed offline: ASSIST locked");
+    configure(game);  // a client of this seed, its own look (no lock sent yet)
+    game.watch_all(&no_callback);
+    check(options.callback() == &assist_menu_fn, "the client's look: ASSIST free");
+    game.client_gone(&no_callback);
+    game.watch_all(&no_callback);
+    check(options.callback() == nullptr, "the client gone: locked again in the same frame call");
+    game.put_back_game(&no_callback);
+    g_current_menu = nullptr;
+}
+
+void test_the_look_held_in_a_menu() {
+    reset_game();
+    zap::Game game;
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    dress_offline(game, s);
+    check(game.assists_locked() && game.offline_state() == "1:", "dressed in play");
+    g_menu = 2;  // the pause menu up
+    game.set_offline({s});  // `helper.py status` has come and gone
+    check(game.assists_locked() && game.intel_on() && game.offline_state() == "1:",
+          "the files read again: still dressed");
+    for (int i = 0; i < 32; ++i) game.watch_offline();
+    check(game.assists_locked(), "and kept");
+    check(game.queued_popups() == 1, "no second not-connected warning");
+    g_rando_marker = 0;  // a read of no known seed in the menu
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.assists_locked(), "held with the menu up");
+    g_rando_marker = 1;
+    configure(game);  // a client of this seed: its own look
+    check(!game.assists_locked(), "the client's look");
+    game.client_gone(&no_callback);
+    game.watch_offline();
+    check(game.assists_locked() && game.intel_on(), "the client gone in the menu: dressed at once");
+    zap::OfflineSeed other = s;
+    other.table[0] ^= 1;
+    game.set_offline({other});
+    check(!game.assists_locked() && game.offline_state() == "1",
+          "files without the seed: undressed");
+    game.set_offline({s});
+    g_rando_marker = 0;  // in play, no known seed: another save
+    g_menu = 0;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(!game.assists_locked(), "in play as no known seed: undressed");
+    g_rando_marker = 1;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.assists_locked(), "dressed again");
+    g_save_loaded = 0xFF;
+    game.watch_offline();
+    check(!game.assists_locked(), "no save: undressed at once");
+    g_save_loaded = 3;
+    g_menu = 2;  // the next load, not in play yet
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(!game.assists_locked(), "a new load waits for play");
+    g_menu = 0;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.assists_locked(), "then dressed");
+
+    // The files read again newest first: CLIENT CONNECTED. still for the save played offline.
+    zap::Game order;
+    configure(order, false);
+    order.set_offline({other, s});
+    load_seed();
+    for (int i = 0; i < 16; ++i) order.watch_offline();
+    order.set_offline({s, other});
+    check(order.assists_locked() && order.offline_state() == "2:", "dressed, its place moved");
+    configure(order);
+    check(order.client_back(), "CLIENT CONNECTED. for the save played offline");
+}
+
+// The helper's notices are each for the load they were queued in: withdrawn if the player
+// leaves it before they show.
+void test_a_notice_not_shown_goes_with_its_save() {
+    reset_game();
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    auto frames = [](zap::Game& game, int n) {
+        for (int i = 0; i < n; ++i) {
+            game.watch_all(nullptr);
+            game.pump_popups();
+        }
+    };
+    {
+        zap::Game game;
+        check(configure(game).empty(), "a client's config");
+        game.set_offline({s});
+        load_seed();
+        check(game.other_save() == "told" && game.queued_popups() == 1,
+              "another seed's save: the notice queued");
+        g_menu = 1;  // paused before it shows
+        frames(game, 40);
+        check(g_messages == 0 && game.queued_popups() == 1, "not shown while paused");
+        g_menu = 0;
+        g_save_loaded = 0xFF;  // quit to the title
+        frames(game, 1);
+        check(game.queued_popups() == 0, "withdrawn as the save goes");
+        std::memset(g_section + 0x26C, 7, sizeof(g_table));  // the client's own seed's save
+        g_save_loaded = 3;
+        frames(game, 40);
+        check(g_messages == 0, "not shown in the client's own seed's save", g_text);
+        game.put_back_game(nullptr);
+    }
+    {
+        // A client going away before its notice shows.
+        zap::Game game;
+        configure(game);
+        game.set_offline({s});
+        put_seed(g_section);
+        g_messages = 0;
+        check(game.other_save() == "told" && game.queued_popups() == 1, "the notice queued");
+        g_menu = 1;  // paused
+        frames(game, 40);
+        game.client_gone(nullptr);
+        check(game.queued_popups() == 0, "withdrawn as its client goes");
+        g_menu = 0;
+        frames(game, 200);
+        // (The box's lines may join words: its start is enough to tell the two apart.)
+        check(g_messages == 1 && g_text.rfind("ARCHIPELAGO CLIENT", 0) == 0,
+              "only the not-connected warning shown", g_text);
+        configure(game);
+        check(game.other_save() == "told", "the next client is told again");
+        game.put_back_game(nullptr);
+    }
+    {
+        // Warned, paused before it showed, a client of another seed come and gone meanwhile.
+        g_messages = 0;
+        zap::Game game;
+        dress_offline(game, s);
+        check(game.queued_popups() == 1, "warned with no client");
+        g_menu = 1;
+        configure(game);
+        check(game.other_save() == "told" && game.queued_popups() == 1,
+              "a client of another seed: its notice in the warning's place");
+        game.client_gone(nullptr);
+        check(game.queued_popups() == 0, "withdrawn as it goes");
+        g_menu = 0;
+        frames(game, 200);
+        check(g_messages == 1 && g_text.rfind("ARCHIPELAGO CLIENT", 0) == 0,
+              "the not-connected warning given again", g_text);
+        game.put_back_game(nullptr);
+    }
+    {
+        // Warned and shown; a client comes back, then goes again in the same load.
+        g_messages = 0;
+        zap::Game game;
+        dress_offline(game, s);
+        frames(game, 200);
+        check(g_messages == 1 && g_text.find("NOT") != std::string::npos,
+              "the not-connected warning shown", g_text);
+        configure(game);
+        check(game.client_back(), "CLIENT CONNECTED queued");
+        frames(game, 200);
+        check(g_messages == 2 && g_text.find("NOT") == std::string::npos,
+              "CLIENT CONNECTED shown", g_text);
+        game.client_gone(nullptr);
+        frames(game, 200);
+        check(g_messages == 3 && g_text.find("NOT") != std::string::npos,
+              "warned again when it goes", g_text);
+        frames(game, 200);
+        check(g_messages == 3, "once for that loss");
+        game.put_back_game(nullptr);
+    }
+    {
+        zap::Game game;  // CLIENT CONNECTED. not shown yet when its client goes
+        dress_offline(game, s);
+        game.leave_offline();
+        configure(game);
+        check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
+        game.client_gone(nullptr);
+        check(game.queued_popups() == 0, "withdrawn as its client goes");
+        game.put_back_game(nullptr);
+    }
+    {
+        zap::Game game;  // or when a client configures again
+        dress_offline(game, s);
+        game.leave_offline();
+        configure(game);
+        check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
+        configure(game);
+        check(game.queued_popups() == 0, "withdrawn as a client configures again");
+        game.put_back_game(nullptr);
+    }
+    {
+        // CLIENT CONNECTED, for a save played offline, likewise.
+        g_messages = 0;
+        zap::Game game;
+        dress_offline(game, s);
+        game.leave_offline();
+        configure(game);
+        check(game.client_back() && game.queued_popups() == 1, "CLIENT CONNECTED queued");
+        g_save_loaded = 0xFF;
+        frames(game, 1);
+        check(game.queued_popups() == 0, "withdrawn as the save goes");
+        g_save_loaded = 3;
+        frames(game, 40);
+        check(g_messages == 0, "not shown in the next save", g_text);
+        game.put_back_game(nullptr);
+    }
+    g_save_loaded = 0xFF;
+    g_rando_marker = 0;
+}
+
+// A seed file put while a client is connected reaches the look at once; a dressed save keeps
+// its own record.
+void test_a_seed_put_with_a_client_reaches_the_look() {
+    reset_game();
+    zap::Game game;
+    check(configure(game).empty(), "a client's config");
+    load_seed();
+    check(game.other_save() == "unknown", "no file for the save's seed: unknown");
+    zap::OfflineSeed b;
+    zap::parse_offline_seed(seed_text(), b);
+    b.name = "b";
+    game.merge_offline({b});
+    check(game.known_seeds() == 1 && game.ap_save_loaded(), "known to the AP-save test");
+    check(game.other_save() == "told", "and to the look: told");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.intel_on() && game.assists_locked() && game.offline_state() == "1:b",
+          "the save dressed");
+    zap::OfflineSeed newer = b;  // the same seed, its look changed
+    newer.name = "b2";
+    newer.intel = false;
+    zap::OfflineSeed c = b;
+    c.name = "c";
+    c.table[0] ^= 1;
+    game.merge_offline({newer, c});
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.intel_on() && game.offline_state() == "2:b", "the dressed record kept; one added");
+    check(game.known_seeds() == 2, "both known");
+    g_save_loaded = 0xFF;
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    game.merge_offline({newer});
+    check(game.offline_state() == "2", "in place, not added");
+    g_save_loaded = 3;
+    check(game.other_save() == "told", "told on the next load");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(!game.intel_on() && game.assists_locked() && game.offline_state() == "2:b2",
+          "dressed with the newer record");
+    game.put_back_game(nullptr);
+    g_save_loaded = 0xFF;
+    g_rando_marker = 0;
+}
+
+void test_the_ap_saves_slots() {
+    // Which slots get the file select's AP logo: a randomizer save in use whose own copy of the
+    // section is a known seed's, from a seed file (no client) or a client's put.
+    reset_game();
+    clear_slots();
+    for (int n : {3, 4, 6, 7}) slot_block(n)[0x935E] = 0;
+    for (int n : {3, 4, 5, 7}) put<uint16_t>(slot_block(n), 0x9400, 1);  // 6 a normal save
+    // 5 deleted, 6 given a normal game: their copies kept.
+    for (int n : {3, 5, 6}) put_seed(rando_copy(n));
+    put_seed(rando_copy(4));
+    rando_copy(4)[0x26C] ^= 1;  // 4: a plain randomizer game
+    put_seed(rando_copy(7));
+    rando_copy(7)[0x26C] ^= 2;  // 7: a seed only a client has put
+
+    zap::Game game;
+    check(configure(game, false).empty(), "configured from the cache");
+    check(game.ap_file_slots().empty(), "no seed known: no AP save");
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    game.set_offline({s});
+    check(game.ap_file_slots() == std::set<int>{3},
+          "the seed file's save; not a plain randomizer game, a deleted slot or a normal save");
+    game.add_known_seeds({zap::offline_seed_of(rando_copy(7))});
+    check(game.ap_file_slots() == std::set<int>{3, 7}, "and a seed a client put");
+    check(configure(game).empty() && game.active() &&
+              game.ap_file_slots() == std::set<int>{3, 7},
+          "with a client too");
+
+    // A new game queued in slot 3 (a deleted AP save there, its empty mark 0 for the fade, its
+    // marker word and section kept): the slot is not that save's for the 40 frames, neither for
+    // the logo nor for the count; another slot's new game leaves it.
+    g_save_loaded = 0xFF;
+    g_transition_fn = reinterpret_cast<void*>(&newgame_fn);
+    g_transition_timer = 40;
+    g_current_slot = 3;  // slot 4
+    check(game.ap_file_slots() == std::set<int>{3, 7}, "a new game in another slot: kept");
+    g_current_slot = 2;  // slot 3
+    check(game.ap_file_slots() == std::set<int>{7}, "a new game in slot 3: not listed");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.files().counts().empty(), "nor counted");
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    g_current_slot = 0;
+    check(game.ap_file_slots() == std::set<int>{3, 7}, "listed again once none is queued");
+    for (int i = 0; i < 16; ++i) game.watch_offline();
+    check(game.files().counts().size() == 1 && game.files().counts().count(3) == 1,
+          "and counted again");
+    g_save_loaded = 3;  // as it was
+
+    check(game.files().ap_slots().empty(), "not before a frame");
+    game.watch_all(&no_callback);
+    check(game.files().ap_slots() == std::set<int>{3, 7}, "the first frame sets them");
+    game.put_back_game(&no_callback);
+    check(game.files().ap_slots().empty() && !game.files().holds_hook(), "put back: none");
+
+    // A seed known only as the labels' (the loaded save's when a client set them).
+    zap::Game labeled;
+    check(configure(labeled).empty(), "a client's config");
+    put_seed(g_section);
+    g_section[0x26C] ^= 2;  // slot 7's seed
+    g_rando_marker = 1;
+    g_save_loaded = 7;
+    std::map<int, zap::Label> labels;
+    check(zap::parse_labels("ap_labels\nlabel 5 2 41", labels).empty(), "a label parses");
+    labeled.set_labels(labels);
+    check(labeled.ap_file_slots() == std::set<int>{7}, "the labels' seed's save");
+}
+
+// The file select's AP logo as the frame call paints it: whiter through a new game's fade to
+// white, cleared when the file select's look is put back.
+void test_the_logo_through_the_frame_call() {
+    reset_game();
+    gl_fake::reset_gl();
+    clear_slots();
+    slot_block(3)[0x935E] = 0;
+    put<uint16_t>(slot_block(3), 0x9400, 1);
+    put_seed(rando_copy(3));
+    zap::Game game;
+    check(configure(game).empty(), "a client's config");
+    game.set_gl(gl_fake::fake_gl());
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    game.add_known_seeds({s});
+    g_save_loaded = 0xFF;  // the file select
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    // The logo's (6, 0) is red ('r'): its green rises as it is whitened.
+    auto logo_green = [](const gl_fake::Upload& u) { return u.pixels[(0 * 16 + 6) * 4 + 1]; };
+    auto logo_uploads = [] {
+        std::vector<gl_fake::Upload> out;
+        for (const gl_fake::Upload& u : gl_fake::g_uploads) {
+            if (u.x == zap::kApLogoX && u.y == zap::kApLogoY && u.w == 16 && u.h == 16) {
+                out.push_back(u);
+            }
+        }
+        return out;
+    };
+    game.watch_all(&no_callback);
+    std::vector<gl_fake::Upload> logos = logo_uploads();
+    check(logos.size() == 1 && logo_green(logos[0]) < 0x80,
+          "an AP save listed: the logo painted at (96, 1040) in its colors");
+    const uint8_t own = logos.empty() ? 0 : logo_green(logos[0]);
+    g_transition_fn = reinterpret_cast<void*>(&newgame_fn);  // a new game queued, 20 frames left
+    g_transition_timer = 20;
+    gl_fake::g_uploads.clear();
+    game.watch_all(&no_callback);
+    logos = logo_uploads();
+    check(logos.size() == 1 && logo_green(logos[0]) > own &&
+              logo_green(logos[0]) < 0xFF,
+          "a new game's fade: painted again, whiter");
+    g_transition_timer = 1;
+    gl_fake::g_uploads.clear();
+    game.watch_all(&no_callback);
+    logos = logo_uploads();
+    check(logos.size() == 1 && logo_green(logos[0]) == 0xFF, "all white on its last frame");
+    g_transition_fn = nullptr;
+    g_transition_timer = 0;
+    gl_fake::g_uploads.clear();
+    game.put_back_files();
+    logos = logo_uploads();
+    check(logos.size() == 1 && gl_fake::all_blank(logos),
+          "put_back_files clears the logo from the texture");
+    game.put_back_game(&no_callback);
+    clear_slots();
+    g_save_loaded = 3;
+}
+
+// A received disk's glyph is painted while its popup waits and while it shows, with the goal off
+// (a load before the client turns it on again), and cleared once the popup has gone.
+void test_the_disk_glyph_kept_for_its_popup() {
+    reset_game();
+    gl_fake::reset_gl();
+    g_slots_live = g_message_is_last = true;  // the popup the game's last message, as in play
+    zap::Game game;
+    check(configure(game).empty(), "a client's config");
+    game.set_gl(gl_fake::fake_gl());
+    auto glyphs = [] {
+        std::vector<gl_fake::Upload> out;
+        for (const gl_fake::Upload& u : gl_fake::g_uploads) {
+            if (u.x == zap::font_x(zap::kDiskGlyph) && u.y == zap::font_y(zap::kDiskGlyph)) {
+                out.push_back(u);
+            }
+        }
+        return out;
+    };
+    check(apply(game, "apply\npopup 44 FROM BOB") == "applied", "a received disk");
+    game.watch_all(&no_callback);
+    check(glyphs().size() == 1 && !gl_fake::all_blank(glyphs()), "painted while it waits");
+    game.pump_popups();
+    check(!g_text.empty() && static_cast<uint8_t>(g_text[0]) == zap::kDiskGlyph, "then shown");
+    gl_fake::g_uploads.clear();
+    game.watch_all(&no_callback);
+    check(glyphs().empty(), "kept while it shows");
+    put<int32_t>(g_slots, 0x1EC, 0);  // its frames run out
+    game.watch_all(&no_callback);
+    check(glyphs().size() == 1 && gl_fake::all_blank(glyphs()), "cleared once it has gone");
+    game.put_back_game(&no_callback);
+    g_slots_live = g_message_is_last = false;
+}
+
+// The text cut's patch step by step on the stand-in's code, as TextCut makes it in watch_all:
+// read, built, written and put back.
+void test_the_text_cut_patches_the_stand_in() {
+    reset_game();
+    BYTE now[zap::kTextCutSize];
+    check(zap::safe_read(g_text_cut_code, now, sizeof now), "the stand-in's cut reads");
+    check(std::memcmp(now, kTextCutGame, sizeof now) == 0, "and holds the game's bytes");
+    BYTE patch[zap::kTextCutSize] = {};
+    check(zap::text_cut_patch(now, patch), "the cut's patch builds from them");
+    check(zap::patch_code(g_text_cut_code, patch, sizeof patch), "patch_code writes it");
+    check(code_is(g_text_cut_code, patch, sizeof patch), "the stand-in holds the patch");
+    check(zap::patch_code(g_text_cut_code, kTextCutGame, sizeof kTextCutGame), "and puts it back");
+    zap::Game game;
+    check(configure(game).empty(), "a client's config");
+    game.watch_all(&no_callback);
+    const char* blocker = game.unload_blocker();
+    check(blocker != nullptr && std::string(blocker).find("cut") != std::string::npos,
+          "and the Game patches it", blocker == nullptr ? "(no blocker)" : blocker);
+    game.put_back_game(&no_callback);
+    // As the helper with no client: configured from its cache, not active.
+    auto bytes = [] {
+        std::string out;
+        char hex[4];
+        for (int i = 0; i < zap::kTextCutSize; ++i) {
+            std::snprintf(hex, sizeof hex, "%02X ", code_byte(g_text_cut_code, i));
+            out += hex;
+        }
+        return out;
+    };
+    zap::Game idle;
+    check(idle.configure(GetModuleHandleW(nullptr), stand_in_config(), false).empty(),
+          "a cache configures");
+    idle.watch_all(&no_callback);
+    const char* idle_blocker = idle.unload_blocker();
+    check(idle_blocker != nullptr && std::string(idle_blocker).find("cut") != std::string::npos,
+          "and the inactive Game patches it",
+          std::string(idle_blocker == nullptr ? "(no blocker)" : idle_blocker) + "; bytes " +
+              bytes());
+    idle.watch_all(&no_callback);
+    check(!code_is(g_text_cut_code, kTextCutGame),
+          "and after a second frame", bytes());
+    idle.put_back_game(&no_callback);
+}
+
+// 1.0.0's cache, written before text_cut_code: it configures everything else, the text window's
+// cut left the game's, until a client's config, which holds the key, patches it.
+void test_a_cache_without_the_text_cut() {
+    HMODULE self = GetModuleHandleW(nullptr);
+    auto older = stand_in_config();
+    older.erase("text_cut_code");
+    auto is_games = [] {
+        return code_is(g_text_cut_code, kTextCutGame);
+    };
+    reset_game();
+    zap::Game game;
+    check(game.configure(self, older, false).empty() && game.configured() && !game.active(),
+          "a cache without text_cut_code configures");
+    game.watch_all(&no_callback);
+    check(is_games(), "the cut left the game's");
+    check(configure(game).empty(), "a client's config, text_cut_code in it");
+    game.watch_all(&no_callback);
+    check(!is_games(), "then the cut is patched");
+    game.put_back_game(&no_callback);
+    check(is_games(), "and put back with the game");
+
+    zap::Game full;
+    check(full.configure(self, stand_in_config(), false).empty(), "a cache with it configures");
+    full.watch_all(&no_callback);
+    check(!is_games(), "and the cut is patched with no client");
+    full.put_back_game(&no_callback);
+    check(is_games(), "put back with the game");
+}
+
+}  // namespace
+
+int main() {
+    test_a_save_of_the_seed_dressed_offline();
+    test_the_look_is_set_before_the_watches_that_read_it();
+    test_a_watch_that_throws_keeps_the_others_running();
+    test_a_part_of_a_clients_going_that_throws_keeps_the_others_running();
+    test_assist_locked_again_in_the_same_frame();
+    test_the_look_held_in_a_menu();
+    test_a_notice_not_shown_goes_with_its_save();
+    test_a_seed_put_with_a_client_reaches_the_look();
+    test_the_ap_saves_slots();
+    test_the_logo_through_the_frame_call();
+    test_the_disk_glyph_kept_for_its_popup();
+    test_the_text_cut_patches_the_stand_in();
+    test_a_cache_without_the_text_cut();
+    return report("offline look tests");
+}

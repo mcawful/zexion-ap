@@ -1015,20 +1015,15 @@ async def feats_tick(ctx: ZexionContext, step: session.Step) -> None:
 
 
 async def language_tick(ctx: ZexionContext, link: Link) -> None:
-    """Every few seconds while a helper is attached: which language the game shows (the Windows
-    helper's hello's ``lang``, the Linux helper's ``lang`` request). In a translation other than
-    English(HD) the player is told once per game run that the mod's text is made for the default
-    English and English(HD) (state.language_line)."""
+    """Every few seconds while a helper is attached: which language the game shows (either
+    helper's hello's ``lang``). In a translation other than English(HD) the player is told once
+    per game run that the mod's text is made for the default English and English(HD)
+    (state.language_line)."""
     now = time.monotonic()
     if now < link.told.language_at:
         return
     link.told.language_at = now + state.LANGUAGE_ASK_SECONDS
-    if link.linux:
-        mod = link.helper
-        reply = await asyncio.to_thread(mod.request, "lang")
-        lang = reply.removeprefix("lang ") if reply.startswith("lang ") else ""
-    else:
-        lang = (await asyncio.to_thread(link.helper.hello)).get("lang", "")
+    lang = (await asyncio.to_thread(link.helper.hello)).get("lang", "")
     line = state.language_line(lang)
     if line is not None and ctx.said("language", "told"):  # once a game run (game_closed)
         logger.warning(line)

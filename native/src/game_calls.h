@@ -220,7 +220,7 @@ public:
     // Game thread: the seeds (table and start) of the randomizer saves among the 30 slots, as the
     // game's memory holds them, the file select's match: what a slot's save uses, with no save
     // file opened. None before the helper is configured. The caller publishes it (SavedSeeds).
-    std::vector<OfflineSeed> saved_seeds() const;
+    std::vector<SeedKey> saved_seeds() const;
 
     // Game thread: the Area Map as INTEL CHIP while on (`intel`, intel.h).
     void set_intel(bool on) { intel_.set(on); }
@@ -231,10 +231,10 @@ public:
     // back Steam's slot alone (on Linux: the export's blocking off).
     bool ap_save_loaded() const;
     void watch_feats();
-    void add_known_seeds(const std::vector<OfflineSeed>& seeds);
+    void add_known_seeds(const std::vector<SeedKey>& seeds);
     // Game thread: the seed file the client has put is its own seed, the one its look is for;
     // ignored with no client (active), dropped when it goes away (client_gone).
-    void note_client_seed(const OfflineSeed& seed);
+    void note_client_seed(const SeedKey& seed);
     void forget_client_seed() { client_seed_.reset(); }  // the client went away (client_gone)
     size_t known_seeds() const { return known_seeds_.size(); }  // tests
     void restore_feats();
@@ -515,7 +515,7 @@ private:
     // this load or before (a save past its ending reads so throughout).
     bool ending_flag() const;
     // Whether `origin` (a popup's or a drop's) is the save loaded now, or none.
-    bool origin_loaded(const std::shared_ptr<const OfflineSeed>& origin) const;
+    bool origin_loaded(const std::shared_ptr<const SeedKey>& origin) const;
     void refresh_hud();
 
     bool configured_ = false;
@@ -548,7 +548,7 @@ private:
     int offline_played_ = -1;
     bool other_save_ = false;     // a client said the loaded save is not its seed's
     bool other_warned_ = false;   // this load's other-seed notice queued
-    bool section_is(const OfflineSeed& seed, const BYTE* section) const;
+    bool section_is(const SeedKey& seed, const BYTE* section) const;
     // Slot n's copy of its randomizer section, if it holds a randomizer save (else null, and for
     // the slot a new game is being started in); and whether a section is a known seed's (the
     // labels' or known_seeds_).
@@ -571,7 +571,7 @@ private:
     // its popup's save; lost, as queued popups are, with the helper.
     struct Drop {
         uint8_t item;
-        std::shared_ptr<const OfflineSeed> origin;
+        std::shared_ptr<const SeedKey> origin;
     };
     std::deque<Drop> drops_;
     // This world's own traps to set off (pump_traps), each with the save it was for; a received
@@ -579,7 +579,7 @@ private:
     // (trap_waiting); those for another save are lost with the helper, as queued popups are.
     struct QueuedTrap {
         uint8_t item;
-        std::shared_ptr<const OfflineSeed> origin;
+        std::shared_ptr<const SeedKey> origin;
         int cell = -1;  // an own trap's map cell (own_trap_found)
         int slot = -1;  // and the save slot it was picked up in (0-based)
     };
@@ -643,8 +643,8 @@ private:
     int map_frames_ = 0;  // frames until the next map look
     int map_seed_passes_ = 0;  // map looks in a row that read the labels' seed loaded (to 2)
     // The labels' seed (the loaded item table and start when set): the map changes only in it.
-    std::optional<OfflineSeed> labels_seed_;
-    std::optional<OfflineSeed> client_seed_;  // the client's own seed (its item table and start)
+    std::optional<SeedKey> labels_seed_;
+    std::optional<SeedKey> client_seed_;  // the client's own seed (its item table and start)
     // That seed's save loaded, in play or in a menu (such as the map).
     bool labels_seed_loaded() const;
     // A save the seed's look applies in: the dressed offline seed's, or with a client, its own
@@ -710,7 +710,7 @@ private:
     bool note_seen_ = false;  // the Feats of Natu screen was up since the ending
     int note_frames_ = 0;  // frames until the next look for it
     // Every seed the helper has known since it loaded (table and start only), the oldest first.
-    std::vector<OfflineSeed> known_seeds_;
+    std::vector<SeedKey> known_seeds_;
 };
 
 }  // namespace zap

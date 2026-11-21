@@ -19,6 +19,7 @@ import re
 import string
 
 import pytest
+from fakes import b1_like
 from native_source import (
     LINUX_SRC,
     ROOT,
@@ -305,10 +306,10 @@ def test_every_request_the_client_sends_the_linux_helper_is_one_it_knows() -> No
     # As the Windows helper's, for every request made through a LinuxMod, a LinuxProcess or
     # either helper's shared ticks (``mod.request``, ``pm.request``, ``self.request_bytes``...).
     known = linux_requests()
-    assert {"config", "apply", "ap_newgame", "lang", "trap_status", "ping", "callers"} <= known
+    assert {"config", "apply", "ap_newgame", "trap_status", "ping", "callers"} <= known
     assert {"auth", "read", "write", "shield", "die", "disarm", "hello", "assists lock"} <= known
     sent = {
-        "hello", "ping", "callers", "auth", "read", "write", "trap_status", "lang", "shield",
+        "hello", "ping", "callers", "auth", "read", "write", "trap_status", "shield",
         "die", "disarm", "newgame_status", "other_save", "client_back", "discs_status",
         discs.MISSION_STATUS, "ap_labels", "ap_newgame", "config", "apply", "offline_put",
         "discs", discs.MISSION_REQUEST.split()[0], *ticks.ASSISTS[0], *ticks.INTEL[0],
@@ -324,7 +325,7 @@ def test_every_request_the_client_sends_the_linux_helper_is_one_it_knows() -> No
         return request in known or request.split()[0] in known
 
     assert all(named(request) for request in sent), sorted(r for r in sent if not named(r))
-    assert named(linux_targets.helper_config(linux_helper_image()))
+    assert named(linux_targets.config_request(b1_like()))
     assert named(native.batch_text([], []))
     assert named(offline.put_request("config", ""))
     assert named(aplabels.labels_request({}))
@@ -337,16 +338,13 @@ def test_the_linux_dispatchers_alone_name_the_requests_it_knows() -> None:
     # known.
     helper = (LINUX_SRC / "helper.cpp").read_text(encoding="utf-8")
     body = function_body(helper, "std::optional<std::string> game_request(")
-    assert "mission_status" in linux_requests() and 'request == "hello"' not in body
-    assert 'request == "hello"' in helper  # the gate's own, outside game_request
+    assert "mission_status" in linux_requests()
+    # A connection that has shown the token gets the language too (game_request); the gate's own
+    # hello, before it, outside game_request, says nothing of the game.
+    assert 'request == "hello"' in body and '" lang=" + lang' in body
+    assert helper.count('request == "hello"') == 2
     assert "hello" in linux_requests()  # from core.cpp's reply
-    assert "lang" in linux_requests()
-
-
-def linux_helper_image():
-    from test_linux_targets import b1_like
-
-    return b1_like(extra=True)
+    assert "lang" not in linux_requests(), "the language is hello's, as the Windows helper's"
 
 
 # The replies the client branches on, as words the helper's sources have as a string literal (a
@@ -357,7 +355,7 @@ WINDOWS_ONLY_REPLIES = (  # the Windows helper's alone: its own branches
     "; not unloading", "bye", "ok differs ", "error no LOCALAPPDATA",
 )  # fmt: skip
 LINUX_ONLY_REPLIES = (  # the Linux helper's alone: native/linux/src, or the shared #else branches
-    "lang ", "written ", "data ", "error no folder",
+    "written ", "data ", "error no folder", "error unknown key ", "error missing ",
 )  # fmt: skip
 SHARED_REPLIES = (
     "error too large", "refused not settled", "error unknown request",
@@ -391,7 +389,6 @@ def test_the_replies_the_client_branches_on_are_ones_the_linux_helper_gives() ->
     for reply in WINDOWS_ONLY_REPLIES:
         assert not says(text, reply), f"{reply!r} is the Linux helper's too: move it"
     assert 'status_ = "refused " + why;' in source("newgame.cpp")  # shared with the Windows one
-    assert 'return "lang " + name;' in (LINUX_SRC / "helper.cpp").read_text(encoding="utf-8")
 
 
 # What the client compares a reply with that is no protocol word (a name, a count, a said line).

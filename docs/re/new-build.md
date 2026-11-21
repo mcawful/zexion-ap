@@ -46,7 +46,9 @@ the same heading with the new build, beside the old one, never in its place.
    its own addresses"); `tests/test_gen_native_patterns.py` fails while it is out of date. A
    target that is new or renamed also needs its key in `kConfigKeys`
    (`native/src/game_calls.cpp`) and `CONFIG_KEYS` follows the patterns, as
-   `tests/test_cross_checks.py` checks. Then build `native/` and check the helper's own scan
+   `tests/test_cross_checks.py` checks. On Linux, a target the client reads (`linux_targets.TARGETS`) must
+   also be in the helper's `kClientKeys` (`native/linux/src/helper.cpp`), and in `kClientOnly` if the
+   helper does not use it (`tests/test_linux_targets.py` checks). Then build `native/` and check the helper's own scan
    finds what the client's does on the new exe: `ZEXION_EXE=lab/data/<exe-hash-12>/Zexion.exe
    .venv/Scripts/python -m pytest tests/test_native_scan.py` (the native tests built first;
    it skips without the variable), which runs `findaddr`'s real-exe check too.

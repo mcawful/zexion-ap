@@ -21,7 +21,10 @@ Install Disks and traps following the save (`docs/releases/1.2.0.md`).
 start needs no client (not yet run in game); the seed copies in the save folder for Steam Cloud
 ("How it fits together", "The seed copies in the save folder": run in game Windows to Windows,
 2026-11-20); and the Linux helper's self-configuring start (the mod loaded on a Steam Deck; whether
-the title screen's lines showed there was not reported). The version PR names the release.
+the title screen's lines showed there was not reported). The Linux helper's `config` request, since
+those runs, carries only the client's own targets for the helper to check against its own addresses,
+and the language comes in `hello`: stand-in tests only, to be run in game before the release
+("Platforms"). The version PR names the release.
 
 Every in-game run was on game build B1. A release build has run from Archipelago 0.6.8's Launcher
 since 2026-10-25
@@ -434,7 +437,8 @@ there is:
   is measured now; `Game.unwritable` stays for any later one), and reports play only while the
   player state is where the layout puts it. The Linux helper is configured once an attach, and
   again once the client's connection to it was made again (`ticks.configure_linux`,
-  `client/linux_targets.py`'s `helper_config`, `client/linux_helper.py`'s `LinuxMod`). The poll
+  `client/linux_targets.py`'s `config_request`, `client/linux_helper.py`'s `LinuxMod`: the client's
+  own targets, which the helper checks against its own addresses). The poll
   runs one list of ticks through whichever helper there is (`ticks.helper_link`: the Windows
   helper, or the Linux helper only on the connection it was configured on, `LinuxMod.current`,
   for every tick: what the helper keeps past a connection's close (Intel Chips, the ASSIST lock,
@@ -445,7 +449,7 @@ there is:
   do the step's items, with their popups, traps and scrap's drops (`apply`: its errors reach the
   step as they are), received Energy Shields (`ticks.shields_tick`) and DeathLink's deaths
   (`ticks.deathlink_tick`), Intel Chips, the ASSIST lock, other players' items' labels, CLIENT
-  CONNECTED, the other-seed notice, the language (its `lang` request), the OS Install Disks'
+  CONNECTED, the other-seed notice, the language (its `hello`), the OS Install Disks'
   count, the finds' follow-ups and RETURN HOME (`ticks.return_home_tick` follows a prompt over the
   connections), and this seed's file (`ticks.linux_seed_tick`: at first its own traps and disks,
   with the labels, disk counts and free ASSIST menu the file already kept where the client can
@@ -573,7 +577,7 @@ the client saying why, with items held back up to 30 s ([`native/README.md`](../
   it for an Archipelago save), the client warns once that achievements may be earned in this
   save (the reason goes to the log).
 - Every few seconds while the helper is attached, the client reads the game's language from
-  its `hello` (`lang`; on Linux, the Linux helper's `lang` request); in any translation but
+  its `hello` (`lang`, the Linux helper's too); in any translation but
   English(HD) it says once per game run that the mod's text is made for the default English and
   English(HD) (`state.language_line`).
 

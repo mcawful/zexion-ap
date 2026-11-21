@@ -55,7 +55,10 @@ routine, the inventory UI): they are likelier to survive a patch. Update `FROZEN
 same patterns, written into `native/src/findaddr_patterns.h`; `tests/test_gen_native_patterns.py`
 fails while it is stale), then check with `tools/check_patterns.py EXE` and `--live`. A new target also needs its row in
 `docs/re/linux.md`'s Lookup, its counterpart in the game's Linux build found by symbol or
-disassembly (or the row saying it is not found yet); `tests/test_patterns.py` fails without it.
+disassembly (or the row saying it is not found yet); `tests/test_patterns.py` fails without it. A
+target the client reads on Linux is also a `linux_targets.TARGETS` entry and a key of the Linux
+helper's `kClientKeys` (`native/linux/src/helper.cpp`; `kClientOnly` if the helper does not use
+it): `tests/test_linux_targets.py` checks.
 
 ## 5. Record it
 

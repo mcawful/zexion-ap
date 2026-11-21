@@ -4,6 +4,7 @@
 // ZAP_FAKE_NO_FRAME set, only from draw_editor, every time), and on SIGTERM the stand-in SDL's
 // count of the calls that reached it.
 #include <csignal>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,14 +19,116 @@ volatile char g_marker[] = "zexion-ap test marker";
 volatile unsigned char g_block[40000];  // byte i is i % 251, for reads of more than one piece
 volatile std::sig_atomic_t g_stop = 0;
 
-// The new-game state, as the game keeps it in its .bss (native/src/newgame.h), for
-// tests/test_native_linux.py's new games: found by these names in this program's symbols.
+// The game's own names, as the helper looks each up in this program's symbols (native/linux/src/
+// helper.cpp, kConfigKeys and the rest): each stand-in object and function below carries one (an
+// asm label, the mangled C++ names the game's own), at the offset the helper expects, so the one
+// table there serves the release build and the test build. docs/re/linux.md has what each is.
 extern "C" {
+extern unsigned char zap_section[0x908] asm("gCurrentRando");
+extern unsigned char zap_menu[0x114] asm("gRandoPreferences");
+extern void* zap_transition asm("gExitActionP");
+extern int zap_timer asm("gExitDelay");
+extern int zap_slot asm("gCurrentSaveGame");
+extern short zap_start_count asm("rStartingLocationCount");
+extern unsigned char zap_start_cells[4 * 64] asm("rStartingLocations");
+extern unsigned char zap_start_flags[64] asm("rStartingLocationCage");
+extern void* zap_menu_top asm("gLastGameMenuP");
+extern unsigned char zap_translation[0x40150] asm("gCurrentTranslation");
+extern short zap_small_count asm("gSmallTextCount");
+extern short zap_item_name_count asm("gPowerUpDefCount");
+extern unsigned char zap_hd_messages[4 * 0x238] asm("gTranslationGameMessages");
+extern unsigned char zap_cursor asm("gCursorMode");
+extern void* zap_records asm("gPowerUpDefs");
+extern unsigned char zap_sounds[8] asm("gGameSoundManager");
+extern void* zap_sprite_world asm("gSpriteWorldP");
+extern void* zap_palettes[65] asm("gSpriteDrawProcs");
+extern void* zap_templates asm("gMasterSpritesP");
+extern void* zap_events asm("gAreaEvents");
+extern short zap_event_count asm("gAreaEventCount");
+extern void* zap_event_procs[48] asm("gAreaEventProcs");
+extern unsigned char zap_halt asm("gEditorMode");
+extern void* zap_text_table asm("gSmallTexts");
+extern void* zap_routines[16] asm("gExitActions");
+extern void* zap_draw_layer asm("gStatsSpriteLayerP");
+extern unsigned char zap_save_games[30 * 0x9408] asm("gSaveGames");
+extern unsigned char zap_saved_randos[30 * 0x908] asm("gSavedRandos");
+extern short zap_large_count asm("gLargeTextCount");
+extern void* zap_move_procs[128] asm("gMoveProcs");
+extern void* zap_main_character asm("gMainCharacterSpriteP");
+extern short zap_sprite_def_count asm("gSpriteDefCount");
+extern void* zap_stats_context[3] asm("_ZZ14SteamUserStatsvE27s_CallbackCounterAndContext");
+
+void zap_new_game() asm("_Z16StartNewGameExitv");
+void zap_placement() asm("_Z13generateRandov");
+void zap_rando_menu() asm("_Z14RandomizerMenuv");
+void zap_widget_handler(void*, int) asm("_Z18StandardMenuActionP12GameMenuItemi");
+void zap_panel_handler(void*, int) asm("_Z16FrameWrapOrArrowP12GameMenuItemi");
+void zap_force_seed() asm("_Z9forceSeedv");
+void zap_hd_text(const wchar_t*, int, int, int, int, int, int, short, short,
+                 void*) asm("_Z28createTranslationGameMessagePKwiiiiiissP9SpriteRec");
+void zap_build_text(float, float, std::wstring*, void*, void*,
+                    bool) asm("_Z12generateTextffNSt7__cxx1112basic_stringIwSt11char_traitsIwESaIwEEE"
+                              "P8GameFontP12SpriteStringb");
+void* zap_message(const char*, int, int, int, int, int,
+                  int) asm("_Z17createGameMessagePKciiiiii");
+void zap_sound(void*, short, float, float, float, float, short,
+               short) asm("_Z13PlayGameSoundP16GameSoundManagersffffss");
+void zap_hud_number(void*, double, bool) asm("_Z19updateNumberDisplayP13NumberDisplaydb");
+void zap_hud_layout(void*) asm("_Z29updateNumberDisplayVisibilityP12PlayerStruct");
+void zap_energy_hud(void*, bool) asm("_Z15updateEnergyBarP12PlayerStructb");
+void zap_weapon_strip(void*) asm("_Z19updateWeaponDisplayP12PlayerStruct");
+void zap_suit_color(unsigned char, short) asm("_Z16setSpritePalettehs");
+void zap_text_set(void*, const char*, int, int) asm("_Z17alterSpriteStringP9SpriteRecPKcii");
+void zap_equipment_menu() asm("_Z13EquipmentMenuv");
+void zap_equipment_frame(void*, int) asm("_Z14EquipmentFrameP12GameMenuItemi");
+void zap_widget_move(void*, int, int, bool) asm("_Z16moveGameMenuItemP9SpriteReciib");
+void zap_text_place(void*, int, int) asm("_Z16moveSpriteStringP9SpriteRecii");
+void* zap_widget_new(const char*, int, void*, void*, void*, void*, void*, int,
+                     void*) asm("_Z18createGameMenuItemPKciP8GameMenuPFvP12GameMenuItemiEPFvvEPvS9_"
+                                "iP5sRect");
+void zap_sprite_sheet(void*, void*) asm("_Z20SWChangeMasterSpriteP9SpriteRecS0_");
+void zap_panel_link(void*) asm("_Z11addGameMenuP8GameMenu");
+void zap_options_back(void*) asm("_Z22refreshPauseFromOptionP14GameMenuScreen");
+void zap_death(void*, char) asm("_Z17PlayerDestructionP9SpriteRecc");
+void zap_assist_menu() asm("_Z10AssistMenuv");
+void* zap_text_new(const char*, int, int) asm("_Z15newSpriteStringPKcii");
+void zap_text_link(void*) asm("_Z15addSpriteStringP9SpriteRec");
+void zap_file_panel(void*, int) asm("_Z20SaveGamePlayerCursorP12GameMenuItemi");
+void zap_file_entry(void*, int) asm("_Z18SaveGameMenuActionP12GameMenuItemi");
+void zap_copy_entry(void*, int) asm("_Z18CopyGameMenuActionP12GameMenuItemi");
+void zap_delete_entry(void*, int) asm("_Z19ClearGameMenuActionP12GameMenuItemi");
+void zap_set_the_achievement(int) asm("_Z17setTheAchievementi");
+void draw_frame() asm("_Z13SWHardwareEndP14SpriteWorldRec");
+
+// The game's state as one object (gGameState, 0x8D0000 bytes here): the parts the helper reads
+// lie in it at the game's own offsets (docs/re/linux.md, "Lookup: targets"), among them the flags
+// at +0xED, the player state at +0x1CD50, the item pool at +0x79E990 and the message slots at
+// +0x8C6B48. Zero but for what main() sets. gPreferences: the weapon strip's gate at +0x1DD.
+unsigned char gGameState[0x8D0000];
+unsigned char gPreferences[0x200];
+}
+
+// What the stand-in itself reads and writes of gGameState: the player state, the last message
+// and the message slots (the others are the helper's alone).
+template <class T, std::size_t N>
+T (&in_state(std::size_t offset))[N] {
+    return *reinterpret_cast<T(*)[N]>(gGameState + offset);
+}
+unsigned char (&zap_player)[0x1110] = in_state<unsigned char, 0x1110>(0x1CD50);
+unsigned char (&zap_last_message)[16] = in_state<unsigned char, 16>(0x13350);
+unsigned char (&zap_message_slots)[4 * 0x1628] = in_state<unsigned char, 4 * 0x1628>(0x8C6B48);
+
+// The new-game state, as the game keeps it in its .bss (native/src/newgame.h), for
+// tests/test_native_linux.py's new games.
+extern "C" {
+#ifdef ZAP_FAKE_BAD_KEY
+unsigned char zap_section[0x908] = {1};  // in .data, not the .bss the helper requires
+#else
 unsigned char zap_section[0x908];
+#endif
 unsigned char zap_menu[0x114];
 void* zap_transition;
 int zap_timer;
-unsigned short zap_marker;
 int zap_slot;
 short zap_start_count;
 unsigned char zap_start_cells[4 * 64];
@@ -45,9 +148,8 @@ void* zap_menu_top;
 // The translation object (gCurrentTranslation's size; its flag at +0x91, off), its counts, and
 // its two builders: the message's records its ints, entry and kind and its text (4-byte wchar_t,
 // as the Linux build's), the label's the string it was handed (a std::wstring by reference).
-alignas(16) unsigned char zap_translation[0x40150];
+unsigned char zap_translation[0x40150];
 short zap_small_count;
-unsigned char zap_pickup_list[0x1B];  // the major-item list, its length at +0x1A
 short zap_large_count;  // LargeText's (none here: the Feats screen's title stays in pixels)
 short zap_sprite_def_count = 96;  // as the game's (gSpriteDefCount): the icon sheets 101, 104
 short zap_item_name_count;
@@ -91,20 +193,18 @@ __attribute__((noinline, used)) void zap_panel_handler(void*, int) { asm volatil
 __attribute__((noinline, used)) void zap_force_seed() { asm volatile(""); }
 
 // Grants and their popups (Game::apply, pump_popups), in the game's layouts: the player state
-// with its inventory at +0x108E, the item records, the last message (its pointer, its sequence at
-// +8) and the message slots. The stand-in functions keep what they were given, for the test to
-// read: the last popup's text, its sound, the HUD numbers.
-unsigned char zap_player[0x1110];
-// The game's pointer to the player in play (gMainCharacterSpriteP), at zap_player as in play.
+// (above) with its inventory at +0x108E, the item records, the last message (its pointer, its
+// sequence at +8) and the message slots (above). The save loaded byte (gGameState + 0xACA) is 0: a
+// save loaded. The stand-in functions keep what they were given, for the test to read: the last
+// popup's text, its sound, the HUD numbers.
+// The game's pointer to the player in play (gMainCharacterSpriteP): at zap_player as in play,
+// from main(), unless ZAP_FAKE_NO_PLAYER is set (the helper then configures itself only once a
+// test writes the pointer: as a game at its title screen, before any save, would).
 void* zap_main_character;
-unsigned char zap_save_loaded;  // 0: a save loaded (0xFF: none)
-unsigned char zap_cursor;       // 0: no menu up
+unsigned char zap_cursor;  // 0: no menu up
 void* zap_records;
 unsigned char zap_record_table[51 * 100];
-unsigned char zap_last_message[16];
-unsigned char zap_strip_gate;
 unsigned char zap_sounds[8];
-unsigned char zap_message_slots[4 * 0x1628];
 char zap_shown[256];  // the last message's text
 int zap_shown_count;
 int zap_sound_id = -1;
@@ -140,17 +240,13 @@ __attribute__((noinline, used)) void zap_weapon_strip(void*) { asm volatile("");
 __attribute__((noinline, used)) void zap_suit_color(unsigned char, short) { asm volatile(""); }
 
 // Other players' items (Game::watch_ap_items): the sprite world (its texture, 7: the stand-in
-// OpenGL's below), the pools (empty), the palettes, the templates, the flags, the map, the area
-// events (the scraps' alone, below). The pickup's popup width is zap_pickup's `mov esi, 24`
-// (BE 18 00 00 00), as the game's (docs/re/linux.md, `popup_width_code`), patched in place.
+// OpenGL's below), the pools, flags, map and frame clock (in gGameState, empty), the palettes, the
+// templates, the area events (the scraps' alone, below). The pickup's popup width is
+// playerCollideProc's `mov esi, 24` (BE 18 00 00 00) at +0x251E, as the game's (docs/re/linux.md,
+// `popup_width_code`), patched in place.
 void* zap_sprite_world;
-unsigned char zap_item_pool[128 * 0x3B0];
 void* zap_palettes[65];
-long long zap_frame_clock;
 void* zap_templates;
-unsigned char zap_object_pool[1000 * 0x5C8];
-unsigned char zap_flags[0x9C4];
-unsigned char zap_map_grid[54 * 54];
 void* zap_events;
 short zap_event_count;
 void* zap_event_procs[48];
@@ -171,10 +267,9 @@ __attribute__((noinline, used)) void zap_spawn(char row, char column, unsigned c
 __attribute__((noinline, used)) void zap_fade_event(char, char, unsigned char*) {
     asm volatile("");
 }
-void zap_pickup();
 // The OS Install Disks' count: the Text table (32-byte entries, the scanner's 12th as the game
 // has it), the menu functions (none called here: no menu opens in the stand-in), and the pause
-// screen's KEYS branch (zap_pause_game: `jne +0x3C` first, as PauseGame's at 0x618A7E).
+// screen's KEYS branch (PauseGame's at +0x9C: `jne +0x3C` first, as at 0x618A7E).
 char zap_texts[16][32];
 void* zap_text_table;
 __attribute__((noinline, used)) void zap_equipment_menu() { asm volatile(""); }
@@ -188,16 +283,12 @@ __attribute__((noinline, used)) void* zap_widget_new(const char*, int, void*, vo
 __attribute__((noinline, used)) void zap_sprite_sheet(void*, void*) { asm volatile(""); }
 __attribute__((noinline, used)) void zap_panel_link(void*) { asm volatile(""); }
 __attribute__((noinline, used)) void zap_options_back(void*) { asm volatile(""); }
-void zap_pause_game();
-// RETURN HOME WITH THE DISKS?: the fade's block and level, and the routines (none set: the
-// stand-in never opens the prompt, which needs event 3667 as the game loads it).
-unsigned char zap_fade[0xAC];
-unsigned char zap_fade_level;
+// RETURN HOME WITH THE DISKS?: the fade's block and level (in gGameState), and the routines (none
+// set: the stand-in never opens the prompt, which needs event 3667 as the game loads it).
 void* zap_routines[16];
-// Traps: AILMENTS (0: NORMAL), the halt byte, and zap_weapon_cool, the game's two AILMENTS tests
-// as the Linux build has them (trap.cpp's kHitGame then kWaveGame, each load reading
-// zap_ailments), patched in place while a trap's timer runs.
-short zap_ailments;
+// Traps: AILMENTS (gGameState + 0x13724, 0: NORMAL), the halt byte, and weaponCool, the game's two
+// AILMENTS tests as the Linux build has them (trap.cpp's kHitGame at +0xAD5 then kWaveGame at
+// +0xB65, each load reading AILMENTS), patched in place while a trap's timer runs.
 unsigned char zap_halt;
 // DeathLink: the player's death (PlayerDestruction's arguments), noted: the player and kind.
 int zap_death_count;
@@ -240,11 +331,9 @@ __attribute__((noinline, used)) void zap_death(void* player, char kind) {
     zap_death_player = player;
     zap_death_kind = kind;
 }
-void zap_weapon_cool();
-// The map: the item update's two tests of the ID (zap_power_up: PowerUpMoveProc's at 0 and
-// 0x112, the code between as filler), the move procedures (entry 120 the map's: none open here)
-// and the function setting a text's glyphs.
-void zap_power_up();
+// The map: the item update's two tests of the ID (PowerUpMoveProc's, at +0x788 and 0x112 after,
+// the code between as filler), the move procedures (entry 120 the map's: none open here) and the
+// function setting a text's glyphs.
 void* zap_move_procs[128];
 __attribute__((noinline, used)) void zap_text_set(void*, const char*, int, int) {
     asm volatile("");
@@ -281,52 +370,76 @@ unsigned glGetError() { return 0; }
 #pragma GCC visibility pop
 }
 
-asm(".text\n.globl zap_pickup\n.type zap_pickup, @function\nzap_pickup:\n"
-    "  movl $24, %esi\n  ret\n.size zap_pickup, .-zap_pickup\n");
+// The game's code the helper reads or patches, under the game's own names with the filler the
+// helper's offsets into each call for (docs/re/linux.md, "Lookup: targets"): the bytes at those
+// offsets are the game's own, as the helper checks them before it writes; the rest is never run.
+// The pickup's popup width (`mov esi, 24`) at playerCollideProc + 0x251E.
+asm(".text\n.globl _Z17playerCollideProcP10CollideRecS0_P6dPointc\n"
+    ".type _Z17playerCollideProcP10CollideRecS0_P6dPointc, @function\n"
+    "_Z17playerCollideProcP10CollideRecS0_P6dPointc:\n"
+    ".fill 0x251E, 1, 0x90\n"
+    "  movl $24, %esi\n  ret\n"
+    ".size _Z17playerCollideProcP10CollideRecS0_P6dPointc, "
+    ".-_Z17playerCollideProcP10CollideRecS0_P6dPointc\n");
 
-asm(".text\n.globl zap_pause_game\n.type zap_pause_game, @function\nzap_pause_game:\n"
-    ".byte 0x75, 0x3C\n  ret\n.size zap_pause_game, .-zap_pause_game\n");
+// The pause screen's KEYS branch at PauseGame + 0x9C.
+asm(".text\n.globl _Z9PauseGamev\n.type _Z9PauseGamev, @function\n_Z9PauseGamev:\n"
+    ".fill 0x9C, 1, 0x90\n"
+    ".byte 0x75, 0x3C\n  ret\n.size _Z9PauseGamev, .-_Z9PauseGamev\n");
 
-// EndingCutscene's first achievement call and its join, as the Linux build has them (never run):
-// `mov edi, 13; call setTheAchievement; mov word [rbp-0x26], 0`, then, before the join, flag
-// 251's store, and at the join flag 250's (the helper's patch jumps from the one to the other).
+// EndingCutscene's first achievement call (at +0x3B) and its join (at +0x39C), as the Linux build
+// has them: `mov edi, 13; call setTheAchievement; mov word [rbp-0x26], 0`, then, before the join,
+// flag 251's store, and at the join flag 250's (the helper's patch jumps from the one to the
+// other). Flags are gGameState + 0xED + the flag.
 extern "C" void zap_set_the_achievement(int) {}
-asm(".text\n.globl zap_ending\n.type zap_ending, @function\nzap_ending:\n"
-    "  movl $13, %edi\n  call zap_set_the_achievement\n  movw $0, -0x26(%rbp)\n"
-    "  nop\n  nop\n  nop\n  nop\n"
-    "  movb $1, zap_flags+251(%rip)\n"
+asm(".text\n.globl _Z14EndingCutscenev\n.type _Z14EndingCutscenev, @function\n_Z14EndingCutscenev:\n"
+    ".fill 0x3B, 1, 0x90\n"
+    "  movl $13, %edi\n  call _Z17setTheAchievementi\n  movw $0, -0x26(%rbp)\n"
+    ".fill 0x39C - 7 - 0x4B, 1, 0x90\n"
+    "  movb $1, gGameState+0xED+251(%rip)\n"
     ".globl zap_ending_join\nzap_ending_join:\n"
-    "  movb $1, zap_flags+250(%rip)\n  ret\n.size zap_ending, .-zap_ending\n");
+    "  movb $1, gGameState+0xED+250(%rip)\n  ret\n.size _Z14EndingCutscenev, .-_Z14EndingCutscenev\n");
 
-// setGameMessageStringClipping's top cut, byte for byte, never run.
-asm(".text\n.globl zap_text_cut\n.type zap_text_cut, @function\nzap_text_cut:\n"
+// setGameMessageStringClipping's top cut at +0x661, byte for byte, never run.
+asm(".text\n.globl _Z28setGameMessageStringClippingP9SpriteRecii\n"
+    ".type _Z28setGameMessageStringClippingP9SpriteRecii, @function\n"
+    "_Z28setGameMessageStringClippingP9SpriteRecii:\n"
+    ".fill 0x661, 1, 0x90\n"
     ".byte 0x8B, 0x45, 0xE4, 0x99, 0xC1, 0xEA, 0x1D, 0x01, 0xD0, 0x83, 0xE0, 0x07, 0x29, 0xD0\n"
-    "  ret\n.size zap_text_cut, .-zap_text_cut\n");
+    "  ret\n.size _Z28setGameMessageStringClippingP9SpriteRecii, "
+    ".-_Z28setGameMessageStringClippingP9SpriteRecii\n");
 
-// PowerUpMoveProc's two tests of the item's ID, byte for byte, 0x112 apart, never run.
+// PowerUpMoveProc's two tests of the item's ID, byte for byte, 0x112 apart, the first at +0x788,
+// never run.
 #define ZAP_ID_TEST(minor, past)                                                          \
     ".byte 0x66, 0x83, 0xF8, 0x02, 0x7E, " minor ", 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7\n" \
     ".byte 0x80, 0xE8, 0x01, 0x00, 0x00, 0x66, 0x83, 0xF8, 0x23, 0x7F, " past "\n"
-asm(".text\n.globl zap_power_up\n.type zap_power_up, @function\nzap_power_up:\n"
-    ZAP_ID_TEST("0x60", "0x4F") ".fill 0xFB, 1, 0x90\n" ZAP_ID_TEST("0x5D", "0x4C")
-    "  ret\n.size zap_power_up, .-zap_power_up\n");
+asm(".text\n.globl _Z15PowerUpMoveProcP9SpriteRec\n.type _Z15PowerUpMoveProcP9SpriteRec, @function\n"
+    "_Z15PowerUpMoveProcP9SpriteRec:\n"
+    ".fill 0x788, 1, 0x90\n" ZAP_ID_TEST("0x60", "0x4F") ".fill 0xFB, 1, 0x90\n"
+    ZAP_ID_TEST("0x5D", "0x4C")
+    "  ret\n.size _Z15PowerUpMoveProcP9SpriteRec, .-_Z15PowerUpMoveProcP9SpriteRec\n");
 
-// weaponCool's two tests, byte for byte (but where the loads point), never run.
-#define ZAP_LOAD ".byte 0x0F, 0xB7, 0x05\n.long zap_ailments - (. + 4)\n"
-asm(".text\n.globl zap_weapon_cool\n.type zap_weapon_cool, @function\nzap_weapon_cool:\n"
+// weaponCool's two tests, byte for byte (but where the loads point: AILMENTS, gGameState +
+// 0x13724), the first at +0xAD5 and the second at +0xB65, never run.
+#define ZAP_LOAD ".byte 0x0F, 0xB7, 0x05\n.long gGameState+0x13724 - (. + 4)\n"
+asm(".text\n.globl _Z10weaponCoolP12PlayerStruct\n.type _Z10weaponCoolP12PlayerStruct, @function\n"
+    "_Z10weaponCoolP12PlayerStruct:\n"
+    ".fill 0xAD5, 1, 0x90\n"
     ZAP_LOAD
     ".byte 0x66, 0x83, 0xF8, 0x01, 0x75, 0x1B, 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7, 0x80, 0xC2\n"
     ".byte 0x0D, 0x00, 0x00, 0x83, 0xE8, 0x02, 0x89, 0xC2, 0x48, 0x8B, 0x45, 0xE8, 0x66, 0x89\n"
     ".byte 0x90, 0xC2, 0x0D, 0x00, 0x00\n"
     ZAP_LOAD
     ".byte 0x66, 0x83, 0xF8, 0x02, 0x75, 0x0D\n"
+    ".fill 0xB65 - 0xAD5 - 0x35, 1, 0x90\n"  // the second test lies 0x90 after the first
     ZAP_LOAD
     ".byte 0x66, 0x83, 0xF8, 0x01, 0x75, 0x1E, 0x48, 0x8B, 0x45, 0xE8, 0x0F, 0xB7, 0x80, 0xC4\n"
     ".byte 0x0D, 0x00, 0x00, 0x66, 0x83, 0xF8, 0x3C, 0x7E, 0x0D, 0x48, 0x8B, 0x45, 0xE8, 0x66\n"
     ".byte 0xC7, 0x80, 0xC4, 0x0D, 0x00, 0x00, 0x3C, 0x00\n"
     ZAP_LOAD
     ".byte 0x66, 0x83, 0xF8, 0x02, 0x75, 0x0D\n"
-    "  ret\n.size zap_weapon_cool, .-zap_weapon_cool\n");
+    "  ret\n.size _Z10weaponCoolP12PlayerStruct, .-_Z10weaponCoolP12PlayerStruct\n");
 
 extern "C" __attribute__((noinline)) void draw_frame() {
     SDL_GL_SwapWindow(nullptr);
@@ -391,7 +504,7 @@ int main() {
     zap_text_table = zap_texts;
     zap_player[0x107A] = 2;
     zap_player[0x107B] = 3;
-    zap_main_character = zap_player;
+    if (std::getenv("ZAP_FAKE_NO_PLAYER") == nullptr) zap_main_character = zap_player;
     zap_stats_vtable[0x30 / 8] = reinterpret_cast<void*>(&zap_set_achievement);
     // The scraps' events: type 11, subtype 1, the object, F3 03 FF FF 01, then (5, 8) at +0x12,
     // sound -1 at +0x1A, 1.0f at +0x1C, the next event at +0x20 and the event's own at +0x24.

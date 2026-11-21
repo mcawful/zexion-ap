@@ -43,11 +43,16 @@ namespace zap {
 
 constexpr uint8_t kCollectedCell = 0x1B;
 
-struct OfflineSeed {
-    std::string name;  // the file's name, for `hello` and logs
+// What tells one seed from another, and so which saves are of it: the item table and the start
+// (offline_matches). The match the file select, the look and the copies make is on this alone.
+struct SeedKey {
     int locations = rando::kLocations;  // the table's length: 154, or 155 with Secret Shuffle
     uint8_t table[rando::kMaxLocations] = {};  // past `locations`, 0
     uint8_t start[rando::kStartSize] = {};
+};
+
+struct OfflineSeed : SeedKey {
+    std::string name;  // the file's name, for `hello` and logs
     bool intel = false;
     bool lock_assists = false;
     bool discs = false;
@@ -97,11 +102,13 @@ std::string parse_synced_file(const std::string& text, OfflineSeed& out);
 // labels with more "label" lines stand, and the traps are `older`'s when `newer` has none.
 OfflineSeed merge_offline_seeds(const OfflineSeed& older, const OfflineSeed& newer);
 
-// Whether `other` (offline_seed_of a section, or another seed) is `seed`: the same location
-// count, item table and start.
-bool offline_matches(const OfflineSeed& seed, const OfflineSeed& other);
-// A seed made of a randomizer section's location count, item table and start (nothing else
-// set), to match another section against.
+// Whether `other` (seed_key_of a section, or another seed's) is `seed`'s: the same location count,
+// item table and start.
+bool offline_matches(const SeedKey& seed, const SeedKey& other);
+// A randomizer section's location count, item table and start: what to match another section
+// against.
+SeedKey seed_key_of(const uint8_t* section);
+// The same as a seed with nothing else set (the tests'; production code holds the key alone).
 OfflineSeed offline_seed_of(const uint8_t* section);
 
 // The disk count with the map `grid` (54 * 54 cells) as it is.
@@ -164,15 +171,15 @@ class SavedSeeds {
 public:
     // Game thread: never waits. Publishes `seeds` if they are not the list published last (or
     // none was yet) and the lock is free; true if it did.
-    bool publish(const std::vector<OfflineSeed>& seeds);
+    bool publish(const std::vector<SeedKey>& seeds);
     // The list published last (empty before the first publish).
-    std::vector<OfflineSeed> get() const;
+    std::vector<SeedKey> get() const;
     // How many lists were published: 0 before the first. The copy thread acts when it changes.
     uint64_t generation() const { return generation_.load(); }
 
 private:
     mutable std::mutex mutex_;
-    std::vector<OfflineSeed> seeds_;
+    std::vector<SeedKey> seeds_;
     std::atomic<uint64_t> generation_{0};
 };
 
@@ -190,7 +197,7 @@ private:
 // One thread at a time reads or writes (a mutex inside).
 OfflineFiles read_offline_files(const std::wstring& folder, const char* build,
                                 const std::wstring& save = L"", bool write = true,
-                                const std::vector<OfflineSeed>* saved = nullptr);
+                                const std::vector<SeedKey>* saved = nullptr);
 
 // The copy thread's pass, the same on both helpers (a thread of its own, started by the host): the
 // seed files read as read_offline_files does, with the copy of each seed a slot in `saved` now
@@ -211,7 +218,7 @@ std::string copy_pass(const std::wstring& folder, const char* build, const std::
 std::string put_offline_file(const std::wstring& folder, const char* build,
                              const std::string& request, OfflineSeed* seed = nullptr,
                              const std::wstring& save = L"", std::string* save_error = nullptr,
-                             const std::vector<OfflineSeed>* saved = nullptr);
+                             const std::vector<SeedKey>* saved = nullptr);
 
 // "" if the cached addresses fit the game in `image`: at least kOfflineMinChecks functions
 // checked, each one's bytes as the client read them, each at a key of the config.

@@ -38,7 +38,7 @@ bool is_disk_notice(const Popup& p) {
 }  // namespace
 
 void Game::set_offline(std::vector<OfflineSeed> seeds) {
-    add_known_seeds(seeds);
+    add_known_seeds(std::vector<SeedKey>(seeds.begin(), seeds.end()));
     // Read again each time a pipe client goes: a dressed seed they still hold stays dressed, its
     // record as it is; undressed, its look would wait for play, ASSIST unlocked in a menu.
     int kept = -1;
@@ -66,7 +66,7 @@ void Game::set_offline(std::vector<OfflineSeed> seeds) {
 }
 
 void Game::merge_offline(std::vector<OfflineSeed> seeds) {
-    add_known_seeds(seeds);
+    add_known_seeds(std::vector<SeedKey>(seeds.begin(), seeds.end()));
     // In place of its old record, or appended: the indices stay; the dressed seed's record is kept.
     for (OfflineSeed& seed : seeds) {
         auto same = [&](const OfflineSeed& k) { return offline_matches(k, seed); };
@@ -117,8 +117,8 @@ void Game::leave_offline() {
     }
 }
 
-bool Game::section_is(const OfflineSeed& seed, const BYTE* section) const {
-    return offline_matches(seed, offline_seed_of(section));
+bool Game::section_is(const SeedKey& seed, const BYTE* section) const {
+    return offline_matches(seed, seed_key_of(section));
 }
 
 int Game::loaded_seed() const {
@@ -281,9 +281,9 @@ void Game::watch_own_disks() {
 }
 
 void Game::own_trap_found(uint8_t item, int cell) {
-    std::shared_ptr<const OfflineSeed> origin;
+    std::shared_ptr<const SeedKey> origin;
     if (rando_save_loaded()) {
-        origin = std::make_shared<const OfflineSeed>(offline_seed_of(at_.rando_blob));
+        origin = std::make_shared<const SeedKey>(seed_key_of(at_.rando_blob));
     }
     const int slot = cell >= 0 ? at<int32_t>(at_.current_slot, 0) : -1;
     // One still queued for this cell in this save: its pickup was undone by a load and made
