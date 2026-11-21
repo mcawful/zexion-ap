@@ -461,6 +461,21 @@ def test_the_helper_serves_no_one_without_a_folder_for_its_token(tmp_path: Path)
             started.proc.wait()
 
 
+def test_a_token_folder_open_to_others_is_made_private(tmp_path: Path) -> None:
+    # (A link in the folder's place is refused: native/linux/tests/core_tests.cpp, the folder's
+    # own checks; the test build resolves links before it gets there.)
+    folder = tmp_path / "data" / "ZexionAP"
+    folder.mkdir(parents=True)
+    folder.chmod(0o755)  # as an older run or the user left it
+    started = Game(HOOKTEST, tmp_path / "data")
+    try:
+        started.connect().close()
+        assert folder.stat().st_mode & 0o777 == 0o700
+    finally:
+        started.proc.kill()
+        started.proc.wait()
+
+
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_a_client_with_another_token_is_refused(game: Game, monkeypatch) -> None:
     found = game.as_found()

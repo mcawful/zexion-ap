@@ -314,13 +314,18 @@ the pause screen open, the client keeping the helper and the screen unchanged, t
 play: working in game 2026-10-27 (0.30.0, `native.Helper.unload`; `docs/re/memory.md`, "The
 client in a live game").
 
-It first stops the copy thread ("Seed files in the save folder") with a wait of at most five
-seconds: stuck in a file call that does not return (an antivirus filter, a cloud placeholder on the
-save folder) it would keep the DLL from being freed, so the unload is refused (`error the copy thread is
-busy; not unloading`) and the helper works on (a refused unload restarts the thread). After the unload
-has put everything back, the pipe thread stops and joins the copy thread again (already gone: no
-wait) before it frees the DLL; if that wait times out the DLL stays loaded, as when the hook was
-replaced, and is never freed under the thread.
+It first stops the copy thread ("Seed files in the save folder") with a wait of at most half a
+second (`kCopyStopMs`; an idle thread stops at once, its event wakes it). The reply then comes
+after that and, with the thread stopped, the wait for a frame (1 s): under the 2 s the client waits
+in `_unload_refusal` and `tools/helper.py` (`REPLY_SECONDS`), and the 3 s of `Helper.unload`
+(`APPLY_SECONDS`). Stuck in a file call that does not return (an antivirus filter, a cloud
+placeholder on the save folder) the thread would keep the DLL from being freed, so the unload is
+refused (`error the copy thread is busy; not unloading`) and the helper works on: the thread is
+asked to go on, and every request (`handle`) starts a new one if there is none, which covers a
+stuck one that ended on its own after the wait. After the unload has put everything back, the pipe thread stops and joins the copy thread
+again (already gone: no wait) before it frees the DLL; if that wait times out the DLL stays
+loaded, as when the hook was replaced, and is never freed under the thread, which is left asked to
+stop.
 
 It also refuses (`error <why>; not unloading`) while the game may still call into the helper, or
 hold something of the helper's. That is an open menu's panel or entry, the pause menu's way back
@@ -1910,11 +1915,11 @@ disconnected.
 `Game::saved_seeds` (`src/game_calls.cpp`), `src/dllmain.cpp` (`save_dir`, `offline_dir`,
 `snapshot_saves`, `copy_thread`), the Linux helper's `g_save_folder`, `g_saved` and `copy_loop`;
 `docs/re/save-format.md`, "Steam Auto-Cloud syncs only `*.sav` and `*.png` in the save folder
-itself". Working in game on Windows, between two PCs (2026-11-20, B1, develop bf86eb5,
+itself". Working in game on Windows, between two PCs (2026-11-20, B1 inferred: the helper hooks only B1, develop bf86eb5,
 `zexion_ap.dll` `2d8b696f…`, `version.dll` `b5a196b2…`, `zexion.apworld` `a2bcc022…`; the owner's
 report, `docs/re/save-format.md`, "The helpers keep the file of each seed a save uses here"): AP
 saves made on one PC showed as AP saves on the other after Steam Cloud synced them. Seen once,
-Windows to Linux (2026-11-21, a CachyOS PC, B1 assumed; the owner's report: AP saves synced from
+Windows to Linux (2026-11-20, local time, a CachyOS PC, B1 assumed; the owner's report: AP saves synced from
 Windows showed as AP saves there, after the owner cleared some things out, what not reported;
 "Seen on a Steam Deck, and a Linux PC's sync", below). Not run in the game, so stand-in tests only: Linux's
 own writing of the copies and Linux to Windows, whether a client ran on the second PC first,
@@ -1933,7 +1938,9 @@ copies, a cut copy's refusal and that `helper.py status` writes nothing.
   the file, would otherwise parse) is refused, never read as another seed. The name starts with a
   prefix no file of the game's has, and ends in the suffix the rule syncs. The helpers never write
   any other name there, never a `Save Game`, `GameUnlocks` or `Preferences` file, and delete
-  nothing. Its temporary file is `...sav.tmp`, which no rule syncs.
+  nothing there but their own temporary file, `...sav.tmp` (which no rule syncs), after a write
+  that failed (left there, a failed write would keep a file of ours in a folder Steam watches; it
+  is made again, over, by the next write, and a stale one is removed first on Linux).
 - **Which seeds (the owner's decision, 2026-11-20):** a copy is written only while one of the
   game's 30 save slots uses the seed: a randomizer save in use (the marker set, the slot not marked
   empty, not the slot a new game is starting in) whose item table and start are the seed's, the match
@@ -2007,8 +2014,11 @@ copies, a cut copy's refusal and that `helper.py status` writes nothing.
   `helper.py status` writes nothing), and by the copy thread when the game's slots change. One
   thread at a time reads or writes the seed files (a mutex inside `put_offline_file` and
   `read_offline_files`). A read that writes makes a seed's missing copy for a seed a slot uses, and
-  a seed that has no local file its file. A copy that does not read is not trusted:
-  a good local file replaces it (when a save uses the seed), and with none it is left alone. A
+  a seed that has no local file its file. A copy that was read and does not parse (a bad CRC, a
+  half-synced file) is not trusted: a good local file replaces it (when a save uses the seed), and
+  with none it is left alone. A copy that cannot be read at all (opened by another program with no
+  sharing, locked, access denied, past the size read) is never replaced, by a pass, a put or the
+  pending list: it is seen as present, said (`unreadable`), and tried again at the next pass. A
   local file is never written from a copy over one that is there and was not read (past the 256
   read, or one that does not parse). A write that fails is said (`read_error` of `hello` on
   Windows, stderr on Linux) and the rest goes on: the local file, which stays as before, is the
@@ -2616,10 +2626,10 @@ fixes (#164, #165), DeathLink's death count (#169) and the client's seed and lab
 in the game (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the rest of the list has
 run on stand-ins only.
 
-**Seen on a Steam Deck, and a Linux PC's sync (2026-11-20 and 2026-11-21).** Two short runs the
+**Seen on a Steam Deck, and a Linux PC's sync (2026-11-20).** Two short runs the
 owner reported (the Deck's helper is `develop` at 246c850, with the self-configure of #189 and the
 seed copies of #187; the CachyOS PC's build was not reported). Recorded in `docs/re/linux.md`,
-"Seen on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21", with what was not reported:
+"Seen on a Steam Deck and a CachyOS PC, 2026-11-20", with what was not reported:
 
 - *Steam Deck, late on 2026-11-20 (local time).* Zexion's native Linux version installed on the SD
   card; the helper of 246c850, built by CI in the Steam Runtime (`libzexion_ap.so` SHA-256
@@ -2629,13 +2639,13 @@ seed copies of #187; the CachyOS PC's build was not reported). Recorded in `docs
   mod loaded. That is all that was reported: the first run of #189's helper, and the first on a
   Deck. Not recorded: whether the title lines
   showed with no client, whether synced AP saves showed as AP saves there, the game's build id.
-- *CachyOS PC, 2026-11-21.* A machine that had run an earlier version of the Linux helper. At
+- *CachyOS PC, 2026-11-20 (local time).* A machine that had run an earlier version of the Linux helper. At
   first the save sync did not work: AP saves synced from Windows did not show as AP saves. The
   owner then "cleared some stuff out and it worked fine": AP saves synced through Steam Cloud
   showed as AP saves (the Linux half of "Seed files in the save folder", below). Not recorded:
   what was cleared, whether Steam is native or Flatpak there, which helper build ran, which
   saves. (A guess, not seen: that the earlier helper, which ignores the `ZexionAP-seed-*.sav`
-  copies yet reports the same 1.2.0, was still the one loaded until it was replaced.)
+  copies yet carried the same version number, 1.2.0, as develop's builds then, was still the one loaded until it was replaced.)
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
@@ -2742,7 +2752,11 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   loads it, so it does
   nothing unless the program it is in is a known Linux build, told by the main program's GNU
   build id (`src/core.cpp`, `kKnownBuilds`, kept in step with `KNOWN_LINUX_BUILDS` in
-  `client/patterns.py`; `tests/test_cross_checks.py` checks them). In a known build it writes
+  `client/patterns.py`; `tests/test_cross_checks.py` checks them), whose `PT_NOTE` bytes are read
+  only where they lie wholly in the file-backed part of a readable `PT_LOAD` of the same object
+  (`note_in_image`, at most 64 KB of them), with no system call: any program the helper is
+  preloaded into gets that far, and a sandbox that refuses `process_vm_readv` must not turn it
+  into "not a known build". In a known build it writes
   `zexion-ap <version>: serving build <name>` to stderr; in a program named `Zexion` of another
   build, `zexion-ap <version>: not a known build of Zexion (build id <hex>)`, the line a player
   sees after a game update; elsewhere nothing. A preloaded library can't be unloaded: there is
@@ -2814,13 +2828,27 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   folder"), from the library's constructor, which runs ahead of the default-priority dynamic initializers of the helper's file and of the
   shared sources: every global with a constructor that the thread reads (the offline folder, the
   token, the save folder, the slots' seeds `g_saved`, the mailbox, `Game`, the seeds' lists and lock, and the memory layer's map, its lock and
-  its program spans) is `Kept` (built in place, never destroyed) or has `init_priority(101)`, so
-  it is built before the constructor sets it, whatever the compiler's library builds at load time.
-  `tests/test_native_linux_init_order.py` reads `helper.cpp` and `game_mem_linux.cpp` and fails
-  for any object in them that is none of constant by its type, `Kept` or `init_priority(101)`,
-  and checks the Steam export's stand-in holder is `constinit`; the other shared sources'
-  globals (`feats.cpp`'s others, `offline.cpp`) are read on the game's thread or by the export,
-  by reading the code, not by the test.
+  its program spans) is `Kept` (`src/kept.h`: built in place, never destroyed, so not run at
+  `exit()` under a thread either) and has `init_priority(101)`, so it is built before the
+  constructor sets it, whatever the compiler's library builds at load time. The one the shared
+  `offline.cpp` has, the list of put seeds waiting for a slot (`pending_seeds()`, read by the
+  serving thread's first `join_saves`), is a `Kept` in a function-local static: built on first use,
+  by whichever thread asks first (a global of that file would be built after the constructor in
+  the `.init_array`, which a first start with no seed files made the thread win: found by the review
+  before 2.0.0, 2026-11-20, in a GCC 13 build, where the constructor sat ahead of
+  `_GLOBAL__sub_I_offline.cpp`; not run in the game). `tests/test_native_linux_init_order.py`
+  reads `helper.cpp`, `game_mem_linux.cpp` and `offline.cpp` and fails for any namespace-scope
+  object in them that is none of constant by its type, `Kept` with `init_priority(101)` (a
+  function-local `Kept` in `offline.cpp`) or a `std::mutex`, checks the Steam export's stand-in
+  holder is `constinit`, and, with a build, that the helper's `.init_array` holds no initializer
+  of `offline.cpp` or any shared source other than the memory layer's; the other shared
+  sources' globals (`feats.cpp`'s others) are constant by their types: no dynamic initializer
+  of theirs is in the build. The statically linked libstdc++'s own initializers (`*.cc`) do run
+  after the constructor and are accepted, not examined: reasoning from the library's design (the
+  locale and error-category objects are built lazily or constant, `eh_alloc`'s emergency pool is
+  read only when `malloc` fails for an exception), not a proof. The thread starts in the
+  constructor so a client can attach before the game's first frame; starting it at the first
+  `SDL_GL_SwapWindow` instead, after every initializer, was not tried in the game.
 - **The socket.** An abstract unix socket, `zexion-ap-<pid>`, `SOCK_SEQPACKET`: one request a
   message, one reply a message, one client at a time, as the Windows pipe. The next client's
   connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
@@ -2883,7 +2911,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   - The helper makes 32 random bytes from the kernel in its constructor, before it listens, and
     writes them as 64 hex digits into `token` of its data folder, `ZexionAP` in `$XDG_DATA_HOME`,
     else `~/.local/share`, the folder of the seed files ("Seed files", below), made with mode 0700
-    if it is not there: a new file (mode 0600, never through a link) renamed over the last run's.
+    if it is not there (one that is there is looked at with `lstat`: a link in its place, or one
+    that is another user's, is refused, and one with a wider mode is made 0700, or refused if that
+    fails: `make_private_folders`, `linux/tests/core_tests.cpp`; the folders above it may be
+    links): a new file (mode 0600, never through a link) renamed over the last run's.
     The folder is the game's own view of it, so under Flatpak's Steam it is the sandbox's
     (`~/.var/app/com.valvesoftware.Steam/...` on the host), which another Flatpak app can't see
     unless it was given the user's home, and an app that was can read the saves and the game's
@@ -3641,10 +3672,22 @@ answer in a program with no `libsteam_api` (`linux/tests/feats_tests.cpp`);
 `SDL_GL_SwapWindow`, preloaded ahead of the helper by the wrapper tests (a frame function's
 call through it, a repeated call, a call from another function: "The Linux helper", "The frame
 call"), and
-`tests/test_native_linux_init_order.py` reads the helper's sources for globals built too late
-("The Linux helper", "Start-up", for what it covers);
+`tests/test_native_linux_init_order.py` reads the helper's sources for globals built too late,
+and, with a build, the order of its `.init_array` ("The Linux helper", "Start-up", for what it
+covers);
 `ZEXION_NATIVE_BUILD` points it at another build folder than `native/build`.
-CI runs all of it on Ubuntu, with `ZEXION_REQUIRE=helper`.
+CI runs all of it on Ubuntu, with `ZEXION_REQUIRE=helper`, and both Python files again against the
+file that ships: the `native-linux-runtime-check` job builds the stand-in game and the test helper
+as `native-linux` does, puts the Steam Runtime build (the `native-linux-runtime` job's artifact)
+where that job's own `libzexion_ap.so` was, and runs them (the release helper does nothing in
+another program, exports only the calls it stands in for, and its `.init_array` is in order); the
+glibc-2.31 build itself is loaded on the runner's newer glibc, not in the Steam Runtime. A job of its
+own, `release-dry-run` (Windows, after `native-linux-runtime`), does what `release.yml` does with
+that artifact: builds the DLLs, downloads it into `native/build` and runs
+`tools/build_apworld.py --out <scratch>` (a dry run of the release, so a release that would refuse
+its own artifact, its age check against `native/`'s sources among them, fails in CI, not at the
+release). It is a job apart so that the Windows build and tests do not wait for, or fail with, the
+Steam Runtime container job (a registry that is down).
 
 CI builds both, runs the ctest tests, and runs `tests/test_native.py` on Windows, which loads
 the build into a sleeping Python process (no known build, so nothing is hooked) and checks the
@@ -3830,11 +3873,13 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
 | `build.cpp` | the known builds |
 | `findaddr.h`, `findaddr.cpp`, `findaddr_patterns.h` | the helper's own address scan: the rules, and `client/patterns.py`'s patterns as C++ (generated by `tools/gen_native_patterns.py`; never edit it) |
 | `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access (`game_mem_linux.cpp`: its Linux parts); code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
+| `kept.h` | `Kept`: a global the helper never destroys (the Linux helper's threads run through the game's exit) |
 | `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
 `proxy/` is the proxy `version.dll`.
 
-`linux/` is the Linux helper: `src/core.cpp` (the known builds, the build id note, the replies),
+`linux/` is the Linux helper: `src/core.cpp` (the known builds, the build id note, the replies, the
+token's private folder),
 `src/helper.cpp` (the constructor, the socket's thread, the frame call, `config` and the
 requests that act on the game), and in `tests/` the ctest tests, the stand-in game and its
 stand-in SDL. It also builds every source of `src/` but `dllmain.cpp`, `iat.cpp`, `pipe.cpp`,

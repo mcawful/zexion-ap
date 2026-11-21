@@ -1237,6 +1237,25 @@ void test_the_read_joins_the_save_folder() {
     f = zap::read_offline_files(folder, "B1", save, true, &used);
     check(read_all(folder + L"\\seeds\\AP_1-0-1.txt") == "not a seed\n" && f.seeds.size() == 1,
           "a local file that does not read is left alone (the copy is read, not copied over it)");
+    // A copy that cannot be opened (held with no sharing, as Steam or a scanner may) is not
+    // read, and so is not written over: it is left as it is, said, and the next pass has it.
+    write_all(folder + L"\\seeds\\AP_1-0-1.txt", client_text(9, false, 1));
+    write_all(save + L"\\" + kCopy, zap::synced_file_text(theirs));
+    const std::string held_text = read_all(save + L"\\" + kCopy);
+    HANDLE held = CreateFileW((save + L"\\" + kCopy).c_str(), GENERIC_READ | GENERIC_WRITE, 0,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    check(held != INVALID_HANDLE_VALUE, "the copy opened with no sharing, for the test");
+    f = zap::read_offline_files(folder, "B1", save, true, &used);
+    check(f.error.find("unreadable") != std::string::npos && f.seeds.size() == 1 &&
+              f.seeds[0].count == 9,
+          "a copy that cannot be opened is said, the local file's seed used");
+    CloseHandle(held);
+    check(read_all(save + L"\\" + kCopy) == held_text, "and it was not replaced");
+    f = zap::read_offline_files(folder, "B1", save, true, &used);
+    check(f.error.empty() && read_all(save + L"\\" + kCopy) != held_text &&
+              zap::parse_synced_file(read_all(save + L"\\" + kCopy), copy).empty() &&
+              copy.count == 9,
+          "once it can be opened the pass merges it and writes the result");
     std::filesystem::remove_all(folder);
     // Other names are not read.
     std::filesystem::remove(save + L"\\" + kCopy);

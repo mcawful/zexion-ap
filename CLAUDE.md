@@ -58,7 +58,8 @@ Where things are:
   decision, 2026-11-20: so at most 30 copies are written and refreshed at a time; the ones a deleted
   save leaves stay), only a name that starts with
   `ZexionAP-seed-` and ends in `.sav`, never a `Save Game`, `GameUnlocks` or `Preferences` file or
-  any other the game uses, and deletes nothing there. The client and Claude never write the save
+  any other the game uses, and deletes nothing there but its own `.sav.tmp` after a write that
+  failed. The client and Claude never write the save
   folder, and the tools only through `save_lab.py install` and `restore`. The write guard stays
   as it is for Claude's own tool calls. Tests never write the real folders: they use fakes (a
   test's own folder, `ZEXION_SAVE_DIR` for the Python tools), the helper built for tests takes
@@ -142,7 +143,9 @@ Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native builds be
 helper also built and tested in the Steam Runtime's SDK (`native-linux-runtime`, "Linux helper
 (Steam Runtime)": it must load on glibc 2.31) and that build then checked as a release checks it
 (`native-linux-runtime-check`, "Linux helper (Steam Runtime) loads": `tools/build_apworld.py
---check-linux-helper`). A pull request into `main` also runs the release gate
+--check-linux-helper`, then `tests/test_native_linux.py` and
+`tests/test_native_linux_init_order.py` against that build), and a dry run of the release's build
+with it (`release-dry-run`, "release build, dry run"). A pull request into `main` also runs the release gate
 (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
@@ -170,7 +173,7 @@ The Linux helper, on Linux (GCC or Clang, and CMake 3.20 or later:
 .venv/bin/cmake -S native -B native/build
 .venv/bin/cmake --build native/build -j
 .venv/bin/ctest --test-dir native/build --output-on-failure
-.venv/bin/python -m pytest tests/test_native_linux.py
+.venv/bin/python -m pytest tests/test_native_linux.py tests/test_native_linux_init_order.py
 ```
 
 Nothing in `tests/` needs the game, and CI never runs it.

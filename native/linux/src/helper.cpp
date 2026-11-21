@@ -41,6 +41,7 @@
 #include "addresses.h"   // GameAddresses (native/src)
 #include "game_calls.h"  // Game: the parts the Linux helper runs (below)
 #include "game_mem.h"    // in_image_code
+#include "kept.h"        // Kept
 #include "mailbox.h"
 #include "requests.h"  // parse_newgame, parse_batch
 #include "offline.h"  // put_offline_file: a seed's own traps and disks
@@ -100,21 +101,10 @@ int g_writable_count = 0;
 // own traps and disks and the received ones, and the rest native/README.md's "The Linux helper"
 // lists; the rest's addresses stay null and nothing calls them.
 constexpr DWORD kFrameWaitMs = 1000;  // as the Windows helper's
-// A global the helper never destroys: it is never unloaded, and at the game's exit the serving
-// thread may still be using it (a destructor run by exit() on the game thread would pull it from
-// under that thread). Built in place by its own constructor; used through -> and *.
-template <class T>
-class Kept {
-public:
-    Kept() { ::new (static_cast<void*>(bytes_)) T(); }
-    Kept(const Kept&) = delete;
-    Kept& operator=(const Kept&) = delete;
-    T* operator->() { return std::launder(reinterpret_cast<T*>(bytes_)); }
-    T& operator*() { return *operator->(); }
-
-private:
-    alignas(T) unsigned char bytes_[sizeof(T)];
-};
+// A global the helper never destroys (native/src/kept.h): it is never unloaded, and at the game's
+// exit the serving thread may still be using it (a destructor run by exit() on the game thread
+// would pull it from under that thread). Built in place by its own constructor; used through -> and *.
+using zap::Kept;
 static_assert(std::is_trivially_destructible_v<Kept<std::string>>, "nothing run at exit");
 
 // Where `write` may change the game, inside that .bss: what the client writes and no more
@@ -176,7 +166,29 @@ constexpr char kStatsContext[] = "_ZZ14SteamUserStatsvE27s_CallbackCounterAndCon
 constexpr char kSetAchievement[] = "_Z17setTheAchievementi";  // the ending's call's target
 #endif
 
-// The main program's GNU build id, and its writable segments: dl_iterate_phdr lists it first.
+// More than any program's notes come to: a PT_NOTE this long is not read.
+constexpr size_t kMaxNotesBytes = 64 * 1024;
+
+// Whether a note segment lies wholly in the file-backed part of a readable PT_LOAD of the same
+// object (the loader mapped those bytes): then reading it is no more than reading the program's
+// own image, with no system call (a sandbox that refuses process_vm_readv must not make any
+// program the helper is preloaded into look like an unreadable Zexion).
+bool note_in_image(const dl_phdr_info* info, const ElfW(Phdr) & note) {
+    if (note.p_memsz == 0 || note.p_memsz > kMaxNotesBytes) return false;
+    for (int i = 0; i < info->dlpi_phnum; ++i) {
+        const ElfW(Phdr)& load = info->dlpi_phdr[i];
+        if (load.p_type == PT_LOAD && (load.p_flags & PF_R) && note.p_vaddr >= load.p_vaddr &&
+            note.p_vaddr - load.p_vaddr <= load.p_filesz &&
+            note.p_memsz <= load.p_filesz - (note.p_vaddr - load.p_vaddr)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The main program's GNU build id, and its writable segments: dl_iterate_phdr lists it first. Any
+// program the helper is preloaded into gets here before the build is checked, so a PT_NOTE is read
+// only where it lies inside the image the loader mapped (note_in_image): otherwise it is no id.
 int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
     auto* out = static_cast<std::optional<std::string>*>(data);
     for (int i = 0; i < info->dlpi_phnum; ++i) {
@@ -190,8 +202,9 @@ int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
             }
         }
         if (ph.p_type != PT_NOTE || *out) continue;
-        auto* notes = reinterpret_cast<const unsigned char*>(info->dlpi_addr + ph.p_vaddr);
-        *out = note_build_id(notes, ph.p_memsz);
+        if (!note_in_image(info, ph)) continue;
+        *out = note_build_id(reinterpret_cast<const unsigned char*>(info->dlpi_addr + ph.p_vaddr),
+                             ph.p_memsz);
     }
     return 1;  // the first object only
 }
@@ -1165,18 +1178,6 @@ std::optional<std::string> game_request(std::string_view request) {
     return std::nullopt;
 }
 
-// A folder and the ones above it made if they are not there yet, each only for the user (mode
-// 0700); false if it is not there after.
-bool make_private_folders(const std::string& path) {
-    for (size_t slash = path.find('/', 1); slash != std::string::npos;
-         slash = path.find('/', slash + 1)) {
-        mkdir(path.substr(0, slash).c_str(), 0700);  // there already: EEXIST, left as it is
-    }
-    mkdir(path.c_str(), 0700);
-    struct stat info {};
-    return stat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode);
-}
-
 // `size` random bytes from the kernel; false if it won't give them.
 bool random_bytes(unsigned char* out, size_t size) {
     for (size_t done = 0; done < size;) {
@@ -1213,9 +1214,11 @@ bool make_token(const std::string& folder) {
         }
     }
 #endif
-    if (folder.empty() || !make_private_folders(folder)) {
-        std::fprintf(stderr, "zexion-ap %s: no token: no folder to put it in (%s)\n", kVersion,
-                     folder.empty() ? "no data folder" : folder.c_str());
+    std::string refusal;
+    if (folder.empty() || !make_private_folders(folder, &refusal)) {
+        std::fprintf(stderr, "zexion-ap %s: no token: no folder to put it in (%s)%s%s\n", kVersion,
+                     folder.empty() ? "no data folder" : folder.c_str(),
+                     refusal.empty() ? "" : ": ", refusal.c_str());
         return false;
     }
     const std::string target = folder + "/" + kTokenFile, temp = target + ".tmp";

@@ -1,8 +1,12 @@
-// src/core.cpp alone: build ids, the socket's name and the replies.
+// src/core.cpp alone: build ids, the socket's name, the replies and the token's folder.
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -271,7 +275,52 @@ void test_own_symbols() {
 
 }  // namespace
 
+// The folder the token goes in (make_private_folders): made 0700, a wider one narrowed, a link
+// refused (a link above it is fine), another user's refused (not tried here: no second user).
+void test_private_folders() {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / ("zap_core_private_" + std::to_string(getpid()));
+    fs::remove_all(root);
+    fs::create_directories(root);
+    auto mode = [](const fs::path& p) {
+        struct stat st {};
+        return stat(p.c_str(), &st) == 0 ? (st.st_mode & 0777) : 0xFFFFu;
+    };
+    const fs::path made = root / "a" / "b" / "ZexionAP";
+    check(make_private_folders(made.string()) && mode(made) == 0700 && mode(root / "a") == 0700,
+          "a folder and its parents made, for the user alone");
+    check(make_private_folders(made.string()) && mode(made) == 0700, "there already: still so");
+    chmod(made.c_str(), 0755);
+    check(make_private_folders(made.string()) && mode(made) == 0700,
+          "one that is wider is narrowed to the user's alone");
+    // A link at the folder itself is refused, and nothing is changed through it.
+    const fs::path target = root / "target";
+    fs::create_directories(target);
+    chmod(target.c_str(), 0755);
+    const fs::path link = root / "link" / "ZexionAP";
+    fs::create_directories(link.parent_path());
+    fs::create_symlink(target, link);
+    std::string why;
+    check(!make_private_folders(link.string(), &why) && mode(target) == 0755 &&
+              why == "it is a link",
+          "a link in the folder's place is refused, as a link, and its target left as it is", why);
+    // A link above it is the user's own (a dotfiles manager's ~/.local/share).
+    const fs::path above = root / "above";
+    fs::create_symlink(target, above);
+    check(make_private_folders((above / "ZexionAP").string()) && mode(target / "ZexionAP") == 0700,
+          "a link above the folder is followed");
+    // A file in its place is not a folder.
+    const fs::path file = root / "file";
+    std::FILE* f = std::fopen(file.c_str(), "w");
+    if (f != nullptr) std::fclose(f);
+    why.clear();
+    check(!make_private_folders(file.string(), &why) && why == "it is not a folder",
+          "a file is not a folder", why);
+    fs::remove_all(root);
+}
+
 int main() {
+    test_private_folders();
     test_builds();
     test_notes();
     test_replies();

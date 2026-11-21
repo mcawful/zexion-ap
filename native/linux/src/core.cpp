@@ -1,5 +1,8 @@
 #include "core.h"
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -301,6 +304,30 @@ std::string reply(std::string_view request, const State& state, const Reader& re
         return write_reply(request.substr(request.size() > 6 ? 6 : request.size()), write);
     }
     return "error unknown request";
+}
+
+bool make_private_folders(const std::string& path, std::string* why) {
+    auto refuse = [&](const char* text) {
+        if (why != nullptr) *why = text;
+        return false;
+    };
+    for (size_t slash = path.find('/', 1); slash != std::string::npos;
+         slash = path.find('/', slash + 1)) {
+        mkdir(path.substr(0, slash).c_str(), 0700);  // there already: EEXIST, left as it is
+    }
+    mkdir(path.c_str(), 0700);
+    struct stat info {};
+    if (lstat(path.c_str(), &info) != 0) return refuse("it cannot be made or looked at");
+    if (S_ISLNK(info.st_mode)) return refuse("it is a link");
+    if (!S_ISDIR(info.st_mode)) return refuse("it is not a folder");
+    if (info.st_uid != geteuid()) return refuse("it is another user's");
+    if ((info.st_mode & 077) != 0) {  // one an earlier version or the user made wider
+        if (chmod(path.c_str(), 0700) != 0) return refuse("its mode is wider than 0700 and cannot be changed");
+        if (lstat(path.c_str(), &info) != 0 || !S_ISDIR(info.st_mode) || (info.st_mode & 077) != 0) {
+            return refuse("its mode is wider than 0700 and cannot be changed");
+        }
+    }
+    return true;
 }
 
 }  // namespace zap::linux_helper
