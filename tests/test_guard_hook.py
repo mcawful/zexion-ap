@@ -3200,6 +3200,26 @@ BUILD_BLOCKED = [
     f'tar tf "{GAME}/x.tar" --index-file="{SAVES}/x"',
     f'tar -tf "{GAME}/x.tar" --checkpoint=1 --checkpoint-action=exec=sh',
     f'tar -tf host:"{GAME}/x.tar"',
+    # tar, unzip and zipinfo take options from their environment variables.
+    f"TAR_OPTIONS='--use-compress-program=rm -rf {OFFLINE}' tar -tzf x.tgz",
+    f"export TAR_OPTIONS='-I sh'; tar -tzf {OFFLINE}/x.tgz",
+    f"TAR_OPTIONS='--checkpoint=1 --checkpoint-action=exec=rm' tar -tf \"{SAVES}/x.tar\"",
+    f"TAR_OPTIONS=-v tar -xf x.tar -C {OFFLINE}",
+    f"UNZIP='-o -d {OFFLINE}' unzip -l x.zip",
+    f"UNZIPOPT='-o -d {SAVES}' unzip -l x.zip",
+    f'ZIPINFO=-h zipinfo "{SAVES}/x.zip"',
+    f'export UNZIP="-d {GAME}"; unzip -l x.zip',
+    # sed's long options may be abbreviated to a unique prefix, and ``--line-length`` takes a value.
+    f"sed --in 's/x/y/' {OFFLINE}/seeds.txt",
+    f"sed --i 's/x/y/' \"{SAVES}/Save Game 1.sav\"",
+    f"sed --in-pl 's/x/y/' \"{SAVES}/Save Game 1.sav\"",
+    f"sed --fi s.sed {OFFLINE}/seeds.txt",
+    f"sed --f s.sed {OFFLINE}/seeds.txt",
+    f"sed --expr 'w {OFFLINE}/x' a",
+    f"sed --e='w {OFFLINE}/x' a",
+    f"sed --line-length 5 'w {OFFLINE}/x' a",
+    f"sed --li 5 'w {OFFLINE}/x' a",
+    f"sed -l 5 'w {OFFLINE}/x' a",
     f'unzip x.zip "{SAVES}/Save Game 1.sav"',
 ]
 

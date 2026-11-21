@@ -231,7 +231,8 @@ _PROGRAM_VAR = re.compile(
     r"(?:[A-Z_]*_)?(?:PAGER|EDITOR|VISUAL|DIFF|COMMAND|SSH|ASKPASS|PROGRAM|SHELL|STARTUP)"
     r"|PYTHONSTARTUP"
     r"|LESSOPEN|LESSCLOSE|BASH_ENV|ENV|GIT_CONFIG\w*|GIT_EXEC_PATH|LD_PRELOAD|PAGER|EDITOR"
-    r"|PATH|BROWSER",
+    r"|PATH|BROWSER"
+    r"|TAR_OPTIONS|UNZIP\w*|ZIPINFO\w*",  # tar -t runs --use-compress-program, --checkpoint-action
     re.I,
 )
 # ForEach-Object counts as read-only only with script blocks: a bare word is a method to call.
@@ -847,19 +848,25 @@ def _sed_scripts(args: list[Word]) -> list[tuple[str, Word]] | None:
     """The scripts of a ``sed`` command, each with the word that holds it, or None when sed may
     write because of how it is called: in place, or a script from a file."""
     scripts: list[tuple[str, Word]] = []
-    take_next = False
+    take_next = skip_next = False
     for a in args:
-        if take_next:
+        if skip_next:
+            skip_next = False
+        elif take_next:
             scripts.append((a, a))
             take_next = False
         elif a.startswith("--"):
-            if a.startswith(("--in-place", "--file")):
+            # GNU getopt takes any unique prefix of a long option (``--in``, ``--expr``); the
+            # ambiguous ``--f`` counts as ``--file`` here.
+            name, eq, value = a.partition("=")
+            if len(name) >= 3 and ("--in-place".startswith(name) or "--file".startswith(name)):
                 return None
-            if a.startswith("--expression"):
-                name, eq, value = a.partition("=")
+            if len(name) >= 3 and "--expression".startswith(name):
                 if eq:
                     scripts.append((value, a))
                 take_next = not eq
+            elif len(name) >= 3 and "--line-length".startswith(name):
+                skip_next = not eq  # its value is no script
         elif a.startswith("-") and len(a) > 1:
             flags = a[1:]
             if "i" in flags or "f" in flags:
@@ -870,7 +877,8 @@ def _sed_scripts(args: list[Word]) -> list[tuple[str, Word]] | None:
                     scripts.append((rest, a))
                 take_next = not rest
     if not scripts:
-        scripts = [(s, s) for s in _operands(args, {"-l"})[:1]]
+        long_valued = {a for a in args if len(a) >= 3 and "--line-length".startswith(a)}
+        scripts = [(s, s) for s in _operands(args, {"-l", *long_valued})[:1]]
     return scripts
 
 
