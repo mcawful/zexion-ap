@@ -207,7 +207,7 @@ game or save folders.
 | `save_lab.py slots`, `backup`, `copy`, `diff`, `patch` | saves, on copies (`/save-lab`); `slots` lists a save deleted in the game as empty: it keeps its data, but the game marks it empty | no |
 | `save_lab.py install`, `restore` | write the save folder, and refuse while the game runs; `install` fills an empty slot, a deleted save's too | **yes: ask** |
 | `memscan.py find`, `snap`, `cmp`, `read`, `classify`, `record` | search live memory (`/find-address`) | no |
-| `memscan.py write ADDR HEX --yes` | write live memory | **yes: ask** |
+| `memscan.py write ADDR HEX --yes` | write live memory (logs to `lab/memscan.jsonl`) | **yes: ask** |
 | `grant.py show`, `watch` | the live inventory by name | no |
 | `grant.py set ITEM VALUE --expect N --yes` | grant by hand (inventory byte only; logs to `lab/grants.jsonl`) | **yes: ask** |
 | `helper.py status` | is the helper loaded; its frame rate (on Linux, the Linux helper's, and whether the game's memory reads through it) | no |
@@ -216,7 +216,7 @@ game or save folders.
 | `game_data.py NAMES --exe` | copy game data into `lab/data/<exe-hash-12>/` | no |
 | `make_pattern.py EXE RVA` | candidate byte patterns | no |
 | `randocells.py SAVE --fresh` | reachable locations of a new seed | no |
-| `gen_world_data.py` | regenerate `worlds/zexion/data.py` | no |
+| `gen_world_data.py [--backup FOLDER]` | regenerate `worlds/zexion/data.py` (Easy's and Standard's fresh saves come from a `lab/backups/` folder, `--backup`) | no |
 | `gen_native_patterns.py [--check]` | regenerate `native/src/findaddr_patterns.h` from `client/patterns.py` (after any change to it) | no |
 | `gen_sample_yamls.py` | regenerate `samples/` (needs `.ap/`) | no |
 | `build_apworld.py` | a release into `dist/` | no |
@@ -389,16 +389,18 @@ Committed under `.claude/`, so they apply to anyone working here:
   call through, so the guard's own protection is its deadline of about a second, which blocks
   when it runs out. It answers within about a second (two at most: one read, the lexing of one
   word and the scan for heredocs are not interrupted): a command
-  over 100,000 characters is blocked unread; one over a size budget (many different words,
-  counting a word with a wildcard and each redirect target for more, many commands, or many
-  different folders a `cd` goes to) counts as reaching a protected folder, so only a read-only
-  one passes; and one that takes over a second to read is blocked (the lexer, the heredoc pass
-  and each read of a word or pattern look at the clock). A long commit message or PR body is
-  one word to it, a script counts its different words against the budget (a word with a
-  wildcard for more, at most 125), and long text goes to a file with the Write tool. More than
-  32 heredocs, or a heredoc saved to or copied to more than 64 files, count as code (they are
-  not cut out as data). `deny` rules for Edit and Write back it up for the save folder, the
-  game install and the cloud cache (not the offline files); only the game-install one has been
+  over `MAX_COMMAND` characters is blocked unread; one over a size budget (`MAX_WORK`: many
+  different words, counting a word with a wildcard and each redirect target for more;
+  `MAX_SEGMENTS`: many commands; `MAX_FOLDERS`: many different folders a `cd` goes to) counts as
+  reaching a protected folder, so only a read-only one passes; and one that takes over `DEADLINE`
+  to read is blocked (the lexer, the heredoc pass and each read of a word or pattern look at the
+  clock). A long commit message or PR body is one word to it, a script counts its different words
+  against the budget, and long text goes to a file with the Write tool. More than `MAX_HEREDOCS`
+  heredocs, or a heredoc saved to or copied to more than `MAX_SAVED_NAMES` files, count as code
+  (they are not cut out as data). The links in a command's words are followed only for its first
+  `MAX_LINK_WORDS` different words (a known gap: every word is still read for a parent of a
+  protected folder). The values are at the top of `guard_protected.py`, with what each limit
+  does. `deny` rules for Edit and Write back it up for the save folder, the game install and the cloud cache (not the offline files); only the game-install one has been
   seen to fire.
   `ruff_on_edit.py` formats and lints each edited `.py`. An allowlist runs `git status`, `diff`,
   `log` and `show`, the read-only forms of `git branch` (bare, `-a`, `-r`, `-v`, `-vv`,

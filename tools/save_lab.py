@@ -84,6 +84,7 @@ TEMPLATE = "empty"
 DELETED = "empty (deleted, data kept)"
 IN_USE = "IN USE"
 UNREADABLE = "IN USE (unreadable)"
+EMPTY_STATES = (TEMPLATE, DELETED)  # the slots install may fill
 
 
 def slot_path(slot: int) -> Path:
@@ -160,10 +161,6 @@ def slot_state(path: Path, template: str | None) -> str:
     if template is not None and hashlib.sha256(data).hexdigest() == template:
         return TEMPLATE
     return DELETED if is_deleted_save(data) else IN_USE
-
-
-def is_empty_slot(path: Path, template: str | None) -> bool:
-    return slot_state(path, template) in (TEMPLATE, DELETED)
 
 
 def _now() -> str:
@@ -437,7 +434,7 @@ def cmd_install(args: argparse.Namespace) -> int:
         print(f"{target.name} does not exist; install only fills an existing empty slot.")
         return 1
     state = slot_state(target, empty_template_hash())
-    if state not in (TEMPLATE, DELETED):
+    if state not in EMPTY_STATES:
         print(f"{target.name} is in use. install only fills empty slots; pick another slot.")
         return 1
     found = latest_backup_covering(target)

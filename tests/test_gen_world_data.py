@@ -114,6 +114,17 @@ def test_a_core_with_another_way_through_is_refused() -> None:
         gwd.core_goal(core_map(extra_conditional=True), {(0, 0)}, [(2, 0)])
 
 
+def test_a_relative_backup_is_a_name_under_the_labs_backups_only(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ZEXION_LAB_DIR", str(tmp_path / "lab"))
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "b1").mkdir()  # a folder of that name here is not what ``--backup b1`` means
+    modes = gwd.default_modes("b1")
+    assert modes["easy"] == tmp_path / "lab" / "backups" / "b1" / "Save Game 28.sav"
+    assert modes["ohko"] == tmp_path / "lab" / "work" / "slot5-ohko-fresh.sav"
+    elsewhere = tmp_path / "elsewhere"
+    assert gwd.default_modes(str(elsewhere))["standard"] == elsewhere / "Save Game 29.sav"
+
+
 def test_a_core_without_its_door_is_refused() -> None:
     with pytest.raises(SystemExit, match="one passage into the core"):
         gwd.core_goal(core_map(), {(0, 0), (1, 0)}, [(2, 0)])

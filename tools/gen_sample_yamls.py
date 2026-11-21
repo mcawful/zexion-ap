@@ -23,7 +23,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from protected import ROOT
+from protected import ROOT, assert_writable
 
 AP = ROOT / ".ap" / "Archipelago"
 SAMPLES = ROOT / "samples"
@@ -83,9 +83,9 @@ def main(argv: list[str] | None = None) -> int:
     SAMPLES.mkdir(exist_ok=True)
     for old in SAMPLES.glob("*.yaml"):
         if old.name not in written:
-            old.unlink()  # a preset no longer there
+            assert_writable(old).unlink()  # a preset no longer there
     for name, text in written.items():
-        (SAMPLES / name).write_bytes(text.encode("utf-8"))
+        assert_writable(SAMPLES / name).write_bytes(text.encode("utf-8"))
     print(f"Wrote {', '.join(written)} into {SAMPLES}")
     return 0
 
