@@ -455,7 +455,10 @@ there is:
   the step back for 30 s too (`ticks.linux_mod_lost`), as does one let go of with no server
   connection (`LinuxProcess.disconnect`, `linux_back_by`: the poll waits for it
   to be configured again, up to 30 s), then the items are written directly with no popup until it
-  is back; one that failed three steps running (`ticks.LINUX_DIRECT_AFTER`, each on a mod configured afresh) has the next step's written directly. A Linux helper
+  is back; one that failed three steps running (`ticks.LINUX_DIRECT_AFTER`: real errors in a row,
+  an unexpected reply or a reply lost, each on a mod configured afresh; a refusal does not count,
+  and a step that goes through ends the count) has the next step's written directly, and a
+  keep-alive ping that fails counts as a lost mod as any tick's does. A Linux helper
   of this version built before traps, which answers `trap_status` with `error unknown request`
   (`linux_helper.HelperTooOld`), holds nothing back: items are written directly until it is
   replaced; any other reply but `queued …` (a frame not come in time: `refused no frame`) is a
@@ -464,7 +467,7 @@ there is:
   helper runs every part); checks, the goal, DeathLink's deaths out and marking other players'
   items collected go on. Tested against stand-ins; run in the game for the attach, the seed's new
   game and grants (2026-11-19: `native/README.md`, "The Linux helper"), the rest not yet, and the
-  token, the keep-alive and the let-go not at all;
+  keep-alive and the let-go not at all (the token was checked in run 3);
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak
   (`~/.var/app/com.valvesoftware.Steam/.local/share/Steam`) or Snap Steam, and for the saves in

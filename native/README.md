@@ -477,9 +477,12 @@ there:
     grant), and the same seed's is that seed's own finds, which the client already accepts from
     any of its saves. The helper's start-with test then reads the state's own section too, so
     the ITEMS row lists what that save started with. No false check and no wrong grant comes
-    from a state by this path. The load key also needs SAVE STATES on (inferred from the gate's
-    place, `+0x3E2DBA`), which a locked AP save does not have. The states are 16 files, named
-    with no slot, so one can come from another day's save.
+    from a state by this path. The load is reached from two callers (`0x7AB3A` and `0x7CADC`)
+    behind one gate, which opens on the word `+0x3E2DBA` (SAVE STATES, inferred from its place)
+    or on the byte `+0x345EF4`, which a Ctrl+D toggle may set (a lead, not traced, and not known
+    to be live in release B1: `memory.md`, "The assist menu", "Save states"). A locked AP save has
+    the word off. The states are 16 files, named with no slot, so one can come from another
+    day's save.
   - **Linux B1: not traced.** `loadState` inflates `gGameState` at `0x4AF4EE` to `0x4AF4FD`
     (`docs/re/linux.md`, "Mapped by disassembly: the major-item list"); whether it then copies the
     state's section into `gCurrentRando` as Windows' does has not been read. If it does not,
@@ -487,9 +490,10 @@ there:
     marker is 1, the section the current save's, the stamp unchanged) and could send the checks
     of the cells that state collected and give items into its inventory, which the game saves
     into the current slot, until the next death or load brings the state's section in; the
-    ITEMS row would list the wrong starting items. That needs assists allowed (Allow Assists, or
-    Assist Unlock received), SAVE STATES turned on in the AP save, and a state made in another
-    randomizer save: three deliberate steps.
+    ITEMS row would list the wrong starting items. That needs the load key to work (by the
+    word: assists allowed, Allow Assists or Assist Unlock received, and SAVE STATES turned on in
+    the AP save; or by the byte, if that lead is live) and a state made in another randomizer
+    save: deliberate steps either way.
   - Not fixed; the issue stays open for the Linux question.
 
 Working in game: 2026-10-22, everything above but the major-item list ("Game functions the helper
@@ -1914,7 +1918,7 @@ disconnected.
 `Game::saved_seeds` (`src/game_calls.cpp`), `src/dllmain.cpp` (`save_dir`, `offline_dir`,
 `snapshot_saves`, `copy_thread`), the Linux helper's `g_save_folder`, `g_saved` and `copy_loop`;
 `docs/re/save-format.md`, "Steam Auto-Cloud syncs only `*.sav` and `*.png` in the save folder
-itself". Working in game on Windows, between two PCs (2026-11-20, B1, develop bf86eb5,
+itself". Working in game on Windows, between two PCs (2026-11-20, B1 inferred: the helper hooks only B1, develop bf86eb5,
 `zexion_ap.dll` `2d8b696f…`, `version.dll` `b5a196b2…`, `zexion.apworld` `a2bcc022…`; the owner's
 report, `docs/re/save-format.md`, "The helpers keep the file of each seed a save uses here"): AP
 saves made on one PC showed as AP saves on the other after Steam Cloud synced them. Seen once,

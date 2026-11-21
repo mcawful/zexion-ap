@@ -257,8 +257,8 @@ releases"). The
 release's message is written for players: the version's notes, `docs/releases/<version>.md`, then
 the install guide in `.github/release-footer.md`, then the compare link from the previous release,
 put together by `tools/release_notes.py`. `tests/test_release_notes.py` checks the notes here
-rebuild the published messages; `tests/test_release_footer.py` that the files the guide names are
-the release's.
+rebuild 1.0.0's published message (the later ones carry an install guide that has changed);
+`tests/test_release_footer.py` that the files the guide names are the release's.
 
 - **The release version** is one number in four places: `VERSION` in `client/native.py`,
   `kVersion` in `native/src/dllmain.cpp` and in `native/linux/src/core.h`, and `world_version` in

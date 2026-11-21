@@ -199,8 +199,8 @@ machine, or from Linux to Windows, yet.
   ("Linux and Steam Deck", above). Steam Cloud syncs that Linux folder only if it is where the
   game keeps its saves, which it is unless `XDG_DATA_HOME` points somewhere else.
 - Leave these files alone. The mod writes only a copy for a seed one of your 30 saves uses,
-  deletes nothing, and no longer updates a copy once no save uses its seed (so a few old ones
-  may stay; delete them if you like).
+  deletes nothing (a leftover `.sav.tmp` from a failed write is its own and goes), and no longer
+  updates a copy once no save uses its seed (so a few old ones may stay; delete them if you like).
 - A copy keeps the free ASSIST menu and the larger OS Install Disks count it has seen: a room
   you host again, or a server restored from an older save, does not take them back.
 

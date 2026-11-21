@@ -36,8 +36,9 @@ Steam updates the game, the client tells you when your version isn't supported.
 - The game's Easy, Standard and OHKO modes and its start rooms, and Custom mode: every
   setting of the game's randomizer menu in the YAML.
 - Play your seed's save without the client; what you found is sent when you connect again.
-- Steam Cloud carries your seed's saves to another computer or a Steam Deck as Archipelago saves,
-  with no client run there (the setup guide's
+- Steam Cloud is meant to carry your seed's saves to another computer or a Steam Deck as
+  Archipelago saves, with no client run there (tried between two Windows PCs, and once Windows to
+  Linux; the setup guide's
   [Playing on more than one machine](worlds/zexion/docs/setup_en.md#playing-on-more-than-one-machine)).
 - The mod finds what it needs in the game by itself, so it is meant to work from Zexion's first
   start, before any client has run (the setup guide's
