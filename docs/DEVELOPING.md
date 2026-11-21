@@ -16,15 +16,16 @@ on 2026-11-16 (the version in the repo is `world_version` in `worlds/zexion/arch
 1.2.0 is for Windows only, with the two traps, other players' items kept collected and the OS
 Install Disks and traps following the save (`docs/releases/1.2.0.md`).
 
-**On `develop`, for the next release.** The mod for Linux and the Steam Deck (the Linux helper,
-`libzexion_ap.so`: "Platforms"); the Windows helper's own scan of the game's addresses, so a first
-start needs no client (not yet run in game); the seed copies in the save folder for Steam Cloud
-("How it fits together", "The seed copies in the save folder": run in game Windows to Windows,
-2026-11-20); and the Linux helper's self-configuring start (the mod loaded on a Steam Deck; whether
-the title screen's lines showed there was not reported). The Linux helper's `config` request, since
-those runs, carries only the client's own targets for the helper to check against its own addresses,
-and the language comes in `hello`: stand-in tests only, to be run in game before the release
-("Platforms"). The version PR names the release.
+**2.0.0.** The version in the repo, which adds, on top of 1.2.0, the mod for Linux and the Steam
+Deck (the Linux helper, `libzexion_ap.so`: "Platforms"); the Windows helper's own scan of the
+game's addresses, so a first start needs no client (not yet run in game); the seed copies in the
+save folder for Steam Cloud ("How it fits together", "The seed copies in the save folder": run in
+game Windows to Windows, 2026-11-20); the Linux helper's self-configuring start (the mod loaded on
+a Steam Deck; whether the title screen's lines showed there was not reported); and an archive for
+each system ("Branches and releases"). The Linux helper's `config` request, since those runs,
+carries only the client's own targets for the helper to check against its own addresses, and the
+language comes in `hello`: stand-in tests only, not run in game when 2.0.0's version was raised
+("Platforms"). Its notes are `docs/releases/2.0.0.md`.
 
 Every in-game run was on game build B1. A release build has run from Archipelago 0.6.8's Launcher
 since 2026-10-25

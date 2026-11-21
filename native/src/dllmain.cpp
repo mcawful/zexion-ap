@@ -63,7 +63,7 @@ std::wstring host_save_folder(const char* build) {
 }
 #endif
 
-constexpr char kVersion[] = "1.2.0";
+constexpr char kVersion[] = "2.0.0";
 constexpr DWORD kFrameWaitMs = 1000;  // how long a request waits for a frame to take it
 
 // Passes on the original's rax: the test target returns a value, SDL_GL_SwapWindow none.

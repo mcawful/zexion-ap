@@ -9,10 +9,10 @@ Everything here comes from reverse engineering, hence the evidence rules below.
 **Status:** played in game on build B1 only. Releases (the version: "Releases and versions")
 are published from `main` on GitHub's
 [Releases page](https://github.com/mcawful/zexion-ap/releases); the current version is
-`world_version` in `worlds/zexion/archipelago.json`. 1.2.0 (2026-11-16) is the Windows mod;
-`develop` adds, for the next release, Linux and the Steam Deck, the Windows helper's own scan, the
-seed copies for Steam Cloud and the Linux helper's self-configure, each with what has run in the
-game: [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Status".
+`world_version` in `worlds/zexion/archipelago.json`. 1.2.0 (2026-11-16) was the Windows-only
+mod; 2.0.0 adds Linux and the Steam Deck, the Windows helper's own scan, the seed copies for Steam
+Cloud, the Linux helper's self-configure and an archive for each system, each with what has run in
+the game: [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Status".
 
 Where things are:
 
