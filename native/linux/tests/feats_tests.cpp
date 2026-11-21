@@ -8,18 +8,10 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "../../tests/check.h"
 #include "feats.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        ++g_failures;
-        std::printf("FAIL: %s\n", what);
-    }
-}
 
 // The accessor's own reads of the answer: the holder, the interface, the vtable, a method.
 bool reads_like_the_games_accessor(void* answer) {
@@ -54,6 +46,5 @@ void test_the_stats_context_not_blocking_gets_the_stand_in_too() {
 int main() {
     test_no_libsteam_api_answers_the_stand_in_not_null();
     test_the_stats_context_not_blocking_gets_the_stand_in_too();
-    if (g_failures == 0) std::printf("feats: all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("feats");
 }

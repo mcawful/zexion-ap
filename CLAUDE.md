@@ -339,8 +339,14 @@ rebuild 1.0.0's published message (the later ones carry an install guide that ha
   `version.dll`; in `linux/`, the Linux helper `libzexion_ap.so`, which also builds the sources of
   `src/` it shares (`Game`, through `src/platform.h`) and configures itself from the game's own
   symbols at every start, like the Windows helper from its scan (stand-in tests only, not yet run
-  in the game from a first start). What each does: [`native/README.md`](native/README.md), and
-  [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms".
+  in the game from a first start). The helpers share, in `src/`: the requests that act on the game
+  and which of them set something a client's going puts back (`game_requests.cpp`), what the
+  serving thread hands the game's thread of the seeds (`offline_inbox.cpp`), `Game::client_gone`
+  and the frame's watch order (`Game::watch_rest`), and the seed files (`offline.cpp`, over a file
+  system a platform: `offline_fs_win.cpp`, `offline_fs_posix.cpp`); the Windows helper's own seed
+  state, scan and copy thread are `host_offline.cpp`. What each does:
+  [`native/README.md`](native/README.md), and [`docs/DEVELOPING.md`](docs/DEVELOPING.md),
+  "Platforms".
 - `samples/`: the release's sample YAMLs, one per mode: Archipelago's template of each of the
   world's presets (`web_world.py`, `options_presets`), Easy's, Standard's and OHKO's without
   Custom mode's own options, written by `tools/gen_sample_yamls.py`;
@@ -352,8 +358,9 @@ rebuild 1.0.0's published message (the later ones carry an install guide that ha
 - `docs/re/`: the reverse-engineering record.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan, a
-  fresh save). `test_cross_checks.py` reads `native/src` and `native/linux/src` for what the
-  client and the helpers must agree on (version, builds, `config` keys, the request names and the
+  fresh save). `test_cross_checks.py` reads `native/src` and `native/linux/src` (through
+  `native_source.py`, which knows where the sources are and which files each platform builds) for
+  what the client and the helpers must agree on (version, builds, `config` keys, the request names and the
   replies the client branches on, the offline seed's header and keys, the label separator, the
   font's punctuation, the item record count, the flags and layouts both read), and the world's
   `world_version`. `test_gen_native_patterns.py` fails while `native/src/findaddr_patterns.h` is out of

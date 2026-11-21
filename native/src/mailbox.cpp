@@ -2,7 +2,7 @@
 
 #include <exception>
 
-#ifdef _WIN32  // the Linux build's: mailbox_linux.cpp
+// The Windows build's mailbox (the Linux build's is mailbox_linux.cpp).
 namespace zap {
 
 Mailbox::Mailbox() { done_ = CreateEventW(nullptr, FALSE, FALSE, nullptr); }
@@ -34,19 +34,6 @@ bool Mailbox::call(std::function<std::string()> work, DWORD timeout_ms, std::str
     return true;
 }
 
-void Mailbox::serve() {
-    int expected = kPending;
-    if (!state_.compare_exchange_strong(expected, kRunning, std::memory_order_acq_rel)) return;
-    try {
-        result_ = work_();
-    } catch (const std::exception& e) {
-        result_ = std::string("error ") + e.what();
-    } catch (...) {
-        result_ = "error exception";
-    }
-    state_.store(kDone, std::memory_order_release);
-    SetEvent(done_);
-}
+void Mailbox::signal_done() { SetEvent(done_); }
 
 }  // namespace zap
-#endif

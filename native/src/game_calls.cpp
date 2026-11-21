@@ -920,25 +920,46 @@ void Game::watch_menu(WidgetCallback callback) {
 void Game::watch_all(WidgetCallback callback) {
     if (!configured_) return;
     translated_popups_ = true;  // an unload refused: popups in the translation's font again
-    watch_feats();
-    watch_menu(callback);
-    watch_discs();
-    watch_equipment();
-    watch_mission();
-    watch_files();
-    watch_intel();
-    watch_title();
-    watch_offline();
-    watch_assists();  // after the offline look: a save dressed again is locked the same frame
-    watch_map_names();
-    watch_ap_items();
-    watch_map_marks();
-    watch_pickups();
-    watch_own_traps();  // before pump_traps: one picked up this frame goes off this frame
-    watch_own_disks();
-    watch_translation();
-    watch_text_cut();
-    watch_trap_patches();                 // AILMENTS left out while a trap runs (trap.h)
+    step([&] { watch_feats(); });
+    watch_rest(callback);
+}
+
+void Game::watch_rest(WidgetCallback callback) {
+    if (!configured_) return;
+    // The ARCHIPELAGO choice while a plan offers it, RANDOMIZER back otherwise.
+    step([&] { watch_menu(callback); });
+    // An AP save's look with no client, or with one of another seed (labels, INTEL CHIP, ASSIST,
+    // the disks), set before the watches below apply it.
+    step([&] { watch_offline(); });
+    // The file select, COPY FILE and DELETE FILE: the AP logo on AP saves, each disk seed's save
+    // its own count (files.h), after the look above has set the counts.
+    step([&] { watch_files(); });
+    // Other players' items: the stand-ins' records named and restyled, the logo painted, the
+    // popup's width, other Zexion players' items dressed as themselves (apitem.h, looks.h).
+    step([&] { watch_map_names(); });  // the cursor's names while the map is open
+    step([&] { watch_ap_items(); });
+    step([&] { watch_intel(); });    // the Area Map named INTEL CHIP while `intel on`
+    step([&] { watch_assists(); });  // after the offline look: a save dressed again is locked
+    step([&] { watch_title(); });    // the title screen's lines, with no save loaded
+    step([&] { watch_map_marks(); });  // the squares raised, the on-screen write patched
+    // The major-item list: each owned item the game's pickup would list, in play in an AP save.
+    step([&] { watch_pickups(); });
+    // The OS Install Disks' count: the scanner's line, the equipment screen's disk and the pause
+    // screen's disk row, the disk glyph (equip.h, pause.h, scan.h); RETURN HOME WITH THE DISKS?.
+    step([&] { watch_discs(); });
+    step([&] { watch_equipment(); });
+    step([&] { watch_mission(); });
+    // In a translation: the helper's names in its tables, its icons in its sheets, the popups'
+    // borrowed entries emptied once their message has gone (translation.h). After the watches
+    // above and the items': it holds the scanner's line, the stand-ins' names and INTEL CHIP as
+    // they have just been written.
+    step([&] { watch_translation(); });
+    // This world's own traps and disks, before pump_traps: one picked up this frame goes off this
+    // frame; then AILMENTS left out while a trap runs (trap.h).
+    step([&] { watch_own_traps(); });
+    step([&] { watch_own_disks(); });
+    step([&] { watch_trap_patches(); });
+    step([&] { watch_text_cut(); });  // tall popups' lines cut right (text.h)
 }
 
 void Game::watch_pickups() {
@@ -1672,20 +1693,22 @@ void Game::restore_ap_items() {
 }
 
 void Game::put_back_save_look() {
-    put_back_ap_items();
+    step([&] { put_back_ap_items(); });
     if (!configured_) return;
-    intel_.restore(at_.item_records);
-    restore_assists();
-    restore_discs();
+    step([&] { intel_.restore(at_.item_records); });
+    step([&] { restore_assists(); });
+    step([&] { restore_discs(); });
 }
 
 void Game::drop_save_look() {
-    restore_ap_items();
-    restore_intel();
+    step([&] { restore_ap_items(); });
+    step([&] { restore_intel(); });
     set_assists_locked(false);
-    restore_assists();
-    set_discs(0, 0, "");
-    restore_discs();
+    step([&] { restore_assists(); });
+    step([&] {
+        set_discs(0, 0, "");
+        restore_discs();
+    });
 }
 
 void Game::restore_translation() {
@@ -1701,17 +1724,17 @@ void Game::restore_translation() {
 void Game::put_back_game(WidgetCallback callback) {
     // A prompt asked for or opening, asked for again once put back (not a NO's closed one).
     const bool prompt = mission_.on_its_way();
-    put_back_save_look();
-    put_back_client_menus(callback);
-    put_back_files();
-    leave_offline();
-    text_cut_.restore();
+    step([&] { put_back_save_look(); });
+    step([&] { put_back_client_menus(callback); });
+    step([&] { put_back_files(); });
+    step([&] { leave_offline(); });
+    step([&] { text_cut_.restore(); });
     // A running trap's AILMENTS patches stay: they are the trap's, which outlives the client, as
     // queued popups do; an unload is refused while one is held (unload_refusal), then puts them
     // back (put_back_traps).
     if (configured_) {
-        restore_translation();
-        if (prompt) mission_.request();
+        step([&] { restore_translation(); });
+        if (prompt) step([&] { mission_.request(); });
     }
 }
 
@@ -1723,7 +1746,7 @@ void Game::put_back_client_menus(WidgetCallback callback) {
 }
 
 void Game::forget_client() {
-    disarm_newgame();
+    step([&] { disarm_newgame(); });
     drop_save_look();  // with the disks, a RETURN HOME prompt asked for (set_discs)
 }
 
@@ -1737,11 +1760,11 @@ void Game::put_back_traps() {
 }
 
 void Game::client_gone(WidgetCallback callback) {
-    put_back_game(callback);
-    forget_client();
-    drop_client_notices();
-    forget_client_seed();
-    active_ = false;
+    step([&] { put_back_game(callback); });
+    step([&] { forget_client(); });
+    step([&] { drop_client_notices(); });
+    step([&] { forget_client_seed(); });
+    active_ = false;  // an own disk's count is the helper's again (watch_own_disks)
 }
 
 }  // namespace zap

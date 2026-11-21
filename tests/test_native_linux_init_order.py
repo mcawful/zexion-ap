@@ -2,10 +2,9 @@
 (native/linux/src/helper.cpp, ``start``), a function in the library's ``.init_array`` of default
 priority: it runs ahead of the initializers with a priority (``init_priority(101)``) and, among
 those of default priority, in link order, so a dynamic initializer of a shared source
-(``zap_shared``: ``offline.cpp`` was one, found by the review before 2.0.0) can run after it, in
-the thread's way. A
-global the thread reads that is built dynamically after that would be built afresh over what the
-thread holds, or walked before it is built.
+(``zap_shared``: ``offline.cpp`` was one) can run after it, in the thread's way. A global the
+thread reads that is built dynamically after that would be built afresh over what the thread
+holds, or walked before it is built.
 
 What this covers, exactly:
 
@@ -23,8 +22,8 @@ What this covers, exactly:
   checked below). Not seen by this scan: a type declared together with its object
   (``struct { ... } g;``), a direct-initialized object (``T g(call());``, read as a function), and
   an initializer naming a non-constexpr variable that is not a ``g_`` global.
-* ``feats.cpp``'s stand-in holder, which the Steam export answers with from any thread, must be
-  ``constinit``.
+* ``feats_linux.cpp``'s stand-in holder, which the Steam export answers with from any thread,
+  must be ``constinit``.
 * With a Linux build (``native/build``, or ``ZEXION_NATIVE_BUILD``), the order itself, in each
   helper's own ``.init_array``: after the constructor come only the C++ runtime's own initializers
   (``*.cc``), none of this project's (``*.cpp``). That covers every shared source, not only the
@@ -65,7 +64,7 @@ PRIORITY = re.compile(r"__attribute__\(\(init_priority\((\d+)\)\)\)")
 CONSTANT = re.compile(
     r"^(?:thread_local\s+|static\s+|inline\s+|extern\s+)*"
     r"(?:constexpr\b|constinit\b|const\s+(?:char|int|bool)\b"
-    r"|std::atomic(?:_flag)?\b|std::mutex\b"  # a mutex's constructor is constexpr
+    r"|std::atomic(?:_flag)?\b|std::mutex\b|std::once_flag\b"  # their constructors are constexpr
     r"|(?:const\s+)?(?:bool|char|int|long|unsigned|float|double|size_t|ssize_t|uint\d+_t"
     r"|int\d+_t|uintptr_t|intptr_t|DWORD|BYTE|Swap)\b"
     r"|zap::linux_helper::SymbolSpan\b)"
@@ -133,8 +132,8 @@ def test_every_global_is_constant_kept_or_built_before_the_helpers_constructor()
             if path == OFFLINE:
                 raise AssertionError(
                     f"{path.name}: {name} ({kind}) is a global with a constructor in a shared "
-                    "source: built after the helper's constructor started the serving thread "
-                    f"(the 2.0.0 review's start-up race); hold it in a function-local Kept: "
+                    "source: built after the helper's constructor started the serving thread; "
+                    "hold it in a function-local Kept: "
                     f"{statement.strip()}"
                 )
             if kind.startswith("Kept<") or PRIORITY.search(statement):
@@ -161,17 +160,13 @@ def test_the_scan_finds_the_globals_the_serving_thread_reads() -> None:
         "g_client_writes",
         "g_mailbox",
         "g_game",
-        "g_offline_files",
-        "g_put_seeds",
+        "g_inbox",
         "g_offline_folder",
         "g_save_folder",
         "g_saved",
         "g_token",
-        "g_offline_mutex",
         "g_loads",
         "g_code",
-        "g_spans_once",
-        "g_map_mutex",
         "g_map",
     } <= names
 
@@ -179,14 +174,14 @@ def test_the_scan_finds_the_globals_the_serving_thread_reads() -> None:
 def test_the_steam_exports_stand_in_is_built_at_load_time() -> None:
     # The export may be called by a constructor of another library, before the helper's own runs:
     # its holder is never zero then (a constinit object is a compile error if it is not constant).
-    source = (ROOT / "native/src/feats.cpp").read_text(encoding="utf-8")
+    source = (ROOT / "native/src/feats_linux.cpp").read_text(encoding="utf-8")
     assert re.search(r"^constinit StandIn g_stand_in;", source, re.MULTILINE)
 
 
 def test_the_pending_seeds_are_built_on_first_use_and_never_destroyed() -> None:
-    # Round 7's LH1: `std::map g_pending;` at namespace scope in offline.cpp was built by that
-    # file's own initializer, after the helper's constructor had started the serving thread, which
-    # walks it in its first join_saves; and destroyed by exit() under the threads.
+    # A `std::map g_pending;` at namespace scope in offline.cpp would be built by that file's own
+    # initializer, after the helper's constructor had started the serving thread, which walks it in
+    # its first join_saves; and destroyed by exit() under the threads.
     source = OFFLINE.read_text(encoding="utf-8")
     assert "g_pending" not in source
     assert re.search(

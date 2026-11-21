@@ -18,20 +18,12 @@
 #include <string>
 #include <vector>
 
+#include "../../tests/check.h"
 #include "offline.h"
 
 namespace {
 
 namespace fs = std::filesystem;
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        ++g_failures;
-        std::printf("FAIL: %s\n", what);
-    }
-}
 
 std::wstring wide(const fs::path& path) { return path.wstring(); }
 
@@ -304,6 +296,5 @@ int main() {
     test_the_save_folder_is_the_games();
     test_a_put_and_a_read_with_a_save_folder();
     test_a_test_build_takes_only_a_folder_in_temp();
-    if (g_failures == 0) std::printf("linux offline tests: all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("linux offline tests");
 }

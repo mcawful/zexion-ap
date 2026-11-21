@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "check.h"
+#include "game_requests.h"
 #include "mailbox.h"
 #include "requests.h"
 #include "text.h"
@@ -158,10 +159,56 @@ void test_mailbox() {
     one.join();
 }
 
+void test_the_game_requests() {
+    // What a client that sent it has put back when it goes: one rule for both helpers.
+    for (const char* setter :
+         {"config", "config a=0x10", "offline_put seed AP_1-0-1\ntable 00", "ap_newgame",
+          "ap_newgame\nidentify 0x658 41", "ap_labels", "ap_labels\nlabel 1 2 41", "discs",
+          "discs 3 15 41", "mission_prompt 191 329", "other_save", "client_back", "assists lock",
+          "assists free", "intel on", "intel off"}) {
+        check(zap::sets_client_state(setter), "sets state:", setter);
+    }
+    // A probe (`helper.py status`, a ping), a read, or an act-once leaves everything as it was.
+    for (const char* probe :
+         {"hello", "ping", "unload", "lang", "callers", "read 0x1000 4", "write 0x1000 00",
+          "apply", "apply\ncas 36 0 1", "disarm", "shield", "die", "mission_status",
+          "mission_black", "discs_status", "trap_status", "drop_status", "newgame_status",
+          "feats_status", "title_status", "assists", "intel", "configx", "discs_x", "nothing"}) {
+        check(!zap::sets_client_state(probe), "sets nothing:", probe);
+    }
+    // The hosts' own: no handler in the table.
+    check(!zap::prepare_game_request("config a=1") &&
+              !zap::prepare_game_request("offline_put seed X\ntable 00") &&
+              !zap::prepare_game_request("hello") && !zap::prepare_game_request("lang"),
+          "config, offline_put and the hosts' own replies are not the table's");
+    // Needs the helper configured, or Game answers it itself.
+    for (const char* reads_status :
+         {"trap_status", "drop_status", "newgame_status", "feats_status", "title_status",
+          "discs_status", "shield", "die", "disarm", "apply\ncas 36 0 1"}) {
+        auto prepared = zap::prepare_game_request(reads_status);
+        check(prepared && !prepared->needs_config && prepared->run, "needs no config:",
+              reads_status);
+    }
+    for (const char* needs : {"intel on", "assists lock", "other_save", "client_back",
+                              "mission_status", "mission_black", "ap_labels\nlabel 1 2 41",
+                              "discs", "ap_newgame\nidentify 0x658 41\nwrite 0x10 00\nmenu 0x88 03"}) {
+        auto prepared = zap::prepare_game_request(needs);
+        check(prepared && prepared->needs_config && prepared->run, "needs the config:", needs);
+    }
+    // A request is parsed before any frame: a bad one carries its error.
+    auto bad = zap::prepare_game_request("apply\ncas 50 0 1");
+    check(bad && !bad->error.empty(), "a bad batch is refused at once");
+    auto discs = zap::prepare_game_request("discs 3 15");
+    check(discs && !discs->error.empty(), "a bad discs request is refused at once");
+    check(!zap::prepare_game_request("trap_statusx") && !zap::prepare_game_request("shield now"),
+          "a name matches whole, or by its first word when it carries data");
+}
+
 }  // namespace
 
 int main() {
     test_parsers();
+    test_the_game_requests();
     test_newgame_parser();
     test_popup_text_breaks_before_the_sender();
     test_mailbox();

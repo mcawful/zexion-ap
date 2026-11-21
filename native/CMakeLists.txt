@@ -31,24 +31,26 @@ add_compile_options(/W4 /WX /permissive- /utf-8 /EHsc)
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
 # The core, built twice from the same objects. zap_core is the release's. zap_core_test is
-# the test-only build: src/offline_test_build.cpp is src/offline.cpp with ZAP_TEST_BUILD set, which
-# makes each write primitive refuse a folder that is not a test's own (inside the temporary
-# folder, never a real one). Every test program and the test builds of the helper link
-# zap_core_test; the release links zap_core.
+# the test-only build: the seed files' sources (offline.cpp, offline_fs_win.cpp) are built with
+# ZAP_TEST_BUILD set, which makes each write primitive refuse a folder that is not a test's own
+# (inside the temporary folder, never a real one). Every test program and the test builds of the
+# helper link zap_core_test; the release links zap_core.
 add_library(zap_core_objs OBJECT
-            src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp src/game_mem.cpp
-            src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/text.cpp src/newgame.cpp src/choice.cpp
+            src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp src/mailbox_serve.cpp src/game_mem.cpp src/game_mem_win.cpp
+            src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/game_requests.cpp src/offline_inbox.cpp src/host_offline.cpp src/text.cpp src/newgame.cpp src/choice.cpp
             src/menu.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
             src/files.cpp src/intel.cpp src/title.cpp src/mapmarks.cpp src/trap.cpp
-            src/apitem.cpp src/looks.cpp src/feats.cpp src/translation.cpp src/findaddr.cpp)
+            src/apitem.cpp src/looks.cpp src/feats.cpp src/feats_win.cpp src/translation.cpp src/findaddr.cpp)
 target_include_directories(zap_core_objs PUBLIC src)
 foreach(core IN ITEMS zap_core zap_core_test)
   add_library(${core} STATIC $<TARGET_OBJECTS:zap_core_objs>)
   target_include_directories(${core} PUBLIC src)
   target_link_libraries(${core} PUBLIC advapi32)
 endforeach()
-target_sources(zap_core PRIVATE src/offline.cpp)
-target_sources(zap_core_test PRIVATE src/offline_test_build.cpp)
+foreach(core IN ITEMS zap_core zap_core_test)
+  target_sources(${core} PRIVATE src/offline.cpp src/offline_fs_win.cpp)
+endforeach()
+target_compile_definitions(zap_core_test PRIVATE ZAP_TEST_BUILD)
 
 # The helper: hooks the game's SDL_GL_SwapWindow, in a known build only.
 add_library(zexion_ap SHARED src/dllmain.cpp)
@@ -72,7 +74,7 @@ target_link_libraries(zexion_ap_hooktest PRIVATE zap_core_test)
 enable_testing()
 # Single-program tests on zap_core_test: NAME builds tests/NAME_tests.cpp as zap_NAME_tests.
 set(ZAP_TESTS parts game requests menu apitem equip mission pause files intel title mapmarks
-    offline translation findaddr)
+    offline translation findaddr inbox)
 foreach(name IN LISTS ZAP_TESTS)
   add_executable(zap_${name}_tests tests/${name}_tests.cpp)
   target_link_libraries(zap_${name}_tests PRIVATE zap_core_test)
@@ -106,6 +108,7 @@ add_test(NAME apply_in_frames COMMAND zap_apply_test $<TARGET_FILE:zexion_ap_hoo
 add_executable(zap_proxy_test tests/proxy_test.cpp)
 target_compile_definitions(zap_proxy_test PRIVATE
                            ZAP_PROXY_PATH="$<TARGET_FILE:version_proxy>")
+target_include_directories(zap_proxy_test PRIVATE src)  # check.h's platform.h
 add_dependencies(zap_proxy_test version_proxy)
 add_test(NAME proxy COMMAND zap_proxy_test)
 

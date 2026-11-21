@@ -27,17 +27,17 @@ target_include_directories(zap_linux_core PUBLIC src)
 # parser, and the platform layer under them (game_mem_linux.cpp, mailbox_linux.cpp in place of
 # the Windows parts). GCC warns where MSVC does not on partly initialized structs.
 # zap_shared is built twice from the same objects: zap_shared is the release's, zap_shared_test
-# the test-only build, whose offline.cpp is built with ZAP_TEST_BUILD set (src/offline_test_build.cpp):
-# each write primitive then refuses a folder that is not a test's own (inside the temporary
-# folder, never a real one). Every test program and the test build of the helper link
+# the test-only build, whose seed files' sources (offline.cpp, offline_fs_posix.cpp) are built with
+# ZAP_TEST_BUILD set: each write primitive then refuses a folder that is not a test's own (inside
+# the temporary folder, never a real one). Every test program and the test build of the helper link
 # zap_shared_test; the release links zap_shared.
 add_library(zap_shared_objs OBJECT
             ../src/game_calls.cpp ../src/game_offline.cpp ../src/newgame.cpp ../src/choice.cpp
-            ../src/requests.cpp ../src/text.cpp ../src/menu.cpp ../src/scan.cpp ../src/equip.cpp
+            ../src/requests.cpp ../src/game_requests.cpp ../src/offline_inbox.cpp ../src/text.cpp ../src/menu.cpp ../src/scan.cpp ../src/equip.cpp
             ../src/mission.cpp ../src/pause.cpp ../src/files.cpp ../src/intel.cpp
             ../src/title.cpp ../src/mapmarks.cpp ../src/trap.cpp
-            ../src/apitem.cpp ../src/looks.cpp ../src/feats.cpp ../src/translation.cpp
-            ../src/game_mem.cpp ../src/game_mem_linux.cpp ../src/mailbox_linux.cpp)
+            ../src/apitem.cpp ../src/looks.cpp ../src/feats.cpp ../src/feats_linux.cpp ../src/translation.cpp
+            ../src/game_mem.cpp ../src/game_mem_linux.cpp ../src/mailbox_linux.cpp ../src/mailbox_serve.cpp)
 target_include_directories(zap_shared_objs PUBLIC ../src)
 target_compile_options(zap_shared_objs PRIVATE -Wno-missing-field-initializers)
 foreach(core IN ITEMS zap_shared zap_shared_test)
@@ -45,8 +45,10 @@ foreach(core IN ITEMS zap_shared zap_shared_test)
   target_include_directories(${core} PUBLIC ../src)
   target_compile_options(${core} PRIVATE -Wno-missing-field-initializers)
 endforeach()
-target_sources(zap_shared PRIVATE ../src/offline.cpp)
-target_sources(zap_shared_test PRIVATE ../src/offline_test_build.cpp)
+foreach(core IN ITEMS zap_shared zap_shared_test)
+  target_sources(${core} PRIVATE ../src/offline.cpp ../src/offline_fs_posix.cpp)
+endforeach()
+target_compile_definitions(zap_shared_test PRIVATE ZAP_TEST_BUILD)
 # dlsym and dlopen (apitem.cpp, feats.cpp), std::call_once and threads: on a glibc before 2.34,
 # the Steam Runtime's 2.31 among them, those are libdl's and libpthread's, not libc's. -pthread
 # (Threads, preferring the flag) keeps libpthread linked into a program that calls none of its
@@ -98,6 +100,7 @@ target_link_options(zap_fake_game PRIVATE -no-pie -rdynamic)  # its stand-in Ope
 enable_testing()
 add_executable(zap_linux_core_tests tests/core_tests.cpp)
 target_link_libraries(zap_linux_core_tests PRIVATE zap_linux_core)
+target_include_directories(zap_linux_core_tests PRIVATE ../src)  # check.h's platform.h
 add_test(NAME linux_core COMMAND zap_linux_core_tests)
 
 add_executable(zap_newgame_tests tests/newgame_tests.cpp)
@@ -132,6 +135,12 @@ add_test(NAME canary_before COMMAND zap_canary snapshot ${CMAKE_BINARY_DIR}/cana
 add_test(NAME canary_after COMMAND zap_canary verify ${CMAKE_BINARY_DIR}/canary.snapshot)
 set_tests_properties(canary_before PROPERTIES FIXTURES_SETUP real_folders)
 set_tests_properties(canary_after PROPERTIES FIXTURES_CLEANUP real_folders)
+
+# The seeds the serving thread hands the game's thread (the same test as the Windows helper's).
+add_executable(zap_inbox_tests ../tests/inbox_tests.cpp)
+target_link_libraries(zap_inbox_tests PRIVATE zap_shared_test)
+target_compile_options(zap_inbox_tests PRIVATE -Wno-missing-field-initializers)
+add_test(NAME inbox COMMAND zap_inbox_tests)
 
 # The Linux build's calls in a translation: the label builder given the helper's own std::wstring.
 add_executable(zap_translation_tests tests/translation_tests.cpp)
