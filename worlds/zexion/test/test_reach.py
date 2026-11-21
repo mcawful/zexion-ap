@@ -141,7 +141,7 @@ class TestSettingsChangeTheResults(unittest.TestCase):
         # the settings reach").
         seed = preset("standard")
         options = bytearray(seed.settings.options)
-        options[reach.SECRET_SHUFFLE] = 1
+        options[logic.SECRET_SHUFFLE] = 1
         shuffled = with_settings(seed, options=bytes(options))
         self.assertEqual(len(reach.seed_locations(seed.settings)), 154)
         self.assertEqual(reach.seed_locations(shuffled.settings)[154], data.SECRET_LOCATION)

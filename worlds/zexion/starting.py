@@ -56,7 +56,7 @@ from .items import (
     TRAPS,
     UPGRADES,
 )
-from .logic import ENERGY_TANK, MISSILE_BOX, MISSILE_CONTAINER
+from .logic import ENERGY_TANK, MISSILE_BOX, MISSILE_CONTAINER, REDIRECT_IF_MISSING
 
 MAX_CONTAINERS = 9
 # The new game's start-with array (the menu's items; client/newgame.py, START_WITH_ORDER), less
@@ -80,7 +80,17 @@ NEVER = {
 }
 
 
-def problems(counts: Mapping[int, int], disc_hunt: bool, guns_first: bool = True) -> list[str]:
+def upgrade_refusal(code: int) -> str:
+    """Why an upgrade is no item of its own with Guns First on (also the world's check of
+    plando's: plando.py): it is its weapon's second copy."""
+    weapon = NAMES[REDIRECT_IF_MISSING[code]]
+    return (
+        f"{NAMES[code]}: with Guns First on, the upgrade is a second {weapon} (the game's Guns "
+        f"First seeds hold no upgrade of its own)"
+    )
+
+
+def problems(counts: Mapping[int, int], disc_hunt: bool, *, guns_first: bool) -> list[str]:
     """Why the client could not give these starting items (item code -> count, the mode's own,
     start_inventory's and start_inventory_from_pool's together), one line each; empty when it
     can. ``guns_first``: the seed's Guns First setting (t10)."""
@@ -95,11 +105,7 @@ def problems(counts: Mapping[int, int], disc_hunt: bool, guns_first: bool = True
         elif code == DATA_DISC and not disc_hunt:
             out.append(f"{name}: only the OS Install Disks goal counts them")
         elif code in UPGRADES and guns_first:
-            weapon = NAMES[next(w for w, u in PROGRESSIVE.items() if u == code)]
-            out.append(
-                f"{name}: with Guns First on, the upgrade is a second {weapon} (the game's "
-                f"Guns First seeds hold no upgrade of its own)"
-            )
+            out.append(upgrade_refusal(code))
         elif code in PROGRESSIVE and guns_first and n > 2:
             out.append(f"{n} {name}: a weapon and its upgrade are 2")
         elif code in single and n > 1:
@@ -129,7 +135,7 @@ def problems(counts: Mapping[int, int], disc_hunt: bool, guns_first: bool = True
 
 
 def pool_duplicates(
-    added: Mapping[int, int], start: Mapping[int, int], pool: Iterable[int], guns_first: bool
+    added: Mapping[int, int], start: Mapping[int, int], pool: Iterable[int], *, guns_first: bool
 ) -> list[str]:
     """Why these start_inventory items (item code -> count; not start_inventory_from_pool's)
     would leave a location that gives nothing, one line each: an item held once that the pool

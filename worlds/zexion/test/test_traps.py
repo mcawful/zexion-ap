@@ -26,7 +26,7 @@ from ..items import (
 )
 from ..options import TrapPercentage
 from ..world import FOREIGN_PROGRESSION, ZexionWorld
-from .test_plando import block, generate, index_of
+from .bases import block, generate, index_of
 
 
 def pool_of(multiworld, player: int = 1) -> Counter[int]:

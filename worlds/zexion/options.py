@@ -589,3 +589,7 @@ _OPTIONS = ZexionOptions.type_hints.items()
 AMOUNTS = tuple(n for n, t in _OPTIONS if issubclass(t, Amount) and t is not StartKeys)
 # The settings of Edit Options, by option name: Custom only, unlike start_room and safety.
 SETTINGS = tuple(n for n, t in _OPTIONS if t is not Safety and hasattr(t, "bits"))
+# What a preset mode refuses to have changed (world.py, read_menu): Custom mode's own options but
+# custom_base, which only Custom reads and a preset ignores. The website and the YAML templates
+# group these and custom_base after the options of every mode (web_world.py).
+CUSTOM_ONLY = (*AMOUNTS, *SETTINGS, "custom_items")
