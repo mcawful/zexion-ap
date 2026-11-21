@@ -13,6 +13,7 @@ Steam Deck), Steam build 23943567, and Archipelago 0.6.8 or newer.
    `libzexion_ap.so` there instead, and set Zexion's launch options to
    `LD_PRELOAD="./libzexion_ap.so:$LD_PRELOAD" %command%` (if the mod doesn't load, with the
    folder's full path in front of `libzexion_ap.so`: the setup guide, "Linux and Steam Deck").
+   Leave Steam's compatibility tool off for Zexion, so it runs the Linux version, not Proton.
 3. Make your YAML from the sample for your mode (`zexion-standard.yaml` and the others), then
    generate and host as usual.
 4. Start Zexion, open **Zexion Client** from the Launcher and connect.

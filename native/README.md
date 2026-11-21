@@ -450,21 +450,25 @@ the game's own data, so a client going away or an unload leaves it (`docs/re/mem
 pickup record holds the major-item list").
 
 Two known limits of the ITEMS row, found by review, not seen in game, and left as they are
-(issues #166 and #167). The first is cosmetic (no item is given, lost or doubled; the list grants
-nothing); the second is by the code a Linux question only, and is not traced there:
-- **An own item can be listed twice.** The helper appends an owned item's icon only if it is
-  not in the list, and the game's pickup appends without that check (Linux B1 `0x6428FA`;
-  Windows `0x1F761`: `docs/re/linux.md`, "Mapped by disassembly: the major-item list";
-  `docs/re/memory.md`, "The pickup record holds the major-item list"). If the server marks one of
-  this world's own locations checked by a route other than the pickup (`!collect`, say), the
-  client grants its item by the inventory byte and the helper lists it; the client never marks
-  this world's own cells collected, so the item's object is still in the room, and picking it up
-  lists the icon again. Avoiding it means knowing, in the helper, the cell of each own location
-  (the seed's files carry none but the disks' and traps') and holding the listing while that cell
-  is uncollected, or telling a legitimate repeated icon from this one (not traced); more
-  machinery than the row is worth. The duplicate also takes one of the row's 26 places (the game's
-  append and the helper's both stop there, and B1 has 27 listable kinds), so a later item's icon
-  can miss the row.
+(issues #166, closed, and #167, open). The first is cosmetic (no item is given, lost or doubled;
+the list grants nothing); the second is by the code a Linux question only, and is not traced
+there:
+- **An own item can be listed twice, only by a second copy of it.** The helper appends an owned
+  item's icon only if it is not in the list, and the game's pickup appends without that check
+  (Linux B1 `0x6428FA`; Windows `0x1F761`: `docs/re/linux.md`, "Mapped by disassembly: the
+  major-item list"; `docs/re/memory.md`, "The pickup record holds the major-item list"). So the
+  icon is listed twice when a copy of an item is given by the client (the helper lists it) and
+  this world's own object for that item is then picked up in its room. The client gets no item
+  from its own world (`items_handling = 0b001`, `client/zexion_client.py`), so no checked own
+  location, `!collect` included, gives it one: the second copy has to come from outside the
+  seed's plan, by a console `/send`, `!getitem`, an item link or an old seed's plando. (The
+  first reading of #166 had `!collect` granting by the inventory byte; that route does not
+  exist, as the code shows: read on the code, not run in game.) Avoiding it means knowing, in
+  the helper, the cell of each own location (the seed's files carry none but the disks' and
+  traps') and holding the listing while that cell is uncollected, or telling a legitimate
+  repeated icon from this one (not traced); more machinery than the row is worth. The duplicate
+  also takes one of the row's 26 places (the game's append and the helper's both stop there, and
+  B1 has 27 listable kinds), so a later item's icon can miss the row.
 - **A save state taken in another save, loaded while an AP save is current.** Save states are a
   player-facing assist (SAVE STATES, `docs/re/memory.md`, "The assist menu"). `loadState` restores
   the whole of `gGameState`: the inventory, the major-item list, the map grid, the flags, the
@@ -478,9 +482,12 @@ nothing); the second is by the code a Linux question only, and is not traced the
     grant), and the same seed's is that seed's own finds, which the client already accepts from
     any of its saves. The helper's start-with test then reads the state's own section too, so
     the ITEMS row lists what that save started with. No false check and no wrong grant comes
-    from a state by this path. The load key also needs SAVE STATES on (inferred from the gate's
-    place, `+0x3E2DBA`), which a locked AP save does not have. The states are 16 files, named
-    with no slot, so one can come from another day's save.
+    from a state by this path. The load is reached from two callers (`0x7AB3A` and `0x7CADC`)
+    behind one gate, which opens on the word `+0x3E2DBA` (SAVE STATES, inferred from its place)
+    or on the byte `+0x345EF4`, which a Ctrl+D toggle may set (a lead, not traced, and not known
+    to be live in release B1: `memory.md`, "The assist menu", "Save states"). A locked AP save has
+    the word off. The states are 16 files, named with no slot, so one can come from another
+    day's save.
   - **Linux B1: not traced.** `loadState` inflates `gGameState` at `0x4AF4EE` to `0x4AF4FD`
     (`docs/re/linux.md`, "Mapped by disassembly: the major-item list"); whether it then copies the
     state's section into `gCurrentRando` as Windows' does has not been read. If it does not,
@@ -488,9 +495,10 @@ nothing); the second is by the code a Linux question only, and is not traced the
     marker is 1, the section the current save's, the stamp unchanged) and could send the checks
     of the cells that state collected and give items into its inventory, which the game saves
     into the current slot, until the next death or load brings the state's section in; the
-    ITEMS row would list the wrong starting items. That needs assists allowed (Allow Assists, or
-    Assist Unlock received), SAVE STATES turned on in the AP save, and a state made in another
-    randomizer save: three deliberate steps.
+    ITEMS row would list the wrong starting items. That needs the load key to work (by the
+    word: assists allowed, Allow Assists or Assist Unlock received, and SAVE STATES turned on in
+    the AP save; or by the byte, if that lead is live) and a state made in another randomizer
+    save: deliberate steps either way.
   - Not fixed; the issue stays open for the Linux question.
 
 Working in game: 2026-10-22, everything above but the major-item list ("Game functions the helper

@@ -9,7 +9,10 @@ Everything here comes from reverse engineering, hence the evidence rules below.
 **Status:** played in game on build B1 only. Releases (the version: "Releases and versions")
 are published from `main` on GitHub's
 [Releases page](https://github.com/mcawful/zexion-ap/releases); the current version is
-`world_version` in `worlds/zexion/archipelago.json`.
+`world_version` in `worlds/zexion/archipelago.json`. 1.2.0 (2026-11-16) is the Windows mod;
+`develop` adds, for the next release, Linux and the Steam Deck, the Windows helper's own scan, the
+seed copies for Steam Cloud and the Linux helper's self-configure, each with what has run in the
+game: [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Status".
 
 Where things are:
 
@@ -47,27 +50,21 @@ Where things are:
 - **The game install and the real save folder are read-only to us.** Hooks block direct writes
   ("Repo tooling"). Save experiments work on copies in `lab/` through `tools/save_lab.py`; only
   its `install` (an empty slot, after a verified backup) and `restore` write the save folder. The
-  client never writes it. The one exception is the helpers' own seed copies: the Windows helper
-  and the Linux helper write `ZexionAP-seed-<NAME>.sav` into the save folder (each through a
-  temporary file renamed over the old one) so Steam Cloud carries them with the saves to another
-  machine (`native/README.md`, "Seed files in the save folder"; owner's decision, 2026-11-20). A
-  helper writes one only for a seed that one of the game's 30 save slots uses, as the game's
-  memory holds them (never by opening a save file: the game opens one to write with no share
-  mode), by a put, a read after a client that set something leaves, and a copy thread that runs a
-  pass when the slots change (the owner's
-  decision, 2026-11-20: so at most 30 copies are written and refreshed at a time; the ones a deleted
-  save leaves stay), only a name that starts with
-  `ZexionAP-seed-` and ends in `.sav`, never a `Save Game`, `GameUnlocks` or `Preferences` file or
-  any other the game uses, and deletes nothing there but its own `.sav.tmp` after a write that
-  failed. The client and Claude never write the save
-  folder, and the tools only through `save_lab.py install` and `restore`. The write guard stays
-  as it is for Claude's own tool calls. Tests never write the real folders: they use fakes (a
-  test's own folder, `ZEXION_SAVE_DIR` for the Python tools), the helper built for tests takes
-  only folders inside the temporary folder (never the real ones, links resolved) and its save folder
-  only from `ZAP_TEST_SAVE_DIR` (`native/src/dllmain.cpp`, `save_dir`; `restrict_to_test_folder`), the
-  test-only build of the core every test program links refuses any other write itself
-  (`ZAP_TEST_BUILD`), and a canary in CTest and pytest fails a run that changes the real folders. The same hooks block
-  writes to the mod's offline files,
+  client never writes it. The one exception is the helpers' own seed copies (owner's decision,
+  2026-11-20): the Windows helper and the Linux helper write `ZexionAP-seed-<NAME>.sav` there, so
+  Steam Cloud carries a seed's file with the saves to another machine. They write only a name
+  that starts with `ZexionAP-seed-` and ends in `.sav`, never a `Save Game`, `GameUnlocks` or
+  `Preferences` file or any other the game uses, delete nothing there but their own `.sav.tmp`
+  after a write that failed, and never open a save file. Which seeds, when, how and the cap of 30: [`docs/DEVELOPING.md`](docs/DEVELOPING.md),
+  "How it fits together" ("The seed copies in the save folder"), and `native/README.md`, "Seed
+  files in the save folder". The client and Claude never write the save folder, and the tools only
+  through `save_lab.py install` and `restore`. The write guard stays as it is for Claude's own
+  tool calls. Tests never write the real folders: they use fakes (a test's own folder,
+  `ZEXION_SAVE_DIR` for the Python tools); the helper built for tests, and the test-only core
+  every test program links, take only folders inside the temporary folder and refuse any other
+  write (`ZAP_TEST_BUILD`, `ZAP_TEST_SAVE_DIR`), and a canary in CTest and pytest fails a run that
+  changes the real folders (`native/README.md`, "Seed files in the save folder", "Test builds").
+  The same hooks block writes to the mod's offline files,
   `%LOCALAPPDATA%\ZexionAP` (the seed list, labels and disk counts; on Linux the seeds' files and
   the helper's socket token, in `$XDG_DATA_HOME/ZexionAP`, else `~/.local/share/ZexionAP`): only
   the helper writes them, and they change what the mod does with no client running.
@@ -78,7 +75,7 @@ Where things are:
   into a lab slot; grants only while the player stands still in play. Loading the helper
   (`helper.py load`), starting the game with the mod, and a client run also make the helper write
   seed copies into the real save folder for the saves there (see above), which Steam uploads
-  (seen between two Windows PCs, 2026-11-20, B1; not on Linux): ask first for those too.
+  (seen between two Windows PCs, 2026-11-20, B1 inferred; not on Linux): ask first for those too.
 - **Branches and releases.** `main` holds released code; `develop` holds code ready for the next
   release. Work on a short-lived topic branch cut from `develop`, merged into `develop` by pull
   request, then deleted. `develop` and `main` take changes only through pull requests with every CI
@@ -106,21 +103,9 @@ folder on Windows; on Linux and macOS it is `.venv/bin/`, in every command in th
 supports the game's Windows and Linux builds. The Windows helper, `client/process.py` (the Windows
 API) and the live tools `memscan.py` and `helper.py load` and `unload` are Windows-only. The
 client also runs against the game's Linux build, which has a helper of its own that runs every
-part of the Windows helper's but
-unloading (run in the game, on Flatpak Steam on one PC, 2026-11-19: new games, grants with their
-popups, received traps, Energy Shields, checks, Intel Chips, popups in English(HD) and Japanese,
-the OS Install Disks goal with RETURN HOME, DeathLink, scrap's drops, the Feats guard at an
-ending, tall popups' text, the title screen's lines, the file select's AP logo, disk counts and
-ITEMS row and the look without the client; this world's own traps, and its own disks with no
-client, not yet; run 3 (2026-11-20) then checked, in the game, the attach with the socket's token,
-the look's gate on the client's seed (#162), the file select's fixes, DeathLink's death count and
-the client's seed file and labels, and a release's Steam Runtime build ran there too
-(`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the review's other later fixes
-(`native/README.md`, "The Linux helper", lists them) have run on stand-ins only; a Steam Deck then
-loaded the mod with the relative launch option, 2026-11-20, and a CachyOS PC showed AP saves
-synced from Windows as AP saves, 2026-11-21, both as the owner reported: `docs/re/linux.md`, "Seen
-on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21"), and so do `grant.py`, `check_patterns.py --live` and `helper.py status`
-([`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms").
+part of the Windows helper's but unloading, and so do `grant.py`, `check_patterns.py --live` and
+`helper.py status`. What has run in the game there and what has not:
+[`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms".
 
 uv, either way: `python -m pip install --user uv`, then type `python -m uv` for `uv` below
 (`--user` leaves it off `PATH`); or uv's own installer
@@ -198,25 +183,8 @@ Nothing in `tests/` needs the game, and CI never runs it.
 - On attaching it uses or loads the helper (which one: [`native/README.md`](native/README.md),
   "Getting in"; `ZEXION_DLL` names a build). Without a usable helper, items are written directly
   with no popup and no seed can be started. On Linux it attaches to the game's Linux build through
-  the Linux helper (preloaded by the game's launch options) and runs that way, as without a helper
-  but for new games, which the Linux helper starts (ARCHIPELAGO or RANDOMIZER), items, which it
-  gives with their popups, traps, scrap's drops and Energy Shields, DeathLink's deaths, Intel
-  Chips, the ASSIST lock, other players' items, which it shows as Archipelago items, on the map
-  too, translations, the OS Install Disks goal, AP saves' look without the client, the file
-  select's AP logo, disk counts and ITEMS row, the title screen's lines, Feats and Steam
-  achievements kept out of AP saves and tall popups' text repaired (run in the game, on Flatpak
-  Steam on one PC, 2026-11-19, for new games, grants with their popups, received traps, Energy
-  Shields, checks, Intel Chips, popups in English(HD) and Japanese, the OS Install Disks goal with
-  RETURN HOME, DeathLink, scrap's drops, the Feats guard at an ending, tall popups' text, the
-  title screen's lines, the file select's AP logo, disk counts and ITEMS row and the look without
-  the client; this world's own traps, and its own disks with no client, not yet; run 3 (2026-11-20)
-  then checked, in the game, the attach with the socket's token, the look's gate on the client's
-  seed (#162), the file select's fixes, DeathLink's death count and the client's seed file and
-  labels, and a release's Steam Runtime build ran there too (`docs/re/linux.md`, "Seen in the
-  running game, 2026-11-20"); the review's other later fixes (`native/README.md`, "The Linux
-  helper", lists them) have run on stand-ins only; a Steam Deck loaded the mod with the relative
-  launch option and a CachyOS PC showed synced AP saves, 2026-11-20 and 2026-11-21: `docs/re/linux.md`,
-  "Seen on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21"):
+  the Linux helper (preloaded by the game's launch options) and runs that way, with the Windows
+  helper's features but unloading; what the Linux helper does, and what has run in the game:
   [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms". `/reload_mod` unloads it and loads it
   again a few seconds later (for a misbehaving mod; popups still queued are lost); on Linux, where
   the Linux helper stays for the game's run, it says to restart Zexion instead.
@@ -291,8 +259,8 @@ releases"). The
 release's message is written for players: the version's notes, `docs/releases/<version>.md`, then
 the install guide in `.github/release-footer.md`, then the compare link from the previous release,
 put together by `tools/release_notes.py`. `tests/test_release_notes.py` checks the notes here
-rebuild the published messages; `tests/test_release_footer.py` that the files the guide names are
-the release's.
+rebuild 1.0.0's published message (the later ones carry an install guide that has changed);
+`tests/test_release_footer.py` that the files the guide names are the release's.
 
 - **The release version** is one number in four places: `VERSION` in `client/native.py`,
   `kVersion` in `native/src/dllmain.cpp` and in `native/linux/src/core.h`, and `world_version` in
@@ -358,15 +326,11 @@ the release's.
 - `native/`: the helper `zexion_ap.dll` (which finds the game's addresses itself at start, so it
   should work with no client on a first launch: `src/findaddr.cpp`; stand-in tests and an offline
   exe copy only, not yet run in the game) and, in `proxy/`, the proxy
-  `version.dll`; in `linux/`,
-  the Linux helper `libzexion_ap.so`, which also builds the sources of `src/` it shares (`Game`,
-  through `src/platform.h`; it configures itself from the game's own symbols at every start, with
-  no client and no seed file read, like the Windows helper from its scan: stand-in tests only, not
-  yet run in the game from a first start; it runs new games, grants with their popups, scrap's drops and Energy
-  Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, other players' items, traps,
-  translations, the OS Install Disks goal, AP saves' look without the client, the file select's AP
-  logo, disk counts and ITEMS row, the title screen's lines, Feats and Steam achievements kept out
-  of AP saves and tall popups' text repaired): [`native/README.md`](native/README.md).
+  `version.dll`; in `linux/`, the Linux helper `libzexion_ap.so`, which also builds the sources of
+  `src/` it shares (`Game`, through `src/platform.h`) and configures itself from the game's own
+  symbols at every start, like the Windows helper from its scan (stand-in tests only, not yet run
+  in the game from a first start). What each does: [`native/README.md`](native/README.md), and
+  [`docs/DEVELOPING.md`](docs/DEVELOPING.md), "Platforms".
 - `samples/`: the release's sample YAMLs, one per mode: Archipelago's template of each of the
   world's presets (`web_world.py`, `options_presets`), Easy's, Standard's and OHKO's without
   Custom mode's own options, written by `tools/gen_sample_yamls.py`;
