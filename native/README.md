@@ -273,7 +273,13 @@ is not hooked gets `error not hooked, so nothing runs on the game's thread`.
 
 A "frame" request (and `hello`'s `configured`, `feats`, `active`, `offline`, `title`,
 and `lang`) goes to the game's thread through a one-slot mailbox
-(`src/mailbox.cpp`) and runs at the next frame call. If no frame takes it within a second (the game paused in the
+(`src/mailbox.cpp`) and runs at the next frame call. The requests that act on the game are one
+table for both helpers (`src/game_requests.cpp`: each one's name, whether it needs the helper
+configured, whether it sets something a client's going puts back, and what it runs); the hosts add
+`config`, `offline_put` and their own replies. The trap status and the other read-only statuses
+(`trap_status`, `drop_status`, `newgame_status`, `feats_status`, `title_status`, `discs_status`)
+need no `config`; the ones that read the game or set something (`mission_status`, `intel`,
+`assists`, `ap_labels`, `discs`, ...) answer `refused not configured` until one has come. If no frame takes it within a second (the game paused in the
 background, say), it is withdrawn, the reply is `refused no frame`, and it never runs
 afterwards.
 
@@ -283,7 +289,11 @@ with one atomic exchange, and only one thread at a time does the work.
 ### A client going away
 
 When the pipe's client disconnects (the client exited or crashed, let the helper go while it
-had no server connection, or `tools/helper.py` was done), the next frame call, before it serves
+had no server connection), and had sent a request that sets something (`zap::sets_client_state`,
+`src/game_requests.cpp`: `config`, `offline_put`, `ap_newgame`, `ap_labels`, `discs`,
+`mission_prompt`, `other_save`, `client_back`, `assists` and `intel`; a ping, a `hello`, a status, a
+grant, a death, a shield or an `apply` set nothing, so `tools/helper.py status` and a connection made
+again in the middle of a poll leave the game as it was), the next frame call, before it serves
 any request, puts back everything the parts below set in the game's memory and drops what the
 client asked for (`Game::client_gone`: `put_back_game`, then `forget_client`, and
 `forget_client_seed`, which closes the look's gate until the next client has put its
@@ -792,7 +802,9 @@ dealt on the next load ("DeathLink").
   running helper, and the client sends a file over 48 KB all the same while the pipe takes
   the request (64 KB). A seed the helper took but cannot keep (no folder, too large) is not
   put again until its text changes, and one put again before a frame took the last replaces
-  it in the helper's queue (`note_put_seed`). Until the client's first `offline_put` of a seed, which waits for
+  it in the helper's queue (`OfflineInbox::put_seed`). A seed taken but not kept stays the
+  helper's until the game closes, on both helpers: read from the folder again each time a
+  client goes, it is added again after the files (`OfflineInbox::take`). Until the client's first `offline_put` of a seed, which waits for
   the received items' list and the scouted locations (asked for every 5 s), a helper with no
   file of that seed from an earlier run knows no own trap: one picked up in those seconds
   does nothing. A seed's file merged with another list of traps starts the two looks over,
@@ -1920,8 +1932,9 @@ disconnected.
 
 `src/offline.cpp` (`save_folder`, `format_offline_seed`, `synced_file_text`, `parse_synced_file`,
 `merge_offline_seeds`, `SavedSeeds`, `join_saves`, `join_synced`, `restrict_to_test_folder`),
-`Game::saved_seeds` (`src/game_calls.cpp`), `src/dllmain.cpp` (`save_dir`, `offline_dir`,
-`snapshot_saves`, `copy_thread`), the Linux helper's `g_save_folder`, `g_saved` and `copy_loop`;
+`Game::saved_seeds` (`src/game_calls.cpp`), `src/host_offline.cpp` (`HostOffline`: `save_dir`,
+`offline_dir`, `snapshot_saves`, `copy_loop`), the Linux helper's `g_save_folder`, `g_saved` and
+`copy_loop`, and `copy_pass` (`src/offline.cpp`), the pass both copy threads run;
 `docs/re/save-format.md`, "Steam Auto-Cloud syncs only `*.sav` and `*.png` in the save folder
 itself". Working in game on Windows, between two PCs (2026-11-20, B1 inferred: the helper hooks only B1, develop bf86eb5,
 `zexion_ap.dll` `2d8b696f…`, `version.dll` `b5a196b2…`, `zexion.apworld` `a2bcc022…`; the owner's
@@ -2006,7 +2019,8 @@ copies, a cut copy's refusal and that `helper.py status` writes nothing.
   `.var/app/com.valvesoftware.Steam/.local/share` and its default `XDG_DATA_HOME`,
   `.var/app/com.valvesoftware.Steam/data`. The rule is also in the write
   primitives themselves, in the **test-only build of the core** (`zap_core_test`, Linux
-  `zap_shared_test`, `ZAP_TEST_BUILD` set by `src/offline_test_build.cpp`), which every test
+  `zap_shared_test`, `ZAP_TEST_BUILD` set by CMake on those targets alone, which build the
+  seed files' sources, `offline.cpp` and its file system half, with it), which every test
   program and the test builds of the helpers link; the release build does not. A canary in CTest
   (`native/tests/canary.cpp`, a fixture every test requires) and in pytest (`tests/conftest.py`)
   lists the real folders (the seed copies in each real save folder, every file in each real
@@ -3094,7 +3108,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     to 35" (`cmp ax, 0x30; je`, `sub eax, 3; cmp ax, 0x20; ja`, a nop) where it reads as B1's,
     each held and put back on its own; the code between them is never written;
   - the wrapper is called with the map's child alone, as the game calls its move procedures
-    (`map_hook`, `linux/src/helper.cpp`).
+    (`map_game` and `map_after`, wrapped by `Wrapper`, `linux/src/helper.cpp`).
 
   Tested: `linux/tests/patch_tests.cpp` runs the game's two tests and the patched ones side by
   side for every ID from 0 to 255 (only 48 changes, from the minor's write to the major's); and
@@ -3159,13 +3173,14 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     game's own `calloc` and `free` (`src/equip.cpp`): no allocator slots;
   - EQUIPMENT's callback is called with no arguments (`equipment_hook`); the Energy Tank panel's
     handler takes `(widget, event)` and the pause menu's way back its menu, as on Windows
-    (`equipment_panel_hook`, `options_back_hook`, `linux/src/helper.cpp`);
+    (`equipment_panel_game`, `options_back_game`, each wrapped by `Wrapper`, the template all
+    the Linux hooks but RETURN HOME's are made from, `linux/src/helper.cpp`);
   - a client that goes turns the count off and puts its changes back (`set_discs`, then
     `restore_discs`), as `drop_save_look` does on Windows; the look without the client (below)
     then sets its seed file's count again for a known seed's save;
   - the count shows only in the loaded save of the look's own seed (`Game::seed_look_loaded`, as
     on Windows: "Intel Chips"), which on Linux is the seed the client put with `offline_put`
-    (`take_offline` notes the last one put, on the game thread, as `note_client_seed`; the
+    (`OfflineInbox::take` notes the last one put, on the game thread, as `note_client_seed`; the
     client-gone work forgets it, `forget_client_seed`, for any connection that set something,
     `sets_client_state`, offline_put among them; one that only looks leaves it alone). Until
     the client has put its seed, which on Linux is from the connection's first poll
@@ -3192,8 +3207,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   game too, with no client at all (the helper configured from the game's own symbols), once a
   client has put the seed with the items listed; a disk picked up before the first such put is not
   counted, and nothing makes it up later. A client that goes leaves the helper with none attached
-  (`Game::client_left`, which `client_gone` does on Windows), and so does any connection that
-  closes (a request with no reply), until the next `config`: so a client configuring on another
+  (`Game::client_gone`, the Windows helper's too, which also makes the helper inactive), and so
+  does any connection that sent a request that sets something (`sets_client_state`) and closes,
+  until the next `config`: so a client configuring on another
   connection than before takes the disks the save holds for counted at its next look
   (`ticks.linux_newgame_tick`, as `attach_helper` does on Windows), and gives no follow-up through
   a connection not configured yet (`linux_finds_tick`), so one pickup shows one count; one picked
@@ -3321,7 +3337,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   helper left it; a client that goes puts the game's back (`restore_intel`), and the look without
   the client (below) then names it again for a known seed's save. Only in the look's own save
   (`Game::seed_look_loaded`, "Intel Chips", above): on Linux the seed a client put (`offline_put`,
-  noted by `take_offline`, forgotten by the client-gone work, as for the disks' count). Nothing
+  noted by `OfflineInbox::take`, forgotten by the client-gone work, as for the disks' count). Nothing
   else differs on Linux: the game loads the `Objects` records as they are, and the installed
   file's record 49 reads as `kAreaMap` (whether anything writes the records after the load is
   not swept: the check before each write leaves one that reads otherwise alone)
@@ -3410,8 +3426,9 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   above); configured with no seed file at all is stand-in tests only, not yet run in the game.
   The same holds for the title lines on a first start, below.
 - **The look without the client.** `Game::watch_offline` runs at each frame call, before the
-  watches that apply what it sets (on Windows `watch_all` runs INTEL CHIP's and the disks' watches
-  before it, so they apply its changes a frame later there) ("AP saves without the client"): with
+  watches that apply what it sets (`Game::watch_rest` runs it right after the ARCHIPELAGO choice,
+  on both helpers; the Windows helper ran INTEL CHIP's and the disks' watches before it, a frame
+  behind, until 2.0.0) ("AP saves without the client"): with
   no client (configured from the game's symbols, or its client gone), or with one that said
   `other_save`, a known seed's save is dressed once in play since it loaded, from its seed file:
   the item labels, INTEL CHIP, the ASSIST lock and the disk count and scanner's line, with the
@@ -3447,8 +3464,8 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
     client-back and other-save ticks do: a connection made again by a read in the same poll never
     sets them (stand-in tests only, not run in the game);
   - a client that goes leaves the look to dress the save again from scratch at the helper's next
-    look, its not-connected notice with it, as `client_gone` does on Windows: its own parts put
-    back and the look left (`leave_offline`, `linux/src/helper.cpp`), its notices not shown yet
+    look, its not-connected notice with it: `Game::client_gone`, the same code on both helpers,
+    its own parts put back and the look left (`leave_offline`), its notices not shown yet
     withdrawn.
 
   Tested on the stand-in game through the socket (`tests/test_native_linux.py`: with a seed file
@@ -3563,7 +3580,7 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
 - **The file select's AP logo and disk counts.** `Game::watch_files` runs in the Linux helper's
   frame as in `watch_all` ("AP saves on the file select"), after the look without the client has
   set the counts, with or without a client: each entry of the file select, COPY FILE and DELETE
-  FILE gets the helper's handler (`linux/src/helper.cpp`, `file_entry_hook`: the game's, then the
+  FILE gets the helper's handler (`linux/src/helper.cpp`, `file_entry_game` and `file_entry_after`: the game's, then the
   entry rewritten after its fill, event `0xF`; handlers take (widget, event) on Linux), the logo
   on AP saves and each disk seed's save its own count, the four handlers configured from the
   game's symbols (`file_panel_fn`, `file_entry_fn`, `copy_entry_fn`, `delete_entry_fn`). The Linux
@@ -3706,8 +3723,8 @@ is set, a missing build fails the job instead (`test_the_helper_is_built_where_c
 **The tests never write the real folders** ("Seed files in the save folder", "Test builds"). Every
 test program and the test builds of the helpers (`zexion_ap_hooktest.dll`, `libzexion_ap_hooktest.so`)
 link **the test-only build of the core**, `zap_core_test` (Linux `zap_shared_test`), which compiles
-`src/offline.cpp` through `src/offline_test_build.cpp` with `ZAP_TEST_BUILD` set: each write
-primitive in it (`write_whole`, `make_folder`, `make_dir`) refuses a folder that is not strictly inside
+`src/offline.cpp` and `src/offline_fs_win.cpp` (`src/offline_fs_posix.cpp` on Linux) with
+`ZAP_TEST_BUILD` set by CMake: each write primitive in them (`write_whole`, `make_folder`) refuses a folder that is not strictly inside
 the temporary folder, links resolved, or is one of the real folders (`restrict_to_test_folder`), so a
 unit test handed a real folder writes nothing. The release build (`zap_core`, `zap_shared`) is
 compiled without it. **The canary** (`tests/canary.cpp`, `zap_canary`) is a CTest fixture every test
@@ -3864,11 +3881,14 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
 
 | File | What |
 |---|---|
-| `dllmain.cpp` | the hook, the pipe's requests, the wrappers the game's menus call |
+| `dllmain.cpp` | the hook, the frame call, the pipe's requests, the unload, the wrappers the game's menus call |
+| `host_offline.h`, `host_offline.cpp` | the Windows helper's seed files, its own scan and its notes, and the copy thread (`HostOffline`) |
+| `game_requests.h`, `game_requests.cpp` | the requests that act on the game, one table for both helpers, and which of them set something a client's going puts back |
+| `offline_inbox.h`, `offline_inbox.cpp` | what the serving thread hands the game's thread of the seeds (the files read, the seeds put, those not kept), for both helpers |
 | `game_calls.cpp` | `Game`: configure, grants, popups, shields, deaths, traps, each part's watch |
 | `trap.h`, `trap.cpp` | the traps' codes, names, the player state's fields and sounds the game's touch sets, and the AILMENTS tests' patches |
 | `addresses.h` | `GameAddresses`: the configured addresses, one per `config` key, which every part reads |
-| `offline_test_build.cpp` | `offline.cpp` built with `ZAP_TEST_BUILD`, for the test-only core (`zap_core_test`): its write primitives refuse any folder that is not a test's own ("Seed files in the save folder", "Test builds") |
+| `offline_fs.h`, `offline_fs_win.cpp`, `offline_fs_posix.cpp` | what `offline.cpp` takes from the file system, one implementation a platform, with the per-user folders and (Windows) the address cache; built with `ZAP_TEST_BUILD` in the test-only core (`zap_core_test`), whose write primitives refuse any folder that is not a test's own ("Seed files in the save folder", "Test builds") |
 | `game_offline.cpp` | `Game`'s offline look, and its watches of this world's own traps and disks by their map cells (`watch_own_traps`, `watch_own_disks`), which run with a client too |
 | `cell_watch.h` | `CellWatch`: a list of map cells looked at every frame, which turned collected or back since the look before, and after how many looks in play (the two watches above share it) |
 | `requests.cpp` | the requests' parsers |
@@ -3876,11 +3896,11 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
 | `choice.h`, `choice.cpp` | the ARCHIPELAGO choice on the game-mode panel and its start (`start_archipelago`), shared the same way |
 | `platform.h` | `<windows.h>`, or on Linux the few Windows type names the shared sources use |
 | `text.cpp` | the popups' text layout, the labels' and the capitals the 8 x 8 font draws; the text window's cut patch (`text_cut_patch`) |
-| `pipe.cpp`, `mailbox.cpp` | the pipe; the hand-off to the game's thread (`mailbox_linux.cpp`: the Linux helper's) |
+| `pipe.cpp`, `mailbox.cpp`, `mailbox_serve.cpp` | the pipe; the hand-off to the game's thread (`mailbox_linux.cpp`: the Linux helper's; `mailbox_serve.cpp`: the game thread's half, shared) |
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
 | `findaddr.h`, `findaddr.cpp`, `findaddr_patterns.h` | the helper's own address scan: the rules, and `client/patterns.py`'s patterns as C++ (generated by `tools/gen_native_patterns.py`; never edit it) |
-| `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access (`game_mem_linux.cpp`: its Linux parts); code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
+| `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access (`game_mem_win.cpp`, `game_mem_linux.cpp`: each platform's); code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
 | `kept.h` | `Kept`: a global the helper never destroys (the Linux helper's threads run through the game's exit) |
 | `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
@@ -3890,6 +3910,7 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
 token's private folder),
 `src/helper.cpp` (the constructor, the socket's thread, the frame call, `config` and the
 requests that act on the game), and in `tests/` the ctest tests, the stand-in game and its
-stand-in SDL. It also builds every source of `src/` but `dllmain.cpp`, `iat.cpp`, `pipe.cpp`,
-`build.cpp`, `findaddr.cpp` and `mailbox.cpp`, with `game_mem_linux.cpp` and `mailbox_linux.cpp` for the
-Windows parts (`src/platform.h` gives them the few Windows type names they use).
+stand-in SDL. It also builds every source of `src/` but `dllmain.cpp`, `host_offline.cpp`, `iat.cpp`,
+`pipe.cpp`, `build.cpp`, `findaddr.cpp`, `mailbox.cpp`, `game_mem_win.cpp`, `feats_win.cpp` and
+`offline_fs_win.cpp`, with `game_mem_linux.cpp`, `mailbox_linux.cpp`, `feats_linux.cpp` and
+`offline_fs_posix.cpp` for the Windows parts (`src/platform.h` gives them the few Windows type names they use).
