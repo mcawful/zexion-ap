@@ -21,16 +21,17 @@ the Steam Deck. It is required: without it, the game can't start a seed.
 1. In the Archipelago Launcher, choose **Install APWorld** and pick `zexion.apworld`, from the
    folder you unpacked. The Launcher then lists **Zexion Client**.
 2. Close Zexion. Copy `zexion_ap.dll` and `version.dll` into Zexion's folder (in Steam:
-   right-click Zexion, Manage, Browse local files). On Linux or the Steam Deck, follow "Linux and
-   Steam Deck", below, instead.
+   right-click Zexion, Manage, Browse local files). On Linux or the Steam Deck, take the release's
+   Linux archive, `zexion-ap-<version>-linux.tar.gz`, instead, and follow the setup guide's
+   "Linux and Steam Deck" (also that archive's `README.md`).
 
 Once the mod is in, the title screen shows ARCHIPELAGO MOD and its version. It also says START
 THE AP CLIENT TO PLAY A SEED until the client connects, and again once you close the client (in
 English(HD), in its font: Archipelago Mod and Start the AP client to play a seed). The mod is meant
 to find what it needs in the game by itself, so this should show the first time Zexion starts. If
-it doesn't, connect the client once (Start playing, below) and start Zexion again; if the title
-screen still looks as it always did, the mod isn't loaded: check that both files are in Zexion's
-folder (Troubleshooting, below).
+it doesn't, connect the client once (the setup guide's "Start playing") and start Zexion again; if
+the title screen still looks as it always did, the mod isn't loaded: check that both files are in
+Zexion's folder (the setup guide's "Troubleshooting").
 
 ## Make your YAML
 
@@ -100,8 +101,10 @@ this section).
    [releases page](https://github.com/ArchipelagoMW/Archipelago/releases), download the Linux
    build, either the `.AppImage` (then make it executable: in its Properties, or `chmod +x`) or
    the `.tar.gz` (then unpack it). Start the Launcher from it: the AppImage itself, or
-   `ArchipelagoLauncher` in the unpacked folder. Then install `zexion.apworld` (Install, above).
-2. Close Zexion. Copy `libzexion_ap.so` into Zexion's folder: in Steam, right-click Zexion,
+   `ArchipelagoLauncher` in the unpacked folder. In the Launcher, choose **Install APWorld** and
+   pick `zexion.apworld`, from the folder you unpacked the release's Linux archive
+   (`zexion-ap-<version>-linux.tar.gz`) into. The Launcher then lists **Zexion Client**.
+2. Close Zexion. Copy `libzexion_ap.so`, from that folder too, into Zexion's folder: in Steam, right-click Zexion,
    Manage, Browse local files. That is the folder wherever Zexion is installed, on an SD card
    or another drive too, as is common on the Steam Deck.
 3. In Steam, right-click Zexion, Properties, General, and set its **Launch Options** to this
@@ -129,8 +132,8 @@ this section).
    folder can't find `./libzexion_ap.so`, and Linux may print a warning about it in the game's
    output (expected, not seen); it does no harm. A preload that is missing or can't load only
    makes the game start without the mod.
-4. Start Zexion, then open **Zexion Client** from the Launcher, as in "Start playing" above. Run
-   the client as your own user, not inside Steam (not as a non-Steam game).
+4. Start Zexion, then open **Zexion Client** from the Launcher, as in the setup guide's "Start
+   playing". Run the client as your own user, not inside Steam (not as a non-Steam game).
 
 On the Steam Deck, play in **Desktop Mode**, where the Launcher and the client run next to the
 game. The mod has been tried on a Steam Deck with Zexion on the SD card (it loaded) and on a
@@ -138,8 +141,8 @@ Linux PC. When the mod is in, Zexion's native Linux version's title screen is me
 ARCHIPELAGO MOD and START THE AP CLIENT TO PLAY A SEED the first time it starts, as on Windows,
 with no client having connected (not yet seen on Linux from a first start: if it doesn't, it
 shows once the client has connected; if it still doesn't, the mod isn't loaded: check the launch
-option and that `libzexion_ap.so` is in Zexion's folder (Troubleshooting, below)). The
-client's "Can't reach the running game" has the same causes.
+option and that `libzexion_ap.so` is in Zexion's folder (the setup guide's "Troubleshooting")).
+The client's "Can't reach the running game" has the same causes.
 
 The mod's small files for playing without the client are in `~/.local/share/ZexionAP` (with
 Flathub's Steam, usually `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP`). Playing
@@ -217,9 +220,11 @@ it gives the mod the seed's file again. Saves from before this feature need that
   release may not play with a newer one (the client says so). Every Zexion player in a game
   uses the same release.
 - To update: download the new release's archive for your system from the Releases page and
-  unpack it, close Zexion, then replace all the files with the new release's. Install the new
-  `zexion.apworld`, and copy the new `zexion_ap.dll` and `version.dll` into Zexion's folder (on
-  Linux, the new `libzexion_ap.so`: the launch option stays as it is).
+  unpack it, close Zexion, then replace the mod files and `zexion.apworld` with the new
+  release's. Install the new `zexion.apworld`, and copy the new `zexion_ap.dll` and
+  `version.dll` into Zexion's folder (on Linux, the new `libzexion_ap.so`: the launch option
+  stays as it is). Releases before 2.0.0 came as loose files, not an archive; the files in the
+  archive have the same names, so copy them over the old ones.
 - Then connect the client once with Zexion running. It gives the mod what it needs to play your
   seed's saves with the client closed, such as where your own traps are, which go off at their
   pickup only once it has.

@@ -636,10 +636,13 @@ To release:
 
 What `tools/build_apworld.py` writes into `dist/` (what each archive holds, and its `README.md`,
 made from the setup guide's section for that system, so a change to that section changes it) and
-what it refuses: [`CLAUDE.md`](../CLAUDE.md), "Releases and versions". Run locally, rebuild `native/` first after a checkout that touched it;
-the Linux helper it packs must load in the Steam Runtime (Windows can't build one, and one built
-on a newer glibc is refused when it asks for that glibc): CI's `native-linux-runtime` job's
-`libzexion_ap-runtime` artifact in `native/build`, or a build in the SDK's container.
+what it refuses: [`CLAUDE.md`](../CLAUDE.md), "Releases and versions". Run locally, rebuild
+`native/` first after a checkout that touched it, and empty `dist/` of an earlier build's other
+files (it refuses to build beside them); the Linux helper it packs must load in the Steam Runtime
+(Windows can't build one, and one built on a newer glibc is refused when it asks for that glibc):
+CI's `native-linux-runtime` job's `libzexion_ap-runtime` artifact in `native/build`, or a build in
+the SDK's container. Two builds of one commit are the same bytes: every file is dated by
+`SOURCE_DATE_EPOCH`, else the commit's time.
 The apworld's `archipelago.json` is the world's plus the two container keys Archipelago's own
 builder adds, `version` 7 and `compatible_version` 7 (`CONTAINER_KEYS`). Without
 `compatible_version`, AP 0.6.8's `APContainer.read_contents` fails, its apworld loader logs

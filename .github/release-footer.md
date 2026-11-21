@@ -32,9 +32,11 @@ needs only that (to generate a game with Zexion in it).
 
 - Finish your seed first, or keep {{PREVIOUS}} until it ends. Everyone playing Zexion in a game should
   use the same release.
-- Close Zexion and replace the files together, from the new archive for your system: install the
-  new `zexion.apworld`, and copy the new `zexion_ap.dll` and `version.dll` into Zexion's folder
-  (on Linux, the new `libzexion_ap.so`).
+- Close Zexion and replace the mod files and `zexion.apworld` together, from the new archive for
+  your system: install the new `zexion.apworld`, and copy the new `zexion_ap.dll` and
+  `version.dll` into Zexion's folder (on Linux, the new `libzexion_ap.so`). Releases before 2.0.0
+  came as loose files, not an archive; the files in the archive have the same names, so copy them
+  over the old ones.
 - Then connect the client once with Zexion running.
 {{UPDATE_STEPS}}
 

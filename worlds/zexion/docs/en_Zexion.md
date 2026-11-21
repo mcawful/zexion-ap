@@ -13,7 +13,7 @@ says so, unless the other players' filler makes up the difference (not Area Maps
 own world: "What do Area Maps and Intel Chips do?").
 
 You need the Zexion Archipelago mod and the Zexion Client: see the setup guide
-(`zexion-setup-guide.md` in the release).
+(`zexion-setup-guide.md` in the release's archive).
 
 ## What is the goal?
 

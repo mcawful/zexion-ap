@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import tarfile
 import time
 import zipfile
@@ -176,6 +177,119 @@ def test_a_setup_guide_without_a_readmes_section_is_refused(
 ) -> None:
     monkeypatch.setitem(bap.PLATFORMS, "linux", bap.Platform(".tar.gz", "Linux", "No such section"))
     refused(tmp_path, r'no "## No such section" section')
+
+
+def dangling(readme: str, headings: list[str]) -> list[str]:
+    """The references in ``readme`` to a setup guide section it does not hold: the section's
+    name in quotes, unless written as the setup guide's, or next to "above" or "below"."""
+    own = set(re.findall(r"^## (.+)$", readme, re.M))
+    found = []
+    for heading in headings:
+        if heading in own:
+            continue
+        name = re.escape(heading)
+        for match in re.finditer(rf'"{name}"', readme):
+            if not re.search(r"the setup guide's\s+$", readme[: match.start()]):
+                found.append(match.group())
+        found += re.findall(rf'{name}"?\)?,?\s+(?:above|below)\b', readme)
+        found += re.findall(rf'\b(?:above|below),?\s+\(?"?{name}\b', readme)
+    return found
+
+
+def test_no_readme_points_at_a_section_it_does_not_hold(tmp_path: Path, dlls) -> None:
+    guide = (bap.WORLD / "docs" / "setup_en.md").read_text(encoding="utf-8")
+    headings = re.findall(r"^## (.+?)\s*$", guide, re.M)
+    assert {"Install", "Start playing", "Troubleshooting", "Linux and Steam Deck"} <= set(headings)
+    for platform in bap.PLATFORMS:
+        text = bap.readme(platform, bap.client_version())
+        assert dangling(text, headings) == [], platform
+
+
+def test_a_dangling_reference_is_caught() -> None:
+    headings = ["Install", "Start playing", "Troubleshooting"]
+    text = '## Install\n\nSee "Install" above.\n'
+    assert dangling(text, headings) == []
+    assert dangling(text + "Then (Start playing, below).\n", headings) == ["Start playing, below"]
+    assert dangling(text + 'As in "Troubleshooting" above.\n', headings) == [
+        '"Troubleshooting"',
+        'Troubleshooting" above',
+    ]
+    assert dangling(text + 'See the setup guide\'s "Troubleshooting".\n', headings) == []
+
+
+def test_two_files_of_one_name_in_an_archive_are_refused(tmp_path: Path, monkeypatch, dlls) -> None:
+    # A guide shipped under a sample's name.
+    sample = bap.SAMPLES / "zexion-easy.yaml"
+    monkeypatch.setattr(bap, "GUIDES", {**bap.GUIDES, sample: sample.name})
+    refused(tmp_path, "two files would share a name in the windows archive")
+
+
+def test_an_archive_that_does_not_read_back_writes_nothing(
+    tmp_path: Path, monkeypatch, dlls
+) -> None:
+    # Even the apworld, made first: nothing is written until every archive is checked.
+    real = bap.listing
+    monkeypatch.setattr(
+        bap, "listing", lambda name, data: {} if name.endswith(".tar.gz") else real(name, data)
+    )
+    refused(tmp_path, r"linux\.tar\.gz does not hold what was put into it")
+
+
+def test_an_out_folder_with_other_files_is_refused_and_left_alone(tmp_path: Path, dlls) -> None:
+    out = tmp_path / "dist"
+    out.mkdir()
+    old = out / "zexion_ap.dll"  # an earlier release's loose file
+    old.write_bytes(b"old")
+    with pytest.raises(SystemExit, match=r"not this release's: zexion_ap\.dll"):
+        bap.build(out)
+    assert [p.name for p in out.iterdir()] == ["zexion_ap.dll"]
+    assert old.read_bytes() == b"old"
+
+
+def test_a_build_over_its_own_files_replaces_them(tmp_path: Path, dlls) -> None:
+    out = tmp_path / "dist"
+    first = {p.name: p.read_bytes() for p in bap.build(out)}
+    (out / "zexion.apworld").write_bytes(b"damaged")
+    second = {p.name: p.read_bytes() for p in bap.build(out)}
+    assert second == first
+    assert sorted(p.name for p in out.iterdir()) == sorted(first)
+
+
+def test_two_builds_of_one_commit_are_the_same_bytes(tmp_path: Path, monkeypatch, dlls) -> None:
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    first = {p.name: p.read_bytes() for p in bap.build(tmp_path / "a")}
+    time.sleep(1.1)  # a clock read anywhere would now differ
+    second = {p.name: p.read_bytes() for p in bap.build(tmp_path / "b")}
+    assert first == second
+
+
+def test_every_date_is_source_date_epoch(tmp_path: Path, monkeypatch, dlls) -> None:
+    stamp = 1_700_000_000  # 2023-11-14 22:13:20 UTC
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", str(stamp))
+    out = tmp_path / "dist"
+    bap.build(out)
+    version = bap.client_version()
+    tarball = (out / f"zexion-ap-{version}-linux.tar.gz").read_bytes()
+    assert int.from_bytes(tarball[4:8], "little") == stamp  # the gzip header's MTIME
+    with tarfile.open(out / f"zexion-ap-{version}-linux.tar.gz") as tf:
+        members = tf.getmembers()
+    assert {m.mtime for m in members} == {stamp}
+    assert {(m.uid, m.gid, m.uname, m.gname) for m in members} == {(0, 0, "", "")}
+    assert not [m for m in members if m.pax_headers]  # an int time needs no PAX header
+    for name in ("zexion.apworld", f"zexion-ap-{version}-windows.zip"):
+        with zipfile.ZipFile(out / name) as zf:
+            assert {i.date_time for i in zf.infolist()} == {(2023, 11, 14, 22, 13, 20)}
+
+
+def test_the_commit_time_is_the_default_date(monkeypatch) -> None:
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    committed = subprocess.run(
+        ["git", "log", "-1", "--format=%ct"], cwd=bap.ROOT, capture_output=True, text=True
+    ).stdout
+    assert bap.build_time() == int(committed)
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "soon")
+    with pytest.raises(SystemExit, match="SOURCE_DATE_EPOCH is not a number"):
+        bap.build_time()
 
 
 def test_the_apworld_holds_the_world_and_the_client(tmp_path: Path, dlls) -> None:

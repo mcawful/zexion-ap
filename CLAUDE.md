@@ -130,7 +130,8 @@ helper also built and tested in the Steam Runtime's SDK (`native-linux-runtime`,
 (`native-linux-runtime-check`, "Linux helper (Steam Runtime) loads": `tools/build_apworld.py
 --check-linux-helper`, then `tests/test_native_linux.py` and
 `tests/test_native_linux_init_order.py` against that build), and a dry run of the release's build
-with it (`release-dry-run`, "release build, dry run"). A pull request into `main` also runs the release gate
+with it (`release-dry-run`, "release build, dry run", which keeps what it built as the
+`release-dry-run` artifact for 7 days). A pull request into `main` also runs the release gate
 (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
@@ -247,7 +248,9 @@ marked executable in the tarball), the player guides `zexion-setup-guide.md` and
 `zexion-game-page.md` (copies of `worlds/zexion/docs/setup_en.md` and `en_Zexion.md`, which name
 each other by those names), the sample YAMLs from `samples/`, one per mode, and a `README.md`
 made at build time from the setup guide's section for that system ("Install", or "Linux and Steam
-Deck"), never kept by hand. It reads each archive back once written. It packs only git-tracked
+Deck"), never kept by hand. It makes and reads back each archive before it writes anything, dates
+every file by `SOURCE_DATE_EPOCH` or else the commit's time (two builds of one commit are the
+same bytes), and refuses an `--out` holding any other file. It packs only git-tracked
 files and refuses missing, stale or mismatched DLLs or Linux
 helper, a Linux helper that would not load in the Steam Runtime (a glibc symbol version newer
 than its 2.31, an unnumbered one such as `GLIBC_PRIVATE`, or a version of any library but glibc's:
