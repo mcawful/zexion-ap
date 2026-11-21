@@ -13,7 +13,7 @@ import types
 from pathlib import Path
 
 import pytest
-from fakes import ELF_BUILD_ID, elf_image
+from fakes import ELF_BUILD_ID, elf_image, fake_proc, proc_entry
 
 from client import linux_helper, patterns
 
@@ -26,25 +26,10 @@ def known(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(patterns, "KNOWN_LINUX_BUILDS", (STAND_IN,))
 
 
-def _process(proc: Path, pid: str, comm: bytes, exe: bytes | None, cmdline: bytes = b"",
-             nspid: str = "") -> None:  # fmt: skip
-    game = proc / pid
-    game.mkdir()
-    (game / "comm").write_bytes(comm)
-    (game / "cmdline").write_bytes(cmdline)
-    (game / "status").write_text(f"Name:\t{comm.decode().strip()}\nNSpid:\t{nspid or pid}\n")
-    # /proc/<pid>/stat: the pid, the name in parentheses, then fields 3 on; 22 is the start time.
-    rest = " ".join(["S"] + ["0"] * 18 + [str(int(pid) * 10)] + ["0"] * 30)
-    (game / "stat").write_text(f"{pid} ({comm.decode().strip()}) {rest}\n")
-    if exe is not None:
-        (game / "exe").write_bytes(exe)  # a link to the binary in the real /proc
-
-
 def _proc(tmp_path: Path, exe: bytes | None = None, nspid: str = "4242\t2") -> Path:
-    proc = tmp_path / "proc"
-    (proc / "self").mkdir(parents=True)
-    (proc / "self" / "status").write_text("NSpid:\t100\n")
-    _process(proc, "4242", b"Zexion\n", elf_image() if exe is None else exe, nspid=nspid)
+    """A ``/proc`` with the game (pid 4242, in the namespace pids ``nspid``) running ``exe``."""
+    proc = fake_proc(tmp_path)
+    proc_entry(proc, "4242", b"Zexion\n", exe=elf_image() if exe is None else exe, nspid=nspid)
     return proc
 
 
@@ -64,7 +49,7 @@ def test_the_game_is_found_with_its_pid_inside_its_namespace(
 def test_steams_launch_wrappers_are_not_the_game(tmp_path: Path) -> None:
     proc = _proc(tmp_path)
     wrapper = b"reaper\0SteamLaunch\0AppId=3392510\0--\0/games/steamapps/common/Zexion/Zexion\0"
-    _process(proc, "4000", b"reaper\n", b"\x7fELF\x01\x01" + bytes(60), wrapper)
+    proc_entry(proc, "4000", b"reaper\n", wrapper, b"\x7fELF\x01\x01" + bytes(60))
     assert linux_helper.find_game(proc).pid == 4242
 
 
@@ -83,7 +68,7 @@ def test_a_binary_edited_after_linking_is_not_the_known_build(tmp_path: Path) ->
 
 def test_two_games_of_the_known_build_are_refused(tmp_path: Path) -> None:
     proc = _proc(tmp_path)
-    _process(proc, "5000", b"Zexion\n", elf_image())
+    proc_entry(proc, "5000", b"Zexion\n", exe=elf_image())
     with pytest.raises(linux_helper.LinuxHelperError, match="runs twice"):
         linux_helper.find_game(proc)
 
@@ -186,9 +171,9 @@ def test_the_token_is_read_from_the_game_s_view_or_the_hosts(tmp_path: Path) -> 
     home = tmp_path / "home"
     _token_at(home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", text="a" * 64)
     # Flatpak Steam's folder, as the host sees it, when the game's root can't be followed
-    assert linux_helper.find_token(game, proc, {}, home) == "a" * 64
+    assert linux_helper.find_tokens(game, proc, {}, home)[0][1] == "a" * 64
     _token_at(proc / "4242" / "root", "sandbox", "data")  # the game's own view wins
-    assert linux_helper.find_token(game, proc, {}, home) == TOKEN
+    assert linux_helper.find_tokens(game, proc, {}, home)[0][1] == TOKEN
 
 
 @linux_only
@@ -223,7 +208,7 @@ def test_a_token_file_others_can_read_or_that_is_no_token_is_not_used(
     with pytest.raises(
         linux_helper.LinuxHelperError, match="takes only a client that has its token"
     ):
-        linux_helper.find_token(game, proc, {}, home)
+        linux_helper.find_tokens(game, proc, {}, home)
 
 
 @linux_only
@@ -236,7 +221,7 @@ def test_a_token_that_is_a_link_is_not_followed(tmp_path: Path) -> None:
     link.parent.mkdir(parents=True)
     link.symlink_to(real)
     with pytest.raises(linux_helper.LinuxHelperError, match="no token|takes only a client"):
-        linux_helper.find_token(game, proc, {}, home)
+        linux_helper.find_tokens(game, proc, {}, home)
 
 
 @linux_only
@@ -244,7 +229,7 @@ def test_no_token_says_where_it_looked_and_what_to_do(tmp_path: Path) -> None:
     proc = _proc(tmp_path)
     game = linux_helper.find_game(proc)
     with pytest.raises(linux_helper.LinuxHelperError) as raised:
-        linux_helper.find_token(game, proc, {"XDG_DATA_HOME": "/host/data"}, tmp_path / "home")
+        linux_helper.find_tokens(game, proc, {"XDG_DATA_HOME": "/host/data"}, tmp_path / "home")
     message = str(raised.value)
     assert "/host/data/ZexionAP/token" in message and "com.valvesoftware.Steam" in message
     assert "can't read" in message and "no token" in message
@@ -390,7 +375,6 @@ def test_the_newest_token_is_tried_first_and_none_twice(tmp_path: Path) -> None:
     _token_at(flatpak, "data", text="b" * 64)  # the same token again: once
     found = linux_helper.find_tokens(game, proc, {}, home)
     assert [token for _, token in found] == ["b" * 64, "a" * 64]
-    assert linux_helper.find_token(game, proc, {}, home) == "b" * 64
 
 
 def test_the_ranges_the_helper_lets_a_client_write_are_the_ones_the_client_writes() -> None:

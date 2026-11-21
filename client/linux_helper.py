@@ -47,8 +47,10 @@ TOKEN_LENGTH = 64  # the helper's 2 * kTokenBytes: lower-case hex
 FLATPAK_STEAM = Path(".var", "app", "com.valvesoftware.Steam")  # its home, on the host
 
 
-class LinuxHelperError(RuntimeError):
-    """The game, the helper or its socket is not there or not as expected."""
+class LinuxHelperError(native.HelperError):
+    """The game, the helper or its socket is not there or not as expected. A ``native.HelperError``
+    too, so the step's grants (session.give_through_helper) and the poll's ticks (ticks.Link)
+    take the two helpers' failures alike."""
 
 
 class GameNotFound(LinuxHelperError):
@@ -64,12 +66,7 @@ class HelperBusy(LinuxHelperError):
     so the first request goes unanswered."""
 
 
-class HelperTooOld(LinuxHelperError):
-    """The helper in the game takes the client's addresses but not a request this client
-    needs: a build of the same version from before it, still preloaded."""
-
-
-class NoReply(LinuxHelperError):
+class NoReply(LinuxHelperError, native.ReplyLost):
     """A request went out but no reply came back (within the timeout, or the socket failed or
     closed after the send: ConnectionLost): the helper may have acted on it. Every other
     LinuxHelperError from a request means it did not."""
@@ -114,11 +111,8 @@ def running(pid: int, started: int, proc: Path = PROC) -> bool:
 def inner_pid(pid: int, proc: Path = PROC) -> int:
     """The pid the process ``pid`` has in its own namespace (``NSpid``'s last entry), or
     ``pid`` on a kernel without ``NSpid``."""
-    status = (proc / str(pid) / "status").read_text(errors="replace")
-    match = re.search(r"^NSpid:\s*(.*)$", status, re.MULTILINE)
-    if not match or not match.group(1).split():
-        return pid
-    return int(match.group(1).split()[-1])
+    pids = procfs.namespace_pids((proc / str(pid) / "status").read_text(errors="replace"))
+    return int(pids[-1]) if pids else pid
 
 
 def identify(data: bytes) -> tuple[patterns.LinuxBuild | None, elf.Image]:
@@ -268,16 +262,6 @@ def find_tokens(
         "it), or the helper had nowhere to write it: the game's stderr then has a 'no token' "
         "line"
     )
-
-
-def find_token(
-    game: LinuxGame,
-    proc: Path = PROC,
-    environ: dict[str, str] | None = None,
-    home: Path | None = None,
-) -> str:
-    """The most recently written token ``find_tokens`` finds."""
-    return find_tokens(game, proc, environ, home)[0][1]
 
 
 class LinuxHelper:
@@ -554,16 +538,15 @@ class LinuxMod:
     game's binary (linux_targets.helper_config): new games (``request``, for the client's
     newgame_tick), grants with their popups, traps among them (``apply``, for
     session.give_through_helper), other players' items' labels (``request``, for
-    ticks.linux_labels_tick), the seed's own traps (``request``, for ticks.linux_seed_tick),
+    ticks.labels_tick), the seed's own traps (``request``, for ticks.linux_seed_tick),
     received Energy Shields (``request``, for ticks.shields_tick) and DeathLink's deaths
     (``request``, for ticks.deathlink_tick), among others. LinuxHelperError when the helper
-    refuses the addresses. ``told``: what the client's ticks told it (ticks.labels_tick,
-    linux_seed_tick, linux_discs_tick, linux_intel_tick, linux_assists_tick,
-    linux_client_back_tick, linux_other_save_tick and the finds' and RETURN HOME's; it starts
-    with nothing told, CLIENT CONNECTED asked as of the Windows helper), as the Windows helper's
-    ctx.told. It holds for one connection of ``pm`` only (``current``): the helper drops the
-    plan and the labels when it closes (it keeps the seed's text, which is told again all the
-    same and replaces its own record: Game::merge_offline)."""
+    refuses the addresses. ``told``: what the client's ticks told it (the ticks of
+    zexion_client.poll, through ticks.helper_link; it starts with nothing told, CLIENT CONNECTED
+    asked as of the Windows helper), as the Windows helper's ctx.told. It holds for one
+    connection of ``pm`` only (``current``): the helper drops the plan and the labels when it
+    closes (it keeps the seed's text, which is told again all the same and replaces its own
+    record: Game::merge_offline)."""
 
     def __init__(self, pm: LinuxProcess) -> None:
         from . import linux_targets, state  # here: neither imports this module
@@ -573,15 +556,6 @@ class LinuxMod:
         reply = pm.request(linux_targets.helper_config(pm.game.image))
         if reply != "ok":
             raise LinuxHelperError(f"the helper did not take the game's addresses: {reply}")
-        # A helper of this version built before traps were ported refuses their popups, which
-        # would hold every grant back for good (session.give_through_helper retries a refusal).
-        # Any other reply (a frame not come in time: `refused no frame`) is no such helper: tried
-        # again as any failed configuration is.
-        reply = pm.request("trap_status")
-        if reply == "error unknown request":
-            raise HelperTooOld(f"the helper does not know trap_status: {reply}")
-        if not reply.startswith("queued "):
-            raise LinuxHelperError(f"the helper's trap_status: {reply}")
         self.connection = pm.connection
 
     def current(self) -> bool:
@@ -594,14 +568,9 @@ class LinuxMod:
 
     def apply(self, text: str) -> str:
         """As native.Helper.apply: "applied", or "refused <why>" (nothing was written);
-        native.ReplyLost if the request went out with no reply (it may have been applied), and
-        native.HelperError otherwise."""
-        try:
-            reply = self.pm.request(text)
-        except NoReply as exc:
-            raise native.ReplyLost(f"the Linux helper: {exc}") from exc
-        except LinuxHelperError as exc:
-            raise native.HelperError(f"the Linux helper: {exc}") from exc
+        NoReply (a native.ReplyLost) if the request went out with no reply (it may have been
+        applied), and another LinuxHelperError (a native.HelperError) otherwise."""
+        reply = self.pm.request(text)
         if reply != "applied" and not reply.startswith("refused "):
-            raise native.HelperError(f"unexpected reply to apply: {reply!r}")
+            raise LinuxHelperError(f"unexpected reply to apply: {reply!r}")
         return reply

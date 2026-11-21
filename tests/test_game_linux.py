@@ -4,9 +4,10 @@ targets from the binary's symbols, and the checks made before it attaches."""
 from __future__ import annotations
 
 import struct
+import types
 
 import pytest
-from test_linux_targets import b1_like
+from fakes import b1_like
 
 from client import game, linux_helper, linux_targets, patterns
 
@@ -160,13 +161,7 @@ def test_the_clients_attach_is_the_linux_one_on_linux(monkeypatch) -> None:
     assert game.Game.attach() == "linux game"
 
 
-def test_the_windows_helper_is_not_tried_with_the_linux_build(linux, tmp_path) -> None:
-    from client import native
-
-    g = game.Game.attach_linux()
-    with pytest.raises(native.NoWindowsHelper, match="Linux helper") as caught:
-        native.attach(g, tmp_path / "zexion_ap.dll")
-    assert not isinstance(caught.value, native.ModFixable) and not caught.value.old_gone
-    from client import state
-
-    assert state.helper_failed(caught.value) is None  # the Linux helper runs every part
+def test_only_the_linux_build_is_on_linux() -> None:
+    assert game.on_linux(types.SimpleNamespace(platform="linux"))
+    assert not game.on_linux(types.SimpleNamespace(platform="windows"))
+    assert not game.on_linux(object()) and not game.on_linux(None)  # a stand-in, no game

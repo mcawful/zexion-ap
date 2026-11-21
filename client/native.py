@@ -565,17 +565,10 @@ def _hello(helper: Helper) -> dict[str, str]:
         return {"version": ""}
 
 
-class NoWindowsHelper(HelperError):
-    """The game's Linux build: no Windows helper there. The Linux helper runs every part of it
-    (native/README.md, "The Linux helper"; the client drives it through linux_helper.LinuxMod and
-    the linux_ ticks), so the client has nothing to tell the player."""
-
-
 def attach(g, dll: Path, notes: list[str] | None = None) -> Helper:
-    """``_attach``, its HelperErrors marked ``old_gone`` once the old helper has unloaded. With
-    the game's Linux build (``g.platform``), NoWindowsHelper: the Linux helper serves it instead."""
-    if getattr(g, "platform", "windows") == "linux":
-        raise NoWindowsHelper("the game's Linux build has the Linux helper, not this one")
+    """``_attach``, its HelperErrors marked ``old_gone`` once the old helper has unloaded. Only
+    for the game's Windows build: the Linux build has its own helper (linux_helper.LinuxMod),
+    which ticks.attach_helper leaves alone."""
     unloaded: list[bool] = []
     try:
         return _attach(g, dll, notes, unloaded)

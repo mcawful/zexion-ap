@@ -345,3 +345,181 @@ def test_only_the_others_the_server_has_checked_are_kept_collected() -> None:
     assert state.others_gone(conn, {base + i for i in range(154)}) == {3, 40}
     assert state.others_gone(conn, {base + 3, base + 20, base + 7}) == {3}
     assert state.others_gone(conn, set()) == set()
+
+
+# --- how a poll's step gives, and what it records (plan_give, after_step) -----------------------
+
+NONE, LET_GO, LOST = state.Reattach.NONE, state.Reattach.LET_GO, state.Reattach.LOST
+HELPER, MOD, DIRECT = state.Grants.HELPER, state.Grants.MOD, state.Grants.DIRECT
+NOW = 1000.0
+
+
+@pytest.mark.parametrize(
+    ("case", "helper", "mod", "linux", "run", "expected"),
+    [
+        # What it gives through, give, keep_traps, waiting, linux_waiting, the run's reattach after.
+        ("Windows helper", True, False, False, {}, (HELPER, True, False, False, False, NONE)),
+        ("no helper", False, False, False, {}, (DIRECT, True, False, False, False, NONE)),
+        (
+            "lost helper held for",
+            False, False, False, dict(reattach=LOST),
+            (DIRECT, False, False, True, False, LOST),
+        ),
+        (
+            "lost helper held for once only: the last step failed or waited",
+            False, False, False, dict(reattach=LOST, step_failed=True),
+            (DIRECT, True, False, False, False, NONE),
+        ),
+        (
+            "let go helper is attached again by the poll, not waited for here",
+            False, False, False, dict(reattach=LET_GO),
+            (DIRECT, True, False, False, False, LET_GO),
+        ),
+        (
+            "swap pending keeps the traps for the helper to come",
+            False, False, False, dict(swap_pending=True),
+            (DIRECT, True, True, False, False, NONE),
+        ),
+        (
+            "swap pending, helper there: nothing to keep for",
+            True, False, False, dict(swap_pending=True),
+            (HELPER, True, False, False, False, NONE),
+        ),
+        ("Linux helper configured", False, True, True, {}, (MOD, True, False, False, False, NONE)),
+        (
+            "Linux helper after failed steps, fewer than LINUX_DIRECT_AFTER",
+            False, True, True, dict(linux_failed=state.LINUX_DIRECT_AFTER - 1),
+            (MOD, True, False, False, False, NONE),
+        ),
+        (
+            "Linux helper after LINUX_DIRECT_AFTER failed steps: written directly",
+            False, True, True, dict(linux_failed=state.LINUX_DIRECT_AFTER),
+            (DIRECT, True, False, False, False, NONE),
+        ),
+        (
+            "Linux helper lost or not configured yet, the hold running",
+            False, False, True, dict(linux_back_by=NOW + 5),
+            (DIRECT, False, False, False, True, NONE),
+        ),
+        (
+            "Linux helper not configured, the hold over: written directly",
+            False, False, True, dict(linux_back_by=NOW - 1),
+            (DIRECT, True, False, False, False, NONE),
+        ),
+        (
+            "Linux helper not configured after LINUX_DIRECT_AFTER failures, the hold running",
+            False, False, True, dict(linux_failed=state.LINUX_DIRECT_AFTER, linux_back_by=NOW + 5),
+            (DIRECT, False, False, False, True, NONE),
+        ),
+        (
+            "Linux helper configured, a hold that is left over does not matter",
+            False, True, True, dict(linux_back_by=NOW + 5),
+            (MOD, True, False, False, False, NONE),
+        ),
+        (
+            "the Linux build's hold is not the Windows helper's",
+            False, False, True, dict(reattach=LOST, linux_back_by=NOW - 1),
+            (DIRECT, False, False, True, False, LOST),
+        ),
+    ],
+)  # fmt: skip
+def test_a_polls_step_gives_through_what_the_helpers_state_says(
+    case, helper, mod, linux, run, expected
+) -> None:
+    plan = state.plan_give(state.GameRun(**run), helper=helper, mod=mod, linux_game=linux, now=NOW)
+    grants, give, keep, waiting, linux_waiting, reattach = expected
+    assert plan == state.GivePlan(grants, give, keep, waiting, linux and not helper, linux_waiting,
+                                  reattach), case  # fmt: skip
+
+
+def planned(**changes) -> state.GivePlan:
+    fields = dict(
+        grants=DIRECT, give=True, keep_traps=False, waiting=False, linux=False,
+        linux_waiting=False, reattach=NONE,
+    )  # fmt: skip
+    fields.update(changes)
+    return state.GivePlan(**fields)
+
+
+# The expected of each case is (the failure to handle, whether a lost Windows helper is forgiven,
+# step_failed, linux_failed) after the step.
+FAILURES = state.Failure
+
+
+@pytest.mark.parametrize(
+    ("case", "plan", "run", "error", "helper", "in_play", "expected"),
+    [
+        (
+            "the Windows helper fails the first step",
+            planned(grants=HELPER), {}, True, True, True,
+            (FAILURES.HELPER, False, True, 0),
+        ),
+        (
+            "the Windows helper fails the step again: left to the usual retry",
+            planned(grants=HELPER), dict(step_failed=True), True, True, True,
+            (FAILURES.HELPER, True, True, 0),
+        ),
+        (
+            "the Linux helper fails a step: dropped, one more in a row",
+            planned(grants=MOD, linux=True), dict(linux_failed=1), True, False, True,
+            (FAILURES.LINUX_MOD, False, False, 2),
+        ),
+        (
+            "a held step for a lost Windows helper",
+            planned(waiting=True, give=False), {}, False, False, True,
+            (None, False, True, 0),
+        ),
+        (
+            "a step that goes through the Windows helper in play ends the failures",
+            planned(grants=HELPER), dict(step_failed=True), False, True, True,
+            (None, False, False, 0),
+        ),
+        (
+            "a step through the Windows helper not in play does not",
+            planned(grants=HELPER), dict(step_failed=True), False, True, False,
+            (None, False, True, 0),
+        ),
+        (
+            "a step written directly with no Windows helper leaves the count",
+            planned(), dict(step_failed=True), False, False, True,
+            (None, False, True, 0),
+        ),
+        (
+            "a step through the Linux helper in play ends its failures in a row",
+            planned(grants=MOD, linux=True), dict(linux_failed=2), False, False, True,
+            (None, False, False, 0),
+        ),
+        (
+            "the direct step after LINUX_DIRECT_AFTER failures ends them too",
+            planned(linux=True), dict(linux_failed=state.LINUX_DIRECT_AFTER), False, False, True,
+            (None, False, False, 0),
+        ),
+        (
+            "a Linux step not in play leaves them",
+            planned(grants=MOD, linux=True), dict(linux_failed=2), False, False, False,
+            (None, False, False, 2),
+        ),
+        (
+            "a step held back for the Linux helper is no step that went through",
+            planned(linux=True, linux_waiting=True, give=False), dict(linux_failed=2),
+            False, False, True,
+            (None, False, False, 2),
+        ),
+    ],
+)  # fmt: skip
+def test_what_a_step_leaves_in_the_run(case, plan, run, error, helper, in_play, expected) -> None:
+    after = state.after_step(
+        plan, state.GameRun(**run), error=error, helper=helper, in_play=in_play
+    )
+    failure, forgive, step_failed, linux_failed = expected
+    assert after == state.AfterStep(failure, forgive, step_failed, linux_failed), case
+
+
+def test_a_new_game_run_starts_with_no_hold_no_retry_and_no_mismatch() -> None:
+    # game_closed puts one in place of the run: the next game's helper is attached with none of
+    # the last one's holds, failures or retries.
+    fresh = state.GameRun()
+    assert fresh.reattach is NONE and not fresh.mismatched and not fresh.swap_pending
+    assert fresh.helper_retry_at == fresh.helper_back_by == fresh.attach_again_at == 0.0
+    assert fresh.linux_back_by == 0.0 and fresh.linux_failed == 0 and not fresh.step_failed
+    assert not fresh.reload_mod_pending and not fresh.disarm_pending
