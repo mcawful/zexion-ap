@@ -503,6 +503,20 @@ def test_write_is_refused_outside_what_the_client_writes(game: Game) -> None:
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+def test_a_status_asks_no_config_and_a_request_that_sets_state_does(game: Game) -> None:
+    # One table for both helpers (native/src/game_requests.cpp): the read-only statuses answer
+    # before any config, as the Windows helper's do; what sets state, and what reads the game,
+    # is refused until the helper is configured.
+    with game.connect() as sock:
+        for status in ("trap_status", "drop_status", "newgame_status"):
+            assert not ask(sock, status).startswith("refused"), status
+        assert ask(sock, "trap_status") == "queued 0; last none"
+        for request in ("intel on", "assists lock", "mission_status", "other_save"):
+            assert ask(sock, request) == "refused not configured", request
+        assert ask(sock, "unheard_of") == "error unknown request"
+
+
+@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
 def test_a_connection_that_sets_something_has_it_put_back_when_it_goes(game: Game) -> None:
     # A connection made again in the middle of a poll has not sent `config` yet: what it sets
     # (here the disks' count) is put back when it goes all the same (the Linux helper's

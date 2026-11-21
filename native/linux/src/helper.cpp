@@ -43,7 +43,8 @@
 #include "game_mem.h"    // in_image_code
 #include "kept.h"        // Kept
 #include "mailbox.h"
-#include "requests.h"  // parse_newgame, parse_batch
+#include "game_requests.h"  // the requests that act on the game
+#include "offline_inbox.h"  // the seeds read and put, for the next frame
 #include "offline.h"  // put_offline_file: a seed's own traps and disks
 
 namespace {
@@ -121,7 +122,8 @@ __attribute__((init_priority(101))) Kept<std::vector<Range>> g_client_writes;
 // these afresh over what start set (init_priority puts theirs first).
 __attribute__((init_priority(101))) Kept<zap::Mailbox> g_mailbox;
 __attribute__((init_priority(101))) Kept<zap::Game> g_game;  // game thread only
-std::atomic<bool> g_client_left{false};  // a client went: its plan is dropped at the next frame
+// A client that set something has gone: its plan is dropped at the next frame (Game::client_gone).
+std::atomic<bool> g_client_left{false};
 
 // The game's own function that swaps its window once a frame (docs/re/linux.md, "The per-frame
 // call"): frame work runs only for its calls, by their return address. In the test build, the
@@ -776,45 +778,15 @@ void guarded(Work&& work) {
     }
 }
 
-// Game thread: what a client's going puts back. A client's popups stay queued for its save, as on
-// Windows; its plan, its labels, its Intel Chips and its ASSIST lock go (the records, the popup's
-// width, the entry and the pixels put back); the look without the client (watch_offline) may
-// dress the save again.
-void client_gone() {
-    guarded([] { g_game->client_left(); });  // an own disk's count the helper's again
-    // Its seed (put by offline_put) no longer the one a look applies in: client_gone's
-    // forget_client_seed on Windows. Run for any connection that set state (sets_client_state,
-    // offline_put among them), as its seed was noted.
-    guarded([] { g_game->forget_client_seed(); });
-    // RETURN HOME's prompt and ending, the map's names and the choice put back in open menus,
-    // before the disks go below (which drop the prompt asked for), as on Windows.
-    guarded([] { g_game->put_back_client_menus(&archipelago_chosen); });
-    // The look without the client dressed again from scratch at the next look, its not-connected
-    // notice with it, as client_gone does on Windows (put_back_game).
-    guarded([] { g_game->leave_offline(); });
-    guarded([] { g_game->disarm_newgame(); });
-    guarded([] { g_game->restore_ap_items(); });
-    guarded([] { g_game->restore_intel(); });  // the Area Map's record the game's again
-    guarded([] {  // ASSIST unlocked, as drop_save_look on Windows
-        g_game->set_assists_locked(false);
-        g_game->restore_assists();
-    });
-    guarded([] { g_game->restore_translation(); });  // the names, entry 70, the icons
-    guarded([] {  // the disks' count off and put back, as drop_save_look on Windows
-        g_game->set_discs(0, 0, "");
-        g_game->restore_discs();
-    });
-    // Its notices not shown yet withdrawn (another seed's, CLIENT CONNECTED.), as client_gone does
-    // on Windows: the offline look dresses the save again with no client from here.
-    guarded([] { g_game->drop_client_notices(); });
-}
-
-// Game thread: client_gone once if a client has gone since it last ran. At the top of each frame
-// and of each request's work (on_game): the serving thread marks a client gone before it takes the
-// next, so whatever the next client asks, the last one's plan is put back first and is never
-// taken for the new one's. Run once, whichever comes first (the flag's exchange).
+// Game thread: Game::client_gone once if a client that set something has gone since it last ran
+// (the Windows helper's too). At the top of each frame and of each request's work (on_game): the
+// serving thread marks a client gone before it takes the next, so whatever the next client asks,
+// the last one's plan is put back first and is never taken for the new one's. Run once, whichever
+// comes first (the flag's exchange).
 void client_gone_if_left() {
-    if (g_client_left.exchange(false)) client_gone();
+    if (g_client_left.exchange(false)) {
+        guarded([] { g_game->client_gone(&archipelago_chosen); });
+    }
 }
 
 // `work` run on the game's thread at its next frame call; "refused not configured" first when
@@ -878,14 +850,7 @@ bool player_where_expected() {
 // AP saves without the client (native/README.md, "AP saves without the client"): the seeds'
 // files (offline.h) read on the serving thread at start and each time a client goes, and the
 // seeds put since; the next frame takes both (take_offline).
-__attribute__((init_priority(101))) std::mutex g_offline_mutex;
-__attribute__((init_priority(101))) Kept<std::optional<zap::OfflineFiles>>
-    g_offline_files;  // read, not yet taken
-struct PutSeed {
-    zap::OfflineSeed seed;
-    bool kept;  // its file written ("stored", "unchanged")
-};
-__attribute__((init_priority(101))) Kept<std::vector<PutSeed>> g_put_seeds;  // put since, not taken
+__attribute__((init_priority(101))) Kept<zap::OfflineInbox> g_inbox;
 // The folder, found once in the constructor (getenv there, before the game's threads run: never
 // while they may set the environment).
 __attribute__((init_priority(101))) Kept<std::wstring> g_offline_folder;
@@ -897,37 +862,20 @@ __attribute__((init_priority(101))) Kept<std::wstring> g_save_folder;
 // into the save folder only while a slot here uses it, and no save file of the game is opened.
 __attribute__((init_priority(101))) Kept<zap::SavedSeeds> g_saved;
 
-// The slots for a call of the serving thread: null before the first list (none known: no copy).
-const std::vector<zap::OfflineSeed>* saved_list(std::vector<zap::OfflineSeed>& held) {
-    if (g_saved->generation() == 0) return nullptr;
-    held = g_saved->get();
-    return &held;
-}
 // The client's token (core.h), made in the constructor and written into that folder.
 __attribute__((init_priority(101))) Kept<std::string> g_token;
 
 // Serving thread (file I/O; never the frame call). A file that could not be read is said once.
 void read_offline() {
-    std::vector<zap::OfflineSeed> held;
+    const std::vector<zap::OfflineSeed> saved = g_saved->get();
     zap::OfflineFiles files = zap::read_offline_files(*g_offline_folder, g_build, *g_save_folder,
-                                                      true, saved_list(held));
+                                                      true, &saved);
     static Kept<std::string> said;  // as the globals above: never destroyed under this thread
     if (!files.error.empty() && files.error != *said) {
         std::fprintf(stderr, "zexion-ap %s: seed files: %s\n", kVersion, files.error.c_str());
         *said = files.error;
     }
-    std::lock_guard<std::mutex> lock(g_offline_mutex);
-    *g_offline_files = std::move(files);
-}
-
-// Serving thread: a seed a client has just put, for the next frame (one of its name waiting is
-// replaced, as on Windows).
-void note_put_seed(zap::OfflineSeed seed, bool kept) {
-    std::lock_guard<std::mutex> lock(g_offline_mutex);
-    // One of the same name still waiting is replaced, and the newest put is always last
-    // (take_offline: the client's seed is the last put), as on Windows.
-    std::erase_if(*g_put_seeds, [&](const PutSeed& s) { return s.seed.name == seed.name; });
-    g_put_seeds->push_back({std::move(seed), kept});
+    g_inbox->set_files(std::move(files));
 }
 
 // Game thread: with no client yet, the helper configured from the game's own symbols (the
@@ -971,53 +919,21 @@ void configure_self() {
     }
 }
 
-// Game thread: the files read last and the seeds put since, if new. Files read with no client
-// replace the last ones; with one, they are added to them (Game::set_offline, merge_offline).
-// A seed taken but not kept (no folder, a write that failed) is the helper's until the game
-// closes: added again after each read of the files replaces the seeds (set_offline).
+// Game thread: the files read last and the seeds put since, if new (OfflineInbox::take).
 void take_offline() {
     // The slots' seeds for the other threads: the first frame and every 16th (cheap).
     static uint32_t frame_count = 0;
     if ((frame_count++ & 15u) == 0) {
         guarded([] { g_saved->publish(g_game->saved_seeds()); });  // a throw skips no other work
     }
-    static std::vector<zap::OfflineSeed> unkept;
-    std::optional<zap::OfflineFiles> files;
-    std::vector<PutSeed> put;
-    if (g_offline_mutex.try_lock()) {
-        files = std::exchange(*g_offline_files, std::nullopt);
-        put = std::exchange(*g_put_seeds, {});
-        g_offline_mutex.unlock();
-    }
-    if (files) {
-        if (!files->seeds.empty()) g_seed_files = true;
-        if (g_game->active()) {
-            g_game->merge_offline(std::move(files->seeds));
-        } else {
-            g_game->set_offline(std::move(files->seeds));
-            if (!unkept.empty()) g_game->merge_offline(std::vector<zap::OfflineSeed>(unkept));
-        }
-    }
-    std::vector<zap::OfflineSeed> seeds;
-    for (PutSeed& p : put) {
-        if (!p.kept) {
-            std::erase_if(unkept, [&](const zap::OfflineSeed& s) { return s.name == p.seed.name; });
-            unkept.push_back(p.seed);
-        }
-        seeds.push_back(std::move(p.seed));
-    }
-    if (!seeds.empty()) {
-        // The client puts its own seed alone: the one its look applies in (Game::seed_look_loaded).
-        // Noted here, on the game thread, after the client-gone work of this frame (client_gone:
-        // a put from a client that has gone is ignored, note_client_seed).
-        guarded([&] { g_game->note_client_seed(seeds.back()); });
-        g_game->merge_offline(std::move(seeds));  // after the files, read earlier
-    }
+    g_inbox->take(*g_game, [](const zap::OfflineFiles& files) {
+        if (!files.seeds.empty()) g_seed_files = true;
+    });
     configure_self();  // each frame until it has configured, seed file or not
 }
 
-// The requests that act on the game (native/README.md, "The Linux helper"), or nothing for one
-// core.cpp answers.
+// The requests that act on the game (game_requests.h's table, which the Windows helper runs too),
+// and the Linux helper's own: `config`, `lang` and `offline_put`. Nothing for one core.cpp answers.
 std::optional<std::string> game_request(std::string_view request) {
     if (request == "config" || request.starts_with("config ")) {
         zap::GameAddresses found;
@@ -1028,30 +944,6 @@ std::optional<std::string> game_request(std::string_view request) {
                 return std::string("ok");
             },
             false, error);
-    }
-    if (request.starts_with("ap_newgame\n") || request == "ap_newgame") {
-        zap::NewGamePlan plan;
-        std::string error = zap::parse_newgame(std::string(request), plan);
-        return on_game(
-            [&] {
-                return std::string(g_game->arm_newgame(std::move(plan)) ? "armed"
-                                                                       : "refused not configured");
-            },
-            true, error);
-    }
-    if (request == "disarm") {
-        return on_game([] { g_game->disarm_newgame(); return std::string("disarmed"); }, false);
-    }
-    if (request.starts_with("ap_labels\n") || request == "ap_labels") {
-        std::map<int, zap::Label> labels;
-        std::string error = zap::parse_labels(std::string(request), labels);
-        return on_game(
-            [&] {
-                size_t n = labels.size();
-                g_game->set_labels(std::move(labels));
-                return "labeled " + std::to_string(n);
-            },
-            true, error);
     }
     if (request == "lang") {
         // The language the game shows, one word (as the Windows helper's hello's `lang`): "?"
@@ -1064,118 +956,33 @@ std::optional<std::string> game_request(std::string_view request) {
             },
             false);
     }
-    if (request.starts_with("discs ") || request == "discs") {
-        // The OS Install Disks goal's count and the scanner's line (scan.h; requests.h's format),
-        // as the Windows helper takes them.
-        int count = 0, required = 0;
-        bool told = false;
-        std::string line;
-        std::string error = zap::parse_discs(std::string(request), count, required, line, told);
-        return on_game(
-            [&] {
-                const bool on = !line.empty();
-                g_game->set_discs(count, required, std::move(line), told);
-                return std::string(on ? "discs on" : "discs off");
-            },
-            true, error);
-    }
-    if (request.starts_with("mission_prompt")) {
-        // RETURN HOME WITH THE DISKS? offered once the game is idle in play at home (mission.h;
-        // requests.h's format), as the Windows helper takes it.
-        int column = -1, row = -1;
-        std::string error = zap::parse_mission(std::string(request), column, row);
-        return on_game(
-            [&] {
-                return std::string(g_game->request_mission(column, row) ? "queued"
-                                                                       : "refused not configured");
-            },
-            true, error);
-    }
-    if (request == "mission_status") {
-        return on_game([] { return g_game->mission_status(); }, true);
-    }
-    if (request == "mission_black") {
-        return on_game([] { return g_game->mission_black(); }, true);
-    }
-    if (request == "discs_status") {
-        return on_game([] { return g_game->equipment_status(); }, false);
-    }
-    if (request == "trap_status") {
-        return on_game([] { return g_game->trap_status(); }, true);
-    }
-    if (request == "shield") {  // a received Energy Shield (game_calls.h, spawn_shield)
-        return on_game([] { return g_game->spawn_shield(zap::ticks_ms()); }, false);
-    }
-    if (request == "other_save") {  // a client of another seed's: the save's look kept
-        return on_game([] { return g_game->other_save(); }, true);
-    }
-    if (request == "client_back") {  // CLIENT CONNECTED, once, for a save dressed with none
-        return on_game([] { return std::string(g_game->client_back() ? "shown" : "none"); }, true);
-    }
-    if (request == "assists lock" || request == "assists free") {  // the ASSIST lock (menu.h)
-        const bool lock = request == "assists lock";
-        return on_game(
-            [lock] {
-                g_game->set_assists_locked(lock);
-                return std::string(lock ? "locked" : "free");
-            },
-            true);
-    }
-    if (request == "intel on" || request == "intel off") {  // Intel Chips (intel.h)
-        const bool on = request == "intel on";
-        return on_game(
-            [on] {
-                g_game->set_intel(on);
-                return std::string(on ? "intel on" : "intel off");
-            },
-            true);
-    }
-    if (request == "die") {  // a DeathLink death received (game_calls.h, kill)
-        return on_game([] { return g_game->kill(zap::ticks_ms()); }, false);
-    }
 #ifdef ZAP_HOOKTEST
     if (request == "frame_calls") {  // the calls frame work was taken for (tests only)
         return "frame_calls " + std::to_string(g_frame_calls.load());
     }
 #endif
-    if (request == "feats_status") {  // the Feats guard (feats.h, state): checks
-        return on_game([] { return g_game->feats_state(); }, false);
-    }
-    if (request == "title_status") {  // the title's lines (game_calls.h, title_state): checks
-        return on_game([] { return g_game->title_state(); }, false);
-    }
-    if (request == "drop_status") {  // the received scraps' drops (game_calls.h): live checks
-        return on_game([] { return g_game->drop_status(); }, false);
-    }
     if (request.starts_with("offline_put ")) {
         // Here, on the serving thread: the seed's file written into the helper's folder
         // (offline.cpp, offline_folder), and its text the running helper's from the next frame
-        // (take_offline) whether the file could be kept or not, as on Windows.
+        // (take_offline) whether the file could be kept or not.
         zap::OfflineSeed seed;
         std::string save_error;
-        std::vector<zap::OfflineSeed> held;
+        const std::vector<zap::OfflineSeed> saved = g_saved->get();
         std::string reply = zap::put_offline_file(*g_offline_folder, g_build, std::string(request),
-                                                  &seed, *g_save_folder, &save_error,
-                                                  saved_list(held));
+                                                  &seed, *g_save_folder, &save_error, &saved);
         if (!save_error.empty()) {
             std::fprintf(stderr, "zexion-ap %s: the seed's copy in the save folder: %s\n",
                          kVersion, save_error.c_str());
         }
         if (!seed.name.empty()) {
-            note_put_seed(std::move(seed), reply == "stored" || reply == "unchanged");
+            g_inbox->put_seed(std::move(seed), reply == "stored" || reply == "unchanged");
         }
         return reply;
     }
-    if (request == "newgame_status") {
-        return on_game([] { return g_game->newgame_status(); }, false);
-    }
-    if (request.starts_with("apply\n") || request == "apply") {
-        zap::Batch batch;
-        std::string error = zap::parse_batch(std::string(request), batch);
-        return on_game(
-            [&] { return g_game->apply(batch); }, true, error);
-    }
-    return std::nullopt;
+    std::optional<zap::PreparedRequest> prepared = zap::prepare_game_request(request);
+    if (!prepared) return std::nullopt;
+    return on_game([&] { return prepared->run(*g_game); }, prepared->needs_config,
+                   prepared->error);
 }
 
 // `size` random bytes from the kernel; false if it won't give them.
@@ -1251,20 +1058,6 @@ bool make_token(const std::string& folder) {
     return true;
 }
 
-// Whether a request sets something a client's going must put back (a plan, labels, the ASSIST
-// lock, Intel Chips, the disks' count, a prompt asked for, a seed put): by its first word, the
-// others only read the game, answer it, or act once (a grant, a death, a shield). `config` is one
-// as it installs the client as the active one.
-bool sets_client_state(std::string_view request) {
-    std::string_view word = request.substr(0, request.find_first_of(" \n"));
-    for (std::string_view name :
-         {"config", "ap_newgame", "ap_labels", "discs", "mission_prompt", "other_save",
-          "client_back", "assists", "intel", "offline_put"}) {
-        if (word == name) return true;
-    }
-    return false;
-}
-
 // One client: a request a message, a reply a message, until it goes, sends too much, or says
 // nothing for kClientSilenceSeconds. It serves nothing but one `hello` until the client has shown
 // the token (core.h, gate), and is dropped if its first words are anything else, or not the
@@ -1305,7 +1098,7 @@ void serve_client(int client, bool& left_state) {
             }
             continue;
         }
-        if (sets_client_state(request)) left_state = true;
+        if (zap::sets_client_state(request)) left_state = true;
         std::optional<std::string> game;
         t_posted = false;
         try {
@@ -1661,44 +1454,9 @@ void frame_work() {
     } catch (...) {
         guarded([] { g_game->refuse_newgame("the placement failed"); });
     }
-    // The ARCHIPELAGO choice while a plan offers it, RANDOMIZER back otherwise.
-    guarded([] { g_game->watch_menu(&archipelago_chosen); });
-    // An AP save's look with no client, or with one of another seed (labels, INTEL CHIP, ASSIST,
-    // the disks), set before the watches below apply it, as watch_all orders it on Windows.
-    guarded([] { g_game->watch_offline(); });
-    // The file select, COPY FILE and DELETE FILE: the AP logo on AP saves, each disk seed's save
-    // its own count (files.h), after the look above has set the counts.
-    guarded([] { g_game->watch_files(); });
-    // Other players' items: the stand-ins' records named and restyled, the logo painted, the
-    // popup's width, other Zexion players' items dressed as themselves (apitem.h, looks.h).
-    guarded([] { g_game->watch_map_names(); });  // the cursor's names while the map is open
-    guarded([] { g_game->watch_ap_items(); });
-    guarded([] { g_game->watch_intel(); });  // the Area Map named INTEL CHIP while `intel on`
-    guarded([] { g_game->watch_assists(); });  // ASSIST locked in the options menu while asked
-    guarded([] { g_game->watch_title(); });  // the title screen's lines, with no save loaded
-    guarded([] { g_game->watch_map_marks(); });  // the squares raised, the on-screen write patched
-    // The major-item list: each owned item the game's pickup would list, in play in an AP save,
-    // for the file select's ITEMS row once the game saves or reaches a checkpoint (game_layout.h
-    // pickups; docs/re/linux.md, "Mapped by disassembly: the major-item list").
-    guarded([] { g_game->watch_pickups(); });
-    // In a translation: the helper's names in its tables, its icons in its sheets, the popups'
-    // borrowed entries emptied once their message has gone (translation.h).
-    guarded([] { g_game->watch_translation(); });
-    // The OS Install Disks' count: the scanner's line, the equipment screen's disk and the pause
-    // screen's disk row, the disk glyph (equip.h, pause.h, scan.h).
-    guarded([] { g_game->watch_discs(); });
-    guarded([] { g_game->watch_equipment(); });
-    guarded([] { g_game->watch_mission(); });  // RETURN HOME WITH THE DISKS? (mission.h)
-    // Traps: this world's own at their pickup (from the seed a client put), the AILMENTS tests'
-    // patches while a trap's timer runs, then one trap set off (a received one as its popup
-    // shows), as the Windows helper's frame (trap.h; native/README.md, "Traps").
-    guarded([] { g_game->watch_own_traps(); });
-    // This world's own disks: their cells watched with a client or none, a pickup's count shown
-    // with none, as the Windows helper's (game_offline.cpp).
-    guarded([] { g_game->watch_own_disks(); });
-    guarded([] { g_game->watch_trap_patches(); });
-    // Tall popups' lines cut right: the text window's top cut takes off each glyph's row (text.h).
-    guarded([] { g_game->watch_text_cut(); });
+    // Every other part's watch (Game::watch_rest), each guarded inside it, in one order on both
+    // platforms.
+    g_game->watch_rest(&archipelago_chosen);
     guarded([] { g_game->pump_traps(zap::ticks_ms()); });
     guarded([] { g_game->pump_popups(); });
     // A received scrap's drop once its popup has shown and the player has settled, as the

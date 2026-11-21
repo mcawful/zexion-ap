@@ -20,8 +20,10 @@
 #include "build.h"
 #include "findaddr.h"
 #include "game_calls.h"
+#include "game_requests.h"
 #include "iat.h"
 #include "mailbox.h"
+#include "offline_inbox.h"
 #include "pipe.h"
 
 #ifdef ZAP_HOOKTEST
@@ -68,8 +70,7 @@ bool g_from_game_folder = false;
 // The offline files (offline.h), read on the helper's thread at start and after each
 // disconnect, and the seeds put since (`offline_put`): the next frame takes both (take_offline).
 SRWLOCK g_offline_lock = SRWLOCK_INIT;
-std::optional<zap::OfflineFiles> g_offline_files;  // read, not yet taken
-std::vector<zap::OfflineSeed> g_put_seeds;
+zap::OfflineInbox g_inbox;
 // For `hello`: the reads taken by a frame, the seeds the last one found, and its error.
 std::atomic<int> g_offline_reads{0};
 std::atomic<int> g_offline_found{-1};
@@ -147,23 +148,11 @@ std::wstring save_dir() {
 // game opens one to write with no share mode, so a read open of ours could fail its save).
 zap::SavedSeeds g_saved;
 
-// The slots as the pipe thread's calls see them: null before the first list is published (none
-// known: no copy is written), else the list in `held`.
-const std::vector<zap::OfflineSeed>* saved_list(std::vector<zap::OfflineSeed>& held) {
-    if (g_saved.generation() == 0) return nullptr;
-    held = g_saved.get();
-    return &held;
-}
-
-// Set by any request that is no probe (a client's: `config`, `offline_put`, `apply`, ...), taken
-// when the connection goes: a client that set nothing, `helper.py status` or a hello, leaves
-// the files as they are (no copy is written for it).
+// Set by any request that sets something a client's going must put back (requests that
+// zap::sets_client_state names: `config`, `offline_put`, ...), taken when the connection goes: a
+// client that set nothing, `helper.py status` or a hello, leaves the game and the files as they
+// are (no put back, no copy written for it).
 std::atomic<bool> g_client_set{false};
-
-bool is_probe(const std::string& request) {
-    return request == "hello" || request == "ping" ||
-           (request.size() > 7 && request.compare(request.size() - 7, 7, "_status") == 0);
-}
 
 // An exclusive hold of the offline lock, released however the scope ends.
 class OfflineLock {
@@ -176,16 +165,18 @@ public:
 
 // `write` false only makes the seeds one, writing nothing (a client that set nothing went).
 void read_offline_with(bool write) {
-    std::vector<zap::OfflineSeed> held;
-    zap::OfflineFiles files = zap::read_offline_files(offline_dir(), g_build, save_dir(), write,
-                                                      saved_list(held));
+    const std::vector<zap::OfflineSeed> saved = g_saved.get();
+    zap::OfflineFiles files =
+        zap::read_offline_files(offline_dir(), g_build, save_dir(), write, &saved);
     // Copied before the lock, and the lock released however this ends: a throw under it would
     // leave the next `hello` waiting for it for good.
-    std::string error = files.error;
-    OfflineLock lock;
-    g_offline_error = std::move(error);
+    {
+        std::string error = files.error;
+        OfflineLock lock;
+        g_offline_error = std::move(error);
+    }
     g_offline_found.store(static_cast<int>(files.seeds.size()));
-    g_offline_files = std::move(files);
+    g_inbox.set_files(std::move(files));
 }
 
 void read_offline() { read_offline_with(true); }
@@ -336,31 +327,13 @@ void configure_without_client(const zap::OfflineFiles& files) {
     }
 }
 
-// Game thread: the files read last.
-void take_files(zap::OfflineFiles files) {
-    g_offline_reads.fetch_add(1);
-    if (!g_game.configured()) configure_without_client(files);
-    // With no client, in place of the last ones; with one, added to them (other_save's look kept).
-    if (g_game.active()) {
-        g_game.merge_offline(std::move(files.seeds));
-    } else {
-        g_game.set_offline(std::move(files.seeds));
-    }
-}
-
-// Game thread: the files read last and the seeds put since, if new.
+// Game thread: the files read last and the seeds put since, if new (OfflineInbox::take). Files
+// are first the chance of the helper's own configuration with no client.
 void take_offline() {
-    if (!TryAcquireSRWLockExclusive(&g_offline_lock)) return;
-    std::optional<zap::OfflineFiles> files = std::exchange(g_offline_files, std::nullopt);
-    std::vector<zap::OfflineSeed> put = std::exchange(g_put_seeds, {});
-    ReleaseSRWLockExclusive(&g_offline_lock);
-    if (files) take_files(std::move(*files));
-    // After the files, which may have been read before these were put. The client puts its own
-    // seed alone: the one its look applies in (Game::seed_look_loaded).
-    if (!put.empty()) {
-        g_game.note_client_seed(put.back());
-        g_game.merge_offline(std::move(put));
-    }
+    g_inbox.take(g_game, [](const zap::OfflineFiles& files) {
+        g_offline_reads.fetch_add(1);
+        if (!g_game.configured()) configure_without_client(files);
+    });
 }
 
 // Game thread: the slots' seeds published for the other threads, on the first frame and every
@@ -390,7 +363,7 @@ DWORD WINAPI copy_thread(void*) {
         if (generation == done) continue;
         done = generation;
         try {
-            std::vector<zap::OfflineSeed> saved = g_saved.get();
+            const std::vector<zap::OfflineSeed> saved = g_saved.get();
             zap::OfflineFiles files =
                 zap::read_offline_files(offline_dir(), g_build, save_dir(), true, &saved);
             if (!files.error.empty()) {
@@ -460,17 +433,6 @@ bool stop_copy_thread(DWORD milliseconds, bool resume = true) {
 // at once (its event).
 constexpr DWORD kCopyStopMs = 500;
 
-// Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
-void note_put_seed(zap::OfflineSeed seed) {
-    AcquireSRWLockExclusive(&g_offline_lock);
-    // One of the same name still waiting (no frame since: the game in the background) is
-    // replaced, so the queue holds one a seed however often a client puts it. The newest is
-    // always last (take_offline: the client's seed is the last put).
-    std::erase_if(g_put_seeds, [&](const zap::OfflineSeed& s) { return s.name == seed.name; });
-    g_put_seeds.push_back(std::move(seed));
-    ReleaseSRWLockExclusive(&g_offline_lock);
-}
-
 // Pipe thread: sets or clears g_unloading; returns what an unload must wait for, read under the
 // lock (so not before a frame that offered ARCHIPELAGO has published it), or null.
 const char* set_unloading(bool unloading) {
@@ -500,10 +462,10 @@ uintptr_t frame(void* argument) {
                 // refused unload's next frame applies it again. Guarded: a throw that kept the
                 // lock would make the next unload wait on it for good.
                 if (!g_unloading) {
-                    guarded([] {
-                        g_game.watch_newgame();
-                        g_game.watch_all(&archipelago_chosen);
-                    });
+                    guarded([] { g_game.watch_newgame(); });
+                    // Each watch guarded inside: one that throws keeps none of the others from
+                    // running (Game::watch_all).
+                    guarded([] { g_game.watch_all(&archipelago_chosen); });
                     // Traps patch the game's code as they start (trap.h): never while an unload
                     // runs (they wait, and are lost with the helper, as popups are). Guarded on
                     // its own: a received trap's popup is shown here, and the popups behind it
@@ -612,67 +574,8 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config,
     return ran ? result : "refused no frame";
 }
 
-// The requests that run on the game's thread (native/README.md, "The pipe"). A `game` one is
-// matched by its whole name; a `run` one by its first word, then a space or a line break, and it
-// parses on the pipe thread first, so a bad one gets its error without waiting for a frame.
-struct Request {
-    const char* name;
-    bool needs_config;  // `game` refused while nothing configured the helper
-    std::string (*game)();
-    std::string (*run)(const std::string& request) = nullptr;
-};
-
-std::string discs(const std::string& request) {
-    // The OS Install Disks goal's count and the scanner's line (scan.h; the format: requests.h).
-    int count = 0, required = 0;
-    bool told = false;
-    std::string line;
-    std::string error = zap::parse_discs(request, count, required, line, told);
-    return on_game(
-        [&] {
-            bool on = !line.empty();
-            g_game.set_discs(count, required, std::move(line), told);
-            return std::string(on ? "discs on" : "discs off");
-        },
-        true, error);
-}
-
-std::string mission_prompt(const std::string& request) {
-    // Offer RETURN HOME WITH THE DISKS? when the game is next idle in play, lapsing while the
-    // player is in play outside home's cell (mission.h; the format: requests.h).
-    int column = -1, row = -1;
-    std::string error = zap::parse_mission(request, column, row);
-    return on_game(
-        [&] {
-            return std::string(g_game.request_mission(column, row) ? "queued"
-                                                                   : "refused not configured");
-        },
-        true, error);
-}
-
-std::string ap_labels(const std::string& request) {
-    std::map<int, zap::Label> labels;
-    std::string error = zap::parse_labels(request, labels);
-    return on_game(
-        [&] {
-            size_t n = labels.size();
-            g_game.set_labels(std::move(labels));
-            return "labeled " + std::to_string(n);
-        },
-        true, error);
-}
-
-std::string ap_newgame(const std::string& request) {
-    zap::NewGamePlan plan;
-    std::string error = zap::parse_newgame(request, plan);
-    return on_game(
-        [&] {
-            return std::string(g_game.arm_newgame(std::move(plan)) ? "armed"
-                                                                   : "refused not configured");
-        },
-        true, error);
-}
-
+// `config` (native/README.md, "The pipe"): the addresses the client resolved, as RVAs, parsed on
+// the pipe thread first, so a bad one gets its error without waiting for a frame.
 std::string config(const std::string& request) {
     std::map<std::string, uint64_t> rvas;
     std::string error = zap::parse_config(request, rvas);
@@ -691,47 +594,6 @@ std::string config(const std::string& request) {
         false, error);
 }
 
-std::string apply(const std::string& request) {
-    zap::Batch batch;
-    std::string error = zap::parse_batch(request, batch);
-    // Game::apply refuses unconfigured; a batch no frame took never applies.
-    return on_game([&] { return g_game.apply(batch); }, false, error);
-}
-
-const Request kRequests[] = {
-    {"shield", false, [] { return g_game.spawn_shield(GetTickCount64()); }},
-    {"die", false, [] { return g_game.kill(GetTickCount64()); }},
-    {"assists lock", true, [] { g_game.set_assists_locked(true); return std::string("locked"); }},
-    {"assists free", true, [] { g_game.set_assists_locked(false); return std::string("free"); }},
-    {"other_save", true, [] { return g_game.other_save(); }},
-    {"client_back", true, [] { return std::string(g_game.client_back() ? "shown" : "none"); }},
-    {"intel on", true, [] { g_game.set_intel(true); return std::string("intel on"); }},
-    {"intel off", true, [] { g_game.set_intel(false); return std::string("intel off"); }},
-    {"mission_prompt", true, nullptr, &mission_prompt},
-    {"mission_status", true, [] { return g_game.mission_status(); }},
-    // How the last black after YES ended (mission.h, black): for live checks.
-    {"mission_black", true, [] { return g_game.mission_black(); }},
-    // The received scraps' drops (game_calls.h, drop_status): for live checks.
-    {"drop_status", false, [] { return g_game.drop_status(); }},
-    // The traps set off (game_calls.h, trap_status): for live checks.
-    {"trap_status", false, [] { return g_game.trap_status(); }},
-    {"discs_status", false, [] { return g_game.equipment_status(); }},
-    {"discs", false, nullptr, &discs},
-    {"ap_labels", false, nullptr, &ap_labels},
-    {"ap_newgame", false, nullptr, &ap_newgame},
-    {"disarm", false, [] { g_game.disarm_newgame(); return std::string("disarmed"); }},
-    {"newgame_status", false, [] { return g_game.newgame_status(); }},
-    {"config", false, nullptr, &config},
-    {"apply", false, nullptr, &apply},
-};
-
-bool matches(const Request& r, const std::string& request) {
-    if (r.run == nullptr) return request == r.name;
-    const size_t n = std::strlen(r.name);
-    return request.rfind(r.name, 0) == 0 &&
-           (request.size() == n || request[n] == ' ' || request[n] == '\n');
-}
-
 std::string handle(const std::string& request, bool& stop) {
     // Each request (the client pings every few seconds): a copy thread that is not there is
     // started, which is the case after a stop that timed out and then ended on its own. One that
@@ -739,7 +601,7 @@ std::string handle(const std::string& request, bool& stop) {
     if (g_slot != nullptr) start_copy_thread();
     if (request == "hello") return hello();
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
-    if (!is_probe(request)) g_client_set.store(true);
+    if (zap::sets_client_state(request)) g_client_set.store(true);
     if (request.rfind("offline_put ", 0) == 0) {
         // Only in the game (a known build): a program that merely loads this DLL, a test host
         // say, writes none of the real folders.
@@ -750,14 +612,16 @@ std::string handle(const std::string& request, bool& stop) {
         // The seed's copy in the game's save folder too (offline.h): Steam Cloud carries it.
         zap::OfflineSeed seed;
         std::string save_error;
-        std::vector<zap::OfflineSeed> held;
+        const std::vector<zap::OfflineSeed> saved = g_saved.get();
         std::string reply = zap::put_offline_file(offline_dir(), g_build, request, &seed,
-                                                  save_dir(), &save_error, saved_list(held));
+                                                  save_dir(), &save_error, &saved);
         if (!save_error.empty()) {
             OfflineLock lock;
             g_offline_error = "save folder copy: " + save_error;
         }
-        if (!seed.name.empty()) note_put_seed(std::move(seed));
+        if (!seed.name.empty()) {
+            g_inbox.put_seed(std::move(seed), reply == "stored" || reply == "unchanged");
+        }
         return reply;
     }
     if (request == "unload") {
@@ -772,10 +636,15 @@ std::string handle(const std::string& request, bool& stop) {
         stop = true;
         return "bye";
     }
-    for (const Request& r : kRequests) {
-        if (!matches(r, request)) continue;
+    if (request.rfind("config", 0) == 0 &&
+        (request.size() == 6 || request[6] == ' ' || request[6] == '\n')) {
         if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
-        return r.run != nullptr ? r.run(request) : on_game(r.game, r.needs_config);
+        return config(request);
+    }
+    if (std::optional<zap::PreparedRequest> prepared = zap::prepare_game_request(request)) {
+        if (g_slot == nullptr) return "error not hooked, so nothing runs on the game's thread";
+        return on_game([&] { return prepared->run(g_game); }, prepared->needs_config,
+                       prepared->error);
     }
     return "error unknown request";
 }
@@ -850,10 +719,11 @@ DWORD WINAPI helper_thread(void*) {
         if (g_slot != nullptr) guarded(read_offline);
         if (g_slot != nullptr) start_copy_thread();
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle, [] {
-                g_client_gone.store(true);
-                // The client may have written them; the copies in the save folder only if it
-                // set something (a probe, `helper.py status`, writes none).
+                // Only a client that set something has anything to put back, and the copies in the
+                // save folder are written only for one (a probe, `helper.py status`, does neither).
+                // The files are read for any: the client may have written them.
                 const bool write = g_client_set.exchange(false);
+                if (write) g_client_gone.store(true);
                 if (g_slot != nullptr) guarded([write] { read_offline_with(write); });
             })) {
             // No pipe: nothing could ever unload us, so put the game back as unload does and

@@ -37,7 +37,7 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 # zap_core_test; the release links zap_core.
 add_library(zap_core_objs OBJECT
             src/iat.cpp src/build.cpp src/pipe.cpp src/mailbox.cpp src/game_mem.cpp
-            src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/text.cpp src/newgame.cpp src/choice.cpp
+            src/game_calls.cpp src/game_offline.cpp src/requests.cpp src/game_requests.cpp src/offline_inbox.cpp src/text.cpp src/newgame.cpp src/choice.cpp
             src/menu.cpp src/scan.cpp src/equip.cpp src/mission.cpp src/pause.cpp
             src/files.cpp src/intel.cpp src/title.cpp src/mapmarks.cpp src/trap.cpp
             src/apitem.cpp src/looks.cpp src/feats.cpp src/translation.cpp src/findaddr.cpp)
@@ -72,7 +72,7 @@ target_link_libraries(zexion_ap_hooktest PRIVATE zap_core_test)
 enable_testing()
 # Single-program tests on zap_core_test: NAME builds tests/NAME_tests.cpp as zap_NAME_tests.
 set(ZAP_TESTS parts game requests menu apitem equip mission pause files intel title mapmarks
-    offline translation findaddr)
+    offline translation findaddr inbox)
 foreach(name IN LISTS ZAP_TESTS)
   add_executable(zap_${name}_tests tests/${name}_tests.cpp)
   target_link_libraries(zap_${name}_tests PRIVATE zap_core_test)
@@ -106,6 +106,7 @@ add_test(NAME apply_in_frames COMMAND zap_apply_test $<TARGET_FILE:zexion_ap_hoo
 add_executable(zap_proxy_test tests/proxy_test.cpp)
 target_compile_definitions(zap_proxy_test PRIVATE
                            ZAP_PROXY_PATH="$<TARGET_FILE:version_proxy>")
+target_include_directories(zap_proxy_test PRIVATE src)  # check.h's platform.h
 add_dependencies(zap_proxy_test version_proxy)
 add_test(NAME proxy COMMAND zap_proxy_test)
 

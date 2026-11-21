@@ -33,7 +33,7 @@ target_include_directories(zap_linux_core PUBLIC src)
 # zap_shared_test; the release links zap_shared.
 add_library(zap_shared_objs OBJECT
             ../src/game_calls.cpp ../src/game_offline.cpp ../src/newgame.cpp ../src/choice.cpp
-            ../src/requests.cpp ../src/text.cpp ../src/menu.cpp ../src/scan.cpp ../src/equip.cpp
+            ../src/requests.cpp ../src/game_requests.cpp ../src/offline_inbox.cpp ../src/text.cpp ../src/menu.cpp ../src/scan.cpp ../src/equip.cpp
             ../src/mission.cpp ../src/pause.cpp ../src/files.cpp ../src/intel.cpp
             ../src/title.cpp ../src/mapmarks.cpp ../src/trap.cpp
             ../src/apitem.cpp ../src/looks.cpp ../src/feats.cpp ../src/translation.cpp
@@ -132,6 +132,12 @@ add_test(NAME canary_before COMMAND zap_canary snapshot ${CMAKE_BINARY_DIR}/cana
 add_test(NAME canary_after COMMAND zap_canary verify ${CMAKE_BINARY_DIR}/canary.snapshot)
 set_tests_properties(canary_before PROPERTIES FIXTURES_SETUP real_folders)
 set_tests_properties(canary_after PROPERTIES FIXTURES_CLEANUP real_folders)
+
+# The seeds the serving thread hands the game's thread (the same test as the Windows helper's).
+add_executable(zap_inbox_tests ../tests/inbox_tests.cpp)
+target_link_libraries(zap_inbox_tests PRIVATE zap_shared_test)
+target_compile_options(zap_inbox_tests PRIVATE -Wno-missing-field-initializers)
+add_test(NAME inbox COMMAND zap_inbox_tests)
 
 # The Linux build's calls in a translation: the label builder given the helper's own std::wstring.
 add_executable(zap_translation_tests tests/translation_tests.cpp)

@@ -72,16 +72,12 @@ public:
     bool menu_open() const;
     // Whether a client is there: set by `config`, cleared when it goes away (client_gone).
     bool active() const { return active_; }
-    // The Linux helper's, when its client goes (client_gone's on Windows, which puts the rest
-    // back): no client attached, so an own disk's count is the helper's to show
-    // (watch_own_disks) until a client configures again.
-    void client_left() { active_ = false; }
-    // Game thread (the Linux helper's, when its client goes): the hooks the client's parts hold
-    // in open menus put back, as put_back_game does on Windows: RETURN HOME's prompt and ending
-    // (its YES no longer the helper's), the map cursor's names, the ARCHIPELAGO choice.
+    // Game thread: the hooks the client's parts hold in open menus put back (put_back_game's):
+    // RETURN HOME's prompt and ending (its YES no longer the helper's), the map cursor's names,
+    // the ARCHIPELAGO choice.
     void put_back_client_menus(WidgetCallback callback);
     // A client gone, or a client's config: its notices not shown yet withdrawn, other_save reset
-    // (client_gone's and use's; the Linux helper's when its client goes).
+    // (client_gone's and use's).
     void drop_client_notices();
     // Before configure: the helper's wrappers the game is pointed at (Hooks).
     void set_hooks(const Hooks& hooks) { at_.hooks = hooks; }
@@ -96,9 +92,12 @@ public:
     // Game thread, after put_back_game: what the client asked for dropped (the new game, the
     // save's look, RETURN HOME's prompt, the file select's counts).
     void forget_client();
-    // Game thread: the client went away. put_back_game, forget_client, its notices withdrawn, and
-    // inactive until a client configures again. Its queued popups stay: their items are already
-    // given (the client counts popups handed over, not shown).
+    // Game thread: the client went away, on both platforms (the frame calls it once, before any
+    // request, for a client that set something: requests.h, sets_client_state). put_back_game,
+    // forget_client, its notices and its seed withdrawn, and inactive until a client configures
+    // again. Each part runs on its own: one that throws keeps none of the others from running.
+    // Its queued popups stay: their items are already given (the client counts popups handed
+    // over, not shown).
     void client_gone(WidgetCallback callback);
 
     // Game thread. Only in play; every compare-and-set or none, then what the pickup routine
@@ -128,8 +127,15 @@ public:
     void watch_newgame();
 
     // Game thread, each frame call while configured (dllmain.cpp, until an unload begins):
-    // every part's watch, in a fixed order. `callback`: ARCHIPELAGO's (watch_menu).
+    // watch_feats, then watch_rest. `callback`: ARCHIPELAGO's (watch_menu).
     void watch_all(WidgetCallback callback);
+    // Game thread, each frame call while configured, after watch_feats (which the Linux helper
+    // runs before its own gate, the player pointer's): every other part's watch, in one fixed
+    // order on both platforms. The offline look comes right after the menu, so the watches that
+    // read what it sets (the file select's counts, INTEL CHIP, the title's lines, the disks)
+    // read it the same frame. Each watch on its own: one that throws keeps none of the others
+    // from running. Not watch_newgame, which each host runs and answers its own throw.
+    void watch_rest(WidgetCallback callback);
 
     // Game thread, every frame: ARCHIPELAGO in place of RANDOMIZER (menu.h) while a plan with
     // `choice` is armed, its callback `callback`; otherwise RANDOMIZER back.
@@ -259,36 +265,36 @@ public:
     // Game thread: the map cursor's names for the stand-ins' squares (mapmarks.h); map_after runs
     // from the map handler's wrapper, after the game's handler.
     void map_after();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): the map's cursor
+    // Game thread, each frame call (watch_rest's): the map's cursor
     // names wrapped in while the map is open in the labels' seed's save, and the squares of item
     // 48 raised with the on-screen write patched (mapmarks.h; native/README.md, "The map").
     void watch_map_names();
     void watch_map_marks();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): in a translation, the
+    // Game thread, each frame call (watch_rest's): in a translation, the
     // helper's names in its tables, its icons in its sheets, the popups' borrowed entries emptied
     // once their message has gone (translation.h; native/README.md, "Translations").
     void watch_translation();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): the disks' count on
+    // Game thread, each frame call (watch_rest's): the disks' count on
     // the pause screen and the equipment screen, and the disk glyph (equip.h, pause.h).
     void watch_equipment();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): RETURN HOME WITH THE
+    // Game thread, each frame call (watch_rest's): RETURN HOME WITH THE
     // DISKS? opened when asked for and idle, its black and ending watched (mission.h).
     void watch_mission();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): the Area Map named
+    // Game thread, each frame call (watch_rest's): the Area Map named
     // INTEL CHIP while on (intel.h).
     void watch_intel();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): the title screen's
+    // Game thread, each frame call (watch_rest's): the title screen's
     // lines, with no save loaded (title.h).
     void watch_title();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): the AP logo and each
+    // Game thread, each frame call (watch_rest's): the AP logo and each
     // disk seed's save its count on the file select, COPY FILE and DELETE FILE (files.h).
     void watch_files();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): in play in an AP
+    // Game thread, each frame call (watch_rest's): in play in an AP
     // save, owned items the game lists (pickups::listed), but the new game's starting ones,
     // appended to the major-item list as a pickup would: grants set the byte alone
     // (docs/re/memory.md, "The pickup record holds the major-item list").
     void watch_pickups();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): the text window's
+    // Game thread, each frame call (watch_rest's): the text window's
     // top cut patched, so tall popups' lines are cut right (text.h, TextCut).
     void watch_text_cut() {
         if (configured_) text_cut_.watch(at_.text_cut_code);
@@ -361,7 +367,7 @@ public:
     // that end or before (docs/re/memory.md, "Received Energy Shields", "Limits"), which turns
     // no cell collected.
     void watch_own_traps();
-    // Game thread, each frame call (watch_all's; the Linux helper's frame): each timer's
+    // Game thread, each frame call (watch_rest's): each timer's
     // AILMENTS tests patched while a trap's runs (trap.h).
     void watch_trap_patches();
     // Queues one of this world's own traps for the save loaded, as watch_own_traps does:
@@ -510,6 +516,15 @@ private:
 
     bool configured_ = false;
     bool active_ = false;
+    // `work` run on its own: one that throws keeps none of the others from running, and nothing
+    // reaches the game (the frame's watches and what a client's going puts back).
+    template <class Work>
+    static void step(Work&& work) {
+        try {
+            work();
+        } catch (...) {
+        }
+    }
     // configure's tail, both builds': the addresses kept, a client's config (`active`) taking over
     // from the offline look.
     std::string use(const GameAddresses& found, bool active);

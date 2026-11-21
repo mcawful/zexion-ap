@@ -96,6 +96,11 @@ int wmain(int argc, wchar_t** argv) {
           "hello: no scan in a stand-in game", hello);
     std::string reply = zap_test::ask(pipe, "apply\ncas 36 0 1");
     check(reply == "refused not configured", "apply before config", reply);
+    // A status asks no config: the same reply on both helpers (game_requests.cpp).
+    reply = zap_test::ask(pipe, "trap_status");
+    check(reply == "queued 0; last none", "trap_status before config", reply);
+    reply = zap_test::ask(pipe, "intel on");
+    check(reply == "refused not configured", "a request that sets state needs the config", reply);
     reply = zap_test::ask(pipe, config_request());
     check(reply == "ok", "config", reply);
     hello = zap_test::ask(pipe, "hello");
@@ -148,6 +153,21 @@ int wmain(int argc, wchar_t** argv) {
     check(reply == "armed", "the plan armed again", reply);
     check(slot != nullptr && zap::swap_slot(slot, other, g_next.load()), "the other hook gone");
     Sleep(50);  // no call left in chained_tick
+
+    // A client that set something goes: at the next frame, before the next client's first request,
+    // Game::client_gone puts its plan back and it is inactive until a client configures again.
+    // (The Linux helper runs the same Game::client_gone: tests/test_native_linux.py.)
+    CloseHandle(pipe);
+    pipe = zap_test::connect(zap::pipe_name(GetCurrentProcessId()));
+    check(pipe != INVALID_HANDLE_VALUE, "connects again");
+    reply = zap_test::ask(pipe, "newgame_status");
+    check(reply == "idle", "a client that went takes its plan with it", reply);
+    hello = zap_test::ask(pipe, "hello");
+    check(hello.find(" active=0") != std::string::npos, "hello: no client", hello);
+    reply = zap_test::ask(pipe, config_request());
+    check(reply == "ok", "config again", reply);
+    hello = zap_test::ask(pipe, "hello");
+    check(hello.find(" active=1") != std::string::npos, "hello: a client again", hello);
 
     // The client of another seed puts seed B's file (a seed it started earlier in its run).
     reply = zap_test::ask(pipe, "other_save");
