@@ -71,7 +71,7 @@ from .items import (
 )
 from .locations import LOCATION_ID_BASE, location_name_to_id
 from .logic import BOMB_BOX, ENERGY_TANK, MEGA_BOMB, MISSILE_BOX, MISSILE_CONTAINER
-from .starting import COUNTED
+from .starting import COUNTED, upgrade_refusal
 
 if TYPE_CHECKING:
     from .world import ZexionWorld
@@ -160,11 +160,7 @@ def problems(
             continue
         name = NAMES[code]
         if guns_first and code in UPGRADES:
-            weapon = NAMES[next(w for w, u in PROGRESSIVE.items() if u == code)]
-            out.append(
-                f"{name}: with Guns First on, the upgrade is a second {weapon} (the game's Guns "
-                f"First seeds hold no upgrade of its own)"
-            )
+            out.append(upgrade_refusal(code))
         elif guns_first and code in PROGRESSIVE:
             if n > 2:
                 out.append(f"{n} {name}: a weapon and its upgrade are 2")
@@ -209,7 +205,7 @@ def left_out(world: ZexionWorld) -> list[str]:
     does not have and no other world of that plando's has, saying why (the module's
     docstring)."""
     multiworld = world.multiworld
-    who = f"Zexion ({world.player_name})"
+    who = world.who
     out = []
     for player, blocks in sorted(multiworld.plando_item_blocks.items()):
         for block in blocks:
@@ -244,7 +240,7 @@ def area_maps_away(world: ZexionWorld) -> list[str]:
     if name not in world.options.local_items.value:
         return []
     return [
-        f"Zexion ({world.player_name}): plando_items puts an Area Map in another world, but "
+        f"{world.who}: plando_items puts an Area Map in another world, but "
         f"Area Map is in your local_items (Area Map Hints off puts it there: Area Maps reveal "
         f"the map around where they lie), so Archipelago cannot place it there"
         for block in world.multiworld.plando_item_blocks.get(world.player, [])

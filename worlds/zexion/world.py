@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections import Counter
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Any, TextIO
 
 from BaseClasses import (
@@ -63,6 +63,7 @@ from .options import (
     AMOUNTS,
     AUTOMATIC,
     AUTOMATIC_ROOM,
+    CUSTOM_ONLY,
     RANDOM_START,
     ROOM_NAMES,
     SETTINGS,
@@ -143,6 +144,36 @@ def pairs_of(
                 yield a, b, items
 
 
+def filler_needed(codes: Sequence[int], left_out: int, disks: int | None) -> int:
+    """How many items of FILLER_ORDER a pool of ``codes`` needs for ``left_out`` locations the
+    items do not reach and the OS Install Disks goal's ``disks`` (None: the core goal), as
+    ``goal_pool`` takes them out: each left-out location takes one, and each disk takes one of
+    DISC_REPLACES, among which the pool's keys' places (made Scrap Metal) and Energy Shields
+    are spare, not counted in FILLER_ORDER."""
+    if not disks:
+        return left_out
+    spare = sum(1 for c in codes if c in (*KEY_CODES, custom.ENERGY_SHIELD))
+    return max(left_out, left_out + disks - spare)
+
+
+def goal_pool(codes: Sequence[int], left_out: int, disks: int | None) -> list[int]:
+    """The pool ``create_items`` makes from ``codes`` before the traps and the hints: with
+    ``left_out`` locations the items do not reach, a filler item gone for each (the first of
+    FILLER_ORDER left), and with the OS Install Disks goal (``disks`` placed; None: the core
+    goal) the keys' places become Scrap Metal, then each disk takes one of DISC_REPLACES and is
+    added. It never raises where the pool has the ``filler_needed`` (``fit_pool`` makes sure)."""
+    out = list(codes)
+    for _ in range(left_out):
+        out.remove(next(c for c in FILLER_ORDER if c in out))
+    if disks is None:
+        return out
+    keys = sum(1 for c in out if c in KEY_CODES)
+    out = [c for c in out if c not in KEY_CODES] + [SCRAP_METAL] * keys
+    for _ in range(disks):
+        out.remove(next(c for c in DISC_REPLACES if c in out))
+    return out + [DATA_DISC] * disks
+
+
 class ZexionWorld(World):
     """Zexion is a metroidvania by Gallant Leaf with a built-in randomizer. Explore a 54 by 54
     map of rooms, find upgrades and work your way to the end."""
@@ -185,20 +216,29 @@ class ZexionWorld(World):
             # An Area Map reveals the map around the square it lies in (docs/re/memory.md, "Intel
             # Chips"): kept in this world (place_area_maps). Intel Chips reveal nothing.
             self.options.local_items.value.add(NAMES[AREA_MAP])
-        # The core is entered from its door (create_regions); the disks' goal returns home from
-        # the Landing Pod (set_rules).
+        self.check_goal_reached()
+        self.check_disks()
+
+    def check_goal_reached(self) -> None:
+        """Refuse a seed whose settings do not reach the goal's room from its start(s). The core
+        is entered from its door (create_regions); the disks' goal returns home from the
+        Landing Pod (set_rules)."""
         goal = HOME["cell"] if self.disc_hunt else data.CORE["door"]
-        if data.CELL_REGION[goal] not in self.created_regions:
-            where = "the core's door"
-            if self.disc_hunt:
-                where = "the Landing Pod, where the OS Install Disks goal returns home,"
-            starts = f"start room {cell_name(self.start['cell'])}"
-            if self.second is not None:
-                starts += f" and second teleport target {cell_name(self.second['cell'])}"
-            raise OptionError(
-                f"Zexion ({self.player_name}): {self.mode_name} mode's settings do not reach "
-                f"{where} from {starts}"
-            )
+        if data.CELL_REGION[goal] in self.created_regions:
+            return
+        where = "the core's door"
+        if self.disc_hunt:
+            where = "the Landing Pod, where the OS Install Disks goal returns home,"
+        starts = f"start room {cell_name(self.start['cell'])}"
+        if self.second is not None:
+            starts += f" and second teleport target {cell_name(self.second['cell'])}"
+        raise OptionError(
+            f"{self.who}: {self.mode_name} mode's settings do not reach {where} from {starts}"
+        )
+
+    def check_disks(self) -> None:
+        """Refuse OS Install Disks Required past the disks the seed has, and more disks than the
+        game's screens can show."""
         placed = self.options.os_install_disks.value
         required = self.options.os_install_disks_required.value
         # Starting disks count toward the goal (set_rules; the client's discs_start): those of
@@ -209,13 +249,13 @@ class ZexionWorld(World):
         start_disks += max(0, self.options.start_inventory_from_pool.value.get(disk, 0) - placed)
         if self.disc_hunt and required > placed + start_disks:
             raise OptionError(
-                f"Zexion ({self.player_name}): OS Install Disks Required ({required}) is "
+                f"{self.who}: OS Install Disks Required ({required}) is "
                 f"more than OS Install Disks ({placed})"
                 + (f" plus the {start_disks} in start_inventory" if start_disks else "")
             )
         if self.disc_hunt and placed + start_disks > MAX_DISKS:
             raise OptionError(
-                f"Zexion ({self.player_name}): OS Install Disks ({placed}) and the "
+                f"{self.who}: OS Install Disks ({placed}) and the "
                 f"{start_disks} in start_inventory come to {placed + start_disks}, more than "
                 f"the {MAX_DISKS} the game's screens can show"
             )
@@ -228,18 +268,35 @@ class ZexionWorld(World):
         since Vanilla's gates take all four keys, which that goal does not place; the logic
         travels by gate only under Open, so what the seed reaches is the same
         (docs/re/locations.md, "The OS Install Disks goal: the disks, then the ending")."""
-        o, name, who = self.options, self.mode_name, f"Zexion ({self.player_name})"
+        o, name = self.options, self.mode_name
         is_custom = name == "custom"
         base = o.custom_base.current_key if is_custom else name
-        menu = custom.Menu.preset(base)
-        custom_only = (*AMOUNTS, *SETTINGS, "custom_items")
-        changed = [n for n in custom_only if getattr(o, n).value != getattr(o, n).default]
+        changed = [n for n in CUSTOM_ONLY if getattr(o, n).value != getattr(o, n).default]
         if changed and not is_custom:
             raise OptionError(
-                f"{who}: {', '.join(changed)} can be set with mode: custom only. Easy, Standard "
-                f"and OHKO are the game's presets; leave these 'preset' (any of them changed "
-                f"makes the game's mode Custom)"
+                f"{self.who}: {', '.join(changed)} can be set with mode: custom only. Easy, "
+                f"Standard and OHKO are the game's presets; leave these 'preset' (any of them "
+                f"changed makes the game's mode Custom)"
             )
+        menu = self.with_custom_options(custom.Menu.preset(base))
+        if name == "ohko" and o.safety.current_key not in ("preset", "light", "off"):
+            raise OptionError(
+                f"{self.who}: OHKO mode takes Safety light or off only, as the game does"
+            )
+        if self.disc_hunt and menu.setting(custom.ABRIDGED_FINALE):
+            raise OptionError(
+                f"{self.who}: abridged_finale ends the game when Zexion is grabbed, so it cannot "
+                f"go with the OS Install Disks goal"
+            )
+        menu = self.unlock_gates(menu, base)
+        if is_custom:
+            self.check_menu(menu)
+        return menu
+
+    def with_custom_options(self, menu: custom.Menu) -> custom.Menu:
+        """``menu`` with the YAML's amounts, custom_items, settings and Safety over it; what is
+        left at 'preset' does not change it."""
+        o = self.options
         for which, option_name in enumerate(AMOUNTS):
             value = getattr(o, option_name).value
             if value != Amount.default:
@@ -248,45 +305,44 @@ class ZexionWorld(World):
         for item, state in o.custom_items.value.items():
             if not isinstance(state, str) or state not in custom.STATES:
                 raise OptionError(
-                    f"{who}: custom_items {item}: {state!r} is not one of "
+                    f"{self.who}: custom_items {item}: {state!r} is not one of "
                     f"{', '.join(custom.STATES)}"
                 )
             menu = menu.with_item(entries[item], state)
         for option in (getattr(o, n) for n in (*SETTINGS, "safety")):
             if option.value != option.default:  # each a bit or bits, lowest first
                 menu = menu.with_value(option.bits, option.value)
-        if name == "ohko" and o.safety.current_key not in ("preset", "light", "off"):
-            raise OptionError(f"{who}: OHKO mode takes Safety light or off only, as the game does")
-        if self.disc_hunt and menu.setting(custom.ABRIDGED_FINALE):
-            raise OptionError(
-                f"{who}: abridged_finale ends the game when Zexion is grabbed, so it cannot go "
-                f"with the OS Install Disks goal"
-            )
+        return menu
+
+    def unlock_gates(self, menu: custom.Menu, base: str) -> custom.Menu:
+        """With the OS Install Disks goal, Gates Vanilla made Unlocked (``gates_unlocked``),
+        the menu otherwise as it is. ``base``: the preset the menu started from."""
         self.gates_unlocked = self.disc_hunt and menu.value(custom.GATES) == Gates.option_vanilla
-        if self.gates_unlocked:
-            menu = menu.with_value(custom.GATES, Gates.option_unlocked)
-            # A warning where the YAML asked for Vanilla; a preset's own Vanilla (OHKO's) is no
-            # choice of the YAML's, and its change is the goal's documented behavior: info.
-            asked = o.gates.value == Gates.option_vanilla
-            log = logging.warning if asked else logging.info
-            source = "gates: vanilla" if asked else f"{base} mode's Gates Vanilla"
-            log(
-                f"{who}: {source} takes all four keys, which the OS Install Disks goal does not "
-                f"place; the gates are Unlocked instead (no keys, two gates visited)"
-            )
-        if not is_custom:
+        if not self.gates_unlocked:
             return menu
+        # A warning where the YAML asked for Vanilla; a preset's own Vanilla (OHKO's) is no
+        # choice of the YAML's, and its change is the goal's documented behavior: info.
+        asked = self.options.gates.value == Gates.option_vanilla
+        log = logging.warning if asked else logging.info
+        source = "gates: vanilla" if asked else f"{base} mode's Gates Vanilla"
+        log(
+            f"{self.who}: {source} takes all four keys, which the OS Install Disks goal does not "
+            f"place; the gates are Unlocked instead (no keys, two gates visited)"
+        )
+        return menu.with_value(custom.GATES, Gates.option_unlocked)
+
+    def check_menu(self, menu: custom.Menu) -> None:
+        """Refuse a Custom menu the client cannot start or the game's menu cannot hold."""
         if menu.amounts[custom.START_BOMBS]:
             raise OptionError(
-                f"{who}: not supported yet: starting_mega_bombs above 0 (the client cannot give "
-                "them)"
+                f"{self.who}: not supported yet: starting_mega_bombs above 0 (the client cannot "
+                "give them)"
             )
         found = custom.problems(menu)
         if found:
             raise OptionError(
-                f"{who}: the game's randomizer cannot hold or build this: {'; '.join(found)}"
+                f"{self.who}: the game's randomizer cannot hold or build this: {'; '.join(found)}"
             )
-        return menu
 
     def option_start(self, option_name: str) -> Counter[int]:
         """A start option's items by item code: start_inventory or start_inventory_from_pool."""
@@ -303,7 +359,7 @@ class ZexionWorld(World):
         or when the start_room it names does not suit it (``passes``), such as a room only some
         of Standard's guns suit. With none that fits, the seed is refused (docs/re/locations.md,
         "Where the world departs from the game")."""
-        who, named = f"Zexion ({self.player_name})", self.named_room
+        who, named = self.who, self.named_room
         first: list[str] = []
         unsuited: set[str] = set()  # the starting guns of the draws the named room did not suit
         reaches: set[reach.Seed] = set()  # and what their items were, as the room is judged
@@ -358,11 +414,11 @@ class ZexionWorld(World):
             Counter(self.start_inventory) + added + self.option_start("start_inventory_from_pool")
         )
         guns_first = self.logic_settings.guns_first
-        found = starting.problems(counts, self.disc_hunt, guns_first)
+        found = starting.problems(counts, self.disc_hunt, guns_first=guns_first)
         # The pool as create_items makes it, as far as an item held once goes: with the OS
-        # Install Disks goal without the keys.
-        pool = [c for c in self.pool_codes if not (self.disc_hunt and c in KEY_CODES)]
-        found += starting.pool_duplicates(added, self.start_inventory, pool, guns_first)
+        # Install Disks goal without the keys (Scrap Metal, a count), the disks not yet in it.
+        pool = goal_pool(self.pool_codes, 0, None if self.disks is None else 0)
+        found += starting.pool_duplicates(added, self.start_inventory, pool, guns_first=guns_first)
         return found
 
     def reach_of_items(self) -> reach.Seed:
@@ -443,7 +499,7 @@ class ZexionWorld(World):
             step, why = self.opening_step(state, mine, len(reached), progitempool, empty)
             if not step:
                 logging.warning(
-                    f"Zexion ({self.player_name}): the starting items reach {len(reached)} of "
+                    f"{self.who}: the starting items reach {len(reached)} of "
                     f"their locations, fewer than {START_REACH}, and {why}; Archipelago's fill "
                     f'may stop with "No more spots to place"'
                 )
@@ -519,10 +575,7 @@ class ZexionWorld(World):
     def by_kind(self, pool: list[Item]) -> dict[tuple[int, str], list[Item]]:
         """The progression items in ``pool`` of this player's, or of an item link it is in, by
         owner and name."""
-        groups = self.multiworld.groups
-        owners = {self.player} | {
-            g for g, group in groups.items() if self.player in group["players"]
-        }
+        owners = self.linked_owners
         out: dict[tuple[int, str], list[Item]] = {}
         for item in pool:
             if item.player in owners and item.advancement:
@@ -542,8 +595,25 @@ class ZexionWorld(World):
         return sum(1 for loc in mine if loc.can_reach(more)) > reached
 
     @property
+    def who(self) -> str:
+        """This player as the world's refusals and warnings name them."""
+        return f"Zexion ({self.player_name})"
+
+    @property
     def disc_hunt(self) -> bool:
         return self.options.goal.value == Goal.option_os_install_disks
+
+    @property
+    def disks(self) -> int | None:
+        """The OS Install Disks the seed places (``goal_pool``), None with the core goal."""
+        return self.options.os_install_disks.value if self.disc_hunt else None
+
+    @property
+    def linked_owners(self) -> set[int]:
+        """This player and the item links' groups it is in: whose items ``by_kind`` and
+        ``hint_targets`` count as this player's."""
+        groups = self.multiworld.groups
+        return {self.player} | {g for g, group in groups.items() if self.player in group["players"]}
 
     @property
     def double_teleport(self) -> bool:
@@ -587,7 +657,7 @@ class ZexionWorld(World):
         """The start room by the start_room option, and with Double Teleport the second
         teleport target (docs/re/locations.md, "Which start rooms the world offers"). A named
         room suits the draw (``draw_items``)."""
-        who = f"Zexion ({self.player_name})"
+        who = self.who
         choice = self.options.start_room.value
         start = self.named_room
         if choice == AUTOMATIC:
@@ -618,15 +688,11 @@ class ZexionWorld(World):
         little filler, ten Missile Containers or Mega Bombs become a box and nine Scrap Metal, as
         the game makes filler (custom.compress); that changes what the items reach, so it is
         worked out again."""
-        disks = self.options.os_install_disks.value if self.disc_hunt else 0
+        disks = self.disks
         while True:
             every = self.seed_reach.every_from(self.start, self.second)
             left_out = len(self.location_cells) - len(every.locations)
-            # With the disks, the pool's keys become Scrap Metal and Energy Shields give way too.
-            spare = 0
-            if self.disc_hunt:
-                spare = sum(1 for c in self.pool_codes if c in (*KEY_CODES, custom.ENERGY_SHIELD))
-            needed = max(left_out, left_out + disks - spare)
+            needed = filler_needed(self.pool_codes, left_out, disks)
             try:
                 codes = custom.compress(self.pool_codes, needed, FILLER_ORDER)
             except custom.PoolError as error:
@@ -634,7 +700,7 @@ class ZexionWorld(World):
                 if disks:
                     what += f" and {disks} OS Install Disks"
                 raise OptionError(
-                    f"Zexion ({self.player_name}): the pool has too little filler for the "
+                    f"{self.who}: the pool has too little filler for the "
                     f"{what}: {error} (fewer Item Pool Missiles or Mega Bombs, or Bulk "
                     f"Missiles and Bulk Bombs off, leave filler)"
                 ) from error
@@ -741,18 +807,11 @@ class ZexionWorld(World):
         for code, count in self.start_inventory.items():
             for _ in range(count):
                 self.multiworld.push_precollected(self.create_item(NAMES[code]))
-        codes = list(self.pool_codes)
-        # A location left out takes a filler item out of the pool with it (fit_pool made sure
-        # there are enough).
-        for _ in range(len(self.location_cells) - len(self.kept_locations)):
-            codes.remove(next(c for c in FILLER_ORDER if c in codes))
-        if self.disc_hunt:
-            # The keys' places become Scrap Metal, then each disc takes one of DISC_REPLACES.
-            keys = sum(1 for c in codes if c in KEY_CODES)
-            codes = [c for c in codes if c not in KEY_CODES] + [SCRAP_METAL] * keys
-            for _ in range(self.options.os_install_disks.value):
-                codes.remove(next(c for c in DISC_REPLACES if c in codes))
-            codes += [DATA_DISC] * self.options.os_install_disks.value
+        # A location left out takes a filler item out of the pool with it, and with the OS
+        # Install Disks goal the keys' places become Scrap Metal and each disk takes one of
+        # DISC_REPLACES (fit_pool made sure there are enough).
+        left_out = len(self.location_cells) - len(self.kept_locations)
+        codes = goal_pool(self.pool_codes, left_out, self.disks)
         if self.options.area_map_hints:
             # Each Area Map left is a hint: an Intel Chip, which the game holds as the Area Map.
             codes = [INTEL_CHIP if c == AREA_MAP else c for c in codes]
@@ -830,7 +889,7 @@ class ZexionWorld(World):
         found = self.plando_problems()
         if found:
             raise OptionError(
-                f"Zexion ({self.player_name}): plando_items gives items the game does not hold "
+                f"{self.who}: plando_items gives items the game does not hold "
                 f"(from_pool: false, or an item the pool holds no more of, makes new copies): "
                 f"{'; '.join(found)}"
             )
@@ -873,7 +932,7 @@ class ZexionWorld(World):
                 else ""
             )
             raise OptionError(
-                f"Zexion ({world.player_name}): {n} excluded {locations}, but only {have} filler "
+                f"{world.who}: {n} excluded {locations}, but only {have} filler "
                 f"items (Scrap, traps, Area Maps, Intel Chips or Energy Shields) to put there, "
                 f"and the other players' filler does not make up the difference{why}: {fix}"
             )
@@ -923,7 +982,7 @@ class ZexionWorld(World):
             # in location_items, listed here by location index.
             "goal": self.options.goal.current_key,
             "discs_required": self.options.os_install_disks_required.value if self.disc_hunt else 0,
-            "discs_placed": self.options.os_install_disks.value if self.disc_hunt else 0,
+            "discs_placed": self.disks or 0,
             "discs_start": start_names.count(NAMES[DATA_DISC]),
             "disc_locations": self.disc_locations(),
             # This world's own traps in its own locations, [location index, item code] each:
@@ -999,11 +1058,7 @@ class ZexionWorld(World):
         this player is in: the group's item goes to every member, from the location listed
         here. Supplies (NOT_HINTED), starting items, which are in no location, and events are
         left out."""
-        mine = {self.player} | {
-            group_id
-            for group_id, group in self.multiworld.groups.items()
-            if self.player in group["players"]
-        }
+        mine = self.linked_owners
         out = []
         for location in self.multiworld.get_filled_locations():
             item = location.item
@@ -1058,11 +1113,10 @@ class ZexionWorld(World):
                 out.append(FOREIGN_PROGRESSION if important_elsewhere(item) else FOREIGN)
                 continue
             code = code_of[item.name]
-            if code == DATA_DISC:
+            if (
+                code == DATA_DISC or code in TRAPS
+            ):  # a trap is important, as the client disguises it
                 out.append(FOREIGN_PROGRESSION)
-                continue
-            if code in TRAPS:
-                out.append(FOREIGN_PROGRESSION)  # important, as the client disguises it
                 continue
             code = DRAWN_AS.get(code, code)  # an Intel Chip: the Area Map
             # Scrap Energy and Chunk, and an item that is not the game's, are handed out as Scrap
@@ -1082,4 +1136,4 @@ class ZexionWorld(World):
             and code_of[item.name] in GAME_ITEMS
             and code_of[item.name] != DATA_DISC
         )
-        return as_inventory(counts.items(), self.logic_settings.guns_first)
+        return as_inventory(counts.items(), guns_first=self.logic_settings.guns_first)

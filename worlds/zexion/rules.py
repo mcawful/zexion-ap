@@ -14,13 +14,14 @@ if TYPE_CHECKING:
     from .world import ZexionWorld
 
 
-def inventory(state: CollectionState, player: int, guns_first: bool = True) -> dict[int, int]:
+def inventory(state: CollectionState, player: int, *, guns_first: bool) -> dict[int, int]:
     """Item counts by the game's item IDs, as the logic reads them (``items.as_inventory``: with
     Guns First a progressive weapon's second copy as its upgrade). Only progression items are in
     ``prog_items``, which is all the logic reads."""
     counts = state.prog_items[player].items()
     return as_inventory(
-        ((code_of[name], n) for name, n in counts if name in code_of and n > 0), guns_first
+        ((code_of[name], n) for name, n in counts if name in code_of and n > 0),
+        guns_first=guns_first,
     )
 
 
@@ -41,7 +42,7 @@ def requirement(
             region = data.CELL_REGION.get(other)
             return region in created and state.can_reach_region(region_name(region), player)
 
-        have = inventory(state, player, settings.guns_first)
+        have = inventory(state, player, guns_first=settings.guns_first)
         return logic.satisfied(entries, have, settings, cell, reached)
 
     return rule
@@ -65,6 +66,6 @@ def second_target(world: ZexionWorld) -> Callable[[CollectionState], bool]:
     guns_first = world.logic_settings.guns_first
 
     def rule(state: CollectionState) -> bool:
-        return logic.second_counts(inventory(state, player, guns_first), flagged=True)
+        return logic.second_counts(inventory(state, player, guns_first=guns_first), flagged=True)
 
     return rule

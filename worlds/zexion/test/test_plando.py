@@ -4,89 +4,24 @@
 import contextlib
 import unittest
 from collections import Counter
-from types import SimpleNamespace
 from typing import Any
 
-from BaseClasses import CollectionState, MultiWorld, PlandoOptions
+from BaseClasses import CollectionState, MultiWorld
 from Fill import (
     FillError,
     distribute_items_restrictive,
-    distribute_planned_blocks,
-    parse_planned_blocks,
-    resolve_early_locations_for_planned,
 )
 from Options import OptionError
-from test.general import setup_multiworld
-from worlds.AutoWorld import World, call_all
-from worlds.generic.Rules import exclusion_rules, locality_rules
 
 from .. import plando
 from ..custom import MAX_AMMO, MAX_ENERGY
 from ..items import AREA_MAP, DATA_DISC, INTEL_CHIP, code_of
-from ..locations import LOCATION_ID_BASE, location_name, location_name_groups
+from ..locations import location_name, location_name_groups
 from ..world import FOREIGN, FOREIGN_PROGRESSION, ZexionWorld
+from .bases import block, generate, index_of
 
-NO_OPTION = SimpleNamespace(value={})  # a start option a world does not have
 # The three locations Landing Pod's starting items reach in Easy (the default start room's).
 POD = ["Kresezoa 25,25", "Machinus 27,24", "Machinus 24,29"]
-
-
-def generate(
-    options: list[dict[str, Any]], worlds: list[type[World]] | None = None, seed: int = 1
-) -> MultiWorld:
-    """Players with these options (Zexion players, or ``worlds``), set up as Archipelago's
-    Main.py does up to the fill: the start options' items precollected, item links, locality
-    and exclusion, the plando read (with its groups filled in, as Generate.py's option check
-    does) and placed, then pre_fill. The test base runs none of the plando steps."""
-    worlds = worlds or [ZexionWorld] * len(options)
-    multiworld = setup_multiworld(worlds, steps=(), seed=seed, options=options)
-    for player, world in multiworld.worlds.items():
-        world.options.plando_items.verify(type(world), f"Tester{player}", PlandoOptions.items)
-    multiworld.set_item_links()
-    multiworld.state = CollectionState(multiworld)
-    call_all(multiworld, "generate_early")
-    for player, world in multiworld.worlds.items():
-        for option in ("start_inventory", "start_inventory_from_pool"):
-            for name, n in getattr(world.options, option, NO_OPTION).value.items():
-                for _ in range(n):
-                    multiworld.push_precollected(multiworld.create_item(name, player))
-    for step in ("create_regions", "create_items", "set_rules"):
-        call_all(multiworld, step)
-    for player, world in multiworld.worlds.items():
-        exclusion_rules(multiworld, player, world.options.exclude_locations.value)
-    if multiworld.players > 1:
-        locality_rules(multiworld)
-    multiworld.plando_item_blocks = parse_planned_blocks(multiworld)
-    call_all(multiworld, "connect_entrances")
-    call_all(multiworld, "generate_basic")
-    remove = {
-        p: Counter(getattr(w.options, "start_inventory_from_pool", NO_OPTION).value)
-        for p, w in multiworld.worlds.items()
-    }
-    pool = []
-    for item in multiworld.itempool:
-        if remove[item.player][item.name] > 0:
-            remove[item.player][item.name] -= 1
-            pool.append(multiworld.worlds[item.player].create_filler())
-        else:
-            pool.append(item)
-    multiworld.itempool[:] = pool
-    multiworld.link_items()
-    resolve_early_locations_for_planned(multiworld)
-    distribute_planned_blocks(
-        multiworld, [block for blocks in multiworld.plando_item_blocks.values() for block in blocks]
-    )
-    call_all(multiworld, "pre_fill")
-    return multiworld
-
-
-def block(items: dict[str, int], locations: list[str], **more: Any) -> dict[str, Any]:
-    """A plando_items block, forced, its items from the pool unless ``more`` says otherwise."""
-    return {"items": items, "locations": locations, "from_pool": True, "force": True, **more}
-
-
-def index_of(name: str) -> int:
-    return ZexionWorld.location_name_to_id[name] - LOCATION_ID_BASE
 
 
 class PlandoTestCase(unittest.TestCase):
@@ -230,46 +165,12 @@ class TestPlandoRefused(PlandoTestCase):
         self.assertIn("Zexion (Tester1): plando_items gives items the game does not hold", message)
         self.assertIn("2 Wall Jump Boots: the game holds one", message)
 
-    def test_a_third_progressive_weapon(self) -> None:
-        extra = block({"Progressive Lance": 1}, ["Vallahar 6,14"], from_pool=False)
-        message = self.refused([{"mode": "easy", "plando_items": [extra]}])
-        self.assertIn("3 Progressive Lance: a weapon and its upgrade are 2", message)
-
     def test_an_upgrade_with_guns_first(self) -> None:
-        # The pool holds none, so Archipelago makes one.
+        # The pool holds none, so Archipelago makes one. The other limits are
+        # TestPlandoProblems' (plando.problems on its own).
         extra = block({"Pentashot": 1}, ["Vallahar 6,14"])
         message = self.refused([{"mode": "easy", "plando_items": [extra]}])
         self.assertIn("Pentashot: with Guns First on, the upgrade is a second Progressive", message)
-
-    def test_disks_with_the_core_goal(self) -> None:
-        extra = block({"OS Install Disk": 1}, ["Vallahar 6,14"])
-        message = self.refused([{"mode": "easy", "plando_items": [extra]}])
-        self.assertIn("1 OS Install Disk: only the OS Install Disks goal counts them", message)
-
-    def test_more_disks_than_the_options_make(self) -> None:
-        extra = block({"OS Install Disk": 1}, ["Vallahar 6,14"], from_pool=False)
-        options = {
-            "mode": "easy",
-            "goal": "os_install_disks",
-            "os_install_disks": 6,
-            "os_install_disks_required": 4,
-            "plando_items": [extra],
-        }
-        message = self.refused([options])
-        self.assertIn("7 OS Install Disks, more than the 6 the options make", message)
-
-    def test_an_area_map_with_area_map_hints(self) -> None:
-        extra = block({"Area Map": 1}, ["Vallahar 6,14"])
-        message = self.refused([{"mode": "easy", "plando_items": [extra]}])
-        self.assertIn("Area Map: with Area Map Hints on, the Area Maps are Intel Chips", message)
-
-    def test_an_intel_chip_without_area_map_hints(self) -> None:
-        extra = block({"Intel Chip": 1}, ["Vallahar 6,14"])
-        options = {"mode": "easy", "area_map_hints": False, "plando_items": [extra]}
-        message = self.refused([options])
-        self.assertIn(
-            "Intel Chip: with Area Map Hints off, an Intel Chip would hint nothing", message
-        )
 
     def test_an_area_map_in_another_world_without_area_map_hints(self) -> None:
         # Kept in its own world (local_items), as the fill keeps it: not placed, and with
@@ -417,6 +318,10 @@ class TestPlandoProblems(unittest.TestCase):
         self.assertEqual(self.problems({"Navcore": 1, "Progressive Snake": 2}), [])
         (line,) = self.problems({"Navcore": 2})
         self.assertEqual(line, "2 Navcore: the game holds one, so the others would give nothing")
+        (line,) = self.problems({"Progressive Lance": 3})
+        self.assertEqual(line, "3 Progressive Lance: a weapon and its upgrade are 2")
+        (line,) = self.problems({"Pentashot": 1})
+        self.assertIn("Pentashot: with Guns First on, the upgrade is a second Progressive", line)
         # With Guns First off, a weapon and an upgrade once each.
         off = {"guns_first": False}
         self.assertEqual(self.problems({"Progressive Snake": 1, "Tunneler": 1}, **off), [])
@@ -427,8 +332,13 @@ class TestPlandoProblems(unittest.TestCase):
         self.assertEqual(self.problems(made, made, disc_hunt=True), [])
         (line,) = self.problems({"OS Install Disk": 21}, made, disc_hunt=True)
         self.assertIn("21 OS Install Disks, more than the 20 the options make", line)
+        (line,) = self.problems({"OS Install Disk": 1})  # the core goal counts none
+        self.assertEqual(line, "1 OS Install Disk: only the OS Install Disks goal counts them")
         self.assertEqual(self.problems({"Area Map": 3}, area_map_hints=False), [])
-        self.assertEqual(len(self.problems({"Area Map": 1, "Intel Chip": 1})), 1)
+        (line,) = self.problems({"Area Map": 1, "Intel Chip": 1})
+        self.assertEqual(line, "Area Map: with Area Map Hints on, the Area Maps are Intel Chips")
+        (line,) = self.problems({"Intel Chip": 1}, area_map_hints=False)
+        self.assertIn("Intel Chip: with Area Map Hints off, an Intel Chip would hint nothing", line)
 
     def test_only_what_plando_added(self) -> None:
         # Past a limit already without plando (start_inventory's supplies on top of the pool):
