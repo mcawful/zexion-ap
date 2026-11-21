@@ -471,10 +471,7 @@ class GameRun:
     # back the step (ticks.linux_mod_lost, plan_give), and the steps it failed in a row.
     linux_back_by: float = 0.0
     linux_failed: int = 0
-    # The Linux helper connection the last LinuxMod was configured on (its process, its
-    # connection's number): one configured on another had a stretch with no client, in which the
-    # helper counted this world's own disks itself (ticks.configure_linux).
-    linux_configured_on: tuple | None = None
+    # (Not here: ZexionContext.linux_configured_on, which outlives the game on purpose.)
 
 
 # The steps in a row that fail with a real error (an unexpected reply, or one lost: a ``refused``

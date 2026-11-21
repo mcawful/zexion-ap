@@ -753,14 +753,14 @@ async def configure_linux(ctx: ZexionContext) -> None:
             ctx.linux_mod = mod = await asyncio.to_thread(linux_helper.LinuxMod, g.pm)
             run.linux_back_by = 0.0
             here = (mod.pm, mod.connection)
-            if run.linux_configured_on is not None and run.linux_configured_on != here:
+            if ctx.linux_configured_on is not None and ctx.linux_configured_on != here:
                 # The helper had no client between the two connections (it takes one closing for
                 # its client gone): a disk picked up meanwhile was its own to count (its own
                 # notice), so the next look takes the disks the save holds for counted, as
                 # attach_helper does on Windows. Not after a failure that kept the connection
                 # (a refused config, say): the helper kept its client then.
                 ctx.load.disks_counted = None
-            run.linux_configured_on = here
+            ctx.linux_configured_on = here
     except linux_helper.LinuxHelperError as exc:
         linux_mod_lost(ctx, exc)
 

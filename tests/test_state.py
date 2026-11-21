@@ -522,5 +522,4 @@ def test_a_new_game_run_starts_with_no_hold_no_retry_and_no_mismatch() -> None:
     assert fresh.reattach is NONE and not fresh.mismatched and not fresh.swap_pending
     assert fresh.helper_retry_at == fresh.helper_back_by == fresh.attach_again_at == 0.0
     assert fresh.linux_back_by == 0.0 and fresh.linux_failed == 0 and not fresh.step_failed
-    assert fresh.linux_configured_on is None
     assert not fresh.reload_mod_pending and not fresh.disarm_pending

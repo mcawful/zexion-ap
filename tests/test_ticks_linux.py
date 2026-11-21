@@ -685,10 +685,21 @@ def test_on_linux_a_setting_is_sent_only_on_the_connection_that_sent_config() ->
 def test_on_linux_no_tick_goes_through_a_connection_made_again(tick) -> None:
     # The one rule (ticks.helper_link): the labels', the replay's, the seed's file's and the
     # language's ticks once went through a stale connection, the others did not.
+    # Many of these send nothing even when they run (nothing to tell, in this context), so the
+    # tick itself is watched: it is called on the configured connection, and not on another.
     ctx = linux_ctx(configured=True)
+    called: list[int] = []
+
+    async def watched(link) -> None:
+        called.append(1)
+        await tick(ctx, link)
+
+    via_link(ctx, watched)
+    assert called == [1], "run through the connection it was configured on"
     ctx.game_conn.pm.connection = 2
     sent = len(ctx.game_conn.pm.sent)
-    via_link(ctx, lambda link: tick(ctx, link))
+    via_link(ctx, watched)
+    assert called == [1], "not run through a connection made again"
     assert len(ctx.game_conn.pm.sent) == sent
 
 

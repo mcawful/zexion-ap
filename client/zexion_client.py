@@ -149,6 +149,11 @@ class ZexionContext(CommonContext):
         # What the helpers' life with this attached game has come to: the holds, the retries and
         # the failures in a row; started afresh when the game closes (game_closed).
         self.run = state.GameRun()
+        # The Linux helper connection the last LinuxMod was configured on (its process, its
+        # connection's number): one configured on another had a stretch with no client, in which
+        # the helper counted this world's own disks itself (ticks.configure_linux). Kept over a
+        # game closing, not in GameRun: a new game's configuration is compared with the last one.
+        self.linux_configured_on: tuple | None = None
         # The seed files whose whole text (offline_seed) went to the Linux helper in this client
         # run: from then on the slot data's alone (linux_seed) never replaces it (linux_seed_tick).
         self.linux_full_seeds: set[str] = set()
