@@ -1917,7 +1917,7 @@ itself". Working in game on Windows, between two PCs (2026-11-20, B1, develop bf
 `zexion_ap.dll` `2d8b696f…`, `version.dll` `b5a196b2…`, `zexion.apworld` `a2bcc022…`; the owner's
 report, `docs/re/save-format.md`, "The helpers keep the file of each seed a save uses here"): AP
 saves made on one PC showed as AP saves on the other after Steam Cloud synced them. Seen once,
-Windows to Linux (2026-11-21, a CachyOS PC, B1 assumed; the owner's report: AP saves synced from
+Windows to Linux (2026-11-20, local time, a CachyOS PC, B1 assumed; the owner's report: AP saves synced from
 Windows showed as AP saves there, after the owner cleared some things out, what not reported;
 "Seen on a Steam Deck, and a Linux PC's sync", below). Not run in the game, so stand-in tests only: Linux's
 own writing of the copies and Linux to Windows, whether a client ran on the second PC first,
@@ -2624,10 +2624,10 @@ fixes (#164, #165), DeathLink's death count (#169) and the client's seed and lab
 in the game (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the rest of the list has
 run on stand-ins only.
 
-**Seen on a Steam Deck, and a Linux PC's sync (2026-11-20 and 2026-11-21).** Two short runs the
+**Seen on a Steam Deck, and a Linux PC's sync (2026-11-20).** Two short runs the
 owner reported (the Deck's helper is `develop` at 246c850, with the self-configure of #189 and the
 seed copies of #187; the CachyOS PC's build was not reported). Recorded in `docs/re/linux.md`,
-"Seen on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21", with what was not reported:
+"Seen on a Steam Deck and a CachyOS PC, 2026-11-20", with what was not reported:
 
 - *Steam Deck, late on 2026-11-20 (local time).* Zexion's native Linux version installed on the SD
   card; the helper of 246c850, built by CI in the Steam Runtime (`libzexion_ap.so` SHA-256
@@ -2637,13 +2637,13 @@ seed copies of #187; the CachyOS PC's build was not reported). Recorded in `docs
   mod loaded. That is all that was reported: the first run of #189's helper, and the first on a
   Deck. Not recorded: whether the title lines
   showed with no client, whether synced AP saves showed as AP saves there, the game's build id.
-- *CachyOS PC, 2026-11-21.* A machine that had run an earlier version of the Linux helper. At
+- *CachyOS PC, 2026-11-20 (local time).* A machine that had run an earlier version of the Linux helper. At
   first the save sync did not work: AP saves synced from Windows did not show as AP saves. The
   owner then "cleared some stuff out and it worked fine": AP saves synced through Steam Cloud
   showed as AP saves (the Linux half of "Seed files in the save folder", below). Not recorded:
   what was cleared, whether Steam is native or Flatpak there, which helper build ran, which
   saves. (A guess, not seen: that the earlier helper, which ignores the `ZexionAP-seed-*.sav`
-  copies yet reports the same 1.2.0, was still the one loaded until it was replaced.)
+  copies yet carried the same version number, 1.2.0, as develop's builds then, was still the one loaded until it was replaced.)
 
 **Running it in the game.** A build's first run, in this order. A step that changes the game,
 its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
