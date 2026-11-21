@@ -57,11 +57,21 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     (``find ~ -name ZexionAP -delete``: ``_selects_protected_name``,
     ``protected.pattern_may_name_protected``; ``find``'s two regular expression syntaxes,
     groups, braces, escapes and classes are read; a name pattern with fewer than three fixed
-    characters, ``*`` or ``Z*``, is no name). ``Zexion`` and ``ZexionAP`` are also this repo's
+    characters, ``*`` or ``Z*``, is no folder's name, but it may be a file's: below).
+    ``Zexion`` and ``ZexionAP`` are also this repo's
     names in lower case (``worlds/zexion``, ``zexion*.py``), so ``find``'s predicates that
     compare case match them only as written, and ``-iname`` and PowerShell, which don't, in
     any case (``find dist -name 'zexion*' -delete`` passes, ``find / -name Zexion -delete``
-    and ``gci ~ -r -Filter zexion | ri`` block). It reads also inside a word that holds the
+    and ``gci ~ -r -Filter zexion | ri`` block). A pattern that may match the name of a file
+    in these folders counts too, wherever the search starts (``protected._FILE_NAMES``: ``Save
+    Game N.sav``, ``GameUnlocks.sav``, ``PreferencesSynced.sav``, ``PreferencesLocal``,
+    ``ZexionAP-seed-<NAME>.sav``, ``steam_autocloud.vdf``, ``token``, ``seeds``,
+    ``config-<build>.txt``): ``*.sav``, ``Save*``, ``*seed*``, ``Pref*``, ``*.txt``, ``?????`` and
+    a bare ``*`` do, so ``find lab -name '*.sav' -delete`` and ``find . -name '*' -delete``
+    block, while ``*.py``, ``*.pyc`` and ``*foo*`` pass. The seed copies' name is matched only as
+    written unless ``-iname`` or PowerShell, as ``Zexion*`` above; a ``-path`` or ``-regex`` is
+    read at its last name, which needs a fixed character (``./build/*`` names no file); a name
+    over 200 characters is read as a file's. It reads also inside a word that holds the
     command (``sh -c``, ``eval``) or a substitution's backticks, so ``-print`` and the reads
     pass while ``-delete``, ``-exec``, ``-fprint`` and an ``xargs rm`` after it do not
     (``find . -iname '*zexion*' -delete`` and ``gci . zexion | ri`` in this repo block too:
@@ -75,6 +85,22 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     or changes directory to a folder in a protected one or a parent of one. Other names in
     the folder's path don't count, so a worktree named ``steam-achievements`` works as any
     other.
+  - It also *names a folder above a protected one* at any depth (``_names_ancestor``,
+    ``protected.is_ancestor_folder``): Roaming, the home folder (``~``, ``$HOME``,
+    ``%USERPROFILE%``, ``C:/Users/name``, ``/home/name``) and what is above it, ``/``, a drive's
+    root, the folders of the variables ``protected._ANCESTOR_ENV`` lists (``$APPDATA``,
+    ``%LOCALAPPDATA%``, ``$XDG_DATA_HOME``, …, also written as the variable when this machine
+    doesn't set it), ``.var``, ``.steam`` and Steam's folders in Program Files (x86), ``..`` or a
+    last name that is only a wildcard (``~/*``) up to one (a relative word is read from the
+    folders the command runs in only when it has no name in it), and a ``cd`` to one. The command
+    then reaches what is in it, so what it deletes, moves, copies or searches and acts on blocks,
+    whatever name it looks for (``rm -rf ~``, ``mv "$APPDATA" x``, ``find ~ -delete``, ``find
+    "$APPDATA" -exec rm {} +``, ``gci $env:APPDATA -r | ri``, ``cd ~ && rm -rf *``, ``git -C ~
+    clean -fdx``), and a read passes, a substitution in it as for a name (``find "$APPDATA" -name
+    x -print``, ``ls -R ~``, ``du -sh ~``, ``ls -ld $(find ~ -name ZexionAP)``). Every
+    ``-exec``, ``-execdir`` and ``-ok`` writes, a reader too (``find ~ -exec cat {} +`` blocks);
+    copying such a folder out blocks as well (``cp -r ~ x``). A project folder under the home
+    folder is none of these, and a link to one is not followed.
   - *Read-only* means the verb is on a short list and nothing in its arguments makes it write
     (``_bash_args_write``: ``find -delete``, ``sort -o``, ``sed -i`` and the like); ``git
     diff``, ``log`` and ``show`` count unless an argument starts with ``--output``,
@@ -122,10 +148,15 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
 
 This is a tripwire against mistakes, not a sandbox. It can't see a path assembled entirely from
 variables or string arithmetic, a link to a parent folder made outside the command, the
-folder behind a ``cd`` into a variable, a Steam library folder by its own name (only its
-``steamapps`` and what is below), a name picked by another tool than ``find`` and
-PowerShell's ``-Filter`` and ``-Include`` (``locate``, ``fd``, ``find ~ | grep ZexionAP |
-xargs rm``, ``Where-Object Name -like``, ``cmd /c for /d``, a .NET search), a name from a
+folder behind a ``cd`` into a variable that is none of the ancestors' (``X=~; rm -rf $X``,
+``cd $d``), a Steam library folder by its own name (only its ``steamapps`` and what is below, and
+Steam's own folders in the usual places: a Steam folder at ``D:/Steam`` is missed), a home
+folder that neither the environment nor a ``/home/name``, ``/Users/name`` or ``C:/Users/name``
+path gives, a name picked by another tool than ``find`` and
+PowerShell's ``-Filter`` and ``-Include`` (``locate``, ``fd``, ``find lab/x | grep ZexionAP |
+xargs rm`` from a folder that is not above a protected one: from ``~`` it blocks as any
+command that names one, ``Where-Object Name -like``, ``cmd /c for /d``, a .NET search), a name
+from a
 variable or an expression (``find -name "$n"``, ``"Zexion$(echo AP)"``, a ``$'…'`` string
 with escapes, text after a backtick), a regular expression's quantifier (``-regex
 'Zex(ion)?AP'``) or an alternation inside a group that splits a name (``(Z|z)exion``), a
@@ -1030,8 +1061,10 @@ def _cd_targets(segments: list[list[Word]], cwd: str, code: str, protected) -> l
         if not args:
             continue
         target = _expand_env(protected._expand(args[0]), assigned)
-        if re.search(r"[$%]", target):
-            out.append(None)
+        if re.search(r"[$%]", target) or target.startswith("~"):
+            # A folder the hook can't tell, unless it is one that holds a protected one by
+            # name: ``cd $APPDATA`` where the variable is not set here.
+            out.append(target if protected.holds_protected(target) else None)
         else:
             out.append(target if _is_absolute(target) else os.path.join(base, target))
     return out
@@ -1042,7 +1075,7 @@ def _folder_is_suspect(folder: str | None, protected) -> bool:
     ``steamapps``, …: ``protected.may_be_above_protected``). Not judged by other names in it,
     so a worktree named ``steam-achievements`` or a user named Steam is fine."""
     return folder is not None and (
-        protected.is_protected_path(folder) or protected.may_be_above_protected(folder)
+        protected.is_protected_path(folder) or protected.holds_protected(folder)
     )
 
 
@@ -1075,6 +1108,86 @@ def _names_parent(word: str, folders: list[str | None], protected) -> bool:
         and (not bare or (not protected.is_network_path(p) and os.path.isdir(p)))
         for p in _as_paths(word, folders, protected)
     )
+
+
+# Commands that delete, move, copy or change what they are given, or act on what ``find`` lists:
+# a word that is a lone ``/`` or ``/c`` is a root only for these. Not cmd's (``rd``, ``del``,
+# ``xcopy``, ``robocopy``: their ``/s`` and ``/q`` are options), nor ``cmd /c``, ``findstr /s``
+# or a divisor in code.
+DESTRUCTIVE_VERBS = FILE_VERBS | {
+    "find", "rmdir", "shred", "tar", "rsync", "chown", "chgrp", "xargs", "truncate", "dd", "ri",
+    "remove-item", "mi", "move-item", "ci", "cpi", "copy-item", "rni", "rename-item", "set-content",
+    "out-file",
+}  # fmt: skip
+_AMBIGUOUS_ROOT = re.compile(r"[/\\]{1,2}[A-Za-z]?")
+
+
+def _destructive(words: list[Word], powershell: bool) -> bool:
+    """Whether a simple command's verb is one of ``DESTRUCTIVE_VERBS``."""
+    stripped = _strip_prefix(words, powershell)
+    return bool(stripped) and _verb(stripped[0]) in DESTRUCTIVE_VERBS
+
+
+def _names_ancestor(
+    word: str, folders: list[str | None], protected, destructive: bool = False, depth: int = 0
+) -> bool:
+    """Whether a word names a folder that may hold a protected one at any depth (``~``,
+    ``"$APPDATA"``, ``$env:LOCALAPPDATA``, ``/``, ``C:\\``, a drive's root, or ``..``, ``*`` and
+    ``../..`` up to one: ``protected.is_ancestor_folder``). Deleting, moving or copying it, or
+    searching it and acting on what is found (``find ~ -name x -delete``, ``gci $env:APPDATA -r |
+    ri``), reaches the folder, while reading it does not. Read as ``_as_paths`` reads a word, but
+    a relative one is joined to ``folders`` only when it has no name in it, and nothing asks the
+    file system. A lone ``/`` or ``/c`` counts only as an argument of a ``destructive`` command
+    (``DESTRUCTIVE_VERBS``): ``cmd /c`` and ``print(1 / 2)`` name no root. A word with a space in
+    it (up to 2000 characters) is read again as a command's words, for ``sh -c 'find ~ -delete'``
+    and ``eval``."""
+    word = re.sub(r"^--?[\w-]+=", "", word)  # --target-directory=…
+    if not word or word.startswith("-") or "://" in word or "\n" in word or len(word) > 2000:
+        return False
+    if not destructive and _AMBIGUOUS_ROOT.fullmatch(word):
+        return False
+    path = protected._expand(word)
+    if len(word) <= 400 and protected.is_ancestor_folder(path):
+        return True
+    if depth < 2 and re.search(r"\s", word) and re.search(r"[~$%/\\*]|\.\.", word):
+        for powershell in (False, True):
+            for inner_words in lex(word, powershell)[0]:
+                inner_destructive = _destructive(inner_words, powershell)
+                if any(
+                    _names_ancestor(inner, folders, protected, inner_destructive, depth + 1)
+                    for inner in inner_words
+                ):
+                    return True
+    if len(word) > 400 or _is_absolute(path):
+        return False
+    if re.search(r"[A-Za-z0-9_]", re.sub(r"\[[^\]]*\]", "", path)):
+        return False
+    return any(
+        protected.is_ancestor_folder(os.path.join(base, path))
+        for base in [f for f in folders if f is not None] or [os.getcwd()]
+    )
+
+
+def _names_an_ancestor(segments, text_ids, targets, folders, protected, powershell) -> bool:
+    """Whether a word of the command (``_names_ancestor``) or a redirect's target names a folder
+    that may hold a protected one. A ``cd``'s own folder is not read again as a word: it is one of
+    ``folders``, and ``cd ..`` would read as two levels up."""
+    cd_words = set()
+    for words in segments:
+        stripped = _strip_prefix(words, powershell)
+        if stripped and _verb(stripped[0]) in CD_VERBS:
+            cd_words.update(id(w) for w in stripped[1:])
+    seen: set[tuple[str, bool]] = set()
+    for words, destructive in [(s, _destructive(s, powershell)) for s in segments] + [
+        (list(targets), False)
+    ]:
+        for w in words:
+            if id(w) in text_ids or id(w) in cd_words or (str(w), destructive) in seen:
+                continue
+            seen.add((str(w), destructive))
+            if _names_ancestor(w, folders, protected, destructive):
+                return True
+    return False
 
 
 def _repo_checkout(folder: str | None, protected) -> bool:
@@ -1424,6 +1537,7 @@ def _is_repo_vcs(words: list[Word], text_ids: set[int], folders, protected, ps: 
         protected.mentions_protected(a)
         or protected.word_may_name_protected(a)
         or protected.may_be_above_protected(a)
+        or _names_ancestor(a, folders, protected)
         or _reaches_protected(a, folders, protected)
         for a in args
     )
@@ -1536,7 +1650,9 @@ class _Memo:
 
     PURE = frozenset({
         "normalize", "_expand", "mentions_protected", "word_may_name_protected",
-        "may_be_above_protected", "pattern_may_name_protected", "is_protected_path",
+        "may_be_above_protected", "holds_protected", "is_ancestor_folder",
+        "pattern_may_name_protected",
+        "is_protected_path",
     })  # fmt: skip
 
     def __init__(self, module) -> None:
@@ -1604,6 +1720,7 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
     over = over or len(distinct) > MAX_FOLDERS
     folders = ([cwd] if cwd else []) + distinct
     kept = [[w for w in s if id(w) not in text_ids] for s in segments]
+    by_ancestor = False
     if over:  # not read word by word: taken to reach a protected folder, as far as it goes
         by_path, by_name = True, False
     else:
@@ -1612,7 +1729,13 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
         by_name = _selects_protected_name(
             kept + [[t] for t in targets], protected, powershell, text=text
         )
-    if not (by_path or by_name):
+        # A folder above a protected one (``~``, ``"$APPDATA"``, ``/``) is named: what the
+        # command does to it, or finds in it and acts on, reaches the folder. Like a reach by a
+        # name, it lets a read through, substitutions included.
+        by_ancestor = _names_an_ancestor(
+            segments, text_ids, targets, folders, protected, powershell
+        )
+    if not (by_path or by_name or by_ancestor):
         return None
 
     def block(detail: str) -> str:
@@ -1625,11 +1748,11 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
         substitution = _PS_MEMBER_SUBEXPR.sub("member", substitution)
     else:  # also with Bash's quoting taken off: a value Bash later reads as arithmetic runs it
         substitution += "\n" + _quotes_taken_off(substitution)
-    # Reached only by a name, every command a read and every substitution a plain one of
-    # reads (also as quoting is taken off): ``ls -ld $(find ~ -name X)``, not ``cd $(…) &&
-    # git clean``, which runs in the folder the substitution found.
+    # Reached only by a name or as a folder above one, every command a read and every
+    # substitution a plain one of reads (also as quoting is taken off): ``ls -ld $(find ~ -name
+    # X)``, not ``cd $(…) && git clean``, which runs in the folder the substitution found.
     reads = (
-        by_name
+        (by_name or by_ancestor)
         and not by_path
         and all(_segment_is_read_only(w, powershell) for w in segments)
         and _substitutions_only_read(substitution, powershell)
