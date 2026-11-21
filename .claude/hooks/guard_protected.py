@@ -274,6 +274,31 @@ def _tick() -> None:
         raise _OutOfTime
 
 
+# What the guard reads of one command, so that it answers in about a second whatever the input
+# (``settings.json`` gives the hook 120 s, but a hook that times out lets the call through: the
+# deadline below is the protection, that a backstop). Past a budget (``MAX_SEGMENTS``,
+# ``MAX_WORK``, ``MAX_FOLDERS``) the words are not read one by one: the command counts as
+# reaching a protected folder, so only a read-only one passes (a redirect, a substitution, and the
+# ``tools/`` scripts and ``git`` and ``gh`` commands that are trusted otherwise are blocked: "Too
+# long or too complex to check"). Normal commands are far below them: a commit message or a PR
+# body is one word, and a heredoc that is only data is cut out before the words are counted.
+# Two limits make a heredoc count as code instead: ``MAX_HEREDOCS`` and ``MAX_SAVED_NAMES``.
+MAX_COMMAND = 100_000  # characters; a longer command is blocked unread (use the Write tool)
+MAX_SEGMENTS = 8000  # simple commands
+MAX_WORK = 6000  # over the different words (``_work``) and redirect targets (8 each)
+MAX_FOLDERS = 16  # different folders the command's ``cd`` goes to
+MAX_HEREDOCS = 32  # Bash heredocs; with more, none is cut out as data
+MAX_SAVED_NAMES = 64  # files a heredoc is saved to and copied to; with more it counts as code
+MAX_NAME_TEXT = 1000  # what is read of a name or a list of them; a longer one counts as a name
+# Past ``DEADLINE`` of reading, whatever the budget says, the command is blocked too: the lexer
+# (per word), the heredoc pass (per heredoc and per saved file's later commands), the final pass
+# (per command) and each read of a word or name pattern that ``protected`` has not already
+# answered (``_Memo``) look at the clock (``_tick``). Not interrupted: one read (a word of 96 000
+# characters with a wildcard is read in full, 0.8 s; a command with several such passes takes up
+# to about two seconds), the lexing of one word, and ``_heredocs``, which is linear in the length.
+DEADLINE = 1.0  # seconds; a command whose reading takes longer is blocked
+
+
 BLOCK_HINT = (
     "Blocked by .claude/hooks/guard_protected.py: this would write into the Zexion install, the "
     "real save folder, Steam's cloud cache for the game, or the mod's offline files "
@@ -380,13 +405,16 @@ FIND_PREDICATES = {
     "-wholename": ("path", False), "-iwholename": ("path", True),
     "-regex": ("regex", False), "-iregex": ("regex", True),
 }  # fmt: skip
-_PS_NAME_PARAM = re.compile(r"-(?:fi(?:l(?:t(?:e(?:r)?)?)?)?|inc(?:l(?:u(?:d(?:e)?)?)?)?)")
+# ``-Filter`` and ``-Include``, as PowerShell takes them: any unique abbreviation.
+_PS_FILTER = r"fi(?:l(?:t(?:e(?:r)?)?)?)?"
+_PS_INCLUDE = r"inc(?:l(?:u(?:d(?:e)?)?)?)?"
+_PS_NAME_PARAM = re.compile(rf"-(?:{_PS_FILTER}|{_PS_INCLUDE})")
 # PowerShell takes an en or em dash for a parameter's hyphen, and ``-Param:value`` for its value.
 _DASH = "[-–—―]"
 # A word that holds a command with such a predicate, or ``Get-ChildItem`` itself (its second
-# operand is a name filter): it is read again as a command.
+# operand is a name filter): it is read again as a command (any ``-inc…`` counts here).
 _NAME_PREDICATE_IN_TEXT = re.compile(
-    rf"(?:^|\s){_DASH}(?:i?(?:name|path|wholename|regex)|i?lname|fi(?:l|lt|lte|lter)?|inc\w*)"
+    rf"(?:^|\s){_DASH}(?:i?(?:name|path|wholename|regex)|i?lname|{_PS_FILTER}|inc\w*)"
     r"(?:\s|:|$)"
     r"|(?:^|[\s;|&(])(?:get-childitem|gci|dir|ls)\s",
     re.I,
@@ -1238,7 +1266,7 @@ def _names_parent(word: str, folders: list[str | None], protected) -> bool:
     ``…/steamapps/common``, ``rm -r "Gallant Leaf"`` or ``Gall*`` in Roaming): copying into,
     moving or deleting it reaches the folder. A bare ``steamapps`` or ``userdata`` counts only
     when that folder exists where the command runs (it may be a test name)."""
-    word = re.sub(r"^--?[\w-]+=", "", word)  # --target-directory=…
+    word = _OPTION_PREFIX.sub("", word)
     bare = word.lower() in ("steamapps", "userdata")
     return any(
         protected.may_be_above_protected(p)
@@ -1297,6 +1325,7 @@ _VARIABLE = re.compile(r"\$\{?(?:env:)?([\w@*]+)\}?(?:/\*)?|%(\w+)%", re.IGNOREC
 _VALUE_START = re.compile(r"[$~%@(\"'/\\]")  # a word that is a value, not a command
 _PIPELINE_VALUE = re.compile(r"\$(?:_|psitem)\b", re.IGNORECASE)
 _HAS_NAME = re.compile(r"[A-Za-z0-9_]")
+_OPTION_PREFIX = re.compile(r"^--?[\w-]+=")  # ``--target-directory=…``, which a path follows
 
 
 def _unwrap(words: list[Word], powershell: bool) -> list[Word]:
@@ -1386,7 +1415,7 @@ def _operand_ancestor(
     ``folder`` (with names in it only if ``join_names``); with the folder unknown (None) only a
     word of dots and wildcards counts. A lone ``/`` or ``/c`` counts here: the caller is a verb
     that deletes, moves or lists for one. Nothing asks the file system."""
-    word = re.sub(r"^--?[\w-]+=", "", word).strip(",;")  # --target-directory=…
+    word = _OPTION_PREFIX.sub("", word).strip(",;")
     if word.endswith(")") and word.count(")") > word.count("("):
         word = word[:-1]  # ``(Get-Item ~)`` and ``@(~)``; not ``C:/Program Files (x86)``
     if word.startswith("(") and word.count("(") > word.count(")"):
@@ -2125,12 +2154,9 @@ def _value_after(segments: list[list[Word]], si: int, wi: int, inline: str) -> s
 # PowerShell's ``-Filter`` and ``-Include`` take a list, written with spaces or in parentheses
 # too, and ``Get-ChildItem`` takes its filter by position: read from the text, up to the end of
 # the command or, for a parameter, the next one.
-_PS_LIST_PARAM = re.compile(
-    rf"(?:^|\s){_DASH}(?:fi(?:l(?:t(?:e(?:r)?)?)?)?|inc(?:l(?:u(?:d(?:e)?)?)?)?)[:\s]\s*", re.I
-)
+_PS_LIST_PARAM = re.compile(rf"(?:^|\s){_DASH}(?:{_PS_FILTER}|{_PS_INCLUDE})[:\s]\s*", re.I)
 _PS_LISTER_CALL = re.compile(r"(?:^|[\s;|&({])(?:get-childitem|gci|dir|ls)\s+", re.I)
 _NEXT_PARAM = re.compile(rf"[ \t]+{_DASH}[A-Za-z]")
-MAX_NAME_TEXT = 1000  # what is read of a name or a list of them; a longer one counts as a name
 
 
 def _ps_span(text: str, start: int, params_end: bool) -> str:
@@ -2403,20 +2429,6 @@ def _blanked(code: str, words: list[Word]) -> str:
     return "".join(out)
 
 
-# What the guard reads of one command, so that it answers in about a second whatever the input
-# (a hook that times out lets the call through). Past any of these it does not look at the
-# words one by one: the command is taken to reach a protected folder, so only a read-only
-# command passes (``check``). Normal commands are far below them: a commit message or a PR
-# body is one word, and a heredoc that is only data is cut out before the words are counted.
-MAX_COMMAND = 100_000  # characters; a longer command is blocked unread
-MAX_SEGMENTS = 8000  # simple commands
-MAX_WORK = 6000  # over the different words (``_work``) and redirect targets (8 each)
-MAX_FOLDERS = 16  # different folders the command's ``cd`` goes to
-MAX_HEREDOCS = 32  # Bash heredocs; with more, none is cut out as data
-MAX_SAVED_NAMES = 64  # files a heredoc is saved to and copied to; with more it counts as code
-DEADLINE = 1.0  # seconds; a command whose reading takes longer is blocked
-
-
 # A redirect's target that is worked out when the command runs: a variable still unexpanded, a
 # substitution (``$(…)``, a backtick), or PowerShell's ``> (expr)`` (the lexer's ``(``).
 _DYNAMIC_TARGET = re.compile(r"[$%`]")
@@ -2479,21 +2491,29 @@ def check(tool_name: str, tool_input: dict, protected, session_cwd: str = "") ->
         _due = float("inf")
 
 
-def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
-    if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"}:
-        path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
-        if path and protected.is_protected_path(path):
-            return f"{BLOCK_HINT}\nTarget: {path}"
-        return None
+@dataclass
+class _Parsed:
+    """A shell command as ``_check`` reads it."""
 
-    if tool_name not in SHELL_TOOLS:
-        return None
-    powershell = SHELL_TOOLS[tool_name]
-    command = str(tool_input.get("command") or "")
-    if len(command) > MAX_COMMAND:
-        return f"{BLOCK_HINT}\nA command of {len(command):,} characters is too long to check."
-    protected = _Memo(protected)
-    cwd = str(tool_input.get("cwd") or session_cwd or "")
+    powershell: bool
+    cwd: str  # where it runs, as far as the payload says
+    code: str  # the command, with the heredoc bodies that are only data cut out
+    segments: list[list[Word]]  # its simple commands
+    targets: list[Word]  # its redirects' targets
+    text_ids: set[int]  # the words that are message text (ids), read as no path
+    words: list[Word]  # the others
+    text: str  # ``code`` with the message text blanked
+    over: bool  # past the budget: not read word by word
+    assigned: set[str]  # the variables it sets itself
+    before: list[str | None]  # the folder each simple command runs in
+    cds: list[str | None]  # the folders its ``cd``s go to (None: unknown)
+    folders: list[str | None]  # where it runs, and its ``cd`` targets
+    unknown_cd: bool
+
+
+def _parse(command: str, powershell: bool, cwd: str, protected) -> _Parsed:
+    """Split a shell command into what the rules below read, and see whether it is past the
+    budget (``MAX_SEGMENTS``, ``MAX_WORK``, ``MAX_FOLDERS``)."""
     code = _here_strings_to_quotes(command) if powershell else _cut_heredocs(command)
     segments, targets = lex(code, powershell)
     text_ids = _text_words(segments, powershell)
@@ -2508,36 +2528,38 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
     )
     distinct = list(dict.fromkeys(cds))  # the same folder again is not read again
     over = over or len(distinct) > MAX_FOLDERS
-    folders = ([cwd] if cwd else []) + distinct
-    unknown_cd = None in cds
-    kept = [[w for w in s if id(w) not in text_ids] for s in segments]
-    above = None
-    if over:  # not read word by word: taken to reach a protected folder, as far as it goes
-        by_path, by_name = True, False
-    else:
-        by_path = _may_reach_protected(text, words, targets, folders, protected, unknown_cd)
-        # A redirect's target is read as an argument is: ``> "$(find ~ -name ZexionAP)/x"``.
-        by_name = _selects_protected_name(
-            kept + [[t] for t in targets], protected, powershell, text=text
-        )
-        # A command that deletes, moves out, changes or searches-and-acts on a folder above a
-        # protected one (``~``, ``"$APPDATA"``, ``/``), where it runs or where its operand is.
-        above = _ancestor_violation(
-            segments, cwd or os.getcwd(), text_ids, protected, powershell, code, before=before
-        )
-    if not (by_path or by_name or above):
-        return None
+    return _Parsed(
+        powershell, cwd, code, segments, targets, text_ids, words, text, over, assigned, before,
+        cds, ([cwd] if cwd else []) + distinct, None in cds,
+    )  # fmt: skip
 
-    def block(detail: str) -> str:
-        if over:
-            detail = f"Too long or too complex to check, so read as reaching one. {detail}"
-        return f"{BLOCK_HINT}\n{detail}"
 
-    if above:
-        return block(above)
+def _reach(p: _Parsed, protected) -> tuple[bool, bool, str | None]:
+    """How the command may reach a protected folder: by a path, by a name alone, and, as a reason,
+    by acting on a folder above one. Past the budget it is not read word by word and is taken to
+    reach one by a path."""
+    if p.over:
+        return True, False, None
+    by_path = _may_reach_protected(p.text, p.words, p.targets, p.folders, protected, p.unknown_cd)
+    kept = [[w for w in s if id(w) not in p.text_ids] for s in p.segments]
+    # A redirect's target is read as an argument is: ``> "$(find ~ -name ZexionAP)/x"``.
+    by_name = _selects_protected_name(
+        kept + [[t] for t in p.targets], protected, p.powershell, text=p.text
+    )
+    # A command that deletes, moves out, changes or searches-and-acts on a folder above a
+    # protected one (``~``, ``"$APPDATA"``, ``/``), where it runs or where its operand is.
+    above = _ancestor_violation(
+        p.segments, p.cwd or os.getcwd(), p.text_ids, protected, p.powershell, p.code,
+        before=p.before,
+    )  # fmt: skip
+    return by_path, by_name, above
 
-    substitution = _CAT_HEREDOC.sub("heredoc", code)
-    if powershell:  # "$($_.Name)" only reads a member
+
+def _substitution_violation(p: _Parsed, by_name: bool, by_path: bool) -> str | None:
+    """A reason when a command that may reach a protected folder holds a command substitution or,
+    in PowerShell, a method or .NET call that may write."""
+    substitution = _CAT_HEREDOC.sub("heredoc", p.code)
+    if p.powershell:  # "$($_.Name)" only reads a member
         substitution = _PS_MEMBER_SUBEXPR.sub("member", substitution)
     else:  # also with Bash's quoting taken off: a value Bash later reads as arithmetic runs it
         substitution += "\n" + _quotes_taken_off(substitution)
@@ -2547,51 +2569,99 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
     reads = (
         by_name
         and not by_path
-        and all(_segment_is_read_only(w, powershell) for w in segments)
-        and _substitutions_only_read(substitution, powershell)
+        and all(_segment_is_read_only(w, p.powershell) for w in p.segments)
+        and _substitutions_only_read(substitution, p.powershell)
     )
-    if not reads and ("$(" in substitution or (not powershell and "`" in substitution)):
-        return block("Command substitution next to a protected path.")
-    if powershell and (call := _ps_calls_block(code)):
-        return block(f"A method or .NET call next to a protected path: {call}")
+    if not reads and ("$(" in substitution or (not p.powershell and "`" in substitution)):
+        return "Command substitution next to a protected path."
+    if p.powershell and (call := _ps_calls_block(p.code)):
+        return f"A method or .NET call next to a protected path: {call}"
+    return None
 
-    for target in targets:
+
+def _redirect_violation(p: _Parsed, protected) -> str | None:
+    """A reason when a redirect's target may be a protected path, or is worked out when the command
+    runs (``_DYNAMIC_TARGET``)."""
+    for target in p.targets:
         if target.startswith("&") or target.lower() in HARMLESS_TARGETS:
             continue
-        if over:
-            return block(f"Redirect target: {target}")
+        reason = f"Redirect target: {target}"
+        if p.over:
+            return reason
         # A variable the command sets itself (``TEMP="<folder>"; … > $TEMP/x``) is not the one
         # in the hook's environment, which ``protected.normalize`` would put in its place.
         refs = {next(g for g in m.groups() if g).lower() for m in _ENV_REF.finditer(target)}
-        if refs & assigned:
-            return block(f"Redirect target: {target}")
-        expanded = protected.normalize(_expand_env(target, assigned))
+        if refs & p.assigned:
+            return reason
+        expanded = protected.normalize(_expand_env(target, p.assigned))
         if (
             protected.is_protected_path(expanded)  # also by its words: Gallant*, GALLAN~1
-            or _reaches_protected(expanded, folders, protected)
-            or (unknown_cd and _goes_up_to_protected(str(target), protected))
+            or _reaches_protected(expanded, p.folders, protected)
+            or (p.unknown_cd and _goes_up_to_protected(str(target), protected))
             or _DYNAMIC_TARGET.search(expanded)
             or "(" in target.bare  # PowerShell's ``> (expr)``; one in quotes is a name
         ):
-            return block(f"Redirect target: {target}")
+            return reason
+    return None
 
-    suspect_dir = over or any(_folder_is_suspect(f, protected) for f in folders)
+
+def _command_violation(p: _Parsed, protected) -> str | None:
+    """A reason when a simple command is not recognizably read-only, a tool of this repo or a
+    ``git`` or ``gh`` command that names no protected folder, or sets a variable that names a
+    program (``GIT_PAGER=…``)."""
+    suspect_dir = p.over or any(_folder_is_suspect(f, protected) for f in p.folders)
     # After a cd, tools/ is the repo's own only in a checkout of the repo.
-    repo_tools = all(_repo_checkout(f, protected) for f in cds)
-    for words in segments:
+    repo_tools = all(_repo_checkout(f, protected) for f in p.cds)
+    for words in p.segments:
         _tick()
-        if not powershell and (program := _sets_program(words)):
-            return block(f"An environment prefix that names a program: {program}")
-        if _segment_is_read_only(words, powershell):
+        if not p.powershell and (program := _sets_program(words)):
+            return f"An environment prefix that names a program: {program}"
+        if _segment_is_read_only(words, p.powershell):
             continue
         if not suspect_dir and (
-            (repo_tools and _is_venv_tool(words, powershell))
-            or _is_repo_vcs(words, text_ids, folders, protected, powershell)
+            (repo_tools and _is_venv_tool(words, p.powershell))
+            or _is_repo_vcs(words, p.text_ids, p.folders, protected, p.powershell)
         ):
             continue
-        shown = " ".join(w for w in words if id(w) not in text_ids)
-        return block(f"Not a read-only command: {shown}")
+        shown = " ".join(w for w in words if id(w) not in p.text_ids)
+        return f"Not a read-only command: {shown}"
     return None
+
+
+def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
+    """``check`` without the deadline. A shell command goes through these phases, each of which
+    gives a reason to block or None: ``_parse``, ``_reach`` (a command that cannot reach a
+    protected folder is allowed here), then ``_substitution_violation``, ``_redirect_violation``
+    and ``_command_violation``."""
+    if tool_name in {"Write", "Edit", "MultiEdit", "NotebookEdit"}:
+        path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
+        if path and protected.is_protected_path(path):
+            return f"{BLOCK_HINT}\nTarget: {path}"
+        return None
+
+    if tool_name not in SHELL_TOOLS:
+        return None
+    powershell = SHELL_TOOLS[tool_name]
+    command = str(tool_input.get("command") or "")
+    if len(command) > MAX_COMMAND:
+        return f"{BLOCK_HINT}\nA command of {len(command):,} characters is too long to check."
+    protected = _Memo(protected)
+    cwd = str(tool_input.get("cwd") or session_cwd or "")
+    p = _parse(command, powershell, cwd, protected)
+    by_path, by_name, above = _reach(p, protected)
+    if not (by_path or by_name or above):
+        return None
+    detail = (
+        above
+        or _substitution_violation(p, by_name, by_path)
+        or _redirect_violation(p, protected)
+        or _command_violation(p, protected)
+    )
+    if not detail:
+        return None
+    if p.over:
+        detail = f"Too long or too complex to check, so read as reaching one. {detail}"
+    return f"{BLOCK_HINT}\n{detail}"
 
 
 def _mentions_sensitive(text: str) -> bool:
