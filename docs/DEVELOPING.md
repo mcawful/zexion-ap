@@ -136,7 +136,11 @@ worlds/zexion/ → generation → slot data → client
   Leaf/Zexion` is inferred, not seen (`docs/re/save-format.md`, "Steam Auto-Cloud syncs only
   `*.sav` and `*.png` in the save folder itself"). If so, that is the game's folder only while
   `XDG_DATA_HOME` is unset or the default `~/.local/share`: with it set elsewhere the saves
-  themselves would not be what Steam syncs. Not yet run in the game, nor on two machines.
+  themselves would not be what Steam syncs. Working in game on Windows between two PCs
+  (2026-11-20, B1, develop bf86eb5; `docs/re/save-format.md`, "The helpers keep the file of each
+  seed a save uses here"): AP saves made on one PC showed as AP saves on the other after Steam
+  Cloud synced them. Not yet run: Linux, Windows with Linux, the new-seed quit, the merge of two
+  machines' copies. Not checked: whether a client had run on the second PC.
 
 How the helper works: [`native/README.md`](../native/README.md).
 
