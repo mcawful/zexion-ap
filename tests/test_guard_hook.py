@@ -3118,3 +3118,117 @@ def test_a_long_command_that_reads_only_still_passes_quickly() -> None:
     words = " ".join(f"w{i}" for i in range(3000))
     assert _quick("Bash", f"ls -R ~ {words}") is None
     assert _quick("Bash", f"find ~ {words} -name x -print") is None
+
+
+# The repo's own build and release files (``native/build``, ``dist``, a scratch folder, a
+# worktree) carry names the game install holds too (``libzexion_ap.so``, ``version.dll``,
+# ``zexion_ap.dll``, ``zexion-ap-<version>-windows.zip``): they are no protected folder. A
+# ``sed`` script such as the one that shortens ``sha256sum`` lines was read as a path of three
+# wildcard names (``Gallant Leaf/Zexion``), so any command that held it and a ``rm``, ``cp`` or
+# ``mkdir`` blocked.
+SHA_SED = r"""sed -E 's/^(.{12})[^ ]* \\*?/\\1  /'"""
+SCRATCH = "C:/Users/someone/AppData/Local/Temp/claude/abc/def/scratchpad"
+BUILD_ALLOWED = [
+    "rm native/build/libzexion_ap.so",
+    "rm native/build/proxy/Release/version.dll",
+    f"cp {SCRATCH}/libzexion_ap.so native/build/libzexion_ap.so",
+    "rm -f dist/zexion_ap.dll dist/version.dll dist/libzexion_ap.so",
+    "rm -rf dist/test-0faf34b dist/zexion-ap-1.2.0-windows.zip",
+    f"cp native/build/zexion_ap.dll {SCRATCH}/zexion_ap.dll",
+    f"rm {SCRATCH}/version.dll",
+    "rm .claude/worktrees/x/native/build/libzexion_ap.so",
+    "mkdir -p dist/test-0faf34b",
+    "gh run download 44955881196 --repo mcawful/zexion-ap -n release-dry-run -D dist/test-0faf34b",
+    # The commands that were blocked: each with the sed script at its end.
+    f"rm native/build/libzexion_ap.so && ls -la dist && sha256sum dist/* | {SHA_SED}",
+    f"rm native/build/proxy/Release/version.dll && cmake --build native/build --config Release "
+    f'2>&1 | grep -E -i " error|version.dll|zexion_ap.dll"; sha256sum dist/*.dll | {SHA_SED}',
+    f"cp {SCRATCH}/libzexion_ap.so native/build/libzexion_ap.so && .venv/Scripts/python "
+    f"tools/build_apworld.py && sha256sum dist/zexion_ap.dll dist/libzexion_ap.so | {SHA_SED}",
+    "mkdir -p dist/test-0faf34b && gh run download 44955881196 --repo mcawful/zexion-ap "
+    f"-n release-dry-run -D dist/test-0faf34b && sha256sum dist/test-0faf34b/* | {SHA_SED}",
+    f"cd {REPO}/dist/test-0faf34b && sha256sum * | {SHA_SED} && "
+    "unzip -l zexion-ap-1.2.0-windows.zip | tail -n +4 | head -14 && "
+    "tar -tvzf zexion-ap-1.2.0-linux.tar.gz",
+    "rm x; echo a | sed -n -e 's/^(.{12})[^ ]* \\\\*?/\\\\1/' -e p",
+    "rm x; echo a | sed --expression='s/^(.*)[^ ]* *?/x/'",
+    # Archives are listed, not unpacked.
+    "unzip -l zexion-ap-1.2.0-windows.zip",
+    "unzip -lv dist/x.zip | head",
+    "unzip -t dist/x.zip",
+    "unzip -Z -1 dist/x.zip",
+    "zipinfo dist/x.zip",
+    "tar -tf dist/x.tar",
+    "tar tf dist/x.tar",
+    "tar -tvzf dist/x.tar.gz",
+    "tar --list --file=dist/x.tar",
+    "tar --list --file dist/x.tar",
+    f'unzip -l "{GAME}/x.zip"',
+    f'tar -tvzf "{SAVES}/x.tar.gz"',
+    f'zipinfo "{GAME}/x.zip"',
+]
+BUILD_BLOCKED = [
+    # The same names in the game's install, and the release's in a library.
+    f'rm "{GAME}/libzexion_ap.so"',
+    f'rm "{GAME}/version.dll"',
+    f'cp x "{GAME}/version.dll"',
+    f'cp {SCRATCH}/zexion_ap.dll "{GAME}/zexion_ap.dll"',
+    f'rm "{GAME}/zexion-ap-1.2.0-windows.zip"',
+    "cp x ~/.local/share/Steam/steamapps/common/Zexion/version.dll",
+    'rm "/home/u/.local/share/Steam/steamapps/common/Zexion/libzexion_ap.so"',
+    f'rm native/build/libzexion_ap.so && cp native/build/version.dll "{GAME}/version.dll"',
+    f'rm native/build/libzexion_ap.so && sha256sum dist/* | {SHA_SED} && rm "{GAME}/version.dll"',
+    # The sed script is still read: a name in it, a file it writes, a substitution in it.
+    f"rm x; sed 's#Gallant Leaf/Zexion#x#' {SAVES}/y",
+    "rm x; sed 's#steamapps/common/Zexion#x#' y",
+    f"rm x; sed -n 's/a/b/w {SAVES}/x' y",
+    "rm x; sed -n 's/a/b/w /home/u/.local/share/Zex*/s' y",
+    'rm x; sed -n "s/a/$(rm ~/.local/share/ZexionAP/seeds)/" y',
+    f"rm x; sed -i 's/^(.*)[^ ]* *?/x/' \"{SAVES}/y\"",
+    f"rm x; sed -e 'w {SAVES}/x' y",
+    # Archives that unpack, or run a program, into a protected folder.
+    f'unzip x.zip -d "{GAME}"',
+    f'unzip -o x.zip -d "{SAVES}"',
+    f'unzip -l x.zip -d "{SAVES}"',
+    f'unzip -lT "{GAME}/x.zip"',
+    f'tar -xf x.tar -C "{GAME}"',
+    f'tar -xzf x.tgz -C "{SAVES}"',
+    f'tar -cf "{SAVES}/x.tar" lab',
+    f'tar -tf "{GAME}/x.tar" --to-command=sh',
+    f'tar -tf "{GAME}/x.tar" --use-compress-program=sh',
+    f'tar -t -I sh -f "{GAME}/x.tar"',
+    f'tar tf "{GAME}/x.tar" --index-file="{SAVES}/x"',
+    f'tar -tf "{GAME}/x.tar" --checkpoint=1 --checkpoint-action=exec=sh',
+    f'tar -tf host:"{GAME}/x.tar"',
+    # tar, unzip and zipinfo take options from their environment variables.
+    f"TAR_OPTIONS='--use-compress-program=rm -rf {OFFLINE}' tar -tzf x.tgz",
+    f"export TAR_OPTIONS='-I sh'; tar -tzf {OFFLINE}/x.tgz",
+    f"TAR_OPTIONS='--checkpoint=1 --checkpoint-action=exec=rm' tar -tf \"{SAVES}/x.tar\"",
+    f"TAR_OPTIONS=-v tar -xf x.tar -C {OFFLINE}",
+    f"UNZIP='-o -d {OFFLINE}' unzip -l x.zip",
+    f"UNZIPOPT='-o -d {SAVES}' unzip -l x.zip",
+    f'ZIPINFO=-h zipinfo "{SAVES}/x.zip"',
+    f'export UNZIP="-d {GAME}"; unzip -l x.zip',
+    # sed's long options may be abbreviated to a unique prefix, and ``--line-length`` takes a value.
+    f"sed --in 's/x/y/' {OFFLINE}/seeds.txt",
+    f"sed --i 's/x/y/' \"{SAVES}/Save Game 1.sav\"",
+    f"sed --in-pl 's/x/y/' \"{SAVES}/Save Game 1.sav\"",
+    f"sed --fi s.sed {OFFLINE}/seeds.txt",
+    f"sed --f s.sed {OFFLINE}/seeds.txt",
+    f"sed --expr 'w {OFFLINE}/x' a",
+    f"sed --e='w {OFFLINE}/x' a",
+    f"sed --line-length 5 'w {OFFLINE}/x' a",
+    f"sed --li 5 'w {OFFLINE}/x' a",
+    f"sed -l 5 'w {OFFLINE}/x' a",
+    f'unzip x.zip "{SAVES}/Save Game 1.sav"',
+]
+
+
+@pytest.mark.parametrize("command", BUILD_ALLOWED)
+def test_the_repos_build_files_and_archive_listings_are_allowed(home_env: str, command: str):
+    assert run("Bash", command=command) is None
+
+
+@pytest.mark.parametrize("command", BUILD_BLOCKED)
+def test_the_same_names_in_the_game_and_writing_archives_stay_blocked(home_env: str, command: str):
+    assert run("Bash", command=command)

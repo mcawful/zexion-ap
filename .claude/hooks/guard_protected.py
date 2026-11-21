@@ -17,17 +17,24 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
   1. ``_parse`` splits the command into simple commands, redirect targets and words. Text that is
      only data is left out, so commit messages and PR text may name the folders: a PowerShell
      here-string's quotes, the message values of ``git`` and ``gh`` (``_text_words``) and the
-     body of a Bash heredoc that nothing can run (``_heredoc_is_data``).
+     body of a Bash heredoc that nothing can run (``_heredoc_is_data``). The script of a
+     ``sed`` that writes nothing is no path (``_sed_data_words``): the text of it is still read
+     for a protected folder's name, as any command's is. Nothing is protected by file name
+     outside the four folders: ``native/build``, ``dist``, a scratch folder and a worktree are
+     the repo's own, whatever they hold (``libzexion_ap.so``, ``version.dll``, ``zexion_ap.dll``,
+     ``zexion-ap-<version>-windows.zip``).
   2. ``_reach``: whether the command *may reach* a protected folder (``_may_reach_protected``,
      ``_selects_protected_name``), or deletes, moves out, changes or searches-and-acts on a folder
      *above* one (``_ancestor_violation``). One that cannot is allowed.
   3. One that may is allowed only when every simple command in it is recognizably read-only
-     (``_segment_is_read_only``), a ``.venv`` Python run of a script in ``tools/`` (those enforce
-     their own rules through ``tools/protected.py``; after a ``cd``, only when every ``cd`` goes
-     to a checkout of this repo), or a ``git`` or ``gh`` command that names no protected folder
-     or parent of one; and when it holds no command substitution or PowerShell method call
-     (``_substitution_violation``) and no output is redirected into a protected folder or to
-     a path the guard cannot see (``_redirect_violation``, ``_command_violation``).
+     (``_segment_is_read_only``; ``unzip -l``, ``-v``, ``-t``, ``tar -t`` and ``zipinfo`` only
+     list an archive: ``_unzip_lists``, ``_tar_lists``), a ``.venv`` Python run of a script in
+     ``tools/`` (those enforce their own rules through ``tools/protected.py``; after a ``cd``,
+     only when every ``cd`` goes to a checkout of this repo), or a ``git`` or ``gh`` command
+     that names no protected folder or parent of one; and when it holds no command substitution
+     or PowerShell method call (``_substitution_violation``) and no output is redirected into a
+     protected folder or to a path the guard cannot see (``_redirect_violation``,
+     ``_command_violation``).
 
 Past a budget (the ``MAX_*`` limits and ``DEADLINE``, with their comments) the guard does not read
 a command word by word: it counts as reaching a protected folder, so only a read-only one passes.
@@ -190,6 +197,7 @@ READ_ONLY_SH = {
     "pushd", "popd", "pwd", "true", "false", "sort", "uniq", "cut", "tr", "basename", "dirname",
     "realpath", "readlink", "tree", "type", "which", "for", "in", "done", "fi", "esac", "export",
     "fold", "nl", "column", "paste", "comm", "tac", "rev", "seq", "base64", "read", "sed",
+    "unzip", "tar", "zipinfo",  # unzip and tar only when they list: ``_bash_args_write``
 }  # fmt: skip
 READ_ONLY_PS = {
     "get-childitem", "gci", "ls", "dir", "get-content", "gc", "cat", "type", "get-item", "gi",
@@ -223,7 +231,8 @@ _PROGRAM_VAR = re.compile(
     r"(?:[A-Z_]*_)?(?:PAGER|EDITOR|VISUAL|DIFF|COMMAND|SSH|ASKPASS|PROGRAM|SHELL|STARTUP)"
     r"|PYTHONSTARTUP"
     r"|LESSOPEN|LESSCLOSE|BASH_ENV|ENV|GIT_CONFIG\w*|GIT_EXEC_PATH|LD_PRELOAD|PAGER|EDITOR"
-    r"|PATH|BROWSER",
+    r"|PATH|BROWSER"
+    r"|TAR_OPTIONS|UNZIP\w*|ZIPINFO\w*",  # tar -t runs --use-compress-program, --checkpoint-action
     re.I,
 )
 # ForEach-Object counts as read-only only with script blocks: a bare word is a method to call.
@@ -819,9 +828,9 @@ def _verb(word: str) -> str:
     return re.split(r"[\\/]", word)[-1].lower().removesuffix(".exe")
 
 
-def _operands(args: list[Word], valued: set[str]) -> list[str]:
+def _operands(args: list[Word], valued: set[str]) -> list[Word]:
     """The words of ``args`` that are not options or option values."""
-    out: list[str] = []
+    out: list[Word] = []
     skip = ended = False
     for a in args:
         if skip:
@@ -835,40 +844,146 @@ def _operands(args: list[Word], valued: set[str]) -> list[str]:
     return out
 
 
-def _sed_writes(args: list[Word]) -> bool:
-    """Whether sed may write: in place, a script from a file, or a w, W or e command."""
-    scripts: list[str] = []
-    take_next = False
+def _sed_scripts(args: list[Word]) -> list[tuple[str, Word]] | None:
+    """The scripts of a ``sed`` command, each with the word that holds it, or None when sed may
+    write because of how it is called: in place, or a script from a file."""
+    scripts: list[tuple[str, Word]] = []
+    take_next = skip_next = False
     for a in args:
-        if take_next:
-            scripts.append(a)
+        if skip_next:
+            skip_next = False
+        elif take_next:
+            scripts.append((a, a))
             take_next = False
         elif a.startswith("--"):
-            if a.startswith(("--in-place", "--file")):
-                return True
-            if a.startswith("--expression"):
-                name, eq, value = a.partition("=")
+            # GNU getopt takes any unique prefix of a long option (``--in``, ``--expr``); the
+            # ambiguous ``--f`` counts as ``--file`` here.
+            name, eq, value = a.partition("=")
+            if len(name) >= 3 and ("--in-place".startswith(name) or "--file".startswith(name)):
+                return None
+            if len(name) >= 3 and "--expression".startswith(name):
                 if eq:
-                    scripts.append(value)
+                    scripts.append((value, a))
                 take_next = not eq
+            elif len(name) >= 3 and "--line-length".startswith(name):
+                skip_next = not eq  # its value is no script
         elif a.startswith("-") and len(a) > 1:
             flags = a[1:]
             if "i" in flags or "f" in flags:
-                return True
+                return None
             if "e" in flags:
                 rest = flags[flags.index("e") + 1 :]
                 if rest:
-                    scripts.append(rest)
+                    scripts.append((rest, a))
                 take_next = not rest
     if not scripts:
-        scripts = _operands(args, {"-l"})[:1]
-    for script in scripts:
-        s = re.sub(r"\\.", "", script)
-        s = re.sub(r"([sy])(.)(?:(?!\2).)*\2(?:(?!\2).)*\2", r"\1", s)  # s/re/new/ keeps flags
-        s = re.sub(r"/[^/]*/", "", s)  # addresses
-        if re.search(r"[wWe]", s):
-            return True
-    return False
+        long_valued = {a for a in args if len(a) >= 3 and "--line-length".startswith(a)}
+        scripts = [(s, s) for s in _operands(args, {"-l", *long_valued})[:1]]
+    return scripts
+
+
+def _sed_script_writes(script: str) -> bool:
+    """Whether a sed script has a ``w``, ``W`` or ``e`` command (or an ``s`` flag of them)."""
+    s = re.sub(r"\\.", "", script)
+    s = re.sub(r"([sy])(.)(?:(?!\2).)*\2(?:(?!\2).)*\2", r"\1", s)  # s/re/new/ keeps flags
+    s = re.sub(r"/[^/]*/", "", s)  # addresses
+    return re.search(r"[wWe]", s) is not None
+
+
+def _sed_writes(args: list[Word]) -> bool:
+    """Whether sed may write: in place, a script from a file, or a w, W or e command."""
+    scripts = _sed_scripts(args)
+    return scripts is None or any(_sed_script_writes(s) for s, _ in scripts)
+
+
+def _sed_data_words(segments: list[list[Word]], powershell: bool) -> set[int]:
+    """The ids of the words that are a ``sed`` command's script, which is no path: a script like
+    ``s/^(.{12})[^ ]* \\\\*?/\\\\1  /`` read as one is three wildcard names in a row, which may be
+    ``Gallant Leaf/Zexion``, and a chained command with any other verb then blocks. Only Bash's,
+    of a sed that does not write (``_sed_writes``: a script with a ``w`` command names a file),
+    and only a word quoted whole (an unquoted wildcard may be expanded by the shell into names)
+    with no substitution or ``$'…'`` string in it. ``_check`` still reads the text for a
+    protected folder's name, as it reads every command's."""
+    out: set[int] = set()
+    if powershell:
+        return out
+    for words in segments:
+        words = _strip_prefix(words, False)
+        if not words or _verb(words[0]) != "sed":
+            continue
+        scripts = _sed_scripts(words[1:])
+        if scripts is None or any(_sed_script_writes(s) for s, _ in scripts):
+            continue
+        for _, word in scripts:
+            if not re.search(r"[*?\[{~]", word.bare) and not re.search(r"\$[(']|`", word.raw):
+                out.add(id(word))
+    return out
+
+
+def _unzip_lists(args: list[Word]) -> bool:
+    """Whether ``unzip`` only lists or tests an archive: ``-l``, ``-v``, ``-t`` or ``-Z``
+    (zipinfo) among its options, every option before the archive a cluster of those and quiet
+    and short-form letters, and after the archive only names and ``-x``: ``-d`` and the rest
+    that change what it does (or where it extracts) are not read."""
+    seen = archive = False
+    for a in args:
+        if archive and not a.startswith("-"):
+            continue  # a member name
+        if not a.startswith("-") or a in ("-", "--"):
+            archive = True
+        elif archive:
+            if a != "-x":
+                return False
+        elif re.fullmatch(r"-[lvtqZ1shmz]+", a):  # not -T: it changes the archive's own time
+            seen = seen or re.search(r"[lvtZ]", a) is not None
+        else:
+            return False
+    return seen
+
+
+# tar's list mode: ``-t`` with only letters and long options that read.
+_TAR_LONG_READS = {
+    "--list",
+    "--verbose",
+    "--gzip",
+    "--gunzip",
+    "--bzip2",
+    "--xz",
+    "--zstd",
+    "--file",
+}
+
+
+def _tar_lists(args: list[Word]) -> bool:
+    """Whether ``tar`` only lists an archive (``tar -t``, ``-tvzf x.tgz``, ``tf x.tar``,
+    ``--list``): ``t`` as the mode, the other letters only ``v``, ``f``, ``z``, ``j``, ``J``,
+    ``a``, and no option that runs a program or writes a file (``--use-compress-program``,
+    ``-I``, ``--checkpoint-action``, ``--index-file``, ``--to-command``, ``-F``, ``-C``, …).
+    The archive's name is a word like any other, but not a ``host:file`` one (tar runs ``rsh``)."""
+    listing = take_next = False
+    for i, a in enumerate(args):
+        if take_next:
+            take_next, value = False, a
+        elif a.startswith("--"):
+            name, eq, value = a.partition("=")
+            if name not in _TAR_LONG_READS:
+                return False
+            listing = listing or name == "--list"
+            take_next = name == "--file" and not eq
+            if take_next:
+                continue
+        elif (a.startswith("-") and len(a) > 1) or i == 0:  # options; or the old style's first
+            letters = a.lstrip("-")
+            if not re.fullmatch(r"[tvfzjJa]+", letters):
+                return False
+            listing = listing or "t" in letters
+            take_next = "f" in letters
+            continue
+        else:
+            continue  # a member name
+        if ":" in value and not re.match(r"[A-Za-z]:[\\/]", value):
+            return False
+    return listing
 
 
 def _bash_args_write(verb: str, args: list[Word]) -> bool:
@@ -891,6 +1006,10 @@ def _bash_args_write(verb: str, args: list[Word]) -> bool:
         return any(re.match(r"-[^-]*[oO]", a) or a.lower().startswith("--log") for a in args)
     if verb == "sed":
         return _sed_writes(args)
+    if verb == "unzip":
+        return not _unzip_lists(args)
+    if verb == "tar":
+        return not _tar_lists(args)
     return False
 
 
@@ -2471,7 +2590,8 @@ def _parse(command: str, powershell: bool, cwd: str, protected) -> _Parsed:
     code = _here_strings_to_quotes(command) if powershell else _cut_heredocs(command)
     segments, targets = lex(code, powershell)
     text_ids = _text_words(segments, powershell)
-    words = [w for s in segments for w in s if id(w) not in text_ids]
+    data_ids = _sed_data_words(segments, powershell)  # no path, but its text is still read
+    words = [w for s in segments for w in s if id(w) not in text_ids and id(w) not in data_ids]
     text = _blanked(code, [w for s in segments for w in s if id(w) in text_ids])
     unique = {str(w) for w in words}  # message text is read as no path
     work = sum(_work(w) for w in unique) + 8 * len({str(t) for t in targets})
