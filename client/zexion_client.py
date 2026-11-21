@@ -683,10 +683,10 @@ async def poll(ctx: ZexionContext) -> None:
         # On the game's Linux build, the Linux helper, once configured (linux_newgame_tick). As
         # with the Windows helper: one lost (linux_mod_lost) holds the step back a while rather
         # than write the items with no popup. A mod configured afresh after a failure gets its
-        # own try (a direct write would drop the traps since the popup count); it is only when
-        # the steps through the mods configured in turn fail LINUX_DIRECT_AFTER times in a row
-        # that the next step's items are written directly, so nothing the helper keeps refusing
-        # holds them back for good.
+        # own try (a direct write would drop the traps since the popup count). After
+        # LINUX_DIRECT_AFTER real errors in a row (not refusals), each on a fresh connection,
+        # the next step's items are written directly even if this poll configured a fresh
+        # mod: one that answers config but fails apply would else hold them back for good.
         grants = ctx.helper if ctx.helper is not None else ctx.linux_mod
         linux = ctx.helper is None and getattr(ctx.game_conn, "platform", "windows") == "linux"
         if linux and ctx.linux_failed >= LINUX_DIRECT_AFTER:

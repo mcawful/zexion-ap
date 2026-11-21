@@ -725,10 +725,13 @@ async def newgame_tick(ctx: ZexionContext, helper=None, offer_choice: bool = Tru
 
 
 LINUX_HOLD_SECONDS = 30.0  # as zexion_client's HELPER_RETRY_SECONDS for the Windows helper
-# The steps the Linux helper may fail in a row (each on a connection configured afresh: a failed
-# step drops the mod, linux_mod_lost) before the next step's items are written directly, so
-# nothing it keeps refusing holds them back for good. A step that follows fewer failures gives
-# through the mod once one answers, so its traps and popups are not lost to a direct write.
+# The steps in a row that fail with a real error (an unexpected reply or a reply lost: a
+# ``refused`` is no failure and is not counted), each on a connection configured afresh (a failed
+# step drops the mod, linux_mod_lost), after which the next step's items are written directly,
+# even if that poll configured a fresh mod: a mod that answers ``config`` but fails ``apply``
+# would else hold the items back for good. Fewer failures than that, the step goes through the
+# mod configured afresh, so its traps and popups are not lost to a direct write; and that step
+# going through (or the direct one) ends the count.
 LINUX_DIRECT_AFTER = 3
 
 

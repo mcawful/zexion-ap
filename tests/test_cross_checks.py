@@ -12,6 +12,8 @@ number.
 
 from __future__ import annotations
 
+import ast
+import importlib
 import json
 import re
 import string
@@ -245,25 +247,62 @@ def test_the_save_slots_are_laid_out_alike() -> None:
 LINUX_SRC = ROOT / "native" / "linux" / "src"
 
 
-def helper_sources() -> str:
-    return "\n".join(path.read_text(encoding="utf-8") for path in sorted(SRC.glob("*.[ch]*")))
+def for_platform(text: str, windows: bool) -> str:
+    """``text`` without the lines only the other platform builds: the regions of ``#ifdef _WIN32``
+    and ``#ifndef _WIN32`` (and their ``#else``) the platform does not take. Other conditionals
+    (ZAP_HOOKTEST's, ZAP_TEST_BUILD's) keep both branches, and the directives themselves go."""
+    kept: list[str] = []
+    stack: list[tuple[bool, bool]] = []  # (a _WIN32 test, the branch now open is taken)
+    for line in text.splitlines():
+        found = re.match(r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b\s*(\S*)", line)
+        if found is None:
+            if all(taken for _, taken in stack):
+                kept.append(line)
+            continue
+        directive, word = found.groups()
+        if directive in ("ifdef", "ifndef", "if"):
+            platform = directive != "if" and word == "_WIN32"
+            stack.append((platform, windows == (directive == "ifdef") if platform else True))
+        elif directive == "elif":
+            raise AssertionError(f"an #elif this cannot follow: {line}")
+        elif directive == "else":
+            platform, taken = stack.pop()
+            stack.append((platform, (not taken) if platform else True))
+        else:  # endif
+            stack.pop()
+    assert not stack, "an #if left open"
+    return "\n".join(kept)
+
+
+def windows_sources() -> str:
+    """The Windows helper's sources (native/src), as it builds them."""
+    paths = sorted(SRC.glob("*.[ch]*"))
+    return "\n".join(for_platform(path.read_text(encoding="utf-8"), True) for path in paths)
 
 
 def linux_sources() -> str:
     """The Linux helper's own sources and the shared ones of native/src its build compiles
-    (native/linux/CMakeLists.txt's ``../src/NAME.cpp``, with their headers)."""
+    (native/linux/CMakeLists.txt's ``../src/NAME.cpp``, with their headers), as it builds them
+    (not the shared files' Windows branches)."""
     cmake = (ROOT / "native" / "linux" / "CMakeLists.txt").read_text(encoding="utf-8")
     shared = sorted(set(re.findall(r"\.\./src/(\w+)\.cpp", cmake)))
     assert {"game_calls", "offline", "mission"} <= set(shared), shared
     paths = sorted(LINUX_SRC.glob("*.[ch]*"))
     paths += [SRC / f"{name}{ext}" for name in shared for ext in (".cpp", ".h")]
-    return "\n".join(path.read_text(encoding="utf-8") for path in paths if path.exists())
+    return "\n".join(
+        for_platform(path.read_text(encoding="utf-8"), False) for path in paths if path.exists()
+    )
 
 
 def says(text: str, reply: str) -> bool:
-    """Whether ``text`` gives ``reply`` as a string literal: whole or, for ``error <why>``, as the
-    helper builds it (``"error " + why``) from a literal why (a reply may go on past it)."""
-    return f'"{reply}' in text or (reply.startswith("error ") and f'"{reply[6:]}' in text)
+    """Whether ``text`` gives ``reply``: as a string literal, whole or as its start (a reply may
+    go on past it), or, for ``error <why>``, built as ``"error " + why`` from a ``return`` of a
+    literal why that starts as the reply's does."""
+    if f'"{reply}' in text:
+        return True
+    why = reply.removeprefix("error ")
+    built = reply.startswith("error ") and '"error " + ' in text
+    return built and re.search(r'return\s+"' + re.escape(why), text) is not None
 
 
 def test_every_request_the_client_sends_is_one_the_helper_knows() -> None:
@@ -297,11 +336,26 @@ def test_every_request_the_client_sends_is_one_the_helper_knows() -> None:
     assert named(discs.request(1, 2))
 
 
+def function_body(text: str, signature: str) -> str:
+    """The body of the one function whose definition starts with ``signature``."""
+    assert text.count(signature) == 1, signature
+    start = text.index("{", text.index(signature) + len(signature))
+    depth = 0
+    for at in range(start, len(text)):
+        depth += {"{": 1, "}": -1}.get(text[at], 0)
+        if depth == 0:
+            return text[start : at + 1]
+    raise AssertionError(f"{signature} is not closed")
+
+
 def linux_requests() -> set[str]:
-    """The requests the Linux helper answers: core.cpp's ``reply`` and ``authenticate`` and
-    helper.cpp's ``game_request`` (first words: ``config`` for a request that goes on past it)."""
-    text = (LINUX_SRC / "helper.cpp").read_text(encoding="utf-8")
-    text += (LINUX_SRC / "core.cpp").read_text(encoding="utf-8")
+    """The requests the Linux helper answers: its dispatchers, helper.cpp's ``game_request`` and
+    core.cpp's ``reply`` (a request one of them dropped is no longer known here), and the auth
+    request core.h names (first words: ``config`` for a request that goes on past it)."""
+    helper = (LINUX_SRC / "helper.cpp").read_text(encoding="utf-8")
+    core = (LINUX_SRC / "core.cpp").read_text(encoding="utf-8")
+    text = function_body(helper, "std::optional<std::string> game_request(")
+    text += function_body(core, "std::string reply(")
     names = re.findall(r'request(?: == |\.starts_with\()"([a-z_ ]+?)(?:\\n)?"', text)
     auth = re.findall(r'kAuthRequest\[\] = "(\w+) "', (LINUX_SRC / "core.h").read_text("utf-8"))
     return {name.strip() for name in names} | set(auth)
@@ -337,6 +391,17 @@ def test_every_request_the_client_sends_the_linux_helper_is_one_it_knows() -> No
     assert named(discs.request(1, 2))
 
 
+def test_the_linux_dispatchers_alone_name_the_requests_it_knows() -> None:
+    # Not the pre-auth gate's ``hello`` (helper.cpp's serving loop) or any other comparison in
+    # the files: a request dropped from game_request or reply is no longer known.
+    helper = (LINUX_SRC / "helper.cpp").read_text(encoding="utf-8")
+    body = function_body(helper, "std::optional<std::string> game_request(")
+    assert 'request == "mission_status"' in body and 'request == "hello"' not in body
+    assert 'request == "hello"' in helper  # the gate's own, outside game_request
+    assert "hello" in linux_requests()  # from core.cpp's reply
+    assert "lang" in linux_requests()
+
+
 def linux_helper_image():
     from test_linux_targets import b1_like
 
@@ -345,27 +410,35 @@ def linux_helper_image():
 
 # The replies the client branches on, as words the helper's sources have as a string literal (a
 # reply may go on past it). The client's own comparisons: client/native.py, state.py, ticks.py,
-# shields.py, session.py, linux_helper.py, deathlink.py and discs.py. Both helpers give these
-# (the Linux helper builds the shared sources of native/src), except
-WINDOWS_ONLY_REPLIES = ("; not unloading", "bye", "ok differs ")  # the Windows helper's alone
-LINUX_ONLY_REPLIES = ("lang ",)  # the Linux helper's alone: native/linux/src/helper.cpp
+# shields.py, session.py, linux_helper.py, deathlink.py and discs.py (below, by ``ast``). Both
+# helpers give these (the Linux helper builds the shared sources of native/src), except
+WINDOWS_ONLY_REPLIES = (  # the Windows helper's alone: its own branches
+    "; not unloading", "bye", "ok differs ", "error no LOCALAPPDATA",
+)  # fmt: skip
+LINUX_ONLY_REPLIES = (  # the Linux helper's alone: native/linux/src, or the shared #else branches
+    "lang ", "written ", "data ", "error no folder",
+)  # fmt: skip
 SHARED_REPLIES = (
-    "error too large", "error no LOCALAPPDATA", "refused not settled", "error unknown request",
+    "error too large", "refused not settled", "error unknown request",
     "unknown line ", "missing ", "ok", "applied", "refused ",
     "stored", "unchanged", "labeled", "spawned", "died", "armed", "shown", "unknown", "idle",
     "queued", "on:", "the new game is not this seed", discs.ENDING_STARTED, discs.PUT_BACK,
     "a menu is open", "free", "locked", "intel on", "intel off",
     "discs on", "discs off",
     # An offline seed file's put (ticks.linux_seed_tick): "error " and its reason, or "stored".
-    "error no folder", "error cannot ", "error bad ", "error not a seed file",
+    "error cannot ", "error bad ", "error not a seed file",
     "not asked",  # a RETURN HOME prompt dropped before it showed (ticks.linux_finds_tick)
+    "pong frames=",
+    "asked", "opening", "yes",  # the statuses of a RETURN HOME prompt still on its way
 )  # fmt: skip
 
 
 def test_the_replies_the_client_branches_on_are_ones_the_helper_gives() -> None:
-    text = helper_sources()
+    text = windows_sources()
     for reply in SHARED_REPLIES + WINDOWS_ONLY_REPLIES:
         assert says(text, reply), reply
+    for reply in LINUX_ONLY_REPLIES:
+        assert not says(text, reply), f"{reply!r} is the Windows helper's too: move it"
     # A new game's refusals are "refused " and the reason (native/src/newgame.cpp, refuse).
     assert 'status_ = "refused " + why;' in source("newgame.cpp")
 
@@ -374,28 +447,88 @@ def test_the_replies_the_client_branches_on_are_ones_the_linux_helper_gives() ->
     text = linux_sources()
     for reply in SHARED_REPLIES + LINUX_ONLY_REPLIES:
         assert says(text, reply), reply
+    for reply in WINDOWS_ONLY_REPLIES:
+        assert not says(text, reply), f"{reply!r} is the Linux helper's too: move it"
     assert 'status_ = "refused " + why;' in source("newgame.cpp")  # shared with the Windows one
     assert 'return "lang " + name;' in (LINUX_SRC / "helper.cpp").read_text(encoding="utf-8")
 
 
-def test_the_replies_the_clients_literals_name_are_all_checked_here() -> None:
-    ours = set(SHARED_REPLIES + WINDOWS_ONLY_REPLIES + LINUX_ONLY_REPLIES)
-    ours |= {"unknown request", "refused", "queued ", "error ", "seed", "bye"}  # prefixes, forms
-    literal = re.compile(
-        r'\b(?:reply|status|why)\b[^\n]*?(?:==|!=|startswith\(|in \()\s*"([^"]+)"(?:,\s*"([^"]+)")?'
-    )
-    names = (
-        "native.py", "state.py", "ticks.py", "shields.py", "session.py", "linux_helper.py",
-        "deathlink.py", "discs.py",
+# What the client compares a reply with that is no protocol word (a name, a count, a said line).
+NOT_REPLIES = {
+    "told.discs_status",
+    "self.said",
+    "f'written {len(piece)}'",
+    "len(DATA_PREFIX) + piece",
+}
+
+
+def reply_word_nodes(
+    name: str, module: object, node: ast.AST, line: int
+) -> list[tuple[str, int, str]]:
+    """The words ``node`` (a comparison's other side) names in client module ``name``: a string,
+    bytes or a tuple of them, or a constant of ``module`` (``DATA_PREFIX``, ``discs.PUT_BACK``).
+    Anything else must be listed in NOT_REPLIES."""
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return [word for elt in node.elts for word in reply_word_nodes(name, module, elt, line)]
+    if isinstance(node, ast.Constant):
+        value = node.value
+    elif isinstance(node, ast.Name):
+        value = getattr(module, node.id, None)
+    elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        value = getattr(getattr(module, node.value.id, None), node.attr, None)
+    else:
+        value = None
+    if isinstance(value, bytes):
+        value = value.decode("ascii")
+    if isinstance(value, str):
+        return [(name, line, value)]
+    assert ast.unparse(node) in NOT_REPLIES, (name, line, ast.unparse(node))
+    return []
+
+
+def reply_words() -> list[tuple[str, int, str]]:
+    """Every word the client's modules compare a ``reply``, ``status`` or ``why`` with (``==``,
+    ``in``, ``startswith`` and its kind, tuples of words too), constants resolved from their
+    module: (module, line, word). A comparison with something else is listed in NOT_REPLIES."""
+    names = {"reply", "status", "why"}
+    found: list[tuple[str, int, str]] = []
+    modules = (
+        "native", "state", "ticks", "shields", "session", "linux_helper", "deathlink", "discs",
     )  # fmt: skip
-    seen = 0
-    for name in names:
-        for line in (ROOT / "client" / name).read_text(encoding="utf-8").splitlines():
-            for word in literal.findall(line):
-                for one in filter(None, word):
-                    seen += 1
-                    assert one in ours, (name, one)
-    assert seen > 40, "the pattern must match what it is there to check"
+    for name in modules:
+        module = importlib.import_module(f"client.{name}")
+        tree = ast.parse((ROOT / "client" / f"{name}.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Compare) and any(
+                isinstance(n, ast.Name) and n.id in names for n in ast.walk(node.left)
+            ):
+                if all(isinstance(op, (ast.Eq, ast.NotEq, ast.In, ast.NotIn)) for op in node.ops):
+                    for other in node.comparators:
+                        found += reply_word_nodes(name, module, other, node.lineno)
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("startswith", "endswith", "removeprefix")
+                and any(
+                    isinstance(n, ast.Name) and n.id in names for n in ast.walk(node.func.value)
+                )
+                and node.args
+            ):
+                found += reply_word_nodes(name, module, node.args[0], node.lineno)
+    return found
+
+
+def test_the_replies_the_clients_comparisons_name_are_all_checked_here() -> None:
+    ours = set(SHARED_REPLIES + WINDOWS_ONLY_REPLIES + LINUX_ONLY_REPLIES)
+    ours |= {"unknown request", "refused", "queued ", "error "}  # a prefix, or the form built
+    words = reply_words()
+    for name, line, word in words:
+        assert word in ours, (name, line, word)
+    seen = {word for _, _, word in words}
+    assert len(words) > 50, "the scan must find what it is there to check"
+    # The forms a line-by-line pattern missed: a tuple of words, and a constant (client/discs.py's
+    # and native.py's, linux_helper.py's bytes).
+    assert {"asked", "opening", "yes", discs.PUT_BACK, native.DIFFERS, "data "} <= seen
 
 
 def test_the_offline_seed_file_has_the_header_and_keys_the_helper_reads() -> None:

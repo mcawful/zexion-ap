@@ -1429,6 +1429,23 @@ def test_on_linux_no_mod_to_configure_is_written_directly_after_the_hold(monkeyp
     assert seen[-1] == (None, True) and ctx.linux_mod is None
 
 
+def test_on_linux_two_failed_steps_then_no_mod_to_configure_hold_then_write_directly(
+    monkeypatch,
+) -> None:
+    ctx, seen = linux_steps(monkeypatch, fails=2)
+    for _ in range(2):
+        asyncio.run(zc.poll(ctx))
+    assert ctx.linux_failed == 2 and ctx.linux_mod is None
+    ctx.game_conn.pm.replies["config"] = "refused no frame"  # the reconfiguration fails too
+    asyncio.run(zc.poll(ctx))
+    assert seen[-1] == (None, False), "held: the mod was lost, not written to directly at once"
+    assert ctx.linux_failed == 2, "a held step is no step that went through"
+    ctx.linux_back_by = time.monotonic() - 1.0  # the hold over
+    asyncio.run(zc.poll(ctx))
+    assert seen[-1] == (None, True) and ctx.linux_mod is None
+    assert ctx.linux_failed == 0, "the direct step ended the failures in a row"
+
+
 def test_on_linux_a_failed_keep_alive_drops_the_helper_connection(caplog) -> None:
     # A ping with no reply closes the connection; the next request makes another that never
     # sent config, which the poll's ticks would use as configured: lost, so configured again.
