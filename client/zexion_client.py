@@ -57,6 +57,7 @@ from .storage import (  # noqa: E402
 from .ticks import (  # noqa: E402
     ASSISTS,
     INTEL,
+    LINUX_DIRECT_AFTER,
     LINUX_HOLD_SECONDS,
     LINUX_KEEPALIVE_SECONDS,
     attach_helper,
@@ -173,7 +174,7 @@ class ZexionContext(CommonContext):
         self.helper_back_by = 0.0  # when a failing attach after it stops holding back the step
         # The Linux helper's: when its loss, or its wait to be configured once attached, stops
         # holding back the step (ticks.linux_mod_lost, poll), and the steps it failed in a row
-        # (two: the next one's items are written directly).
+        # (ticks.LINUX_DIRECT_AFTER: the next one's items are written directly).
         self.linux_back_by = 0.0
         self.linux_failed = 0
         # A helper of another version refused to unload (native.NotUnloaded): not asked again
@@ -681,11 +682,14 @@ async def poll(ctx: ZexionContext) -> None:
         current.keep_traps = ctx.helper is None and ctx.swap_pending
         # On the game's Linux build, the Linux helper, once configured (linux_newgame_tick). As
         # with the Windows helper: one lost (linux_mod_lost) holds the step back a while rather
-        # than write the items with no popup, and one that failed two steps running has the
-        # next step's items written directly, so nothing it refuses holds them back for good.
+        # than write the items with no popup. A mod configured afresh after a failure gets its
+        # own try (a direct write would drop the traps since the popup count); it is only when
+        # the steps through the mods configured in turn fail LINUX_DIRECT_AFTER times in a row
+        # that the next step's items are written directly, so nothing the helper keeps refusing
+        # holds them back for good.
         grants = ctx.helper if ctx.helper is not None else ctx.linux_mod
         linux = ctx.helper is None and getattr(ctx.game_conn, "platform", "windows") == "linux"
-        if linux and ctx.linux_failed >= 2:
+        if linux and ctx.linux_failed >= LINUX_DIRECT_AFTER:
             grants = None
         linux_grants = linux and grants is not None
         linux_waiting = linux and ctx.linux_mod is None and time.monotonic() < ctx.linux_back_by

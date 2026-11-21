@@ -25,6 +25,7 @@ from client import (
     game,
     ids,
     linux_helper,
+    linux_targets,
     native,
     newgame,
     offline,
@@ -241,8 +242,28 @@ def test_the_save_slots_are_laid_out_alike() -> None:
     assert (slot["kEmpty"], slot["kRandoMarker"]) == (0x935E, 0x9400)
 
 
+LINUX_SRC = ROOT / "native" / "linux" / "src"
+
+
 def helper_sources() -> str:
     return "\n".join(path.read_text(encoding="utf-8") for path in sorted(SRC.glob("*.[ch]*")))
+
+
+def linux_sources() -> str:
+    """The Linux helper's own sources and the shared ones of native/src its build compiles
+    (native/linux/CMakeLists.txt's ``../src/NAME.cpp``, with their headers)."""
+    cmake = (ROOT / "native" / "linux" / "CMakeLists.txt").read_text(encoding="utf-8")
+    shared = sorted(set(re.findall(r"\.\./src/(\w+)\.cpp", cmake)))
+    assert {"game_calls", "offline", "mission"} <= set(shared), shared
+    paths = sorted(LINUX_SRC.glob("*.[ch]*"))
+    paths += [SRC / f"{name}{ext}" for name in shared for ext in (".cpp", ".h")]
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths if path.exists())
+
+
+def says(text: str, reply: str) -> bool:
+    """Whether ``text`` gives ``reply`` as a string literal: whole or, for ``error <why>``, as the
+    helper builds it (``"error " + why``) from a literal why (a reply may go on past it)."""
+    return f'"{reply}' in text or (reply.startswith("error ") and f'"{reply[6:]}' in text)
 
 
 def test_every_request_the_client_sends_is_one_the_helper_knows() -> None:
@@ -276,40 +297,105 @@ def test_every_request_the_client_sends_is_one_the_helper_knows() -> None:
     assert named(discs.request(1, 2))
 
 
+def linux_requests() -> set[str]:
+    """The requests the Linux helper answers: core.cpp's ``reply`` and ``authenticate`` and
+    helper.cpp's ``game_request`` (first words: ``config`` for a request that goes on past it)."""
+    text = (LINUX_SRC / "helper.cpp").read_text(encoding="utf-8")
+    text += (LINUX_SRC / "core.cpp").read_text(encoding="utf-8")
+    names = re.findall(r'request(?: == |\.starts_with\()"([a-z_ ]+?)(?:\\n)?"', text)
+    auth = re.findall(r'kAuthRequest\[\] = "(\w+) "', (LINUX_SRC / "core.h").read_text("utf-8"))
+    return {name.strip() for name in names} | set(auth)
+
+
+def test_every_request_the_client_sends_the_linux_helper_is_one_it_knows() -> None:
+    # As the Windows helper's, for every request made through a LinuxMod, a LinuxProcess or
+    # either helper's shared ticks (``mod.request``, ``pm.request``, ``self.request_bytes``...).
+    known = linux_requests()
+    assert {"config", "apply", "ap_newgame", "lang", "trap_status", "ping", "callers"} <= known
+    assert {"auth", "read", "write", "shield", "die", "disarm", "hello", "assists lock"} <= known
+    sent = {
+        "hello", "ping", "callers", "auth", "read", "write", "trap_status", "lang", "shield",
+        "die", "disarm", "newgame_status", "other_save", "client_back", "discs_status",
+        discs.MISSION_STATUS, "ap_labels", "ap_newgame", "config", "apply", "offline_put",
+        "discs", discs.MISSION_REQUEST.split()[0], *ticks.ASSISTS[0], *ticks.INTEL[0],
+    }  # fmt: skip
+    literal = re.compile(r'\.request(?:_bytes)?(?:, |\()f?"([a-z_]+(?: [a-z]+)?)')
+    found: set[str] = set()
+    for path in (ROOT / "client").glob("*.py"):
+        found |= set(literal.findall(path.read_text(encoding="utf-8")))
+    found -= {"unload"}  # the Windows helper's: the Linux helper stays for the game's run
+    assert found <= sent, f"a request the client sends, not checked here: {found - sent}"
+
+    def named(request: str) -> bool:
+        return request in known or request.split()[0] in known
+
+    assert all(named(request) for request in sent), sorted(r for r in sent if not named(r))
+    assert named(linux_targets.helper_config(linux_helper_image()))
+    assert named(native.batch_text([], []))
+    assert named(offline.put_request("config", ""))
+    assert named(aplabels.labels_request({}))
+    assert named(discs.request(1, 2))
+
+
+def linux_helper_image():
+    from test_linux_targets import b1_like
+
+    return b1_like(extra=True)
+
+
+# The replies the client branches on, as words the helper's sources have as a string literal (a
+# reply may go on past it). The client's own comparisons: client/native.py, state.py, ticks.py,
+# shields.py, session.py, linux_helper.py, deathlink.py and discs.py. Both helpers give these
+# (the Linux helper builds the shared sources of native/src), except
+WINDOWS_ONLY_REPLIES = ("; not unloading", "bye", "ok differs ")  # the Windows helper's alone
+LINUX_ONLY_REPLIES = ("lang ",)  # the Linux helper's alone: native/linux/src/helper.cpp
+SHARED_REPLIES = (
+    "error too large", "error no LOCALAPPDATA", "refused not settled", "error unknown request",
+    "unknown line ", "missing ", "ok", "applied", "refused ",
+    "stored", "unchanged", "labeled", "spawned", "died", "armed", "shown", "unknown", "idle",
+    "queued", "on:", "the new game is not this seed", discs.ENDING_STARTED, discs.PUT_BACK,
+    "a menu is open", "free", "locked", "intel on", "intel off",
+    "discs on", "discs off",
+    # An offline seed file's put (ticks.linux_seed_tick): "error " and its reason, or "stored".
+    "error no folder", "error cannot ", "error bad ", "error not a seed file",
+    "not asked",  # a RETURN HOME prompt dropped before it showed (ticks.linux_finds_tick)
+)  # fmt: skip
+
+
 def test_the_replies_the_client_branches_on_are_ones_the_helper_gives() -> None:
-    # Each is a word the helper's sources have as a string literal (a reply may go on past it).
-    # The client's own comparisons, in client/native.py, state.py, ticks.py and shields.py.
     text = helper_sources()
-    replies = (
-        "error too large", "error no LOCALAPPDATA", "refused not settled", "error unknown request",
-        "unknown line ", "missing ", "; not unloading", "bye", "ok", "applied", "refused ",
-        "stored", "unchanged", "labeled", "spawned", "died", "armed", "shown", "unknown", "idle",
-        "queued", "on:", "the new game is not this seed", discs.ENDING_STARTED, discs.PUT_BACK,
-        "a menu is open", "free", "locked", "intel on", "intel off",
-        "discs on", "discs off", "ok differs ",
-    )  # fmt: skip
-    for reply in replies:
-        assert f'"{reply}' in text, reply
+    for reply in SHARED_REPLIES + WINDOWS_ONLY_REPLIES:
+        assert says(text, reply), reply
     # A new game's refusals are "refused " and the reason (native/src/newgame.cpp, refuse).
     assert 'status_ = "refused " + why;' in source("newgame.cpp")
-    # And the replies the client's literals name are all of the above.
-    ours = {
-        "error too large", "error no LOCALAPPDATA", "refused not settled", "unknown request",
-        "unknown line ", "missing ", "bye", "ok", "applied", "refused", "stored", "unchanged",
-        "labeled", "spawned", "died", "armed", "shown", "unknown", "idle", "queued", "on:",
-        "a menu is open", "the new game is not this seed",
-    }  # fmt: skip
+
+
+def test_the_replies_the_client_branches_on_are_ones_the_linux_helper_gives() -> None:
+    text = linux_sources()
+    for reply in SHARED_REPLIES + LINUX_ONLY_REPLIES:
+        assert says(text, reply), reply
+    assert 'status_ = "refused " + why;' in source("newgame.cpp")  # shared with the Windows one
+    assert 'return "lang " + name;' in (LINUX_SRC / "helper.cpp").read_text(encoding="utf-8")
+
+
+def test_the_replies_the_clients_literals_name_are_all_checked_here() -> None:
+    ours = set(SHARED_REPLIES + WINDOWS_ONLY_REPLIES + LINUX_ONLY_REPLIES)
+    ours |= {"unknown request", "refused", "queued ", "error ", "seed", "bye"}  # prefixes, forms
     literal = re.compile(
-        r'(?:reply|status|why)[^\n]*?(?:==|!=|startswith\(|in \()\s*"([^"]+)"(?:,\s*"([^"]+)")?'
+        r'\b(?:reply|status|why)\b[^\n]*?(?:==|!=|startswith\(|in \()\s*"([^"]+)"(?:,\s*"([^"]+)")?'
     )
-    for name in ("native.py", "state.py", "ticks.py", "shields.py", "session.py"):
+    names = (
+        "native.py", "state.py", "ticks.py", "shields.py", "session.py", "linux_helper.py",
+        "deathlink.py", "discs.py",
+    )  # fmt: skip
+    seen = 0
+    for name in names:
         for line in (ROOT / "client" / name).read_text(encoding="utf-8").splitlines():
             for word in literal.findall(line):
                 for one in filter(None, word):
-                    assert one in ours | {"error ", "refused ", "seed", "; not unloading"}, (
-                        name,
-                        one,
-                    )
+                    seen += 1
+                    assert one in ours, (name, one)
+    assert seen > 40, "the pattern must match what it is there to check"
 
 
 def test_the_offline_seed_file_has_the_header_and_keys_the_helper_reads() -> None:

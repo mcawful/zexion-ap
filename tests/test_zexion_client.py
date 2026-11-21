@@ -1356,6 +1356,96 @@ def test_a_linux_helper_that_fails_the_step_is_configured_again(caplog) -> None:
     assert ctx.conn.newgame is state.NewGame.ARMED
 
 
+def linux_steps(monkeypatch, fails: int) -> tuple[zc.ZexionContext, list]:
+    """A poll's step on the game's Linux build, the Linux helper answering every configuration:
+    the first ``fails`` steps given through it fail (a reply lost); ``seen`` holds the ``helper``
+    and ``give`` each step was handed."""
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    seen: list = []
+
+    async def nothing(*args) -> None:
+        return None
+
+    for name in (
+        "linux_labels_tick",
+        "linux_seed_tick",
+        "linux_language_tick",
+        "linux_discs_tick",
+        "linux_intel_tick",
+        "linux_assists_tick",
+        "linux_replay_tick",
+        "linux_client_back_tick",
+        "linux_other_save_tick",
+        "offline_tick",
+        "replay_tick",
+        "announced_tick",
+        "hints_tick",
+        "attach_helper",
+    ):
+        monkeypatch.setattr(zc, name, nothing)
+
+    def step(g, received, helper=None, give=True, **kwargs):
+        seen.append((helper, give))
+        lost = helper is not None and sum(h is not None for h, _ in seen) <= fails
+        error = native.ReplyLost("the Linux helper: no reply") if lost else None
+        return session.Step(state=game.IN_PLAY, helper_error=error)
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    return ctx, seen
+
+
+def test_on_linux_a_mod_configured_afresh_after_failed_steps_gives_the_step(monkeypatch) -> None:
+    # Two failed steps, each dropping the mod and configured again at the next poll: the third
+    # step gives through the mod configured afresh (its traps and popups), not directly.
+    ctx, seen = linux_steps(monkeypatch, fails=2)
+    for _ in range(3):
+        asyncio.run(zc.poll(ctx))
+    assert [h is not None and give for h, give in seen] == [True, True, True]
+    assert all(isinstance(h, linux_helper.LinuxMod) for h, _ in seen)
+    assert len({id(h) for h, _ in seen}) == 3, "each configured afresh"
+    assert sum(t.startswith("config ") for t in ctx.game_conn.pm.sent) == 3
+    assert ctx.linux_failed == 0 and ctx.linux_mod is not None, "the third step went through"
+
+
+def test_on_linux_steps_that_keep_failing_are_written_directly_not_held_back(monkeypatch) -> None:
+    # A request the helper keeps refusing: after LINUX_DIRECT_AFTER failed steps with mods
+    # configured in turn the next step's items are written directly, once, then the helper again.
+    ctx, seen = linux_steps(monkeypatch, fails=ticks.LINUX_DIRECT_AFTER)
+    for _ in range(ticks.LINUX_DIRECT_AFTER + 2):
+        asyncio.run(zc.poll(ctx))
+    kinds = [h is not None for h, _ in seen]
+    assert kinds == [True] * ticks.LINUX_DIRECT_AFTER + [False, True]
+    assert all(give for _, give in seen)
+
+
+def test_on_linux_no_mod_to_configure_is_written_directly_after_the_hold(monkeypatch) -> None:
+    ctx, seen = linux_steps(monkeypatch, fails=0)
+    ctx.game_conn.pm.replies["config"] = "refused no frame"
+    ctx.linux_back_by = time.monotonic() + ticks.LINUX_HOLD_SECONDS  # as the attach holds
+    asyncio.run(zc.poll(ctx))
+    assert seen[-1] == (None, False), "held while it is configured, as after any lost one"
+    ctx.linux_back_by = time.monotonic() - 1.0  # the hold over
+    asyncio.run(zc.poll(ctx))
+    assert seen[-1] == (None, True) and ctx.linux_mod is None
+
+
+def test_on_linux_a_failed_keep_alive_drops_the_helper_connection(caplog) -> None:
+    # A ping with no reply closes the connection; the next request makes another that never
+    # sent config, which the poll's ticks would use as configured: lost, so configured again.
+    ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert ctx.linux_mod is not None
+    asyncio.run(ticks.linux_keepalive_tick(ctx))
+    assert ctx.game_conn.pm.sent[-1] == "ping" and ctx.linux_mod is not None
+    ctx.game_conn.pm.replies["ping"] = linux_helper.NoReply("the helper closed its socket")
+    with caplog.at_level("WARNING"):
+        asyncio.run(ticks.linux_keepalive_tick(ctx))
+    assert ctx.linux_mod is None and ctx.conn.newgame is None
+    asyncio.run(ticks.linux_newgame_tick(ctx))
+    assert sum(t.startswith("config ") for t in ctx.game_conn.pm.sent) == 2
+    assert ctx.linux_mod is not None
+
+
 def test_a_linux_helper_lost_once_configured_holds_the_step_a_while() -> None:
     ctx = context(connection(), linux_game({"config": "ok", "ap_newgame": "armed"}))
     ticks.linux_mod_lost(ctx, linux_helper.LinuxHelperError("never configured"))
@@ -1681,6 +1771,7 @@ def test_on_linux_a_failed_follow_up_drops_the_linux_helper_not_the_windows_one(
         ("yes: ending when idle, the screen kept black", False, True),
         ("ending started", False, False),  # the ending is going: nothing left to drop
         ("shown", False, True),  # followed once a connection: a put back one is offered again
+        ("refused no frame", False, True),  # no news: still followed, asked again next poll
         ("lapsed: the player left the landing pod", False, False),
     ],
 )
@@ -1931,10 +2022,10 @@ def test_on_linux_the_ping_is_left_to_a_helper_not_configured_on_this_connection
     assert len(pm.sent) == sent
 
 
-def test_a_ping_that_fails_is_left_to_the_poll() -> None:
+def test_a_ping_that_fails_drops_the_helper_to_be_configured_again() -> None:
     ctx = linux_away(replies={"ping": linux_helper.NoReply("no answer")})
-    asyncio.run(ticks.linux_keepalive_tick(ctx))  # no error; the poll finds the connection closed
-    assert ctx.linux_mod is not None
+    asyncio.run(ticks.linux_keepalive_tick(ctx))  # no error raised: the loop goes on
+    assert ctx.linux_mod is None, "the next request would make a connection that sent no config"
 
 
 def test_the_ping_is_sent_every_few_seconds_to_stay_inside_the_helpers_30(monkeypatch) -> None:
