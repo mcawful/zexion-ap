@@ -2,247 +2,107 @@
 the game, and the mod's offline files (``%LOCALAPPDATA%\\ZexionAP``: the seed list, labels and
 disk counts the helper keeps; on Linux the seeds' files and the helper's socket token, in
 ``$XDG_DATA_HOME/ZexionAP``, else ``~/.local/share/ZexionAP``, and Flatpak's default data
-folder; only the helper writes them).
-
-The save folder is no exception for Claude's own calls, though the Windows and Linux helpers
-themselves write ``ZexionAP-seed-<NAME>.sav`` into it (a copy of the file of each seed one of the
-saves uses, which Steam Cloud carries with the saves: ``native/README.md``, "Seed files in the
-save folder"): they are
-the game's own process, not a tool call, so this hook never sees them, and it blocks the same
-writes of Claude's as before, those files' names included.
+folder; only the helper writes them). ``tools/protected.py`` defines these folders, and says why
+the helpers' own ``ZexionAP-seed-<NAME>.sav`` copies in the save folder change nothing here.
 
 Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows stderr to Claude.
+``check`` is the entry point, ``_check`` the rules, in this order:
 
 - Write, Edit, MultiEdit, NotebookEdit: blocked when the target file is in a protected folder.
 - Shell commands: the ``command`` of Bash and Monitor (read as Bash), and of PowerShell and the
-  terminal tool ``mcp__terminal__run_in_terminal`` (read as PowerShell). Other tools pass.
-  The command runs in the tool's ``cwd`` if it has one, else in the payload's own ``cwd`` (the
+  terminal tool ``mcp__terminal__run_in_terminal`` (read as PowerShell). Other tools pass. The
+  command runs in the tool's ``cwd`` if it has one, else in the payload's own ``cwd`` (the
   session's working folder, which a ``cd`` in an earlier call may have moved).
-  A command that may reach a protected folder is allowed only when every simple command in it
-  is recognizably read-only, a ``.venv`` Python run of a script in ``tools/`` (those scripts
-  enforce their own rules through ``tools/protected.py``; after a ``cd``, only when every
-  ``cd`` goes to a checkout of this repo), or a ``git`` or ``gh`` command that names no
-  protected folder or parent of one, and no output is redirected into a protected folder.
 
-  - Text that is only data is left out, so commit messages and PR text may name the folders:
-    a PowerShell here-string's quotes; the message values of ``git`` and ``gh`` (``-m``,
-    ``--title``, ``--body`` and the like: ``_text_words``); and the body of a Bash heredoc
-    that nothing can run (``_heredoc_is_data``): its reader and any command it pipes into are
-    data readers (``_data_reader``: ``cat``, ``grep``, … that write no file; ``git commit -F
-    -``; ``gh`` but not ``gh alias`` or ``extension``), nothing else follows the ``<<`` on its
-    line, no parenthesis or substitution is around it but a git or gh message value (the
-    ``"$(cat <<'EOF' … EOF)"`` form), and a file it is saved to is not run later in the
-    command (``_saved_and_used``: ``git commit -F x`` and ``wc x`` are fine, ``sh x``, ``.
-    x``, ``cat x | sh`` and ``cp x y && sh y`` are not). Heredocs are found as Bash finds them
-    (``_heredocs``). Every other body is judged as commands.
-  - It *may reach* one (``_may_reach_protected``) when its text names one, also with quotes
-    removed and pieces joined (``protected.mentions_protected``); when a word could name one as
-    a path (``..``, wildcards, 8.3 short names: ``protected.word_may_name_protected``), leads
-    into one from where the command runs, also through an existing link, or names a parent of
-    one (``"$APPDATA/Gallant Leaf"``, ``…/steamapps/common``, ``…/userdata/123``:
-    ``protected.may_be_above_protected``, ``_names_parent``), so copying into, moving or
-    deleting the parent blocks while reading it does not; when it may build one from pieces
-    (``_builds_from_pieces``, the app id as a path component: ``_names_app_id``); when it makes
-    a link next to a folder named like ``gallant`` or ``steam``; when it goes through another
-    process's view in ``/proc`` (its ``cwd``, ``root``, ``fd``, ``map_files``, ``exe`` or
-    ``task``), whatever its pid (the game's install is the game's ``cwd``, and a pid the command
-    works out can't be told from the game's), so a command that isn't read-only is blocked
-    wherever it leads, while reads and a redirect's target resolve to where they lead
-    (``/proc/self`` is the shell's own; quotes, ``//`` and ``/./`` don't hide it, and a ``proc``
-    piece with a view's name anywhere in the command counts too, for a path built from pieces:
-    ``_through_proc``); when a name predicate of ``find`` (``-name``, ``-iname``, ``-path``,
-    ``-regex``, …) or PowerShell's ``-Filter`` or ``-Include`` (also as ``-Filter:name``, as a
-    list, and ``Get-ChildItem``'s operands that are no path) takes a pattern that may match the
-    name of a protected folder or one above it, wherever the search starts, with the name alone
-    (``find ~ -name ZexionAP -delete``: ``_selects_protected_name``,
-    ``protected.pattern_may_name_protected``; ``find``'s two regular expression syntaxes,
-    groups, braces, escapes and classes are read; a name pattern with fewer than three fixed
-    characters, ``*`` or ``Z*``, is no folder's name, but it may be a file's: below).
-    ``Zexion`` and ``ZexionAP`` are also this repo's
-    names in lower case (``worlds/zexion``, ``zexion*.py``), so ``find``'s predicates that
-    compare case match them only as written, and ``-iname`` and PowerShell, which don't, in
-    any case (``find dist -name 'zexion*' -delete`` passes, ``find / -name Zexion -delete``
-    and ``gci ~ -r -Filter zexion | ri`` block). A pattern that may match the name of a file
-    in these folders counts too, wherever the search starts (``protected._FILE_NAMES``: ``Save
-    Game N.sav``, ``GameUnlocks.sav``, ``PreferencesSynced.sav``, ``PreferencesLocal``,
-    ``ZexionAP-seed-<NAME>.sav``, ``steam_autocloud.vdf``, ``token``, ``seeds``,
-    ``config-<build>.txt``): ``*.sav``, ``Save*``, ``*seed*``, ``Pref*``, ``*.txt``, ``?????`` and
-    a bare ``*`` do, so ``find lab -name '*.sav' -delete`` and ``find . -name '*' -delete``
-    block, while ``*.py``, ``*.pyc`` and ``*foo*`` pass. The seed copies' name is matched only as
-    written unless ``-iname`` or PowerShell, as ``Zexion*`` above; a ``-path`` or ``-regex`` is
-    read at its last name, which needs a fixed character (``./build/*`` names no file); a name
-    over 200 characters is read as a file's. It reads also inside a word that holds the
-    command (``sh -c``, ``eval``) or a substitution's backticks, so ``-print`` and the reads
-    pass while ``-delete``, ``-exec``, ``-fprint`` and an ``xargs rm`` after it do not
-    (``find . -iname '*zexion*' -delete`` and ``gci . zexion | ri`` in this repo block too:
-    they can't be told from ``ZexionAP``). A name or a list of names over 1000 characters is
-    read as a name. A redirect's target is read as an argument is (``echo x > "$(find ~ -name
-    ZexionAP)/seeds.json"`` blocks, whatever the operator: ``>``, ``>>``, ``2>``, ``&>``,
-    PowerShell's ``*>``). A reach by a name alone lets a command substitution through, as the
-    guard did before, when every command in the command line reads, and so does every one in
-    the substitution (plain ones: none inside another): ``ls -ld $(find ~
-    -name ZexionAP)`` passes, ``cd $(find …) && git clean -fdx`` does not. Or when it runs in
-    or changes directory to a folder in a protected one or a parent of one. Other names in
-    the folder's path don't count, so a worktree named ``steam-achievements`` works as any
-    other.
-  - A command that deletes, moves out, changes or searches-and-acts on a *folder above a
-    protected one* at any depth blocks (``_ancestor_violation``, ``_segment_violation``,
-    ``protected.is_ancestor_folder``). Those folders are Roaming, the home folder (``~``,
-    ``$HOME``, ``%USERPROFILE%``, ``C:/Users/name``, ``/home/name``) and what is above it, ``/``, a
-    drive's root (``/c`` and ``/mnt/c`` as Git Bash and WSL write it), the folders of the
-    variables ``protected._ANCESTOR_ENV`` lists (``$APPDATA``, ``%LOCALAPPDATA%``,
-    ``$XDG_DATA_HOME``, …, also written as the variable, with ``${APPDATA:-x}`` and
-    ``${APPDATA%/}``, when this machine doesn't set it), ``.var``, ``~/snap``, ``.steam`` and
-    Steam's folders in Program Files (x86); ``..`` or a last name that is only a wildcard (``~/*``)
-    up to one. Only these commands, by what the verb does with the folder it is given, count:
-    ``rm``, ``rmdir``, ``shred``, ``Remove-Item``, cmd's ``rd`` and ``del`` (any operand);
-    ``mv``, ``Move-Item`` and cmd's ``move`` (a source, so not a ``-Destination`` or ``-t``:
-    moving into one is no harm); ``chmod``, ``chown``, ``truncate``, ``Rename-Item``; ``find`` (a
-    start folder, with ``-delete``, ``-fprint``, ``-ok`` or an ``-exec`` of anything but a reader
-    such as ``cat`` and ``grep``) and ``fd -x``; ``git clean``, ``stash -u``, ``reset --hard`` and
-    ``checkout .`` (``-C``, ``--work-tree``, ``GIT_WORK_TREE``, an operand, or where it runs);
-    ``rsync --delete`` (its destination) and ``--remove-source-files`` (its sources), ``tar
-    --remove-files``, ``robocopy /MIR /PURGE /MOVE``; extraction over what is there into one
-    (``unzip -o -d ~``, ``tar --overwrite -C ~``, ``Expand-Archive … -Force``); and ``xargs`` or a
-    ``Remove-Item`` given nothing of its own to remove, fed by a command of its *pipeline* that
-    named such a folder (``ls ~ | xargs rm``, ``gci $env:APPDATA -r | ri``, ``$HOME | ri -r``, a
-    lister with no folder after ``cd ~``, a lone ``/`` piped in; not a command before a ``;`` or
-    ``&&``: ``ls ~ ; find lab | xargs rm`` passes; ``_pipeline_groups``, linear in the line; a
-    ``{ …; }`` or ``while … done`` that a pipe goes on from is part of it, a line continuation
-    after a pipe too). A ``while read f`` fed by such a pipeline, ``set -- ~``, ``for f in $(ls -d
-    ~/*)``, ``x=$(ls ~)`` and PowerShell's ``$x = gci ~`` and ``gci ~ -OutVariable o`` make their
-    variables the folder, as ``H=~`` does. A lone ``/`` or ``/c`` is a root only as an operand of
-    these (``cmd /c``, ``findstr /s`` and ``print(1 / 2)`` name none). Not these: creating files in
-    the folder, copying into or out of it, listing or reading it, ``tar -C ~``, ``unzip -d ~``,
-    ``git clone`` or ``mkdir`` after a ``cd ~`` (``cd ~ && git clone``, ``cp a ~``, ``ls ~ && make
-    clean`` pass).
-    The folder a command runs in is where its ``cd``s left it (``_walk_cds``: each one is read
-    from the one before; a bare ``cd`` and ``cd --`` go home; ``cd /c/Users/x`` is on drive C,
-    not under the cwd's); ``cd -``, ``cd $OLDPWD``, ``cd $d``, a substitution and ``popd`` leave it
-    unknown, and an unknown folder counts as one above a protected one for ``rm *``, ``find .
-    -delete`` and ``git clean`` that follow, so ``cd $d && rm -rf *`` blocks and ``cd $d && rm -rf
-    build`` does not. A ``..``, a wildcard and a name that is a protected folder's or file's
-    count in an unknown folder (``cd $d && rm -rf a/../..``, ``rm -rf ../ZexionAP``), and after
-    such a ``cd`` any word or redirect target that goes up and then names a protected folder
-    (``> a/../../ZexionAP/x``, ``cp x a/../../ZexionAP/``) reaches it. A variable
-    the line sets (``TMPDIR=~``, ``read TMPDIR``, ``for TMPDIR in``, ``printf -v``,
-    ``Set-Variable``, ``Set-Item env:``) is not read from the hook's environment. A ``cd`` to a
-    temporary or workspace folder is no exception: a variable may be empty, and then ``cd`` goes
-    home, so ``cd "$TMPDIR"``, ``cd $RUNNER_TEMP`` and ``cd $(mktemp -d)`` are unknown like any
-    other. That is a documented false positive, for a glob or a clean right after such a ``cd``:
-    ``d=$(mktemp -d) && cd "$d" && rm -rf *``, ``cd "$(git rev-parse --show-toplevel)" && git
-    clean -fdx`` and ``cd "$RUNNER_TEMP" && rm -rf *`` block. Name the folder in the command
-    instead: ``rm -rf "$d"/*``, ``git -C "$d" clean -fdx``, ``rm -rf "$RUNNER_TEMP"/*``,
-    ``git -C "$(git rev-parse --show-toplevel)" clean -fdx`` pass (a variable the environment
-    knows is expanded, and judged by its real path).
-    A relative operand is joined to that folder (``rm -rf ../../..`` from a folder under the home
-    folder). Words are read again as a command's in ``sh -c`` (also ``-lc``, with ``$0``, ``$1``
-    and ``"$@"`` filled from the words after it), ``eval``, ``cmd /c "…"``, ``powershell
-    -Command`` and ``iex`` (a ``cmd /c "…"`` script is lexed as PowerShell from the source text,
-    so its backslashes stay); ``sudo``, ``env``, ``nice``, ``timeout 5``, ``nohup``, ``command``,
-    ``cmd /v:on /c`` (also Git Bash's ``//c``), and cmd's ``call``, ``start /b`` and ``if [not]
-    exist X`` are taken off first (``_unwrap``). A backtick or
-    ``$(…)`` operand that names one (``rm -rf `echo ~```, ``rm -rf $(echo ~)``), a parenthesis
-    (``ri -r ($HOME)``, ``@(~)``), PowerShell's ``-Path:~`` and a comma list (``x,$HOME``) count,
-    and so does a variable the line sets to one (``H=~; rm -rf "$H"``, ``for d in ~ /; do rm -rf
-    "$d"; done``, PowerShell's ``$d =``).
-  - *Read-only* means the verb is on a short list and nothing in its arguments makes it write
-    (``_bash_args_write``: ``find -delete``, ``sort -o``, ``sed -i`` and the like); ``git
-    diff``, ``log`` and ``show`` count unless an argument starts with ``--output``,
-    ``--ext-diff``, ``--exec-path``, ``--config-env`` or ``-c``. PowerShell's rules for script
-    blocks, ``ForEach-Object``, expressions and ``&``: ``_ps_segment_is_read_only``.
-  - Blocked outright, when the command may reach a protected folder: command substitution
-    (``$(``, Bash arithmetic ``$((`` included, or a backtick in Bash; ``xxd -s 0x9360`` takes
-    the offset itself), in Bash also once its quoting is taken off (``_quotes_taken_off``: a
-    ``$(`` split by quotes in a value Bash later reads as arithmetic, through ``$[x]``,
-    ``${s:x}`` or ``${a[x]}``), but the message form above and PowerShell's ``"$($_.Name)"``,
-    which only reads a member; a PowerShell ``::`` call other than a known reader or a method call
-    other than a few string and date ones (``_ps_calls_block``); output redirected to a path
-    that still holds a variable, a substitution or a backtick after the hook's own environment
-    is applied, or to PowerShell's ``> (expression)`` (the guard can't see where it leads:
-    ``_DYNAMIC_TARGET``; a parenthesis inside quotes is part of a name). That also blocks a
-    target that is no file, Bash's ``> >(cat)`` and PowerShell's ``> (Join-Path $env:TEMP x)``,
-    in a command that already names a protected folder; and in Bash an environment prefix or
-    ``export`` of a variable that names a program (``_PROGRAM_VAR``: ``GIT_PAGER``,
-    ``LESSOPEN``, ``PATH``, …), even before a read-only command.
-  - Answers within about a second whatever the command, as a hook that times out lets the call
-    through (``settings.json`` gives the hook 120 s, a backstop: the deadline below is the
-    protection). Past a budget the words are not read one by one: the command counts as reaching a
-    protected folder, so only a read-only one passes (a redirect, a substitution, and the
-    ``tools/`` scripts and ``git`` and ``gh`` commands that are trusted otherwise are blocked:
-    ``Too long or too complex to check``). The budget: ``MAX_WORK`` (the different words, 1
-    each, and for a word with a wildcard, which is read as a pattern, 8 or an eighth of its
-    length if more, at most an eighth of ``MAX_NAME_TEXT``; 8 for each redirect target;
-    message text is no word), ``MAX_SEGMENTS`` and ``MAX_FOLDERS`` (different folders a ``cd``
-    goes to). Two limits do not make a command count as reaching a folder, they make a
-    heredoc count as code: more than ``MAX_HEREDOCS`` of them (none is cut out as data), and a
-    heredoc saved to, or copied to, more than ``MAX_SAVED_NAMES`` files (it may be run later).
-    A command over ``MAX_COMMAND`` (100 000 characters) is blocked unread: write long text to
-    a file with the Write tool. A commit message or a PR body is one word to it, and a
-    script's words count once each. Past ``DEADLINE`` (one second) of reading, whatever the
-    budget says, the command is blocked too: the lexer (per word), the heredoc pass (per
-    heredoc and per saved file's later commands), the final pass (per command) and each read
-    of a word or name pattern that ``protected`` has not already answered (``_Memo``) look at
-    the clock (``_tick``). Not interrupted: one read (a word of 96 000 characters with a
-    wildcard is read in full, 0.8 s; a command with several such passes takes up to about two
-    seconds), the lexing of one word, and ``_heredocs``, which is linear in the length. So the
-    answer is within about a second, and a little over two at most.
-    Nothing asks the file system about a UNC path on Windows (``protected.is_network_path``:
-    ``//host/x`` is resolved over the network, seconds a host), so a link in one is not
-    followed; ``//?/C:/x`` and ``//./C:/x`` are local paths and are.
+  1. ``_parse`` splits the command into simple commands, redirect targets and words. Text that is
+     only data is left out, so commit messages and PR text may name the folders: a PowerShell
+     here-string's quotes, the message values of ``git`` and ``gh`` (``_text_words``) and the
+     body of a Bash heredoc that nothing can run (``_heredoc_is_data``).
+  2. ``_reach``: whether the command *may reach* a protected folder (``_may_reach_protected``,
+     ``_selects_protected_name``), or deletes, moves out, changes or searches-and-acts on a folder
+     *above* one (``_ancestor_violation``). One that cannot is allowed.
+  3. One that may is allowed only when every simple command in it is recognizably read-only
+     (``_segment_is_read_only``), a ``.venv`` Python run of a script in ``tools/`` (those enforce
+     their own rules through ``tools/protected.py``; after a ``cd``, only when every ``cd`` goes
+     to a checkout of this repo), or a ``git`` or ``gh`` command that names no protected folder
+     or parent of one; and when it holds no command substitution or PowerShell method call
+     (``_substitution_violation``) and no output is redirected into a protected folder or to
+     a path the guard cannot see (``_redirect_violation``, ``_command_violation``).
 
-This is a tripwire against mistakes, not a sandbox. It can't see a path assembled entirely from
-variables or string arithmetic, a link to a parent folder made outside the command, the
-folder behind a ``cd`` into a variable (``cd $d`` is unknown, not the folder the variable holds),
-a Steam library folder by its own name (only its ``steamapps`` and what is below, and Steam's
-own folders in the usual places: a Steam folder at ``D:/Steam`` is missed), a home folder that
-neither the environment nor a ``/home/name``, ``/Users/name`` or ``C:/Users/name`` path gives,
-and the folders above a protected one that other variables name: ``$PUBLIC/..``,
-``$HOMEDRIVE$HOMEPATH``, ``%HOMEDRIVE%%HOMEPATH%``, ``$SYSTEMDRIVE``, ``$ProgramData/..``,
-``$PWD/../..``, ``$env:SystemDrive/``, ``~+``, a variable set by another variable
-(``H=$X``), and UNC admin shares (``//localhost/C$/Users/…``, which the guard does not ask the
-network about). A script that is a word of more than 2000 characters (``sh -c``, ``eval``, ``cmd
-/c``) is not read again. cmd forms beyond the common ones are missed: ``@rd``, ``rd/s/q`` with no
-spaces, ``^"`` escapes, ``if /i a==a``, ``if errorlevel``. A subshell in the middle of a pipeline
-(``ls ~ | (cat) | xargs rm -rf``) cuts the link between ``ls ~`` and ``xargs``. Wrappers it
-does not know (``chrt``, ``taskset``, ``flock``, ``strace``,
-``watch``, ``unbuffer``, ``script -qc``, ``parallel``, ``wsl``) hide the verb; so do
-``command cd`` and ``builtin cd``, ``bash -c --`` and ``-o … -c``, a script piped or here-stringed
-into a shell with no ``-c``, ``xargs … sh -c`` with the listing, ``pwsh -co``, a variable that
-holds an item (``$h = gi ~``), ``foreach (… in @($HOME))``, ``Clear-Item`` and ``Clear-Content``,
-``takeown``, ``icacls``, ``chattr``, ``setfacl -R``, ``rm -rf $(dirname ~/x)`` and a link to the
-home folder followed by an ``rm``, and ``/proc/self/root``. Archives and tree copies into one
-(``tar -x -C ~``, ``rsync -a … ~/``, ``cp -r … ~``, ``Expand-Archive`` without ``-Force``) pass:
-they add files, and overwrite only what the archive holds. It reads shell commands and PowerShell's
-cmdlets, not code in another language:
-``python -c "shutil.rmtree('/')"``, ``Path.home()``, ``os.path.expanduser('~')`` and PowerShell's
-.NET calls and methods (``[IO.Directory]::Delete($HOME, $true)``, ``gci ~ -r | % Delete``)
-are missed unless the command names a protected folder itself. A ``xargs rm`` whose list comes
-from a file (``xargs rm < list``) is not tied to a folder. A name picked by another tool than
-``find`` and PowerShell's ``-Filter`` and ``-Include`` (``locate``, ``find lab/x | grep ZexionAP
-| xargs rm`` from a folder that is not above a protected one: from ``~`` it blocks, ``Where-Object
-Name -like``, ``cmd /c for /d``, a .NET search), a name from a
-variable or an expression (``find -name "$n"``, ``"Zexion$(echo AP)"``, a ``$'…'`` string
-with escapes, text after a backtick), a regular expression's quantifier (``-regex
-'Zex(ion)?AP'``) or an alternation inside a group that splits a name (``(Z|z)exion``), a
-brace expansion past five levels or 32 alternatives, a PowerShell ``@(…)`` list split by
-newlines or ``;``, or what a script file does when it runs (the file's contents are not
-read). ``ls``, ``dir`` or ``gci`` inside a quoted PowerShell string
-(``Write-Host "run ls zexion"; Remove-Item …``) counts as a call, so that command blocks. A
-scratch script written by a heredoc and run in the same command is code, like ``python -
-<<'EOF'``, so it is blocked when it names the saves, even to read them or in a comment; but
-the run is tied to the heredoc only by the file's name, so ``sh *.sh`` or a variable holding
-the name is missed, as is a program variable that is not on the list, set with ``env``
-before a command that is otherwise allowed, or set in PowerShell (``$env:GIT_PAGER = …``).
-A backslash is a separator on every platform (``protected.normalize``), so on Linux and macOS
-a folder named with them is read as a separator, and ``../..`` after it goes one level too
-high: ``cd ~/.local/share/t && echo 1 > '<two backslashes>'/../../ZexionAP/s.json`` passes.
-A ``tools/``
-script is trusted in the session's own ``cwd`` without checking that it is a
-checkout of this repo. The joined reading may take prose such as ``print('Gallant Leaf,
-Zexion')`` for the folder; that blocks only in a command that is not read-only. It fails
-closed: if the guard itself breaks while looking at a call that mentions the saves, a Steam
-folder or ``ZexionAP``, the call is blocked.
+Past a budget (the ``MAX_*`` limits and ``DEADLINE``, with their comments) the guard does not read
+a command word by word: it counts as reaching a protected folder, so only a read-only one passes.
+That keeps its answer within about a second, as a hook that times out lets the call through.
+
+Documented false positives (name the folder in the command instead):
+
+- A ``cd`` to a variable, a substitution or a temporary folder is unknown (a variable may be
+  empty, and then ``cd`` goes home): ``d=$(mktemp -d) && cd "$d" && rm -rf *``, ``cd "$(git
+  rev-parse --show-toplevel)" && git clean -fdx`` and ``cd "$RUNNER_TEMP" && rm -rf *`` block.
+  ``rm -rf "$d"/*`` and ``git -C "$d" clean -fdx`` pass (a variable the environment knows is
+  expanded, and judged by its real path).
+- ``find . -iname '*zexion*' -delete`` and ``gci . zexion | ri`` in this repo block: they can't
+  be told from ``ZexionAP``. ``find dist -name 'zexion*' -delete`` passes: ``-name`` is read as
+  written.
+- A name pattern that may match a file in the protected folders blocks wherever the search starts:
+  ``find lab -name '*.sav' -delete`` and ``find . -name '*' -delete`` (``*.py`` passes).
+- The joined reading of a command may take prose such as ``print('Gallant Leaf, Zexion')`` for
+  the folder; that blocks only in a command that is not read-only.
+- ``ls``, ``dir`` or ``gci`` inside a quoted PowerShell string (``Write-Host "run ls zexion";
+  Remove-Item …``) counts as a call.
+
+Known gaps. This is a tripwire against mistakes, not a sandbox. It fails closed: if the guard
+itself breaks while looking at a call that mentions the saves, a Steam folder or ``ZexionAP``, the
+call is blocked. It can't see:
+
+- a path assembled entirely from variables or string arithmetic; the folder behind a ``cd`` into a
+  variable; a link to a parent folder made outside the command; a link to the home folder
+  followed by an ``rm``; ``/proc/self/root``; the folder a script file's contents name (a scratch
+  script written by a heredoc and run in the same command is code, but the run is tied to the
+  heredoc only by the file's name: ``sh *.sh`` or a variable holding it is missed);
+- links in a command's words past the first ``MAX_LINK_WORDS`` different ones (the file system is
+  asked about each, which costs about half a millisecond a word): ``cp`` with 64 filler words
+  before an operand in a link in the working folder that leads into a protected folder passes;
+  nor a link in a UNC path on Windows (``protected.is_network_path``: asking would resolve it over
+  the network, seconds a host; ``//?/C:/x`` and ``//./C:/x`` are local and are followed);
+- a Steam library folder by its own name (only its ``steamapps`` and what is below, and Steam's
+  own folders in the usual places: a Steam folder at ``D:/Steam`` is missed), a home folder that
+  neither the environment nor a ``/home/name``, ``/Users/name`` or ``C:/Users/name`` path gives,
+  and the folders above a protected one that other variables name: ``$PUBLIC/..``,
+  ``$HOMEDRIVE$HOMEPATH``, ``%HOMEDRIVE%%HOMEPATH%``, ``$SYSTEMDRIVE``, ``$ProgramData/..``,
+  ``$PWD/../..``, ``$env:SystemDrive/``, ``~+``, a variable set by another variable (``H=$X``),
+  and UNC admin shares (``//localhost/C$/Users/…``);
+- wrappers it does not know (``chrt``, ``taskset``, ``flock``, ``strace``, ``watch``,
+  ``unbuffer``, ``script -qc``, ``parallel``, ``wsl``), which hide the verb; so do ``command cd``
+  and ``builtin cd``, ``bash -c --`` and ``-o … -c``, a script piped or here-stringed into a shell
+  with no ``-c``, ``xargs … sh -c`` with the listing, ``pwsh -co`` and a script word of more than
+  2000 characters (``sh -c``, ``eval``, ``cmd /c``, which is not read again); cmd forms beyond the
+  common ones (``@rd``, ``rd/s/q`` with no spaces, ``^"`` escapes, ``if /i a==a``, ``if
+  errorlevel``); a subshell in the middle of a pipeline (``ls ~ | (cat) | xargs rm -rf``), which
+  cuts the link between ``ls ~`` and ``xargs``; a ``xargs rm`` whose list comes from a file
+  (``xargs rm < list``); a variable that holds an item (``$h = gi ~``) and ``foreach (… in
+  @($HOME))``;
+- verbs that change a folder that ``_ancestor_violation`` does not list: ``Clear-Item``,
+  ``Clear-Content``, ``takeown``, ``icacls``, ``chattr``, ``setfacl -R``, ``rm -rf $(dirname
+  ~/x)``; archives and tree copies into the home folder (``tar -x -C ~``, ``rsync -a … ~/``, ``cp
+  -r … ~``, ``Expand-Archive`` without ``-Force``) pass: they add files, and overwrite only what
+  the archive holds;
+- code in another language (``python -c "shutil.rmtree('/')"``, ``Path.home()``,
+  ``os.path.expanduser('~')``) and PowerShell's .NET calls and methods (``[IO.Directory]::Delete(
+  $HOME, $true)``, ``gci ~ -r | % Delete``), unless the command names a protected folder itself;
+- a name picked by another tool than ``find`` and PowerShell's ``-Filter`` and ``-Include``
+  (``locate``, ``find lab/x | grep ZexionAP | xargs rm`` from a folder that is not above a
+  protected one; ``Where-Object Name -like``, ``cmd /c for /d``); a name from a variable or an
+  expression (``find -name "$n"``, ``"Zexion$(echo AP)"``, a ``$'…'`` string with escapes, text
+  after a backtick); a regular expression's quantifier (``-regex 'Zex(ion)?AP'``) or an
+  alternation inside a group that splits a name (``(Z|z)exion``); a brace expansion past five
+  levels or 32 alternatives; a PowerShell ``@(…)`` list split by newlines or ``;``;
+- a program variable that is not on the list (``_PROGRAM_VAR``), set with ``env`` before a command
+  that is otherwise allowed, or set in PowerShell (``$env:GIT_PAGER = …``);
+- a backslash is a separator on every platform (``protected.normalize``), so on Linux and macOS a
+  folder named with them is read as a separator, and ``../..`` after it goes one level too high:
+  ``cd ~/.local/share/t && echo 1 > '<two backslashes>'/../../ZexionAP/s.json`` passes;
+- a ``tools/`` script is trusted in the session's own ``cwd`` without checking that it is a
+  checkout of this repo.
 """
 
 from __future__ import annotations
@@ -289,6 +149,7 @@ MAX_WORK = 6000  # over the different words (``_work``) and redirect targets (8 
 MAX_FOLDERS = 16  # different folders the command's ``cd`` goes to
 MAX_HEREDOCS = 32  # Bash heredocs; with more, none is cut out as data
 MAX_SAVED_NAMES = 64  # files a heredoc is saved to and copied to; with more it counts as code
+MAX_LINK_WORDS = 64  # different words followed through links and read as paths (a known gap)
 MAX_NAME_TEXT = 1000  # what is read of a name or a list of them; a longer one counts as a name
 # Past ``DEADLINE`` of reading, whatever the budget says, the command is blocked too: the lexer
 # (per word), the heredoc pass (per heredoc and per saved file's later commands), the final pass
@@ -800,7 +661,9 @@ def _saved_and_used(command: str, doc: Heredoc, piece: str, reader: str) -> bool
 
     A later command may run it when it names the file (any case) and does not only handle it
     (``_handles_without_running``: ``wc``, ``git commit -F``, ``gh pr create --body-file``,
-    ``rm``), names it inside a substitution, or pipes it into a command that does not.
+    ``rm``), names it inside a substitution, or pipes it into a command that does not:
+    ``git commit -F x`` and ``wc x`` are fine, ``sh x``, ``. x``, ``cat x | sh`` and ``cp x y &&
+    sh y`` are not.
     """
     rest = command[doc.op.end() : command.find("\n", doc.op.end())]
     files = re.findall(r"\d?>>?\|?[ \t]*(\"[^\"]*\"|'[^']*'|[^\s;&|<>()]+)", piece + " " + rest)
@@ -1036,6 +899,12 @@ def _git_reads(words: list[Word]) -> bool:
 
 
 def _segment_is_read_only(words: list[Word], powershell: bool) -> bool:
+    """*Read-only* means the verb is on a short list (``READ_ONLY_SH``, ``READ_ONLY_PS``) and
+    nothing in its arguments makes it write (``_bash_args_write``: ``find -delete``, ``sort -o``,
+    ``sed -i`` and the like); ``git diff``, ``log`` and ``show`` count unless an argument starts
+    with ``--output``, ``--ext-diff``, ``--exec-path``, ``--config-env`` or ``-c``. PowerShell's
+    rules for script blocks, ``ForEach-Object``, expressions and ``&``:
+    ``_ps_segment_is_read_only``."""
     stripped = _strip_prefix(words, powershell)
     if not stripped or _git_reads(stripped):
         return True
@@ -1192,9 +1061,11 @@ def _walk_cds(
     (``cd $d``, ``` cd `echo ~` ```; unless it is one that holds a protected one by name:
     ``cd $APPDATA`` where the variable is not set here), or is ``-``, ``$OLDPWD`` or ``popd``.
 
-    A variable the line sets is not read from the hook's environment, and a ``cd`` to a
-    temporary or workspace folder (``$TMPDIR``, ``$(mktemp -d)``) is no different from any other
-    unknown one: a variable may be empty, and ``cd`` with none goes home.
+    ``assigned`` (``_assigned_names``, worked out when not given) are the variables the line sets
+    itself: they are not read from the hook's environment. A ``cd`` to a variable is unknown
+    whatever it names (``$TMPDIR``, ``$(mktemp -d)``): it may be empty, and ``cd`` with none goes
+    home. ``cd /c/Users/x`` is on drive C, not under the cwd's; a bare ``cd`` and ``cd --`` go
+    home.
     """
     current: str | None = cwd or os.getcwd()
     if assigned is None:
@@ -1329,8 +1200,10 @@ _OPTION_PREFIX = re.compile(r"^--?[\w-]+=")  # ``--target-directory=…``, which
 
 
 def _unwrap(words: list[Word], powershell: bool) -> list[Word]:
-    """The command a simple command runs: ``sudo``, ``env``, ``nice``, ``timeout 5``, ``nohup``,
-    ``command``, ``busybox`` and ``cmd /c`` taken off, with their options and durations."""
+    """The command a simple command runs: the wrappers of ``WRAPPERS`` (``sudo``, ``env``,
+    ``nice``, ``timeout 5``, ``nohup``, ``command``, ``exec``, ``stdbuf``, ``busybox``, cmd's
+    ``call`` and ``start /b``, …), cmd's ``if [not] exist X`` and ``cmd /c`` (also ``/v:on /c``
+    and Git Bash's ``//c``) taken off, with their options and durations."""
     words = _strip_prefix(words, powershell)
     for _ in range(8):
         if not words:
@@ -1412,9 +1285,12 @@ def _operand_ancestor(
     at any depth (``protected.is_ancestor_folder``: ``~``, ``"$APPDATA"``, ``/``, ``C:\\``,
     ``../..``, ``*`` in one), or a variable the command set to one (``anc_vars``), or a
     substitution that names one (``` `dirname $APPDATA` ```). A relative word is joined to
-    ``folder`` (with names in it only if ``join_names``); with the folder unknown (None) only a
-    word of dots and wildcards counts. A lone ``/`` or ``/c`` counts here: the caller is a verb
-    that deletes, moves or lists for one. Nothing asks the file system."""
+    ``folder`` (with names in it only if ``join_names``). With the folder unknown (None), a word
+    counts when it is only dots and wildcards (``rm *``, ``find .``), has a ``..`` in it, or its
+    last name may be a protected folder's or file's. ``$PWD``, ``%CD%`` and ``$(pwd)`` are ``.``.
+    A lone ``/`` or ``/c`` counts here: the caller is a verb that deletes, moves or lists for
+    one. ``depth`` (0 or 1) stops a substitution from being read inside another. Nothing asks the
+    file system."""
     word = _OPTION_PREFIX.sub("", word).strip(",;")
     if word.endswith(")") and word.count(")") > word.count("("):
         word = word[:-1]  # ``(Get-Item ~)`` and ``@(~)``; not ``C:/Program Files (x86)``
@@ -1873,7 +1749,23 @@ def _segment_violation(
     searches-and-acts on a folder that may hold a protected one (``_operand_ancestor``): the
     verbs of ``_OPERAND_RULES``, by what each does with the folders it is given, and what the
     verbs of ``_COMMAND_RUNNERS`` run. ``fed``: it is ``xargs``'s command. ``pipes`` tells what a
-    ``Remove-Item`` or ``xargs rm`` with nothing of its own to remove is fed."""
+    ``Remove-Item`` or ``xargs rm`` with nothing of its own to remove is fed.
+
+    By what the verb does with the folder it is given: ``rm``, ``rmdir``, ``shred``,
+    ``Remove-Item``, cmd's ``rd`` and ``del`` (any operand); ``mv``, ``Move-Item`` and cmd's
+    ``move`` (a source, so not a ``-Destination`` or ``-t``: moving into one is no harm);
+    ``chmod``, ``chown``, ``truncate``, ``Rename-Item``; ``find`` (a start folder, with
+    ``-delete``, ``-fprint``, ``-ok`` or an ``-exec`` of anything but a reader such as ``cat``
+    and ``grep``) and ``fd -x``; ``git clean``, ``stash -u``, ``reset --hard`` and ``checkout .``
+    (``-C``, ``--work-tree``, ``GIT_WORK_TREE``, an operand, or where it runs); ``rsync --delete``
+    (its destination) and ``--remove-source-files`` (its sources), ``tar --remove-files``,
+    ``robocopy /MIR /PURGE /MOVE``; extraction over what is there into one (``unzip -o -d ~``,
+    ``tar --overwrite -C ~``, ``Expand-Archive … -Force``); and ``xargs`` or a ``Remove-Item``
+    given nothing of its own to remove, fed by a command of its *pipeline* that named such a
+    folder (``ls ~ | xargs rm``, ``gci $env:APPDATA -r | ri``, ``$HOME | ri -r``, a lister with
+    no folder after ``cd ~``, a lone ``/`` piped in; not a command before a ``;`` or ``&&``:
+    ``ls ~ ; find lab | xargs rm`` passes; a ``{ …; }`` or ``while … done`` that a pipe goes on
+    from is part of it, a line continuation after a pipe too: ``_pipeline_groups``)."""
     original = words
     words = unwrapped if unwrapped is not None else _unwrap(words, powershell)
     if not words:
@@ -1903,7 +1795,25 @@ def _ancestor_violation(
     on a folder above a protected one at any depth (``~``, Roaming, ``/``, a drive's root: the
     saves are inside), in the folder it runs in: where each ``cd`` before it left it, or from
     ``start``. See ``_segment_violation`` for what each verb does to count; a command that
-    creates files in the folder, copies into it, lists or reads it does not.
+    creates files in the folder, copies into it, lists or reads it does not (``cd ~ && git
+    clone``, ``cp a ~``, ``ls ~ && make clean``, ``tar -C ~``, ``unzip -d ~`` pass).
+
+    The folders above a protected one are Roaming, the home folder (``~``, ``$HOME``,
+    ``%USERPROFILE%``, ``C:/Users/name``, ``/home/name``) and what is above it, ``/``, a drive's
+    root (``/c`` and ``/mnt/c`` as Git Bash and WSL write it), the folders of the variables
+    ``protected._ANCESTOR_ENV`` lists (``$APPDATA``, ``%LOCALAPPDATA%``, ``$XDG_DATA_HOME``, …,
+    also written as the variable, with ``${APPDATA:-x}`` and ``${APPDATA%/}``, when this machine
+    doesn't set it), ``.var``, ``~/snap``, ``.steam`` and Steam's folders in Program Files (x86);
+    ``..`` or a last name that is only a wildcard (``~/*``) up to one. A lone ``/`` or ``/c`` is a
+    root only as an operand of these verbs (``cmd /c``, ``findstr /s`` and ``print(1 / 2)`` name
+    none). A relative operand is joined to the folder the command runs in (``rm -rf ../../..``
+    from a folder under the home folder). Words are read again as a command's in ``sh -c`` (with
+    ``$0``, ``$1`` and ``"$@"`` filled from the words after it), ``eval``, ``cmd /c "…"``,
+    ``powershell -Command`` and ``iex``, after the wrappers of ``_unwrap`` are taken off. A
+    backtick or ``$(…)`` operand that names one (``rm -rf `echo ~```, ``rm -rf $(echo ~)``), a
+    parenthesis (``ri -r ($HOME)``, ``@(~)``), PowerShell's ``-Path:~`` and a comma list
+    (``x,$HOME``) count, and so does a variable the line sets to one (``H=~; rm -rf "$H"``,
+    ``for d in ~ /; do …``, PowerShell's ``$d =``).
 
     What feeds a command is the pipeline it is in: ``ls ~ | xargs rm``, ``gci ~ | ri``,
     ``ls ~ | while read f; do rm "$f"; done`` (``read`` and ``set --`` make their variables the
@@ -2091,8 +2001,13 @@ _WORKED_OUT = re.compile(r"\$\([^()]*\)|`[^`]*`")
 
 
 def _through_proc(text: str) -> bool:
-    """Whether the command may go through another process's view in /proc (quotes taken off,
-    substitutions as one word, ``//`` and ``/./`` collapsed; the shell's own left alone)."""
+    """Whether the command may go through another process's view in /proc (its ``cwd``, ``root``,
+    ``fd``, ``map_files``, ``exe`` or ``task``; quotes taken off, substitutions as one word, ``//``
+    and ``/./`` collapsed; the shell's own, ``/proc/self``, left alone), whatever its pid: the
+    game's install is the game's ``cwd``, and a pid the command works out can't be told from the
+    game's. A ``proc`` piece with a view's name anywhere in the command counts too, for a path
+    built from pieces. A command that isn't read-only is blocked wherever it leads, while reads
+    and a redirect's target resolve to where they lead."""
     plain = _WORKED_OUT.sub("PID", text.replace("'", "").replace('"', ""))
     plain = re.sub(r"/(?:\.?/)+", "/", plain)
     if _PROC_VIEW.search(plain) is not None:
@@ -2212,7 +2127,22 @@ def _selects_protected_name(
     command that names it only by that name, from any folder, does not mention the folder's
     path (``find ~ -name ZexionAP -delete``). Whatever the command does with what it finds is
     judged after: ``-print`` and the reads pass, ``-delete``, ``-exec`` and an ``xargs rm`` after
-    it do not. Words with a predicate in them (``sh -c 'find …'``, ``eval``) are read again."""
+    it do not. Words with a predicate in them (``sh -c 'find …'``, ``eval``) are read again.
+
+    ``find``'s regular expression syntaxes, groups, braces, escapes and classes are read. A name
+    pattern with fewer than three fixed characters (``*``, ``Z*``) is no folder's name, but it may
+    be a file's: a pattern that may match the name of a file in these folders counts too,
+    wherever the search starts (``protected._FILE_NAMES``: ``Save Game N.sav``, ``GameUnlocks.sav``,
+    ``PreferencesSynced.sav``, ``ZexionAP-seed-<NAME>.sav``, ``steam_autocloud.vdf``, ``token``,
+    ``seeds``, ``config-<build>.txt``, …): ``*.sav``, ``Save*``, ``*seed*``, ``Pref*``, ``*.txt``,
+    ``?????`` and a bare ``*`` do, while ``*.py``, ``*.pyc`` and ``*foo*`` pass. A ``-path`` or
+    ``-regex`` is read at its last name, which needs a fixed character (``./build/*`` names no
+    file); a name over 200 characters is read as a file's, and a name or list of names over
+    ``MAX_NAME_TEXT`` characters as a name. ``Zexion`` and ``ZexionAP`` are also this repo's
+    names in lower case (``worlds/zexion``, ``zexion*.py``), so the predicates that compare case
+    match them only as written, and ``-iname`` and PowerShell, which don't, in any case. A
+    redirect's target is read as an argument is (``echo x > "$(find ~ -name ZexionAP)/seeds.json"``
+    blocks, whatever the operator: ``>``, ``>>``, ``2>``, ``&>``, PowerShell's ``*>``)."""
     if text and _ps_text_names(text, powershell, protected):
         return True
     for si, words in enumerate(segments):
@@ -2260,9 +2190,28 @@ def _substitutions_only_read(code: str, powershell: bool) -> bool:
 
 
 def _may_reach_protected(text, words, targets, folders, protected, unknown_cd: bool) -> bool:
-    """``folders``: where the command runs (the ``cwd``) and its ``cd`` targets. After a ``cd``
-    to a folder that is unknown (``unknown_cd``), a ``..`` may lead anywhere: a word that goes up
-    and then names a protected folder (``a/../../ZexionAP/x``) may reach it."""
+    """Whether the command may reach a protected folder by a path. ``folders``: where the command
+    runs (the ``cwd``) and its ``cd`` targets. It may when:
+
+    - its text names one, also with quotes removed and pieces joined
+      (``protected.mentions_protected``), or it goes through another process's view in ``/proc``
+      (``_through_proc``);
+    - it runs in, or changes directory to, a folder in a protected one or a parent of one
+      (``_folder_is_suspect``; other names in the folder's path don't count, so a worktree named
+      ``steam-achievements`` works as any other);
+    - a word could name one as a path (``..``, wildcards, 8.3 short names:
+      ``protected.word_may_name_protected``), leads into one from where the command runs, also
+      through an existing link, or names a parent of one (``"$APPDATA/Gallant Leaf"``,
+      ``…/steamapps/common``, ``…/userdata/123``: ``protected.may_be_above_protected``,
+      ``_names_parent``), so copying into, moving or deleting the parent blocks while reading it
+      does not (``MAX_LINK_WORDS``);
+    - it may build one from pieces (``_builds_from_pieces``, the app id as a path component:
+      ``_names_app_id``), or makes a link (``LINK_WORDS``) next to a folder named like ``gallant``
+      or ``steam``;
+    - after a ``cd`` to a folder that is unknown (``unknown_cd``), a ``..`` may lead anywhere: a
+      word that goes up and then names a protected folder (``a/../../ZexionAP/x``) may reach it.
+
+    A name predicate that may match a protected folder's name is ``_selects_protected_name``'s."""
     every = list(dict.fromkeys(words + targets))  # a word again is not read again
     links = any(w.lower() in LINK_WORDS for w in words)
     return (
@@ -2272,9 +2221,11 @@ def _may_reach_protected(text, words, targets, folders, protected, unknown_cd: b
         or any(protected.word_may_name_protected(w) for w in every)
         or _builds_from_pieces(text, every, protected)
         or (links and any(_dir_is_suspect(w, protected) for w in words))
+        # Each word is read from every folder, with the file system asked about links: only the
+        # first ``MAX_LINK_WORDS`` are (a known gap: the docstring).
         or any(
             _reaches_protected(w, folders, protected) or _names_parent(w, folders, protected)
-            for w in every[:64]
+            for w in every[:MAX_LINK_WORDS]
         )
         or (unknown_cd and any(_goes_up_to_protected(str(w), protected) for w in every))
     )
@@ -2557,7 +2508,16 @@ def _reach(p: _Parsed, protected) -> tuple[bool, bool, str | None]:
 
 def _substitution_violation(p: _Parsed, by_name: bool, by_path: bool) -> str | None:
     """A reason when a command that may reach a protected folder holds a command substitution or,
-    in PowerShell, a method or .NET call that may write."""
+    in PowerShell, a method or .NET call that may write. A substitution is ``$(`` (Bash
+    arithmetic ``$((`` included; ``xxd -s 0x9360`` takes the offset itself) or, in Bash, a
+    backtick, and in Bash also once its quoting is taken off (``_quotes_taken_off``: a ``$(``
+    split by quotes in a value Bash later reads as arithmetic, through ``$[x]``, ``${s:x}`` or
+    ``${a[x]}``). Not blocked: the ``"$(cat <<'EOF' … EOF)"`` message form, PowerShell's
+    ``"$($_.Name)"``, which only reads a member, and, in a command reached only by a name whose
+    every command reads, plain substitutions that read (``ls -ld $(find ~ -name ZexionAP)``;
+    ``cd $(find …) && git clean -fdx`` is blocked). A PowerShell ``::`` call other than a known
+    reader or a method call other than a few string and date ones is blocked
+    (``_ps_calls_block``)."""
     substitution = _CAT_HEREDOC.sub("heredoc", p.code)
     if p.powershell:  # "$($_.Name)" only reads a member
         substitution = _PS_MEMBER_SUBEXPR.sub("member", substitution)
@@ -2581,7 +2541,11 @@ def _substitution_violation(p: _Parsed, by_name: bool, by_path: bool) -> str | N
 
 def _redirect_violation(p: _Parsed, protected) -> str | None:
     """A reason when a redirect's target may be a protected path, or is worked out when the command
-    runs (``_DYNAMIC_TARGET``)."""
+    runs (``_DYNAMIC_TARGET``: a variable, a substitution or a backtick still in it after the
+    hook's own environment is applied, or PowerShell's ``> (expression)``): the guard can't see
+    where it leads. That also blocks a target that is no file (Bash's ``> >(cat)``, PowerShell's
+    ``> (Join-Path $env:TEMP x)``) in a command that already names a protected folder; a
+    parenthesis inside quotes is part of a name."""
     for target in p.targets:
         if target.startswith("&") or target.lower() in HARMLESS_TARGETS:
             continue
@@ -2608,7 +2572,8 @@ def _redirect_violation(p: _Parsed, protected) -> str | None:
 def _command_violation(p: _Parsed, protected) -> str | None:
     """A reason when a simple command is not recognizably read-only, a tool of this repo or a
     ``git`` or ``gh`` command that names no protected folder, or sets a variable that names a
-    program (``GIT_PAGER=…``)."""
+    program (``_PROGRAM_VAR``: ``GIT_PAGER``, ``LESSOPEN``, ``PATH``, …: in Bash an environment
+    prefix or ``export`` of one blocks, even before a read-only command)."""
     suspect_dir = p.over or any(_folder_is_suspect(f, protected) for f in p.folders)
     # After a cd, tools/ is the repo's own only in a checkout of the repo.
     repo_tools = all(_repo_checkout(f, protected) for f in p.cds)
