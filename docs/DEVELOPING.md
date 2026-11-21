@@ -141,8 +141,11 @@ worlds/zexion/ → generation → slot data → client
   themselves would not be what Steam syncs. Working in game on Windows between two PCs
   (2026-11-20, B1, develop bf86eb5; `docs/re/save-format.md`, "The helpers keep the file of each
   seed a save uses here"): AP saves made on one PC showed as AP saves on the other after Steam
-  Cloud synced them. Not yet run: Linux, Windows with Linux, the new-seed quit, the merge of two
-  machines' copies. Not checked: whether a client had run on the second PC.
+  Cloud synced them; and once from Windows to a CachyOS PC (2026-11-21, B1 assumed: at first not,
+  then, after the owner cleared some things out, AP saves synced through Steam Cloud showed as AP
+  saves; what was cleared, Steam's kind there and the helper's build were not reported). Not yet
+  run: Linux writing the copies, Linux to Windows, a Steam Deck's sync, the new-seed quit, the
+  merge of two machines' copies. Not checked: whether a client had run on the second PC.
 
 How the helper works: [`native/README.md`](../native/README.md).
 
@@ -307,7 +310,9 @@ in the game, the attach with the socket's token, the look's gate on the client's
 file select's fixes, DeathLink's death count and the client's seed file and labels, and a release's
 Steam Runtime build ran there too (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the
 review's other later fixes (`native/README.md`, "The Linux helper", lists them) have run on
-stand-ins only); the client attaches to either build. Everything else runs on
+stand-ins only; a later CI build loaded on a Steam Deck with the relative launch option, and a
+CachyOS PC showed AP saves synced from Windows as AP saves: `docs/re/linux.md`, "Seen on a Steam
+Deck and a CachyOS PC, 2026-11-20 and 2026-11-21"); the client attaches to either build. Everything else runs on
 Windows, Linux and macOS, and CI runs ruff and pytest on all three.
 
 Windows only:
@@ -340,9 +345,15 @@ CachyOS), of local builds; runs 1 and 2 (below) and run 3, 2026-11-20, of the so
 some of the later fixes (pull request #183 records it, with what it did not see, in
 `re/linux.md`, "Seen in the running game, 2026-11-20 (run 3)"). A release's build, made in the SDK,
 ran in the game too, 2026-11-20 (CI's build, on the same setup: `native/README.md`, "Its own
-runtime"). Native Steam, the Steam
-Deck and Snap's Steam are not tried: what is known of the Deck and the runtime is in
-`re/builds.md`, "B1 on Linux", and of Snap's layout in "finding it", below. What there is:
+runtime"). A Steam Deck with Zexion on the SD card then loaded the mod from the helper of develop
+at 246c850 (CI's build) with the relative launch option `./libzexion_ap.so`, late on 2026-11-20,
+the owner's report: the title lines, the sync of AP saves and the game's build id were not
+reported (`re/linux.md`, "Seen on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21", which
+also records the PC's sync). The relative option relies on Steam starting the game in its install
+folder, inferred from that run, not measured. Native Steam (whether the CachyOS PC's is native
+or Flatpak was not reported) and Snap's Steam are not tried: what is known of the Deck and the
+runtime is in `re/builds.md`, "B1 on Linux", and of Snap's layout in "finding it", below. What
+there is:
 
 - the Linux helper, `libzexion_ap.so` (`native/linux/`, `native/README.md`, "The Linux helper"),
   preloaded by the game's launch options: it counts the game's frame calls, and on a socket reads
@@ -356,7 +367,8 @@ Deck and Snap's Steam are not tried: what is known of the Deck and the runtime i
   runs the OS Install Disks goal (its count, this world's own disks counted at their pickup with
   no client, and RETURN HOME); it keeps the seeds' files (under `$XDG_DATA_HOME`) and, with no
   client, configures itself from the game's symbols (with no seed file read either: stand-in tests
-  only, not run in the game), so this world's own traps and disks
+  only; the Steam Deck run loaded the mod from this helper, which says nothing of what it did with
+  no client), so this world's own traps and disks
   work with no client, gives AP saves their look without the client and the file select's AP logo,
   disk counts and ITEMS row, shows the title screen's lines, keeps Feats and Steam achievements
   out of AP saves, with the Feats screen's note, and repairs tall popups' text. Tested against a

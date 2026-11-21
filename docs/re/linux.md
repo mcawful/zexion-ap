@@ -1284,6 +1284,23 @@ in the game on the same setup, as the owner saw them and the client's lines and 
 | Build | B1 (Linux), Flatpak Steam on the test PC (CachyOS), the helper of develop at 5611378 (`libzexion_ap.so` `b5c8f9c3…`). |
 | Evidence | The owner's report, the client's lines, the server's log and the seed file's listing as quoted above (`lab/run3/`, not in the repo). |
 
+## Seen on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21
+
+Two short runs the owner reported, on test builds from `develop` (no release has carried the
+Linux helper yet; 1.2.0 came before it), in their own words as the planning session relayed them. They are all that was reported: no screenshot, log or
+output is kept in the repo, and what was not reported is not known.
+
+| Field | |
+|---|---|
+| Value | **Steam Deck, late on 2026-11-20 (local time).** Zexion's native Linux version, installed on the SD card. The helper of `develop` at 246c850 (the self-configure of #189 and the seed copies of #187), built by CI in the Steam Runtime's SDK, was copied into the game's folder by the owner. The absolute launch option the setup guide gave then (a path under the default Steam library) did not match the SD-card install. The relative one, `LD_PRELOAD="./libzexion_ap.so:$LD_PRELOAD" %command%`, "seems to work just fine": the mod loaded. |
+| | **CachyOS PC, 2026-11-21.** A machine that had run an earlier version of the Linux helper. At first the save sync did not work: AP saves synced from Windows did not show as AP saves. The owner then "cleared some stuff out and it worked fine", and AP saves synced through Steam Cloud showed as AP saves (`docs/re/save-format.md`, "The helpers keep the file of each seed a save uses here"). |
+| | **Not recorded (not reported).** Deck: whether the title screen's lines showed with no client, whether synced AP saves showed as AP saves there, the game's build id (B1's Linux build is the only one `builds.md` knows, so it is assumed), which runtime the game ran in, how the launch options were set (the Deck's Properties, or otherwise). CachyOS PC: what was cleared (a guess, not seen: replacing the earlier `libzexion_ap.so`, since an earlier helper ignores the `ZexionAP-seed-*.sav` copies and reports the same 1.2.0), whether Steam is native or Flatpak there, which helper build ran, which saves and seeds. |
+| | **The relative launch option is inferred.** `./libzexion_ap.so` is found only if Steam starts the game with its install folder as the working directory: that is inferred from this run working, not measured on its own (`/proc/<pid>/cwd` of the game was not read). The whole launch chain inherits the preload, and a program started in another working directory can't find `./libzexion_ap.so`; glibc's loader then prints a warning for it and goes on. That is expected from glibc's behavior, not seen. |
+| Status | working in game (the mod loaded on the Deck with the relative launch option, 2026-11-20; AP saves synced from Windows showed as AP saves on the CachyOS PC, 2026-11-21: each as the owner reported it, with no check of our own); assumed (that the Deck's game started in its install folder, and so found the relative preload: inferred from the mod loading) |
+| Method | The owner's report of each run. The helper's hash is `sha256sum` of `dist/libzexion_ap.so` in the main checkout (the file the owner was given), computed 2026-11-20. |
+| Build | Deck: B1 (Linux) assumed; the helper of `develop` at 246c850, CI's Steam Runtime build, `libzexion_ap.so` SHA-256 `92cc1b438ba154c66fc989929f6bddd1cb37378ca7db609236ca2d4165b84364`. CachyOS PC: B1 (Linux) assumed; the helper's build not reported. |
+| Evidence | The owner's report of each run, relayed through the planning session; the hash as above. Nothing else is kept. |
+
 ## The per-frame call: SDL_GL_SwapWindow through the PLT
 
 | Field | |
