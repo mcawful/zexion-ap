@@ -9,7 +9,9 @@
 #include <fstream>
 #include <iterator>
 #include <set>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "check.h"
 #include "game_calls.h"
@@ -396,6 +398,94 @@ void test_a_save_of_the_seed_dressed_offline() {
     check(other.files().counts().size() == 1 &&
               other.files().counts().at(3) == zap::DiskCount(3, s.unfound),
           "the known seed's slot 3 keeps its own count with a client of another seed");
+}
+
+// Each guarded step (Game::step) on its own: one that throws keeps none of the others from running.
+int g_step_calls = 0, g_throw_at = 0;
+zap::Game* g_watched = nullptr;
+std::vector<bool> g_dressed_before;  // the look dressed (INTEL CHIP on) as each step begins
+void step_hook() {
+    if (g_watched != nullptr) g_dressed_before.push_back(g_watched->intel_on());
+    if (++g_step_calls == g_throw_at) throw std::runtime_error("a step");
+}
+
+// The watches' order (Game::watch_rest): the offline look is the third step of the frame, right
+// after the menu's, so the file select's, INTEL CHIP's, the title's and the disks' watches that
+// follow it read what it set in the same frame; the Windows helper ran them before it.
+void test_the_look_is_set_before_the_watches_that_read_it() {
+    reset_game();
+    zap::Game game;
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    configure(game, false);
+    game.set_offline({s});
+    load_seed();
+    game.set_step_hook(&step_hook);
+    g_watched = &game;
+    g_dressed_before.clear();
+    g_step_calls = g_throw_at = 0;
+    game.watch_all(&no_callback);
+    g_watched = nullptr;
+    game.set_step_hook(nullptr);
+    check(g_dressed_before.size() >= 5, "the steps of one frame");
+    if (g_dressed_before.size() >= 5) {
+        // 1 feats, 2 the menu, 3 the offline look, 4 the file select.
+        check(!g_dressed_before[2], "not dressed before its own step");
+        check(g_dressed_before[3], "dressed when the file select's watch begins");
+    }
+    game.put_back_game(&no_callback);
+}
+
+void test_a_watch_that_throws_keeps_the_others_running() {
+    reset_game();
+    zap::OfflineSeed s;
+    zap::parse_offline_seed(seed_text(), s);
+    zap::Game whole;
+    configure(whole, false);
+    whole.set_offline({s});
+    load_seed();
+    whole.set_step_hook(&step_hook);
+    g_step_calls = g_throw_at = 0;
+    whole.watch_all(&no_callback);
+    const int steps = g_step_calls;
+    check(steps >= 15, "watch_all runs each watch as a step of its own", std::to_string(steps));
+    whole.put_back_game(&no_callback);
+
+    // The second step, the ARCHIPELAGO choice's watch, throws: the offline look after it runs.
+    reset_game();
+    zap::Game game;
+    configure(game, false);
+    game.set_offline({s});
+    load_seed();
+    game.set_step_hook(&step_hook);
+    g_step_calls = 0;
+    g_throw_at = 2;
+    game.watch_all(&no_callback);
+    check(g_step_calls == steps, "every step ran after the one that threw",
+          std::to_string(g_step_calls));
+    check(game.intel_on(), "and the look after it dressed the save");
+    game.set_step_hook(nullptr);
+    game.put_back_game(&no_callback);
+}
+
+void test_a_part_of_a_clients_going_that_throws_keeps_the_others_running() {
+    reset_game();
+    zap::Game game;
+    check(configure(game).empty() && game.active(), "a client's config");
+    zap::NewGamePlan plan;
+    check(zap::parse_newgame("ap_newgame\nidentify 0x658 41\nwrite 0x310 11\nmenu 0x88 03", plan)
+              .empty() &&
+              game.arm_newgame(plan),
+          "a plan armed");
+    game.set_intel(true);
+    game.set_step_hook(&step_hook);
+    g_step_calls = 0;
+    g_throw_at = 1;  // put_back_game, the first part, throws as a whole
+    game.client_gone(&no_callback);
+    check(g_step_calls >= 4, "client_gone ran its other parts", std::to_string(g_step_calls));
+    check(game.newgame_status() == "idle" && !game.intel_on() && !game.active(),
+          "the plan dropped, Intel Chips off and the client gone, whichever part threw");
+    game.set_step_hook(nullptr);
 }
 
 // A dressed save stays dressed, ASSIST locked, through a menu; a client going away with the
@@ -1501,6 +1591,9 @@ int main() {
     test_a_notice_not_shown_goes_with_its_save();
     test_the_look_held_in_a_menu();
     test_assist_locked_again_in_the_same_frame();
+    test_the_look_is_set_before_the_watches_that_read_it();
+    test_a_watch_that_throws_keeps_the_others_running();
+    test_a_part_of_a_clients_going_that_throws_keeps_the_others_running();
     test_a_seed_put_with_a_client_reaches_the_look();
     test_the_ap_saves_slots();
     test_the_logo_through_the_frame_call();

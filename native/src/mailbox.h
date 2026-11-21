@@ -31,6 +31,8 @@ public:
     void serve();
 
 private:
+    // The work done: wakes the pipe thread waiting in call (serve, mailbox_serve.cpp).
+    void signal_done();
     enum State : int { kEmpty, kPending, kRunning, kDone };
     std::atomic<int> state_{kEmpty};
     std::function<std::string()> work_;

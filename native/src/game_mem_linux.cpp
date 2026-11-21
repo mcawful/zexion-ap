@@ -46,13 +46,11 @@ struct Region {
 struct Span {
     uintptr_t start = 0, end = 0;
 };
-// Read by the helper's serving thread, which its library constructor starts: built before that
-// constructor runs (init_priority puts them ahead of its default priority), whether or not this
-// compiler's library builds them at load time, so none is built afresh over what a thread holds.
-// Kept, so none is destroyed at exit() under a thread that still reads it either (kept.h).
+// Read by the helper's serving thread, which its library constructor starts: Kept and built ahead
+// of that constructor (kept.h), the flag constant-initialized.
 __attribute__((init_priority(101))) Kept<std::vector<Span>> g_loads;
 __attribute__((init_priority(101))) Kept<std::vector<Span>> g_code;
-__attribute__((init_priority(101))) std::once_flag g_spans_once;
+constinit std::once_flag g_spans_once;
 
 int main_program_spans(dl_phdr_info* info, size_t, void*) {
     const auto page = static_cast<uintptr_t>(sysconf(_SC_PAGESIZE));
@@ -113,7 +111,7 @@ std::vector<Region> read_map() {
 // protection, and the write that follows writable() is a plain store. The helper's own mprotect
 // drops it.
 constexpr uint64_t kMapCacheMs = 250;
-__attribute__((init_priority(101))) std::mutex g_map_mutex;  // built first, as g_loads above
+constinit std::mutex g_map_mutex;
 __attribute__((init_priority(101))) Kept<std::vector<Region>> g_map;
 uint64_t g_map_at = 0;
 bool g_map_kept = false;

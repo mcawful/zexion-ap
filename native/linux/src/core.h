@@ -106,6 +106,33 @@ bool make_private_folders(const std::string& path, std::string* why = nullptr);
 // sees itself (in a Flatpak or the Steam Runtime's container, not the host's).
 std::string socket_name(long pid);
 
+// The frame work for a call through a wrapper (helper.cpp, game_frame).
+// A wrapper may call the helper's swap more than once for one call of its own from the frame
+// function (a frame pacer, a duplicating layer), and frame work should run once a game frame, as
+// its frame-counted timers (the popups' gap, the file select's, the Steam retry) assume. The
+// helper cannot tell the game's frames apart from the wrapper's calls: the game's frame_clock
+// (`gGameState+0xB0`, docs/re/linux.md) is recorded, but stands still while a menu pauses the
+// game, so it cannot key frame work. So a call through a wrapper runs the work only if
+// kWrapperGapUs had passed, when it began, since the last call through a wrapper, of any kind,
+// returned from the real swap: every such call stamps its return, so a wrapper's third and fourth
+// calls follow the second's return as the second followed the first's, however long the real swap
+// waits for the refresh (inferred from the game's measured call rate, not seen). The premise, an
+// assumption: the game's work for a frame, from one swap's return to the next call, takes longer
+// than kWrapperGapUs. Backstop: a tight loop of calls through a wrapper (a game loop with no
+// work between swaps) would never be due, so the work runs anyway once kWrapperBackstopUs have
+// passed since the last run began. Limits, both timing: a wrapper that does something slow
+// between its repeated calls still has the work run for each; and two real frames closer than
+// the gap (`loadState`'s swap, then the frame's) lose the second's work, which waits one frame.
+// The direct path has neither.
+inline constexpr int64_t kWrapperGapUs = 100;
+inline constexpr int64_t kWrapperBackstopUs = 50000;
+inline constexpr int64_t kBeforeAnyCall = INT64_MIN / 2;  // a time before any call: no overflow
+
+// Whether a call through a wrapper that began at `start_us` runs frame work: `last_return_us` is
+// when the last call through a wrapper returned from the real swap, `last_run_us` when the last
+// run through one began (kBeforeAnyCall for none yet). All the same clock, in microseconds.
+bool wrapper_call_is_due(int64_t start_us, int64_t last_return_us, int64_t last_run_us);
+
 struct State {
     const char* build = nullptr;  // identify_build's, nullptr when unknown
     bool hooked = false;          // a known build: it counts the frame calls and serves

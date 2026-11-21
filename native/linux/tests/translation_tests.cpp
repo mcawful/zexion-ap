@@ -8,18 +8,10 @@
 #include <cstring>
 #include <string>
 
+#include "../../tests/check.h"
 #include "translation.h"
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what) {
-    if (!ok) {
-        ++g_failures;
-        std::printf("FAIL: %s\n", what);
-    }
-}
 
 std::wstring g_built;
 float g_x = 0, g_y = 0;
@@ -98,6 +90,5 @@ void test_a_glyphs_advance_is_read_from_the_linux_record() {
 int main() {
     test_a_glyphs_advance_is_read_from_the_linux_record();
     test_a_label_is_built_from_the_helpers_own_string();
-    if (g_failures == 0) std::printf("translation: all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("translation");
 }
