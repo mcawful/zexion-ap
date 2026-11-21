@@ -190,7 +190,7 @@ games, first make sure the mod there is this release's `libzexion_ap.so`: an ear
 read the copies. It has not been tried between a Steam Deck and another
 machine, or from Linux to Windows, yet.
 
-- Both machines need the mod, from a release with this feature.
+- Both machines need the mod from release 2.0.0 or later, which adds this feature.
 - The file is a copy of the seed's own file, which a client run made on that machine earlier. The
   mod reads that file when Zexion starts, so the client need not be connected then, but it must
   have connected for the seed once. The first machine is expected to write it while Zexion runs

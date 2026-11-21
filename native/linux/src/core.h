@@ -15,7 +15,7 @@
 
 namespace zap::linux_helper {
 
-inline constexpr char kVersion[] = "1.2.0";  // the release's: native/src/dllmain.cpp's kVersion
+inline constexpr char kVersion[] = "2.0.0";  // the release's: native/src/dllmain.cpp's kVersion
 inline constexpr char kDisabledName[] = "zexion_ap.disabled";
 inline constexpr size_t kMaxRequest = 64 * 1024;  // as the Windows pipe's buffer
 inline constexpr size_t kMaxRead = 32 * 1024;     // one `read`'s bytes, its reply under kMaxRequest
