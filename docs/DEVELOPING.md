@@ -455,7 +455,7 @@ there is:
   the step back for 30 s too (`ticks.linux_mod_lost`), as does one let go of with no server
   connection (`LinuxProcess.disconnect`, `linux_back_by`: the poll waits for it
   to be configured again, up to 30 s), then the items are written directly with no popup until it
-  is back; one that failed two steps running has the next step's written directly. A Linux helper
+  is back; one that failed three steps running (`ticks.LINUX_DIRECT_AFTER`, each on a mod configured afresh) has the next step's written directly. A Linux helper
   of this version built before traps, which answers `trap_status` with `error unknown request`
   (`linux_helper.HelperTooOld`), holds nothing back: items are written directly until it is
   replaced; any other reply but `queued …` (a frame not come in time: `refused no frame`) is a
