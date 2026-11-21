@@ -143,7 +143,9 @@ Windows, Ubuntu and macOS; AP's world tests on Ubuntu), and the native builds be
 helper also built and tested in the Steam Runtime's SDK (`native-linux-runtime`, "Linux helper
 (Steam Runtime)": it must load on glibc 2.31) and that build then checked as a release checks it
 (`native-linux-runtime-check`, "Linux helper (Steam Runtime) loads": `tools/build_apworld.py
---check-linux-helper`). A pull request into `main` also runs the release gate
+--check-linux-helper`, then `tests/test_native_linux.py` and
+`tests/test_native_linux_init_order.py` against that build), and a dry run of the release's build
+with it (`release-dry-run`, "release build, dry run"). A pull request into `main` also runs the release gate
 (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
@@ -171,7 +173,7 @@ The Linux helper, on Linux (GCC or Clang, and CMake 3.20 or later:
 .venv/bin/cmake -S native -B native/build
 .venv/bin/cmake --build native/build -j
 .venv/bin/ctest --test-dir native/build --output-on-failure
-.venv/bin/python -m pytest tests/test_native_linux.py
+.venv/bin/python -m pytest tests/test_native_linux.py tests/test_native_linux_init_order.py
 ```
 
 Nothing in `tests/` needs the game, and CI never runs it.

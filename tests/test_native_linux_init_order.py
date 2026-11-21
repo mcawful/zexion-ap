@@ -2,7 +2,8 @@
 (native/linux/src/helper.cpp, ``start``), a function in the library's ``.init_array`` of default
 priority: it runs ahead of the initializers with a priority (``init_priority(101)``) and, among
 those of default priority, in link order, so a dynamic initializer of a shared source
-(``zap_shared``: ``offline.cpp`` was one, round 7's LH1) can run after it, in the thread's way. A
+(``zap_shared``: ``offline.cpp`` was one, found by the review before 2.0.0) can run after it, in
+the thread's way. A
 global the thread reads that is built dynamically after that would be built afresh over what the
 thread holds, or walked before it is built.
 
@@ -27,7 +28,14 @@ What this covers, exactly:
 * With a Linux build (``native/build``, or ``ZEXION_NATIVE_BUILD``), the order itself, in each
   helper's own ``.init_array``: after the constructor come only the C++ runtime's own initializers
   (``*.cc``), none of this project's (``*.cpp``). That covers every shared source, not only the
-  three read above, and the file that ships (CI runs it on the Steam Runtime build too).
+  three read above, and the file that ships (CI runs it on the Steam Runtime build too). The
+  runtime's own initializers after the constructor (``_GLOBAL__sub_I_*.cc`` of the statically
+  linked libstdc++: locale instantiations, ``system_error``, ``ios_errcat``, ``eh_alloc``) are
+  accepted, not examined: the locale and error-category ones are lazily built or constant when
+  first used, and ``eh_alloc``'s emergency pool is read only when ``malloc`` fails for an exception.
+  That is reasoning from the library's design, not a proof (2026-11-21, GCC 13 and 14 builds); the
+  serving thread starts in the constructor because a client must be able to attach before the
+  game's first frame, and moving it to the first ``SDL_GL_SwapWindow`` was not tried in the game.
 
 Not covered: the other shared sources' globals (``feats.cpp``'s ``g_replaced``, ``g_hd`` and
 ``g_steam``, and the rest) by the source scan: the build check sees that none has a dynamic
@@ -126,7 +134,8 @@ def test_every_global_is_constant_kept_or_built_before_the_helpers_constructor()
                 raise AssertionError(
                     f"{path.name}: {name} ({kind}) is a global with a constructor in a shared "
                     "source: built after the helper's constructor started the serving thread "
-                    f"(round 7's LH1); hold it in a function-local Kept: {statement.strip()}"
+                    f"(the 2.0.0 review's start-up race); hold it in a function-local Kept: "
+                    f"{statement.strip()}"
                 )
             if kind.startswith("Kept<") or PRIORITY.search(statement):
                 priority = PRIORITY.search(statement)

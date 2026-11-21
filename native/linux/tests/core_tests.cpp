@@ -300,8 +300,10 @@ void test_private_folders() {
     const fs::path link = root / "link" / "ZexionAP";
     fs::create_directories(link.parent_path());
     fs::create_symlink(target, link);
-    check(!make_private_folders(link.string()) && mode(target) == 0755,
-          "a link in the folder's place is refused, and its target left as it is");
+    std::string why;
+    check(!make_private_folders(link.string(), &why) && mode(target) == 0755 &&
+              why == "it is a link",
+          "a link in the folder's place is refused, as a link, and its target left as it is", why);
     // A link above it is the user's own (a dotfiles manager's ~/.local/share).
     const fs::path above = root / "above";
     fs::create_symlink(target, above);
@@ -311,7 +313,9 @@ void test_private_folders() {
     const fs::path file = root / "file";
     std::FILE* f = std::fopen(file.c_str(), "w");
     if (f != nullptr) std::fclose(f);
-    check(!make_private_folders(file.string()), "a file is not a folder");
+    why.clear();
+    check(!make_private_folders(file.string(), &why) && why == "it is not a folder",
+          "a file is not a folder", why);
     fs::remove_all(root);
 }
 

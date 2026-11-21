@@ -47,9 +47,6 @@ jobs:
   native:
     name: native helper (windows-latest)
     runs-on: windows-latest
-    # The release dry run at the end takes the Linux helper from that job's artifact, as release.yml
-    # takes it from its own linux-helper job.
-    needs: native-linux-runtime
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -72,14 +69,30 @@ jobs:
         env:
           ZEXION_REQUIRE: helper
         run: python -m pytest tests/test_native.py -v
-      # The release's build as release.yml does it: the Linux helper of the Steam Runtime build,
-      # downloaded as an artifact (made by an earlier job: the file's age, which the builder checks
-      # against native/'s sources, is the download's), with the DLLs just built, into a scratch
-      # folder. A release that would refuse its own artifact fails here, not at the release.
+
+  # The release's build as release.yml does it, into a scratch folder: the DLLs built here, the
+  # Linux helper of the Steam Runtime build downloaded as an artifact (made by an earlier job: the
+  # file's age, which the builder checks against native/'s sources, is the download's). A release
+  # that would refuse its own artifact fails here, not at the release. A job of its own, so the
+  # Windows build and tests above do not wait for the Steam Runtime container, or fail with it.
+  release-dry-run:
+    name: release build, dry run (windows-latest)
+    runs-on: windows-latest
+    needs: native-linux-runtime
+    steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           name: libzexion_ap-runtime
           path: native/build
+      - name: Build the helper and proxy
+        run: |
+          cmake -S native -B native/build -A x64
+          cmake --build native/build --config Release
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.13"
+          activate-environment: true
       - name: Release build (dry run)
         shell: bash
         run: python tools/build_apworld.py --out "$RUNNER_TEMP/dist"
@@ -136,8 +149,7 @@ jobs:
   # them, the downloaded Steam Runtime build takes the place of that job's own libzexion_ap.so, and
   # tests/test_native_linux.py preloads it into the stand-in (it does nothing in another program,
   # exports only the calls it stands in for) and tests/test_native_linux_init_order.py reads the
-  # order of its own initializers (round 7's LM1: the Steam Runtime job ran only ctest, which loads
-  # none of it).
+  # order of its own initializers (the Steam Runtime job runs only ctest, which loads none of it).
   native-linux-runtime-check:
     name: Linux helper (Steam Runtime) loads
     runs-on: ubuntu-latest

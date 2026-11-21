@@ -314,13 +314,15 @@ the pause screen open, the client keeping the helper and the screen unchanged, t
 play: working in game 2026-10-27 (0.30.0, `native.Helper.unload`; `docs/re/memory.md`, "The
 client in a live game").
 
-It first stops the copy thread ("Seed files in the save folder") with a wait of at most one
-second (`kCopyStopMs`: under the 2 s the client waits for the reply, `client/native.py`; an idle
-thread stops at once, its event wakes it): stuck in a file call that does not return (an antivirus
-filter, a cloud placeholder on the save folder) it would keep the DLL from being freed, so the
-unload is refused (`error the copy thread is busy; not unloading`) and the helper works on (the
-thread is asked to go on, and a refused unload restarts it, a new one if the stuck one has gone
-since). After the unload has put everything back, the pipe thread stops and joins the copy thread
+It first stops the copy thread ("Seed files in the save folder") with a wait of at most half a
+second (`kCopyStopMs`; an idle thread stops at once, its event wakes it). The reply then comes
+after that and, with the thread stopped, the wait for a frame (1 s): under the 2 s the client waits
+in `_unload_refusal` and `tools/helper.py` (`REPLY_SECONDS`), and the 3 s of `Helper.unload`
+(`APPLY_SECONDS`). Stuck in a file call that does not return (an antivirus filter, a cloud
+placeholder on the save folder) the thread would keep the DLL from being freed, so the unload is
+refused (`error the copy thread is busy; not unloading`) and the helper works on: the thread is
+asked to go on, and every request (`handle`) starts a new one if there is none, which covers a
+stuck one that ended on its own after the wait. After the unload has put everything back, the pipe thread stops and joins the copy thread
 again (already gone: no wait) before it frees the DLL; if that wait times out the DLL stays
 loaded, as when the hook was replaced, and is never freed under the thread, which is left asked to
 stop.
@@ -1913,7 +1915,7 @@ disconnected.
 `Game::saved_seeds` (`src/game_calls.cpp`), `src/dllmain.cpp` (`save_dir`, `offline_dir`,
 `snapshot_saves`, `copy_thread`), the Linux helper's `g_save_folder`, `g_saved` and `copy_loop`;
 `docs/re/save-format.md`, "Steam Auto-Cloud syncs only `*.sav` and `*.png` in the save folder
-itself". Working in game on Windows, between two PCs (2026-11-20, B1, develop bf86eb5,
+itself". Working in game on Windows, between two PCs (2026-11-20, B1 inferred: the helper hooks only B1, develop bf86eb5,
 `zexion_ap.dll` `2d8b696f…`, `version.dll` `b5a196b2…`, `zexion.apworld` `a2bcc022…`; the owner's
 report, `docs/re/save-format.md`, "The helpers keep the file of each seed a save uses here"): AP
 saves made on one PC showed as AP saves on the other after Steam Cloud synced them. Seen once,
@@ -2751,8 +2753,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   nothing unless the program it is in is a known Linux build, told by the main program's GNU
   build id (`src/core.cpp`, `kKnownBuilds`, kept in step with `KNOWN_LINUX_BUILDS` in
   `client/patterns.py`; `tests/test_cross_checks.py` checks them), whose `PT_NOTE` bytes are read
-  through the kernel (`process_vm_readv`, at most 64 KB of them), never dereferenced: any
-  program the helper is preloaded into gets that far. In a known build it writes
+  only where they lie wholly in the file-backed part of a readable `PT_LOAD` of the same object
+  (`note_in_image`, at most 64 KB of them), with no system call: any program the helper is
+  preloaded into gets that far, and a sandbox that refuses `process_vm_readv` must not turn it
+  into "not a known build". In a known build it writes
   `zexion-ap <version>: serving build <name>` to stderr; in a program named `Zexion` of another
   build, `zexion-ap <version>: not a known build of Zexion (build id <hex>)`, the line a player
   sees after a game update; elsewhere nothing. A preloaded library can't be unloaded: there is
@@ -2830,8 +2834,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `offline.cpp` has, the list of put seeds waiting for a slot (`pending_seeds()`, read by the
   serving thread's first `join_saves`), is a `Kept` in a function-local static: built on first use,
   by whichever thread asks first (a global of that file would be built after the constructor in
-  the `.init_array`, which a first start with no seed files made the thread win: found by round 7's
-  review, 2026-11-20, in a GCC 13 build, where the constructor sat ahead of
+  the `.init_array`, which a first start with no seed files made the thread win: found by the review
+  before 2.0.0, 2026-11-20, in a GCC 13 build, where the constructor sat ahead of
   `_GLOBAL__sub_I_offline.cpp`; not run in the game). `tests/test_native_linux_init_order.py`
   reads `helper.cpp`, `game_mem_linux.cpp` and `offline.cpp` and fails for any namespace-scope
   object in them that is none of constant by its type, `Kept` with `init_priority(101)` (a
@@ -2839,7 +2843,12 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   holder is `constinit`, and, with a build, that the helper's `.init_array` holds no initializer
   of `offline.cpp` or any shared source other than the memory layer's; the other shared
   sources' globals (`feats.cpp`'s others) are constant by their types: no dynamic initializer
-  of theirs is in the build.
+  of theirs is in the build. The statically linked libstdc++'s own initializers (`*.cc`) do run
+  after the constructor and are accepted, not examined: reasoning from the library's design (the
+  locale and error-category objects are built lazily or constant, `eh_alloc`'s emergency pool is
+  read only when `malloc` fails for an exception), not a proof. The thread starts in the
+  constructor so a client can attach before the game's first frame; starting it at the first
+  `SDL_GL_SwapWindow` instead, after every initializer, was not tried in the game.
 - **The socket.** An abstract unix socket, `zexion-ap-<pid>`, `SOCK_SEQPACKET`: one request a
   message, one reply a message, one client at a time, as the Windows pipe. The next client's
   connection waits in the queue, unanswered (`client/linux_helper.py` says the helper is busy
@@ -3672,11 +3681,13 @@ file that ships: the `native-linux-runtime-check` job builds the stand-in game a
 as `native-linux` does, puts the Steam Runtime build (the `native-linux-runtime` job's artifact)
 where that job's own `libzexion_ap.so` was, and runs them (the release helper does nothing in
 another program, exports only the calls it stands in for, and its `.init_array` is in order); the
-glibc-2.31 build itself is loaded on the runner's newer glibc, not in the Steam Runtime (round 7's
-LM1). The Windows `native` job then does what `release.yml` does with that artifact: downloads it
-into `native/build` and runs `tools/build_apworld.py --out <scratch>` (a dry run of the release,
-so a release that would refuse its own artifact, its age check against `native/`'s sources among
-them, fails in CI, not at the release; round 7's L4).
+glibc-2.31 build itself is loaded on the runner's newer glibc, not in the Steam Runtime. A job of its
+own, `release-dry-run` (Windows, after `native-linux-runtime`), does what `release.yml` does with
+that artifact: builds the DLLs, downloads it into `native/build` and runs
+`tools/build_apworld.py --out <scratch>` (a dry run of the release, so a release that would refuse
+its own artifact, its age check against `native/`'s sources among them, fails in CI, not at the
+release). It is a job apart so that the Windows build and tests do not wait for, or fail with, the
+Steam Runtime container job (a registry that is down).
 
 CI builds both, runs the ctest tests, and runs `tests/test_native.py` on Windows, which loads
 the build into a sleeping Python process (no known build, so nothing is hooked) and checks the

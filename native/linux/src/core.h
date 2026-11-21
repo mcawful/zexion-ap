@@ -98,7 +98,9 @@ std::map<std::string, SymbolSpan> find_symbols(std::string_view elf,
 // may read) is a link, is another user's, or has a mode wider than the user's alone and cannot be
 // made so (chmod 0700, as the ones this makes). The ones above it may be links (a dotfiles
 // manager's ~/.local/share); the folder itself is checked with lstat, never through a link.
-bool make_private_folders(const std::string& path);
+// `why`, when given, says in a few words why it is not (a refusal's own words: "it is a link",
+// "it is another user's", "its mode is wider than 0700 and cannot be changed").
+bool make_private_folders(const std::string& path, std::string* why = nullptr);
 
 // The abstract socket's name, without its leading NUL: "zexion-ap-<pid>", the pid as the game
 // sees itself (in a Flatpak or the Steam Runtime's container, not the host's).

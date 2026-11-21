@@ -166,27 +166,29 @@ constexpr char kStatsContext[] = "_ZZ14SteamUserStatsvE27s_CallbackCounterAndCon
 constexpr char kSetAchievement[] = "_Z17setTheAchievementi";  // the ending's call's target
 #endif
 
-// This process's memory, copied by the kernel: an address not mapped is EFAULT, not a fault.
-bool read_own(uint64_t address, size_t size, std::string& out) {
-    out.assign(size, '\0');
-    iovec local{out.data(), size};
-    iovec remote{reinterpret_cast<void*>(static_cast<uintptr_t>(address)), size};
-    ssize_t n = process_vm_readv(getpid(), &local, 1, &remote, 1, 0);
-    if (n == static_cast<ssize_t>(size)) return true;
-    out = n < 0 ? std::string(std::strerror(errno)) : "read " + std::to_string(n) + " of " +
-                                                           std::to_string(size) + " bytes";
-    for (char& c : out) {
-        if (c == ' ') c = '_';  // one word, as the Windows helper's errors' fields
+// More than any program's notes come to: a PT_NOTE this long is not read.
+constexpr size_t kMaxNotesBytes = 64 * 1024;
+
+// Whether a note segment lies wholly in the file-backed part of a readable PT_LOAD of the same
+// object (the loader mapped those bytes): then reading it is no more than reading the program's
+// own image, with no system call (a sandbox that refuses process_vm_readv must not make any
+// program the helper is preloaded into look like an unreadable Zexion).
+bool note_in_image(const dl_phdr_info* info, const ElfW(Phdr) & note) {
+    if (note.p_memsz == 0 || note.p_memsz > kMaxNotesBytes) return false;
+    for (int i = 0; i < info->dlpi_phnum; ++i) {
+        const ElfW(Phdr)& load = info->dlpi_phdr[i];
+        if (load.p_type == PT_LOAD && (load.p_flags & PF_R) && note.p_vaddr >= load.p_vaddr &&
+            note.p_vaddr - load.p_vaddr <= load.p_filesz &&
+            note.p_memsz <= load.p_filesz - (note.p_vaddr - load.p_vaddr)) {
+            return true;
+        }
     }
     return false;
 }
 
-// More than any program's notes come to: a PT_NOTE this long is not read.
-constexpr size_t kMaxNotesBytes = 64 * 1024;
-
 // The main program's GNU build id, and its writable segments: dl_iterate_phdr lists it first. Any
-// program the helper is preloaded into gets here before the build is checked, so its notes are read
-// through the kernel (read_own), not dereferenced: an unmapped or unreadable PT_NOTE is no id.
+// program the helper is preloaded into gets here before the build is checked, so a PT_NOTE is read
+// only where it lies inside the image the loader mapped (note_in_image): otherwise it is no id.
 int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
     auto* out = static_cast<std::optional<std::string>*>(data);
     for (int i = 0; i < info->dlpi_phnum; ++i) {
@@ -200,12 +202,9 @@ int main_program_build_id(dl_phdr_info* info, size_t, void* data) {
             }
         }
         if (ph.p_type != PT_NOTE || *out) continue;
-        std::string notes;
-        if (ph.p_memsz == 0 || ph.p_memsz > kMaxNotesBytes ||
-            !read_own(info->dlpi_addr + ph.p_vaddr, ph.p_memsz, notes)) {
-            continue;
-        }
-        *out = note_build_id(reinterpret_cast<const unsigned char*>(notes.data()), notes.size());
+        if (!note_in_image(info, ph)) continue;
+        *out = note_build_id(reinterpret_cast<const unsigned char*>(info->dlpi_addr + ph.p_vaddr),
+                             ph.p_memsz);
     }
     return 1;  // the first object only
 }
@@ -231,6 +230,21 @@ std::string own_folder() {
     exe[n] = '\0';
     const char* name = std::strrchr(exe, '/');
     return std::strcmp(name ? name + 1 : exe, "Zexion") == 0;
+}
+
+// This process's memory, copied by the kernel: an address not mapped is EFAULT, not a fault.
+bool read_own(uint64_t address, size_t size, std::string& out) {
+    out.assign(size, '\0');
+    iovec local{out.data(), size};
+    iovec remote{reinterpret_cast<void*>(static_cast<uintptr_t>(address)), size};
+    ssize_t n = process_vm_readv(getpid(), &local, 1, &remote, 1, 0);
+    if (n == static_cast<ssize_t>(size)) return true;
+    out = n < 0 ? std::string(std::strerror(errno)) : "read " + std::to_string(n) + " of " +
+                                                           std::to_string(size) + " bytes";
+    for (char& c : out) {
+        if (c == ' ') c = '_';  // one word, as the Windows helper's errors' fields
+    }
+    return false;
 }
 
 // Whether [address, address + size) lies in the game binary's .bss (g_writable).
@@ -1200,9 +1214,11 @@ bool make_token(const std::string& folder) {
         }
     }
 #endif
-    if (folder.empty() || !make_private_folders(folder)) {
-        std::fprintf(stderr, "zexion-ap %s: no token: no folder to put it in (%s)\n", kVersion,
-                     folder.empty() ? "no data folder" : folder.c_str());
+    std::string refusal;
+    if (folder.empty() || !make_private_folders(folder, &refusal)) {
+        std::fprintf(stderr, "zexion-ap %s: no token: no folder to put it in (%s)%s%s\n", kVersion,
+                     folder.empty() ? "no data folder" : folder.c_str(),
+                     refusal.empty() ? "" : ": ", refusal.c_str());
         return false;
     }
     const std::string target = folder + "/" + kTokenFile, temp = target + ".tmp";

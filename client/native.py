@@ -418,8 +418,9 @@ class Helper:
         unloads itself if it was unloading)."""
         try:
             # Longer than the helper's wait for a frame and its wait for the copy thread to stop
-            # (1 s each): a refusal that came late would be taken for a failed request, the very
-            # drop a refusal is there to prevent.
+            # (1 s and 0.5 s; the callers that wait only REPLY_SECONDS stay over their sum): a
+            # refusal that came late would be taken for a failed request, the very drop a refusal
+            # is there to prevent.
             return self.request("unload", APPLY_SECONDS)
         except HelperError as exc:
             if self._handle is not None and str(exc).endswith(UNLOAD_REFUSED):

@@ -404,7 +404,8 @@ DWORD WINAPI copy_thread(void*) {
     return 0;
 }
 
-// Starts the copy thread (the helper's start, and again after a refused unload stopped it).
+// Starts the copy thread: the helper's start, again after a refused unload stopped it, and at each
+// request (handle), which finds one that went since a stop timed out.
 void start_copy_thread() {
     if (g_copy_thread != nullptr) {
         // One that is still running is the one to keep. One that is gone (a stop that timed out and
@@ -451,10 +452,13 @@ bool stop_copy_thread(DWORD milliseconds, bool resume = true) {
     return true;
 }
 
-// How long an unload waits for the copy thread: well under the 2 s the client waits for the
-// unload's reply (client/native.py, REPLY_SECONDS), or its refusal ("the copy thread is busy")
-// would come after the client gave up on the request. An idle thread stops at once (its event).
-constexpr DWORD kCopyStopMs = 1000;
+// How long an unload waits for the copy thread. The reply comes after this and, once it has
+// stopped, the wait for a frame in undo_for_unload (1 s), and the client waits for it 3 s in
+// `Helper.unload` (APPLY_SECONDS) but only 2 s in `_unload_refusal` and tools/helper.py
+// (REPLY_SECONDS): 0.5 s and 1 s stay under 2 s, so a refusal or a "bye" is never taken for a lost
+// reply. A stuck thread is refused at once after this wait (no frame wait). An idle thread stops
+// at once (its event).
+constexpr DWORD kCopyStopMs = 500;
 
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
 void note_put_seed(zap::OfflineSeed seed) {
@@ -729,6 +733,10 @@ bool matches(const Request& r, const std::string& request) {
 }
 
 std::string handle(const std::string& request, bool& stop) {
+    // Each request (the client pings every few seconds): a copy thread that is not there is
+    // started, which is the case after a stop that timed out and then ended on its own. One that
+    // is running is left alone (start_copy_thread).
+    if (g_slot != nullptr) start_copy_thread();
     if (request == "hello") return hello();
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
     if (!is_probe(request)) g_client_set.store(true);
