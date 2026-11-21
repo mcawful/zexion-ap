@@ -96,29 +96,41 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     Steam's folders in Program Files (x86); ``..`` or a last name that is only a wildcard (``~/*``)
     up to one. Only these commands, by what the verb does with the folder it is given, count:
     ``rm``, ``rmdir``, ``shred``, ``Remove-Item``, cmd's ``rd`` and ``del`` (any operand);
-    ``mv`` and ``Move-Item`` (a source: moving into one is no harm); ``chmod``, ``chown``,
-    ``truncate``, ``Rename-Item``; ``find`` (a start folder, with ``-delete``, ``-fprint``, ``-ok``
-    or an ``-exec`` of anything but a reader such as ``cat`` and ``grep``) and ``fd -x``;
-    ``git clean`` (``-C``, an operand, or where it runs); ``rsync --delete``, ``tar
-    --remove-files``, ``robocopy /MIR``; and ``xargs`` or a ``Remove-Item`` given nothing of its
-    own to remove after a command that named such a folder (``ls ~ | xargs rm``, ``gci $env:APPDATA
-    -r | ri``, also a lister with no folder, ``cd ~; ls | xargs rm``, and a lone ``/`` piped in).
-    A lone ``/`` or ``/c`` is a root only as an operand of these (``cmd /c``, ``findstr /s`` and
-    ``print(1 / 2)`` name none). Not these: creating files in the folder, copying into or out of
-    it, listing or reading it, ``tar -C ~``, ``unzip -d ~``, ``git clone`` or ``mkdir`` after a
-    ``cd ~`` (``cd ~ && git clone``, ``cp a ~``, ``ls ~ && make clean`` pass).
+    ``mv``, ``Move-Item`` and cmd's ``move`` (a source, so not a ``-Destination`` or ``-t``:
+    moving into one is no harm); ``chmod``, ``chown``, ``truncate``, ``Rename-Item``; ``find`` (a
+    start folder, with ``-delete``, ``-fprint``, ``-ok`` or an ``-exec`` of anything but a reader
+    such as ``cat`` and ``grep``) and ``fd -x``; ``git clean``, ``stash -u``, ``reset --hard`` and
+    ``checkout .`` (``-C``, ``--work-tree``, ``GIT_WORK_TREE``, an operand, or where it runs);
+    ``rsync --delete`` (its destination) and ``--remove-source-files`` (its sources), ``tar
+    --remove-files``, ``robocopy /MIR /PURGE /MOVE``; extraction over what is there into one
+    (``unzip -o -d ~``, ``tar --overwrite -C ~``, ``Expand-Archive … -Force``); and ``xargs`` or a
+    ``Remove-Item`` given nothing of its own to remove, fed by a command of its *pipeline* that
+    named such a folder (``ls ~ | xargs rm``, ``gci $env:APPDATA -r | ri``, ``$HOME | ri -r``, a
+    lister with no folder after ``cd ~``, a lone ``/`` piped in; not a command before a ``;`` or
+    ``&&``: ``ls ~ ; find lab | xargs rm`` passes; ``_pipeline_groups``, linear in the line). A
+    ``while read f`` fed by such a pipeline, ``set -- ~`` and ``for f in $(ls -d ~/*)`` make their
+    variables the folder, as ``H=~`` does. A lone ``/`` or ``/c`` is a root only as an operand of
+    these (``cmd /c``, ``findstr /s`` and ``print(1 / 2)`` name none). Not these: creating files in
+    the folder, copying into or out of it, listing or reading it, ``tar -C ~``, ``unzip -d ~``,
+    ``git clone`` or ``mkdir`` after a ``cd ~`` (``cd ~ && git clone``, ``cp a ~``, ``ls ~ && make
+    clean`` pass).
     The folder a command runs in is where its ``cd``s left it (``_walk_cds``: each one is read
     from the one before; a bare ``cd`` and ``cd --`` go home; ``cd /c/Users/x`` is on drive C,
     not under the cwd's); ``cd -``, ``cd $OLDPWD``, ``cd $d``, a substitution and ``popd`` leave it
     unknown, and an unknown folder counts as one above a protected one for ``rm *``, ``find .
     -delete`` and ``git clean`` that follow, so ``cd $d && rm -rf *`` blocks and ``cd $d && rm -rf
-    build`` does not. A relative operand is joined to that folder (``rm -rf ../../..`` from a
-    folder under the home folder). Words are read again as a command's in ``sh -c`` (also
-    ``-lc``, with ``$0``, ``$1`` and ``"$@"`` filled from the words after it), ``eval``,
-    ``powershell -Command`` and ``iex``; ``sudo``, ``env``, ``nice``, ``timeout 5``, ``nohup``,
-    ``command`` and ``cmd /c`` are taken off first (``_unwrap``). A backtick or ``$(…)`` operand
-    that names one (``rm -rf `echo ~```) counts, and so does a variable the line sets to one
-    (``H=~; rm -rf "$H"``, ``for d in ~ /; do rm -rf "$d"; done``, PowerShell's ``$d =``).
+    build`` does not. A temporary or workspace folder is known not to be home: ``cd $(mktemp
+    -d)``, ``cd "$(git rev-parse --show-toplevel)"``, ``cd "$RUNNER_TEMP"`` (also ``$TEMP``,
+    ``$TMP``, ``$TMPDIR``), and a variable set from one (``d=$(mktemp -d)``, ``t=$TMPDIR/x``).
+    A relative operand is joined to that folder (``rm -rf ../../..`` from a folder under the home
+    folder). Words are read again as a command's in ``sh -c`` (also ``-lc``, with ``$0``, ``$1``
+    and ``"$@"`` filled from the words after it), ``eval``, ``cmd /c "…"``, ``powershell
+    -Command`` and ``iex``; ``sudo``, ``env``, ``nice``, ``timeout 5``, ``nohup``, ``command``
+    and ``cmd /c`` (also Git Bash's ``//c``) are taken off first (``_unwrap``). A backtick or
+    ``$(…)`` operand that names one (``rm -rf `echo ~```, ``rm -rf $(echo ~)``), a parenthesis
+    (``ri -r ($HOME)``, ``@(~)``), PowerShell's ``-Path:~`` and a comma list (``x,$HOME``) count,
+    and so does a variable the line sets to one (``H=~; rm -rf "$H"``, ``for d in ~ /; do rm -rf
+    "$d"; done``, PowerShell's ``$d =``).
   - *Read-only* means the verb is on a short list and nothing in its arguments makes it write
     (``_bash_args_write``: ``find -delete``, ``sort -o``, ``sed -i`` and the like); ``git
     diff``, ``log`` and ``show`` count unless an argument starts with ``--output``,
@@ -174,7 +186,16 @@ and the folders above a protected one that other variables name: ``$PUBLIC/..``,
 ``$HOMEDRIVE$HOMEPATH``, ``%HOMEDRIVE%%HOMEPATH%``, ``$SYSTEMDRIVE``, ``$ProgramData/..``,
 ``$PWD/../..``, ``$env:SystemDrive/``, ``~+``, a variable set by another variable
 (``H=$X``), and UNC admin shares (``//localhost/C$/Users/…``, which the guard does not ask the
-network about). It reads shell commands and PowerShell's cmdlets, not code in another language:
+network about). Wrappers it does not know (``chrt``, ``taskset``, ``flock``, ``strace``,
+``watch``, ``unbuffer``, ``script -qc``, ``parallel``, ``wsl``) hide the verb; so do
+``command cd`` and ``builtin cd``, ``bash -c --`` and ``-o … -c``, a script piped or here-stringed
+into a shell with no ``-c``, ``xargs … sh -c`` with the listing, ``pwsh -co``, a variable that
+holds an item (``$h = gi ~``), ``foreach (… in @($HOME))``, ``Clear-Item`` and ``Clear-Content``,
+``takeown``, ``icacls``, ``chattr``, ``setfacl -R``, ``rm -rf $(dirname ~/x)`` and a link to the
+home folder followed by an ``rm``, and ``/proc/self/root``. Archives and tree copies into one
+(``tar -x -C ~``, ``rsync -a … ~/``, ``cp -r … ~``, ``Expand-Archive`` without ``-Force``) pass:
+they add files, and overwrite only what the archive holds. It reads shell commands and PowerShell's
+cmdlets, not code in another language:
 ``python -c "shutil.rmtree('/')"``, ``Path.home()``, ``os.path.expanduser('~')`` and PowerShell's
 .NET calls and methods (``[IO.Directory]::Delete($HOME, $true)``, ``gci ~ -r | % Delete``)
 are missed unless the command names a protected folder itself. A ``xargs rm`` whose list comes
@@ -1098,8 +1119,27 @@ def _walk_cds(
     assigned = _assigned_names(code, segments)
     before: list[str | None] = []
     targets: list[str | None] = []
-    for words in segments:
+    safe_vars = set(SAFE_FOLDER_VARS)  # also variables set from ``$(mktemp -d)`` and the like
+    pending: list[str] = []  # variables set to a ``$(`` that the next command fills
+    for si, words in enumerate(segments):
         before.append(current)
+        nxt = next((s for s in segments[si + 1 :] if s), [])
+        nxt_verb = _verb(nxt[0]) if nxt else ""
+        nxt_safe = nxt_verb == "mktemp" or (nxt_verb == "git" and "rev-parse" in nxt[1:3])
+        for name in pending:
+            if words and (_verb(words[0]) == "mktemp" or "rev-parse" in words[:3]):
+                safe_vars.add(name)
+        pending = []
+        for w in words:  # ``d=$(mktemp -d)``, split by the lexer at the ``$(``
+            m = _ASSIGNMENT.fullmatch(w) if "=" in w else None
+            if m and m.group(2).endswith("$"):
+                pending.append(m.group(1).lower())
+            elif m and (
+                _SAFE_SUBSTITUTION.match(m.group(2))
+                or (v := re.match(r"\$\{?(\w+)\}?(?:/|$)", m.group(2))) is not None
+                and v.group(1).lower() in safe_vars
+            ):  # ``t=$TMPDIR/x``
+                safe_vars.add(m.group(1).lower())
         words = _strip_prefix(words, powershell)
         if not words:
             continue
@@ -1115,7 +1155,14 @@ def _walk_cds(
         target = _expand_env(protected._expand(raw), assigned)
         if re.fullmatch(r"[A-Za-z]:", target):
             target += "/"  # ``cd C:``: the drive's root here (and its own folder in cmd: close)
-        if raw == "-" or re.search(r"\$\{?(?:OLDPWD|PWD)\b|%CD%", raw, re.IGNORECASE):
+        var = _VARIABLE.fullmatch(raw)
+        if (
+            _SAFE_SUBSTITUTION.match(raw)
+            or (var and (var.group(1) or var.group(2) or "").lower() in safe_vars)
+            or (raw.endswith("$") and nxt_safe)
+        ):
+            new = SAFE_FOLDER  # a temporary folder, or the repo: not the home folder
+        elif raw == "-" or re.search(r"\$\{?(?:OLDPWD|PWD)\b|%CD%", raw, re.IGNORECASE):
             new = None  # the shell's own variables: the environment here says nothing of them
         elif re.search(r"[$%`]", target) or target.startswith("~"):
             new = target if protected.holds_protected(target) else None
@@ -1181,7 +1228,7 @@ def _names_parent(word: str, folders: list[str | None], protected) -> bool:
 # that deletes, moves out, changes or searches-and-acts on the folder reaches what is in it
 # (``_ancestor_violation``). By what the verb does with the folders it is given:
 RM_VERBS = {"rm", "rmdir", "unlink", "shred", "del", "erase", "rd", "ri", "remove-item"}
-MV_VERBS = {"mv", "mi", "move-item"}  # its sources: moving into the folder is no harm
+MV_VERBS = {"mv", "mi", "move-item", "move"}  # its sources: moving into the folder is no harm
 CHANGE_VERBS = {"chmod", "chown", "chgrp", "truncate", "rni", "rename-item", "ren"}
 FIND_VERBS = {"find", "gfind"}
 FD_VERBS = {"fd", "fdfind"}
@@ -1191,7 +1238,7 @@ PS_SHELLS = {"powershell", "pwsh"}
 # ``Remove-Item`` or an ``xargs rm``.
 LISTERS = {"ls", "dir", "find", "fd", "fdfind", "tree", "du", "rg", "grep", "gci", "get-childitem"}
 # cmd's switches (``/s``, ``/q``) are options, not a drive's root.
-CMD_VERBS = {"rd", "rmdir", "del", "erase"}
+CMD_VERBS = {"rd", "rmdir", "del", "erase", "move"}
 # Wrappers that run the command after them: the options that take a value, and how many plain
 # words (a ``timeout``'s duration) come before the command. ``cmd /c`` is read in ``_unwrap``.
 WRAPPERS: dict[str, tuple[set[str], int]] = {
@@ -1217,9 +1264,23 @@ EXEC_READERS = {
 }  # fmt: skip
 XARGS_VALUED = {"-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a", "-l", "--max-args", "--max-procs",
                 "--delimiter", "--arg-file", "--max-lines", "--replace", "--max-chars"}  # fmt: skip
-_CMD_SWITCH = re.compile(r"/[A-Za-z?]")
+_CMD_SWITCH = re.compile(r"//?[A-Za-z?]")  # Git Bash passes cmd ``//c`` for ``/c``
 _SUBSTITUTED = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
-_VARIABLE = re.compile(r"\$\{?(?:env:)?(\w+)\}?(?:/\*)?|%(\w+)%", re.IGNORECASE)
+_VARIABLE = re.compile(r"\$\{?(?:env:)?([\w@*]+)\}?(?:/\*)?|%(\w+)%", re.IGNORECASE)
+# Folders that are known not to be above a protected one, though the variable or the substitution
+# that names them is not known here: the shell's temporary and workspace folders.
+SAFE_FOLDER_VARS = {
+    "runner_temp",
+    "temp",
+    "tmp",
+    "tmpdir",
+    "github_workspace",
+    "claude_project_dir",
+}
+_SAFE_SUBSTITUTION = re.compile(r"^(?:\$\(|`)\s*(?:mktemp|git\s+rev-parse)\b")
+_ASSIGNMENT = re.compile(r"([A-Za-z_]\w*)=(.*)", re.DOTALL)
+_VALUE_START = re.compile(r"[$~%@(\"'/\\]")  # a word that is a value, not a command
+SAFE_FOLDER = "/tmp/known-folder"  # stands for such a folder
 _PIPELINE_VALUE = re.compile(r"\$(?:_|psitem)\b", re.IGNORECASE)
 _HAS_NAME = re.compile(r"[A-Za-z0-9_]")
 
@@ -1234,11 +1295,15 @@ def _unwrap(words: list[Word], powershell: bool) -> list[Word]:
         verb = _verb(words[0])
         if verb == "cmd":
             i = 1
-            while i < len(words) and re.fullmatch(r"/[A-Za-z]", words[i]):
+            while i < len(words) and re.fullmatch(r"//?[A-Za-z]", words[i]):
                 i += 1
             if i == 1:
                 break
-            words = _strip_prefix(words[i:], powershell)
+            rest = words[i:]
+            if len(rest) == 1 and re.search(r"\s", rest[0]):
+                words = [Word("eval"), rest[0]]  # ``cmd /c "rd /s /q %USERPROFILE%"``: a script
+                break
+            words = _strip_prefix(rest, powershell)
             continue
         spec = WRAPPERS.get(verb)
         if spec is None:
@@ -1261,22 +1326,26 @@ def _unwrap(words: list[Word], powershell: bool) -> list[Word]:
 
 
 def _path_args(args: list[Word], cmd_switches: bool = False) -> list[str]:
-    """The words of ``args`` that are not options (after ``--``, all are)."""
+    """The words of ``args`` that are not options (after ``--``, all are). PowerShell's
+    ``-Path:value`` gives its value, and a list (``a,b``) its elements as well."""
     out, ended = [], False
     for a in args:
         if not ended and a == "--":
             ended = True
-        elif (
-            not ended
-            and a.startswith("-")
-            and a != "-"
-            or cmd_switches
-            and _CMD_SWITCH.fullmatch(a)
-        ):
+        elif not ended and a.startswith("-") and a != "-":
+            named = re.fullmatch(r"-[A-Za-z]+:(.+)", a, re.DOTALL)
+            if named:
+                out.extend(_list_elements(named.group(1)))
+        elif cmd_switches and _CMD_SWITCH.fullmatch(a):
             continue
         else:
-            out.append(str(a))
+            out.extend(_list_elements(str(a)))
     return out
+
+
+def _list_elements(word: str) -> list[str]:
+    """``word``, and its elements too when it is a comma list (PowerShell: ``ri -r x,$HOME``)."""
+    return [word, *word.split(",")] if "," in word.strip(",") else [word]
 
 
 def _operand_ancestor(
@@ -1315,8 +1384,12 @@ def _operand_ancestor(
             for inner_words in lex(m.group(1) if m.group(1) is not None else m.group(2), False)[0]
             for inner in inner_words
         )
+    # Bash drops the backslash of ``%USERPROFILE%\AppData``: cmd's variable, then a name.
+    word = re.sub(r"^(%\w+%)(?=[A-Za-z_.])", r"\1/", word)
     path = protected._expand(word)
-    if protected.is_ancestor_folder(path):
+    if protected.is_ancestor_folder(path) or (
+        re.search(r"[\\/]", path) and protected.may_be_above_protected(path)
+    ):
         return True
     if _is_absolute(path) or path.startswith(("~", "$", "%")):
         return False
@@ -1377,15 +1450,72 @@ def _script_violation(script: str, folder, protected, powershell: bool, depth: i
     return _ancestor_violation(segments, folder, set(), protected, powershell, script, depth + 1)
 
 
+def _option_value(args: list[Word], pattern: str) -> list[str]:
+    """The values of the options of ``args`` whose name matches ``pattern`` (whole, any case): the
+    next word, or what follows a ``:`` or ``=`` in the word (``-Destination D:\\x``,
+    ``-Path:~``, ``--target-directory=~``)."""
+    out = []
+    for i, a in enumerate(args):
+        m = re.fullmatch(rf"({pattern})(?:[:=](.*))?", a, re.IGNORECASE | re.DOTALL)
+        if m:
+            if m.group(2):
+                out.append(m.group(2))
+            elif i + 1 < len(args):
+                out.append(str(args[i + 1]))
+    return out
+
+
+def _pipeline_groups(segments: list[list[Word]], code: str) -> list[int]:
+    """Which pipeline each simple command is in: a number that goes up at every separator but a
+    pipe, a script block's brace (``% { … }``) and what is inside a parenthesis (``@('x';'y')``);
+    ``;``, ``&&``, ``||`` and a newline outside one start a new one. Read from the text between
+    the words."""
+    groups, gid, last, depth = [], 0, None, 0
+    for s in segments:
+        if s:
+            if last is not None:
+                sep = code[last.end : s[0].start]
+                inside = depth > 0 or re.match(r"[^;&\n|(]*\(", sep) is not None
+                if not inside and not re.fullmatch(r"[\s})]*\|&?\s*|\s*\{\s*", sep):
+                    gid += 1
+                depth = max(0, depth + sep.count("(") - sep.count(")"))
+            last = s[-1]
+        groups.append(gid)
+    return groups
+
+
+def _body_after(segments: list[list[Word]], i: int, code: str) -> list[Word]:
+    """The words of the commands the lexer split off after command ``i`` at a parenthesis: the
+    body of a ``$(…)`` or ``(…)`` or ``@(…)`` that is one of its words (``rm -rf $(echo ~)``,
+    ``ri -r (Get-Item ~)``), up to the ``)``."""
+    out: list[Word] = []
+    last = segments[i][-1] if segments[i] else None
+    for j in range(i + 1, len(segments)):
+        s = segments[j]
+        if not s:
+            continue
+        if last is None or "(" not in code[last.end : s[0].start]:
+            break
+        out.extend(s)
+        last = s[-1]
+        nxt = next((t for t in segments[j + 1 :] if t), None)
+        if nxt is None or ")" in code[last.end : nxt[0].start]:
+            break
+    return out
+
+
 def _segment_violation(
-    words: list[Word], folder, listed, anc_vars, protected, powershell: bool, depth: int,
-    fed: bool = False,
+    words: list[Word], folder, listed, body, anc_vars, protected, powershell: bool, depth: int,
+    fed: bool = False, unwrapped: list[Word] | None = None,
 ) -> str | None:  # fmt: skip
     """A reason when one simple command, run in ``folder``, deletes, moves out, changes or
-    searches-and-acts on a folder that may hold a protected one (``_operand_ancestor``). ``listed``
-    says whether an earlier command of the line named such a folder: what a ``Remove-Item`` or
-    ``xargs rm`` with nothing of its own to remove is fed. ``fed``: it is ``xargs``'s command."""
-    words = _unwrap(words, powershell)
+    searches-and-acts on a folder that may hold a protected one (``_operand_ancestor``).
+    ``listed()`` says whether an earlier command of its pipeline named such a folder (what a
+    ``Remove-Item`` or ``xargs rm`` with nothing of its own to remove is fed), ``body()`` whether
+    the commands the lexer split off at a parenthesis after it did (``rm -rf $(echo ~)``).
+    ``fed``: it is ``xargs``'s command."""
+    original = words
+    words = unwrapped if unwrapped is not None else _unwrap(words, powershell)
     if not words:
         return None
     verb = _verb(words[0])
@@ -1398,24 +1528,21 @@ def _segment_violation(
     reason = f"Reaches a folder above a protected one ({verb}): {shown}"
     if verb in RM_VERBS | MV_VERBS | CHANGE_VERBS:
         ops = _path_args(args, verb in CMD_VERBS)
-        if verb in MV_VERBS:
-            target = next(
-                (
-                    args[i + 1] if a == "-t" and i + 1 < len(args) else a.partition("=")[2]
-                    for i, a in enumerate(args)
-                    if a == "-t" or a.startswith("--target-directory")
-                ),
-                None,
-            )
-            ops = [o for o in ops if o != target] if target else (ops[:-1] if len(ops) > 1 else ops)
+        if verb in MV_VERBS:  # its sources: not a destination, named or last
+            named = _option_value(args, r"-dest\w*|-target\w*|-t|--target-directory")
+            if named:
+                ops = [o for o in ops if o not in named]
+            elif len(ops) > 1:
+                ops = ops[:-1]
+        # The lexer ends the word at a ``$(`` or ``@(`` (``rm -rf $(echo ~)``): what it holds is
+        # the commands that follow.
+        openers = [o for o in ops if o in ("$", "@") or o.endswith("$(")]
+        own = [o for o in ops if o not in openers and not _PIPELINE_VALUE.match(o)]
         if any(hit(o) for o in ops):
             return reason
-        own = [o for o in ops if not _PIPELINE_VALUE.match(o)]
-        if (fed or not own) and listed():
+        if (fed or not own) and listed():  # nothing of its own to remove: the pipeline's
             return reason
-        # The lexer ends the word at a ``$(`` (``rm -rf $(echo ~)``): what it holds is the
-        # commands that follow, so any later command that names such a folder counts.
-        if any(o == "$" or o.endswith("$(") for o in ops) and listed(everywhere=True):
+        if (not own or openers) and body():
             return reason
     elif verb in FIND_VERBS:
         i = 0
@@ -1426,6 +1553,8 @@ def _segment_violation(
                 i += 2
             else:
                 break
+        if args[i : i + 1] == ["--"]:
+            i += 1
         starts = []
         while i < len(args) and not (args[i].startswith("-") or args[i] in ("(", "!", ",")):
             starts.append(args[i])
@@ -1440,33 +1569,65 @@ def _segment_violation(
                     return reason
                 break
     elif verb == "git":
-        dirs, i = [], 0
+        dirs = [m.group(1) for w in original if (m := re.fullmatch(r"GIT_WORK_TREE=(.*)", w, re.S))]
+        i = 0
         while i < len(args):
-            if args[i] == "-C" and i + 1 < len(args):
+            a = args[i]
+            if a in ("-C", "--work-tree") and i + 1 < len(args):
                 dirs.append(args[i + 1])
                 i += 2
-            elif args[i] in ("-c", "--git-dir", "--work-tree", "--namespace", "--config-env"):
+            elif a.startswith("--work-tree="):
+                dirs.append(a.partition("=")[2])
+                i += 1
+            elif a in ("-c", "--git-dir", "--namespace", "--config-env"):
                 i += 2
-            elif args[i].startswith("-"):
+            elif a.startswith("-"):
                 i += 1
             else:
                 break
-        if args[i : i + 1] == ["clean"] and any(
-            hit(d) for d in [*(dirs or ["."]), *_path_args(args[i + 1 :])]
-        ):
+        sub, rest = (args[i] if i < len(args) else ""), args[i + 1 :]
+        # What empties the working tree: ``clean``, ``stash -u``/``-a``, ``reset --hard``, and
+        # ``checkout``/``restore`` of ``.``.
+        stash_all = re.compile(r"-[A-Za-z]*[ua][A-Za-z]*|--(?:include-untracked|all)")
+        empties = (
+            sub == "clean"
+            or (sub == "stash" and any(stash_all.fullmatch(a) for a in rest))
+            or (sub == "reset" and "--hard" in rest)
+            or (sub in ("checkout", "restore") and {".", "-f", "--force"} & set(rest))
+        )
+        if empties and any(hit(d) for d in [*(dirs or ["."]), *_path_args(rest)]):
             return reason
     elif verb == "rsync":
-        if any(a.startswith(("--delete", "--remove", "--del", "--prune")) for a in args) and any(
-            hit(o) for o in _path_args(args)
+        ops = _path_args(args)
+        if (
+            ops
+            and any(a.startswith(("--delete", "--del", "--prune")) for a in args)
+            and hit(ops[-1])
         ):
-            return reason
+            return reason  # what is deleted is in the destination
+        if any(a.startswith("--remove") for a in args) and any(hit(o) for o in ops[:-1]):
+            return reason  # ``--remove-source-files``: the sources
     elif verb == "tar":
         if any(a.startswith("--remove-files") for a in args) and any(
             hit(o) for o in _path_args(args)
         ):
             return reason
+        if "--overwrite" in args and any(
+            hit(d) for d in _option_value(args, r"-C|--directory")
+        ):  # extracted over what is there
+            return reason
+    elif verb == "unzip":
+        if any(re.fullmatch(r"-[A-Za-z]*o[A-Za-z]*", a) for a in args) and any(
+            hit(d) for d in _option_value(args, r"-d")
+        ):
+            return reason
+    elif verb == "expand-archive":
+        if any(re.fullmatch(r"-f(?:orce)?", a, re.I) for a in args) and any(
+            hit(o) for o in _path_args(args)
+        ):
+            return reason
     elif verb == "robocopy":  # ``robocopy empty $HOME /MIR`` empties the destination
-        if any(a.upper() in ("/MIR", "/PURGE") for a in args) and any(
+        if any(a.upper() in ("/MIR", "/PURGE", "/MOV", "/MOVE") for a in args) and any(
             hit(o) for o in _path_args(args, cmd_switches=True)
         ):
             return reason
@@ -1476,7 +1637,7 @@ def _segment_violation(
             i += 2 if args[i] in XARGS_VALUED else 1
         if args[i:]:
             return _segment_violation(
-                args[i:], folder, listed, anc_vars, protected, powershell, depth, fed=True
+                args[i:], folder, listed, body, anc_vars, protected, powershell, depth, fed=True
             )
     elif verb in SHELL_VERBS and _shell_script_at(args) is not None:
         k = _shell_script_at(args) - 1
@@ -1516,58 +1677,84 @@ def _ancestor_violation(
     on a folder above a protected one at any depth (``~``, Roaming, ``/``, a drive's root: the
     saves are inside), in the folder it runs in: where each ``cd`` before it left it, or from
     ``start``. See ``_segment_violation`` for what each verb does to count; a command that
-    creates files in the folder, copies into it, lists or reads it does not. A variable set on the
-    line to such a folder (``H=~; rm -rf "$H"``) is read as the folder."""
+    creates files in the folder, copies into it, lists or reads it does not.
+
+    What feeds a command is the pipeline it is in: ``ls ~ | xargs rm``, ``gci ~ | ri``,
+    ``ls ~ | while read f; do rm "$f"; done`` (``read`` and ``set --`` make their variables the
+    folder, as ``H=~`` does), not a command before a ``;`` or ``&&``. A variable set on the line
+    to such a folder (``H=~; rm -rf "$H"``, ``for d in ~ /; do …``) is read as the folder.
+    Each command's arguments are read once, so the time is linear in the line."""
     before, _ = _walk_cds(segments, start, code, protected, powershell)
+    groups = _pipeline_groups(segments, code)
     anc_vars: set[str] = set()
-    earlier: list[tuple[str, str | None]] = []  # what earlier commands were given, and where
-    everything: list[tuple[str, str | None]] = []
-    for words, folder in zip(segments, before, strict=True):
-        stripped = _unwrap([w for w in words if id(w) not in text_ids], powershell)
-        everything.extend((str(a), folder) for a in stripped[1:] if not a.startswith("-"))
-    state = {"n": -1, "value": False}
+    seen: dict[int, list[tuple[str, str | None]]] = {}  # per pipeline: what its commands were given
+    scanned: dict[int, int] = {}
+    found_in: set[int] = set()
+    current = {"si": 0}
 
-    def listed(everywhere: bool = False) -> bool:
-        """Whether an earlier command (any, with ``everywhere``) named such a folder, as a read
-        does: ``ls ~ | xargs rm``. A lister with no folder of its own lists where it runs."""
-        seen = everything if everywhere else earlier
-        if everywhere or state["n"] != len(earlier):
-            state["n"] = len(earlier)
-            state["value"] = any(
-                _operand_ancestor(a, folder, protected, anc_vars, False) for a, folder in seen
-            )
-        return state["value"]
+    def listed() -> bool:
+        gid = groups[current["si"]]
+        if gid in found_in:
+            return True
+        args = seen.get(gid, [])
+        for a, f in args[scanned.get(gid, 0) :]:
+            if _operand_ancestor(a, f, protected, anc_vars, False):
+                found_in.add(gid)
+                return True
+        scanned[gid] = len(args)
+        return False
 
-    for words, folder in zip(segments, before, strict=True):
+    def body() -> bool:
+        si = current["si"]
+        return any(
+            _operand_ancestor(str(w), before[si], protected, anc_vars, False)
+            for w in _body_after(segments, si, code)
+        )
+
+    for si, (words, folder) in enumerate(zip(segments, before, strict=True)):
         _tick()
+        current["si"] = si
         words = [w for w in words if id(w) not in text_ids]
-        _note_assignment(words, folder, protected, anc_vars)
+        _note_assignment(words, folder, protected, anc_vars, body)
         stripped = _unwrap(words, powershell)
         if not stripped:
             continue
         verb = _verb(stripped[0])
         if verb in CD_VERBS or verb in POP_VERBS:
             continue
+        given = [str(a) for a in stripped[1:] if not a.startswith("-")]
+        if verb == "read" and listed():  # ``ls ~ | while read f``
+            anc_vars.update(a.lower() for a in given if re.fullmatch(r"\w+", a))
+        if verb == "set" and any(
+            _operand_ancestor(a, folder, protected, anc_vars, False) for a in given
+        ):  # ``set -- ~``: the positional parameters
+            anc_vars.update([*"123456789", "@", "*"])
         found = _segment_violation(
-            words, folder, listed, anc_vars, protected, powershell, depth
+            words, folder, listed, body, anc_vars, protected, powershell, depth, unwrapped=stripped
         )  # fmt: skip
         if found:
             return found
-        given = [str(a) for a in stripped[1:] if not a.startswith("-")]
         if verb in LISTERS and not any(not _CMD_SWITCH.fullmatch(a) for a in given):
             given = ["."]  # ``ls | xargs rm`` after ``cd ~``
-        earlier.extend((a, folder) for a in given)
+        if _VALUE_START.match(stripped[0]):  # a value piped in: ``$HOME | ri -r``
+            given.append(str(stripped[0]))
+        seen.setdefault(groups[si], []).extend((a, folder) for a in given)
     return None
 
 
-def _note_assignment(words: list[Word], folder, protected, anc_vars: set[str]) -> None:
+def _note_assignment(words: list[Word], folder, protected, anc_vars: set[str], body) -> None:
     """Remember a variable the line sets to a folder above a protected one: Bash's ``NAME=value``
-    (also after ``export``) and PowerShell's ``$name = value``."""
+    (also after ``export``), PowerShell's ``$name = value`` and ``for d in ~ /`` (also over a
+    ``$(…)`` that names one: ``for f in $(ls -d ~/*)``)."""
+    if not any("=" in w for w in words) and words[:1] != ["for"]:
+        return
     items = [w for w in words if w not in ("export", "local", "declare", "readonly")]
     pairs = []
     if len(items) >= 4 and items[0] == "for" and items[2] == "in":  # ``for d in ~ /; do``
         values = [str(v) for v in items[3:] if v not in ("do", ";")]
-        if any(_operand_ancestor(v, folder, protected, anc_vars) for v in values):
+        if any(_operand_ancestor(v, folder, protected, anc_vars) for v in values) or (
+            any(v == "$" or v.endswith("$(") for v in values) and body()
+        ):
             anc_vars.add(str(items[1]).lower())
         return
     for w in items:

@@ -401,7 +401,13 @@ Committed under `.claude/`, so they apply to anyone working here:
   bare `*`: `find lab -name '*.sav' -delete` blocks, use `rm` with the paths). Reads, creating
   files in such a folder and copying into it pass (`find "$APPDATA" -name x -print`, `ls -R ~`,
   `cd ~ && git clone`, `cp a ~`); the guard's docstring lists what each verb does to count and
-  what it misses. The guard also reads Monitor's and the terminal tool's
+  what it misses: wrappers it does not know (`chrt`, `flock`, `strace`, `parallel`, `wsl`) and
+  shell forms that hide the verb (`command cd`, a script piped into a shell), PowerShell and .NET
+  calls, other tools (`takeown`, `icacls`, `Clear-Content`), code in other languages
+  (`python -c shutil.rmtree`), other variables (`$PUBLIC/..`, `$HOMEDRIVE$HOMEPATH`, `~+`), UNC
+  admin shares and links; and archives or tree copies into the home folder (`tar -x -C ~`,
+  `rsync -a x ~/`, `cp -r x ~`), which pass unless they overwrite (`unzip -o`, `-Force`). The
+  guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
   The hook has a 120 s timeout in `settings.json`, a backstop: a hook that times out lets the
