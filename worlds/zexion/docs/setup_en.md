@@ -89,7 +89,10 @@ Goals, options and what's changed in the game: see the game page (`zexion-game-p
 ## Linux and Steam Deck
 
 Zexion's Linux version, which Steam runs on Linux and the Steam Deck, takes the mod as
-`libzexion_ap.so`, loaded by a launch option.
+`libzexion_ap.so`, loaded by a launch option. Make sure Steam runs that version: in Zexion's
+Properties, Compatibility, leave "Force the use of a specific Steam Play compatibility tool" off
+(forced, Steam runs the Windows version under Proton instead, which isn't supported: see the end of
+this section).
 
 1. Install Archipelago for Linux, 0.6.8 or newer: from Archipelago's
    [releases page](https://github.com/ArchipelagoMW/Archipelago/releases), download the Linux
@@ -147,11 +150,10 @@ English(HD) the mod's text (its popups, notices and menu text, the names of othe
 items) shows in the game's HD font, in mixed case, and its disk, padlock and Archipelago icons
 in HD art. In the other languages the mod's text shows in that language's font, but in English
 and in capitals (another Zexion player's items by that language's own names), and some of it
-may not show (a font without Latin letters, say); the client
-says so when it sees one. On Windows, received items were seen working in French and Japanese,
-and the mod's text in French; on Linux, received items' popups in English(HD) and Japanese. If
-something
-shows wrong or not at all, switch to the default English and please report it (below).
+may not show (a font without Latin letters, say); the client says so when it sees one. On
+Windows, received items were seen working in French and Japanese, and the mod's text in French;
+on Linux, received items' popups in English(HD) and Japanese. If something shows wrong or not at
+all, switch to the default English and please report it (below).
 
 ## Playing without the client
 
@@ -184,13 +186,14 @@ read the copies. It has not been tried between a Steam Deck and another
 machine, or from Linux to Windows, yet.
 
 - Both machines need the mod, from a release with this feature.
-- The file comes from the client, so it exists only once the client has connected for that seed.
-  The first machine is expected to write it while Zexion runs with the mod, within a moment of the
-  game holding a save of the seed (a new game of it, or a loaded save), with the client connected
-  or not: closing the game after playing writes nothing more, so the mod must have been running
-  while the game held that save. The file goes up when Steam syncs, which it is expected to do
-  when you close Zexion: wait for the cloud to say it is up to date before you start it on the
-  second machine.
+- The file is a copy of the seed's own file, which a client run made on that machine earlier. The
+  mod reads that file when Zexion starts, so the client need not be connected then, but it must
+  have connected for the seed once. The first machine is expected to write it while Zexion runs
+  with the mod, within a moment of the game holding a save of the seed (a new game of it, or a
+  loaded save), with the client connected or not: closing the game after playing writes nothing
+  more, so the mod must have been running while the game held that save. The file goes up when
+  Steam syncs, which it is expected to do when you close Zexion: wait for the cloud to say it is
+  up to date before you start it on the second machine.
 - The save folder is `%APPDATA%\Gallant Leaf\Zexion` on Windows; on Linux
   `~/.local/share/Gallant Leaf/Zexion`, or Flatpak Steam's `~/.var/app/com.valvesoftware.Steam/.local/share/Gallant Leaf/Zexion`
   ("Linux and Steam Deck", above). Steam Cloud syncs that Linux folder only if it is where the
@@ -217,8 +220,12 @@ it gives the mod the seed's file again. Saves from before this feature need that
   the launch option stays as it is).
 - Then connect the client once with Zexion running. It gives the mod what it needs to play your
   seed's saves with the client closed, such as where your own traps are, which go off at their
-  pickup only once it has. (If you update from 1.0.0, the mod's taller messages may flicker as
-  they open and close until you have.)
+  pickup only once it has.
+- The new mod also keeps a small file for each seed one of your saves uses in Zexion's save
+  folder, named `ZexionAP-seed-` and the seed's name, ending in `.sav`, so Steam Cloud carries
+  it with your saves ("Playing on more than one machine", above). They appear once Zexion has run
+  with the new mod and a save of that seed is loaded or made. Leave them alone, and update the
+  mod on every machine you play the seed on.
 
 ## When Steam updates Zexion
 
@@ -261,7 +268,8 @@ play as normal.
 | The client says Zexion is running as administrator. | Start Zexion normally, or run the Archipelago Launcher as administrator too. |
 | The client says the Zexion mod and the client don't match. | The mod's two files and `zexion.apworld` are from different releases; the client's message names both versions. Close Zexion and copy `zexion_ap.dll` and `version.dll` from the release of your `zexion.apworld` into its folder. If the message says the mod is the newer one, you can instead install that release's `zexion.apworld`. |
 | The client says the mod isn't installed. | Close Zexion and copy this release's `zexion_ap.dll` and `version.dll` into its folder again. |
-| On Linux, the client says "Can't reach the running game". | The mod isn't loaded, or is from another release. Check that `libzexion_ap.so` is in Zexion's folder; that the launch option is as in "Linux and Steam Deck" (`LD_PRELOAD="./libzexion_ap.so:$LD_PRELOAD" %command%`; if that doesn't load the mod, the same with the folder's full path in front of `libzexion_ap.so`); that no `zexion_ap.disabled` is beside it; and that it is from the same release as your `zexion.apworld` (when they differ, the client's log names both versions: copy that release's `libzexion_ap.so` into the folder). Close Zexion and start it again after a change. |
+| On Linux, the client says "Can't reach the running game". | The mod isn't loaded, or is from another release. Check that Steam runs Zexion's Linux version, not the Windows one under Proton (Zexion's Properties, Compatibility: "Force the use of a specific Steam Play compatibility tool" stays off); that `libzexion_ap.so` is in Zexion's folder; that the launch option is as in "Linux and Steam Deck" (`LD_PRELOAD="./libzexion_ap.so:$LD_PRELOAD" %command%`; if that doesn't load the mod, the same with the folder's full path in front of `libzexion_ap.so`); that no `zexion_ap.disabled` is beside it; and that it is from the same release as your `zexion.apworld` (when they differ, the client's log names both versions: copy that release's `libzexion_ap.so` into the folder). Close Zexion and start it again after a change. |
+| On Linux, the client says "Zexion's mod on Linux isn't answering right now; trying again." | The mod loaded, but a request to it failed or got no reply, for instance while Zexion's window is in the background or minimized (the mod answers between the game's frames) or its connection closed. The client waits up to 30 seconds and tries again by itself; bring Zexion's window to the front. If it stays, items arrive without their popups until the mod answers again: close Zexion and start it again, and if it keeps happening, report it (below) with the client's log. |
 | On Windows, the title screen doesn't say ARCHIPELAGO MOD after Zexion starts. | Connect the client once while Zexion runs, then start Zexion again. If it still doesn't show, the mod isn't loaded: close Zexion, check that `zexion_ap.dll` and `version.dll` are both in its folder and that no `zexion_ap.disabled` is beside them, and start it again. If they are there and it still doesn't show, this release doesn't know your version of Zexion, or the mod couldn't find what it needs in it: read what the client says about the mod, and report it (below) if it names the game's addresses. |
 | The client says the mod didn't start. | Restart Zexion. If it keeps happening, copy the two files again as in the "mod isn't installed" row above. |
 | The mod misbehaves: popups, labels or menus look wrong while the client is connected. | On Linux, restart Zexion (the mod can't be reloaded there). On Windows, type `/reload_mod` in the client. It reloads the mod in a few seconds; popups still waiting are lost, and so are traps waiting for a save that isn't loaded; items are not. For those seconds Steam achievements are not stopped in an Archipelago save, so stand still and pick nothing up. If it says it can't now, close any menu or the map, or let a trap end, and try again. |

@@ -11,9 +11,20 @@ evidence in [`docs/re/`](re/README.md).
 
 ## Status
 
-The first release, 1.0.0, was published on 2026-11-05 (UTC), 1.1.0 after it (the current version is
-`world_version` in `worlds/zexion/archipelago.json`). Every in-game run was on game build B1. A
-release build has run from Archipelago 0.6.8's Launcher since 2026-10-25
+**Released.** The first release, 1.0.0, was published on 2026-11-05 (UTC), 1.1.0 after it, and 1.2.0
+on 2026-11-16 (the version in the repo is `world_version` in `worlds/zexion/archipelago.json`).
+1.2.0 is for Windows only, with the two traps, other players' items kept collected and the OS
+Install Disks and traps following the save (`docs/releases/1.2.0.md`).
+
+**On `develop`, for the next release.** The mod for Linux and the Steam Deck (the Linux helper,
+`libzexion_ap.so`: "Platforms"); the Windows helper's own scan of the game's addresses, so a first
+start needs no client (not yet run in game); the seed copies in the save folder for Steam Cloud
+("How it fits together", "The seed copies in the save folder": run in game Windows to Windows,
+2026-11-20); and the Linux helper's self-configuring start (the mod loaded on a Steam Deck; whether
+the title screen's lines showed there was not reported). The version PR names the release.
+
+Every in-game run was on game build B1. A release build has run from Archipelago 0.6.8's Launcher
+since 2026-10-25
 ([`docs/re/memory.md`](re/memory.md), "The client in a live game"), the 1.0.0 client from it on
 2026-10-29 (`native/README.md`, "AP saves without the client"), the 1.0.0 release candidate's
 builds on 2026-11-03 and 04, the 1.1.0 candidate's on 2026-11-08 (develop 5597753) and 09
@@ -123,9 +134,11 @@ worlds/zexion/ → generation → slot data → client
   game's own save folder, next to the saves, as `ZexionAP-seed-<NAME>.sav`, so Steam Cloud, which
   syncs `*.sav` there, carries it with the saves: a save that comes to another machine is known
   there as an AP save with no client run on it. A copy follows the game's 30 save slots as the
-  game's memory holds them (the helpers never open a save file): it is written only while a slot
-  uses the seed (so at most 30 are written and refreshed at a time; one a save does not use any
-  more is read but not refreshed, none is deleted, and so more than 30 may stand over time). It is
+  game's memory holds them (the helpers never open a save file: the game opens one to write with no
+  share mode): it is written only while a slot uses the seed, through a temporary file renamed
+  over the old one (so at most 30 are written and refreshed at a time, the owner's decision,
+  2026-11-20; one a save does not use any more is read but not refreshed, none is deleted, and so
+  more than 30 may stand over time). It is
   written by a put when a slot already uses the seed, by the helper's **copy thread** a moment
   after the slots change (a new game, a save, a delete; the client connected or not), and by a read
   after a client that set something leaves (not for `helper.py status`); the helper's start writes
@@ -139,9 +152,9 @@ worlds/zexion/ → generation → slot data → client
   `*.sav` and `*.png` in the save folder itself"). If so, that is the game's folder only while
   `XDG_DATA_HOME` is unset or the default `~/.local/share`: with it set elsewhere the saves
   themselves would not be what Steam syncs. Working in game on Windows between two PCs
-  (2026-11-20, B1, develop bf86eb5; `docs/re/save-format.md`, "The helpers keep the file of each
+  (2026-11-20, B1 inferred: the helper hooks only B1; develop bf86eb5; `docs/re/save-format.md`, "The helpers keep the file of each
   seed a save uses here"): AP saves made on one PC showed as AP saves on the other after Steam
-  Cloud synced them; and once from Windows to a CachyOS PC (2026-11-21, B1 assumed: at first not,
+  Cloud synced them; and once from Windows to a CachyOS PC (2026-11-20, local time, B1 assumed: at first not,
   then, after the owner cleared some things out, AP saves synced through Steam Cloud showed as AP
   saves; what was cleared, Steam's kind there and the helper's build were not reported). Not yet
   run: Linux writing the copies, Linux to Windows, a Steam Deck's sync, the new-seed quit, the
@@ -300,6 +313,15 @@ evidence are in the part of [`native/README.md`](../native/README.md) or the
   2026-11-02, with later fixes run 2026-11-03, and the helper's text in capitals in French and
   the default English, 2026-11-04 ("Translations", whose run bullets list what was
   seen in each and what is not run in game yet).
+- The seed copies in the save folder, so saves synced by Steam Cloud are AP saves on another
+  machine with no client run there: 2026-11-20, between two Windows PCs (B1 inferred); once from
+  Windows to a CachyOS PC, 2026-11-20 local time, after the owner cleared some things out ("How it
+  fits together", "The seed copies in the save folder"; `docs/re/save-format.md`, "The helpers keep
+  the file of each seed a save uses here"). Linux's own writing of the copies, Linux to Windows
+  and a Steam Deck's sync: not run.
+- The Windows helper's own scan of the game's addresses, so a first start needs no client: not
+  run in game (stand-in tests and an offline exe copy only: "How it fits together", "The helper's
+  own addresses").
 
 ## Platforms
 
@@ -311,8 +333,8 @@ file select's fixes, DeathLink's death count and the client's seed file and labe
 Steam Runtime build ran there too (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the
 review's other later fixes (`native/README.md`, "The Linux helper", lists them) have run on
 stand-ins only; a later CI build loaded on a Steam Deck with the relative launch option, and a
-CachyOS PC showed AP saves synced from Windows as AP saves: `docs/re/linux.md`, "Seen on a Steam
-Deck and a CachyOS PC, 2026-11-20 and 2026-11-21"); the client attaches to either build. Everything else runs on
+CachyOS PC showed AP saves synced from Windows as AP saves (helper build not reported): `docs/re/linux.md`,
+"Seen on a Steam Deck and a CachyOS PC, 2026-11-20"); the client attaches to either build. Everything else runs on
 Windows, Linux and macOS, and CI runs ruff and pytest on all three.
 
 Windows only:
@@ -348,7 +370,7 @@ ran in the game too, 2026-11-20 (CI's build, on the same setup: `native/README.m
 runtime"). A Steam Deck with Zexion on the SD card then loaded the mod from the helper of develop
 at 246c850 (CI's build) with the relative launch option `./libzexion_ap.so`, late on 2026-11-20,
 the owner's report: the title lines, the sync of AP saves and the game's build id were not
-reported (`re/linux.md`, "Seen on a Steam Deck and a CachyOS PC, 2026-11-20 and 2026-11-21", which
+reported (`re/linux.md`, "Seen on a Steam Deck and a CachyOS PC, 2026-11-20", which
 also records the PC's sync). The relative option relies on Steam starting the game in its install
 folder, inferred from that run, not measured. Native Steam (whether the CachyOS PC's is native
 or Flatpak was not reported) and Snap's Steam are not tried: what is known of the Deck and the

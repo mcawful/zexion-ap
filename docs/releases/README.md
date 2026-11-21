@@ -24,7 +24,9 @@ To see it before it is published:
 
 `1.0.0.md` is the exception: the first release had nothing to update from, so it carries its
 own install steps, and its message has no install guide. `tests/test_release_notes.py` checks
-that `1.0.0.md` and `1.1.0.md` rebuild their messages exactly as published.
+that `1.0.0.md` alone rebuilds its message exactly as published. Every later message carries the
+install guide as it was then, so a change to the guide retires its pin: 1.1.0's went with the
+guide's Linux steps, and 1.2.0's was never pinned.
 
 ## When they are written
 

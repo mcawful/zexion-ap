@@ -445,21 +445,25 @@ the game's own data, so a client going away or an unload leaves it (`docs/re/mem
 pickup record holds the major-item list").
 
 Two known limits of the ITEMS row, found by review, not seen in game, and left as they are
-(issues #166 and #167). The first is cosmetic (no item is given, lost or doubled; the list grants
-nothing); the second is by the code a Linux question only, and is not traced there:
-- **An own item can be listed twice.** The helper appends an owned item's icon only if it is
-  not in the list, and the game's pickup appends without that check (Linux B1 `0x6428FA`;
-  Windows `0x1F761`: `docs/re/linux.md`, "Mapped by disassembly: the major-item list";
-  `docs/re/memory.md`, "The pickup record holds the major-item list"). If the server marks one of
-  this world's own locations checked by a route other than the pickup (`!collect`, say), the
-  client grants its item by the inventory byte and the helper lists it; the client never marks
-  this world's own cells collected, so the item's object is still in the room, and picking it up
-  lists the icon again. Avoiding it means knowing, in the helper, the cell of each own location
-  (the seed's files carry none but the disks' and traps') and holding the listing while that cell
-  is uncollected, or telling a legitimate repeated icon from this one (not traced); more
-  machinery than the row is worth. The duplicate also takes one of the row's 26 places (the game's
-  append and the helper's both stop there, and B1 has 27 listable kinds), so a later item's icon
-  can miss the row.
+(issues #166, closed, and #167, open). The first is cosmetic (no item is given, lost or doubled;
+the list grants nothing); the second is by the code a Linux question only, and is not traced
+there:
+- **An own item can be listed twice, only by a second copy of it.** The helper appends an owned
+  item's icon only if it is not in the list, and the game's pickup appends without that check
+  (Linux B1 `0x6428FA`; Windows `0x1F761`: `docs/re/linux.md`, "Mapped by disassembly: the
+  major-item list"; `docs/re/memory.md`, "The pickup record holds the major-item list"). So the
+  icon is listed twice when a copy of an item is given by the client (the helper lists it) and
+  this world's own object for that item is then picked up in its room. The client gets no item
+  from its own world (`items_handling = 0b001`, `client/zexion_client.py`), so no checked own
+  location, `!collect` included, gives it one: the second copy has to come from outside the
+  seed's plan, by a console `/send`, `!getitem`, an item link or an old seed's plando. (The
+  first reading of #166 had `!collect` granting by the inventory byte; that route does not
+  exist, as the code shows: read on the code, not run in game.) Avoiding it means knowing, in
+  the helper, the cell of each own location (the seed's files carry none but the disks' and
+  traps') and holding the listing while that cell is uncollected, or telling a legitimate
+  repeated icon from this one (not traced); more machinery than the row is worth. The duplicate
+  also takes one of the row's 26 places (the game's append and the helper's both stop there, and
+  B1 has 27 listable kinds), so a later item's icon can miss the row.
 - **A save state taken in another save, loaded while an AP save is current.** Save states are a
   player-facing assist (SAVE STATES, `docs/re/memory.md`, "The assist menu"). `loadState` restores
   the whole of `gGameState`: the inventory, the major-item list, the map grid, the flags, the
