@@ -202,7 +202,7 @@ second waits; the client reports the pipe busy).
   splits the popups of a big release into `apply` batches under it, the writes in the first
   (`Session.give_through_helper`; stand-in tests only, not run in game).
 
-The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thread, below):
+The requests (`src/requests.cpp` parses them; `src/game_requests.cpp` is their table, the Linux helper's too; "frame" ones run on the game's thread, below):
 
 | Request | Reply | Part |
 |---|---|---|
@@ -217,6 +217,7 @@ The requests (`src/requests.cpp` parses them; "frame" ones run on the game's thr
 | `shield`, `die` (frame) | `spawned`, `died`, `refused <why>` | Received Energy Shields; DeathLink |
 | `drop_status` (frame) | `queued N; last <outcome>`, the outcome `none`, `spawned ITEM` or `refused <why> ITEM`: the received scraps' drops, for live checks | Received scrap |
 | `trap_status` (frame) | `queued N; last <outcome>`, the outcome `none`, `set ITEM`, or `nothing ITEM`: the traps set off, for live checks | Traps |
+| `feats_status`, `title_status` (frame) | `hello`'s `feats` and `title` fields alone, as the Linux helper's: `on`, `off`, `on:why`; `1`, `0` or why not | The Feats guard; the title screen |
 | `assists lock`, `assists free` (frame) | `locked`, `free`, `refused <why>` | The assist menu |
 | `intel on`, `intel off` (frame) | the same, or `refused <why>` | Intel Chips |
 | `discs COUNT REQUIRED HEX TOLD`, `discs` (frame) | `discs on`, `discs off`, `refused <why>` | The OS Install Disks goal |
