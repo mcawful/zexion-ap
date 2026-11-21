@@ -65,15 +65,16 @@ Set with the Goal option.
   - A limit with other players: if you play this goal with accessibility full in a multiworld
     with a player on accessibility minimal, generation can stop. Once progression is placed,
     Archipelago lets only filler, traps and the items of players on minimal go in the locations
-    of a player on minimal that it finds unreachable (39 to 72 of them in a Zexion seed), and
-    your disks take the filler those locations need. Your Navcore, the one useful item that is
-    not filler, may then have no place (the error says "No more spots to place 1 items" and
-    names it; "Unable to fill all locations" and "Not enough locations for progression items"
-    also happen). Measured with two Zexion players, 100 seeds each, one on full and one on
-    minimal: both at 16 disks, 1 in 100 stopped, and both at 30, 28 in 100; at 30 with the
-    other player on the core goal, 5 in 100. Nothing in the world keeps it from happening:
-    fewer disks make it rarer, and accessibility items or full for the other player, or the
-    core goal for you, avoid it. Generating again, with another seed, also works.
+    of a player on minimal that are still empty and that it finds unreachable (none in most
+    seeds, up to about 35 in the others, in the runs below), and your disks take the filler
+    those locations need. Your Navcore, your only item classified useful, may then have no place
+    (the error says "No more spots to place 1 items" and names it; "Unable to fill all
+    locations" and "Not enough locations for progression items" also happen). Measured with
+    two Zexion players, 100 seeds each, one on full and one on minimal: both at 16 disks, 1 in
+    100 stopped, and both at 30, 28 in 100; at 30 with the other player on the core goal, 5 in
+    100. Nothing in the world keeps it from happening: fewer disks make it rarer. It did not
+    happen in 100 seeds with the other player on accessibility items, or with you on the core
+    goal.
 
 ## Which modes are there?
 

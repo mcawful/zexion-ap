@@ -1018,7 +1018,8 @@ class TestAreaMapsStayInTheirOwnWorld(unittest.TestCase):
         self.assertEqual(len(spots), 1, "priority taken once nothing else is left")
 
     def test_the_fill_does_not_strand_one_beside_a_player_short_of_filler(self) -> None:
-        # Beta: 30 disks (no filler left) and 16 excluded locations, which take Alpha's Scrap.
+        # Beta: 30 disks (one filler item left) and 16 excluded locations, which take Alpha's
+        # Scrap.
         # Left to the fill's last step, one of Alpha's Area Maps found only Beta's locations
         # open on this seed ("No more spots to place"): the world places them first.
         names = sorted(ZexionWorld.location_name_to_id)

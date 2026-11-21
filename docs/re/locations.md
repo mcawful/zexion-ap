@@ -112,7 +112,7 @@ directions per `randocells.md`, "Grid order". Format and statuses per [`README.m
 | | **The filler a disks seed draws** (what the OS Install Disks option's text gives players, and the game page defers to): over seeds 0 to 2,999 per preset, Easy and Standard each draw 27 filler items, on average 16.8 Scrap (7 to 25), 5.1 Area Maps (0 to 14) and 5.1 Energy Shields (0 to 13), and OHKO 32, on average 20.0 Scrap, 6.0 Area Maps and 6.1 Energy Shields, 4 of them in the 4 locations it leaves out. Excluded locations can take only filler: the Scrap and Area Maps, since 2026-11-20 the Energy Shields too (`items.FILLER`: "Where the world departs from the game", "Energy Shield is filler"), and the keys' four places, less the disks: 31 before the disks in Easy and Standard and 32 in OHKO (after its four left-out locations), in every seed, 300 seeds per preset, measured 2026-11-20 (Method). Before that the shields were useful, which excluded locations cannot take, so they had 25.9 on average in Easy and Standard (as few as 19 and 18) and in OHKO 29.9 (as few as 21) before its four left-out locations took four of them, about 26 (as few as 17) after; measured 2026-11-04, by `generate_early` on the drawn pools (Method; the ranges are over Easy and Standard together). |
 | | **The goal needs the helper:** without it nothing offers the ending, and with no keys the core stays closed under every Gates value, by the game's data files: its door is four key slots that read only the keys (`memory.md`, "Keys, the gates and the key markers", 2026-10-28; what opens the door was not traced, and the core has not been tried without keys). |
 | | **Gates Vanilla becomes Unlocked** (`ZexionWorld.read_menu`, since 2026-11-01, the owner's choice over refusing Vanilla; starting or placing keys was ruled out, since the keys also open the core's door): Vanilla's hyperspace gates pass their key check only with all four key bytes, and Unlocked's with none, once two gates are visited (`memory.md`, "Keys, the gates and the key markers", by disassembly), so with no keys placed Vanilla's gates work only for a seed that starts with all four keys, from Custom's Start Keys, `start_inventory` or `start_inventory_from_pool` (which the disks goal allows, its pool holding no keys). The change is made whatever keys the seed starts with, the owner's decision (2026-11-01): one rule, so a seed starting with all four keys waits for two gates visited where Vanilla would have opened them at once. OHKO's preset has Vanilla (`randocells.md`, "The randomizer's modes"), and so can a Custom seed; Off, Unlocked and Open are kept, and the core goal keeps Vanilla. The one menu state carries it to the slot data's `options` and `menu.settings`, so the client's `expect` lines check the new game for Unlocked. The logic travels by gate only under Open (`logic.Settings.gates_open`), so the seed's reach is the same. The generator logs it, a warning where the YAML set `gates: vanilla` and info for a preset's own, and the spoiler header names it. The game's mode check then reads an OHKO seed as Custom (`randocells.md`, "The randomizer's modes"), in the pause menu's RANDO SETTINGS too; nothing in the client or the helper reads that mode. The mode check has five callers and no other reference, by disassembly on B1, 2026-11-01: three in the randomizer menu's function `0x1458C0` and two in the ending routine, for the Chaos Rusher and Untouchable Feats, which AP saves never earn (`randocells.md`, "The randomizer's modes"; `memory.md`, "Feats and achievements"). No gameplay code reads the mode. Tested only (`test_teleport_gates.py`, `TestGatesWithTheDisksGoal` and `OHKODisksGates`; `test_client_agrees.py`), 2026-11-01. Seen in game 2026-11-02 (B1, `zexion_ap.dll` `1c286c57…`, an OHKO seed with the disks goal, `lab/ap/live50`): the generator's info line and the spoiler's `Gates: Unlocked`; RANDO SETTINGS with CUSTOM MODE checked, OHKO's 00/03/00 and 00/152/12, and under VIEW OPTIONS Gates: Unlocked and Start Keys: 0. Working in game, a gate used without keys, 2026-11-02, B1, `zexion_ap.dll` `946b08a1…`, `lab/ap/live52` (player Alice: a Custom seed with `gates: vanilla` and the disks goal, started at Ocean Cliff with Double Teleport's second target at Top of Pulsava), the owner's report: the gate near Ocean Cliff only lit up when visited, the gate near Top of Pulsava brought up the warp once visited, and the warp took the player back to the first gate (that these were the gates at (14, 2) and (12, 30), the nearest to those rooms, is assumed: the cells were not read). The generator's warning for the YAML's `gates: vanilla`, and the spoiler's `Gates: Unlocked`, seen the same day. |
-| Status | measured, 2026-11-04 (the filler a disks seed draws, over 3,000 seeds per preset; not run in game); measured by the world's tests (Gates Vanilla made Unlocked, the row above: `test_world.py`, since 2026-11-01); working in game, 2026-11-02, B1 (its RANDO SETTINGS view, and a gate used without keys after two were visited, `lab/ap/live52`); measured (from the world's data: the rule codes, the pools, the room; since 2026-10-30 the room with drawn pools, computed over 30 seeds per preset, measured by the world's tests, not run in game; generated and filled by Archipelago's tests in all three modes); working in game (a Standard seed of 3 of 20 disks: the goal sent at the ending reached from the prompt's YES, NO and the question again on the next load, 2026-10-24; the offer after a save at the landing pod, and YES to the goal, 2026-10-25; starting disks counted, and the goal sent by a client opened after the ending began, with the server down at YES so no client could send it then, 0.30.0, 2026-10-26; every one of these runs started at the Landing Pod); tested only (the completion condition's Landing Pod and the refusals, `test_world.py`, `TestDiscHuntAwayFromThePod` and `TestStartRooms`, 2026-10-30); working in game, 2026-11-02 (an OHKO seed started at Open Cave, B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`: none after a save in the start room, the prompt after a save at the Landing Pod, NO, YES to the goal) |
+| Status | measured, 2026-11-20 (the filler excluded locations can take, 31 in Easy and Standard and 32 in OHKO in each of 300 seeds per preset: the Value row; generation only, not run in game); measured, 2026-11-04 (the filler a disks seed draws, over 3,000 seeds per preset; not run in game); measured by the world's tests (Gates Vanilla made Unlocked, the row above: `test_world.py`, since 2026-11-01); working in game, 2026-11-02, B1 (its RANDO SETTINGS view, and a gate used without keys after two were visited, `lab/ap/live52`); measured (from the world's data: the rule codes, the pools, the room; since 2026-10-30 the room with drawn pools, computed over 30 seeds per preset, measured by the world's tests, not run in game; generated and filled by Archipelago's tests in all three modes); working in game (a Standard seed of 3 of 20 disks: the goal sent at the ending reached from the prompt's YES, NO and the question again on the next load, 2026-10-24; the offer after a save at the landing pod, and YES to the goal, 2026-10-25; starting disks counted, and the goal sent by a client opened after the ending began, with the server down at YES so no client could send it then, 0.30.0, 2026-10-26; every one of these runs started at the Landing Pod); tested only (the completion condition's Landing Pod and the refusals, `test_world.py`, `TestDiscHuntAwayFromThePod` and `TestStartRooms`, 2026-10-30); working in game, 2026-11-02 (an OHKO seed started at Open Cave, B1, `zexion_ap.dll` `1c286c57…`, `lab/ap/live50`: none after a save in the start room, the prompt after a save at the Landing Pod, NO, YES to the goal) |
 | Method | `worlds/zexion/test/test_world.py`; Archipelago's general tests; the live runs; the room per mode with drawn pools, 2026-10-30: a scratch script (not kept) running `generate_early` with the disks goal for seeds 0 to 29 per preset (`test_world.fake_world`, `random.Random(seed)`), counting `DISC_REPLACES` in the pool, plus the keys' 4, less the locations left out; the filler a disks seed draws, 2026-11-04: a scratch script (not kept) running `generate_early` the same way with `start_room` at its default for seeds 0 to 2,999 per preset, counting codes 46 to 48 (Scrap), 49 (Area Map) and 50 (Energy Shield) in `pool_codes` and the locations left out; the filler excluded locations can take, 2026-11-20: the same script for seeds 0 to 299 per preset with 16 disks, counting codes 46 to 50 in `pool_codes` plus the keys' 4, less the locations left out (`len(location_cells) - len(kept_locations)`) |
 | Build | B1 |
 | Evidence | `lab/ap/live22/`, `lab/ap/live23/` (the seeds, their spoilers, the client and server logs; the question first worded END THE MISSION?, then RETURN HOME WITH THE DISKS?, helper 0.17.1), 2026-10-24; `lab/ap/live26/` (the landing pod, helpers 0.22.1 and 0.23.1: `memory.md`, "The mission prompt"), 2026-10-25; `lab/ap/live31/` (1 disk in start_inventory: the equipment screen showed 1) and `lab/ap/live32/` (3 of 3 in start_inventory: the reminder at once; the server stopped at the prompt, YES, the client closed during the ending, the server started again: `server3.log` holds the goal, from the reopened client's "This save reached the ending with 3 of 3 OS Install Disks: goal sent." at 19:52:44), 2026-10-26; a gate used without keys: `lab/ap/live52/` (`players/alice.yaml`, `generate.log`, `seed/`, `alice.log`), 2026-11-02, B1, `zexion_ap.dll` `946b08a1…`, the owner's report |
@@ -386,19 +386,25 @@ where its subject is:
   `Fill.inaccessible_location_rules` (0.6.8), once progression is placed, puts a rule on the
   empty locations of the multiworld that the placed items cannot reach, and forbids important
   items (progression and useful) of a player not on `accessibility: minimal` there; only filler,
-  traps and a minimal player's own items can go in them (39 to 72 in these seeds). With the disks
-  goal on `accessibility: full` the disks take the filler those locations need, and the full
-  player's useful items (the Navcore, and the Energy Shields while they were useful) are left
-  with no legal place: "No more spots to place N items", or "Unable to fill all locations" or
-  "Not enough locations for progression items". Nothing reads the shield (no rule or hint: its
-  readers are `items.classification`, `custom.FILLER_ODDS`, `world.DISC_REPLACES` and the
-  excluded-locations check; the client reads only a scouted item's progression and trap flags,
-  `client/aplabels.py`), so only Archipelago's fill sees the change; the item the game and the
-  client give is the same. The Navcore (32) stays useful, so the limit remains. Measured 2026-11-20 with Archipelago 0.6.8, a Zexion player with `accessibility:
-  full` and one with `minimal`, both Easy, Standard and OHKO weights 1:1:1 (the YAMLs, the batch
-  script and the runs' output stay local, in `lab/r7-world/`, which is not in the repo),
-  seeds 100 to 199, by `Generate.main` and `Main.main` with `--spoiler_only`, failures out of
-  100 seeds before and after the change:
+  traps and a minimal player's own items can go in them. How many are empty and unreachable
+  varies: none in most seeds, and in the others 1 to 35 (the logic review's wrap of
+  `inaccessible_location_rules`, seeds 100 to 199, 2 Zexion players: at 30 disks 27 of 97 seeds
+  had any, at most 35, and 5 to 123 locations were unreachable counting the filled ones; at 16
+  disks 19 of 100 had any, at most 34). With the disks goal on `accessibility: full` the disks
+  take the filler those locations need, and the full player's useful items (the Navcore, and
+  the Energy Shields while they were useful) are left with no legal place: "No more spots to
+  place N items", or "Unable to fill all locations" or "Not enough locations for progression
+  items". Nothing reads the shield's classification (no rule or hint) but
+  `items.classification`, which sets it, and `stage_pre_fill`'s count of filler through
+  Archipelago's `advancement` and `useful`; the code 50 is read, not its classification, by
+  `custom.FILLER_ODDS` (the draw), `world.DISC_REPLACES`, `fit_pool`'s `spare` (the disks'
+  room), `plando.MANY` (counts a plando may make), `starting.py`'s refusal to start with one and
+  `reach.UNREAD` (kept out of a seed's inventories). The client reads only a scouted item's
+  progression and trap flags (`client/aplabels.py`), so only Archipelago's fill sees the
+  change; the item the game and the client give is the same. The Navcore (32) stays useful, so
+  the limit remains. Failures out of 100 seeds before and after the change, measured 2026-11-20
+  with Archipelago 0.6.8 (seeds 100 to 199, a Zexion player with `accessibility: full` and one
+  with `minimal`, both Easy, Standard and OHKO weights 1:1:1; Method, below):
 
   | Case | Before | After |
   |---|---|---|
@@ -411,10 +417,10 @@ where its subject is:
 
   The before failures at 16 disks were seeds 100, 110 and 165, the after one 110 (a Navcore); at
   30 the unplaced items before were the Navcore and up to two Energy Shields (in the 16 disks
-  seeds, up to six), after the Navcore alone (17 seeds), "Unable to fill all locations" (8) or "Not enough locations for progression
-  items" (3): the shields only mattered at 16 disks, and with 30 the multiworld has about 2
-  filler items (31 + 31 less 60) for 39 to 72 restricted locations, which no classification of
-  an item the game gives fixes. Not made worse by the change, over seeds 0 to 299 (the same
+  seeds, up to six), after the Navcore alone (17 seeds), "Unable to fill all locations" (8) or
+  "Not enough locations for progression items" (3): the shields only mattered at 16 disks, and
+  with 30 the multiworld has about 2 filler items (31 + 31 less 60) for up to about 35 empty
+  restricted locations, which no classification of an item the game gives fixes. Not made worse by the change, over seeds 0 to 299 (the same
   seeds before and after, the same failures): one Zexion player drawing every option at random
   (the presets' menus: 294 generated and 6 refused; Custom: 246 generated and 54 refused, 51 of
   them for Abridged Finale with the disks goal); two such Custom and preset players (240
@@ -422,9 +428,15 @@ where its subject is:
   progression items" and seed 108's "Unable to fill all locations"); two preset players (279
   generated and 4 failed before, seeds 19, 198, 231 and 293, all this failure with shields
   among the unplaced items; 280 and 3 after, seeds 19 and 293 a Navcore left and seed 198
-  "Unable to fill all locations"). What would fix it is not decided ("Not yet decided"). Status: measured with Archipelago 0.6.8, not run in
-  the game (generation only). Evidence: the pools' codes and the failures' text in the runs
-  above; `worlds/zexion/test/test_world.py`, `test_the_energy_shield_is_filler_and_the_navcore_is_not`.
+  "Unable to fill all locations"). What would fix it is not decided ("Not yet decided").
+  Status: measured, 2026-11-20, with Archipelago 0.6.8 (generation only; not run in the game,
+  where the item is unchanged). Build: none (the world's own fill; Archipelago 0.6.8). Method:
+  `Generate.main` and `Main.main` with `--spoiler_only` over the seeds above, the "after" on this
+  change and the "before" on the world at `develop` 012ebab (a second Archipelago checkout), the
+  player files and the batch script kept local in `lab/r7-world/`, which is not in the repo; the
+  empty restricted locations from the logic review's wrap of `Fill.inaccessible_location_rules`
+  (`lab/r7-world/review/`). Evidence: the failures' text in the runs; `lab/r7-world/results/`;
+  `worlds/zexion/test/test_world.py`, `test_the_energy_shield_is_filler_and_the_navcore_is_not`.
 - **The draws** (coin flips, Random Gun, boxes, filler) use the world's own random numbers: the
   game's counts and odds, not its exact draws; Archipelago's fill replaces the game's placement
   (`worlds/zexion/custom.py`).
@@ -461,6 +473,13 @@ where its subject is:
   before the fill that names the options (the world cannot know which seeds fail: where the
   locations lie depends on the placement), or fewer disks for the options' range when another
   player is on minimal. Documented in the OS Install Disks option's text and the game page.
+  A proposal from the logic review of PR 193, not implemented: have `fill_hook` place the full
+  player's own Navcore in one of their own non-excluded empty locations before the main fill
+  (as `open_the_start` places items there), so the Navcore never needs a place the minimal
+  rule forbids. It would fix the Navcore failures (17 of the 28 at 30 disks), not the too-little
+  filler ones (11 of 28). The trade-off: a new departure from Archipelago's fill, which places
+  the Navcore where the fill puts it, with one item's place decided by the world; the owner
+  decides.
 - **Gun names in Guns First off seeds:** each gun item is one copy, the gun alone, but keeps
   its "Progressive" name (Progressive Machine Gun and the like, `worlds/zexion/items.py`).
   Whether to name them as the game does is not decided.
