@@ -983,11 +983,14 @@ def test_a_client_that_goes_takes_its_plan_with_it(game: Game) -> None:
 def test_a_helper_of_another_version_is_not_used(game: Game, monkeypatch) -> None:
     from client import native as client_native
 
+    built = client_native.VERSION  # the helper under test is built at the client's version
     monkeypatch.setattr(client_native, "VERSION", "9.9.9")
     found = game.as_found()
     game.connect().close()
     with (
-        pytest.raises(linux_helper.LinuxHelperError, match="version 1.2.0, this client 9.9.9"),
+        pytest.raises(
+            linux_helper.LinuxHelperError, match=f"version {re.escape(built)}, this client 9.9.9"
+        ),
         linux_helper.LinuxHelper(found),
     ):
         pass
