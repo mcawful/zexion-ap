@@ -279,7 +279,7 @@ table for both helpers (`src/game_requests.cpp`: each one's name, whether it nee
 configured, whether it sets something a client's going puts back, and what it runs); the hosts add
 `config`, `offline_put` and their own replies. The trap status and the other read-only statuses
 (`trap_status`, `drop_status`, `newgame_status`, `feats_status`, `title_status`, `discs_status`)
-need no `config`; the ones that read the game or set something (`mission_status`, `intel`,
+need no `config` (stand-in tests only on Windows for `trap_status`, `feats_status` and `title_status`); the ones that read the game or set something (`mission_status`, `intel`,
 `assists`, `ap_labels`, `discs`, ...) answer `refused not configured` until one has come. If no frame takes it within a second (the game paused in the
 background, say), it is withdrawn, the reply is `refused no frame`, and it never runs
 afterwards.
@@ -296,7 +296,7 @@ had no server connection), and had sent a request that sets something (`zap::set
 grant, a death, a shield or an `apply` set nothing, so `tools/helper.py status` and a connection made
 again in the middle of a poll leave the game as it was), the next frame call, before it serves
 any request, puts back everything the parts below set in the game's memory and drops what the
-client asked for (`Game::client_gone`: `put_back_game`, then `forget_client`, and
+client asked for (`Game::client_gone`, each part guarded on its own: stand-in tests only, not run in the game on Windows; `put_back_game`, then `forget_client`, and
 `forget_client_seed`, which closes the look's gate until the next client has put its
 seed, in `src/game_calls.cpp`). A change held by a menu no longer open is gone with it. A running trap's
 AILMENTS patch stays, as the trap does ("Traps"). It goes inactive
@@ -805,7 +805,8 @@ dealt on the next load ("DeathLink").
   put again until its text changes, and one put again before a frame took the last replaces
   it in the helper's queue (`OfflineInbox::put_seed`). A seed taken but not kept stays the
   helper's until the game closes, on both helpers: read from the folder again each time a
-  client goes, it is added again after the files (`OfflineInbox::take`). Until the client's first `offline_put` of a seed, which waits for
+  client goes, it is added again after the files (`OfflineInbox::take`; stand-in tests only, not run
+  in the game on Windows). Until the client's first `offline_put` of a seed, which waits for
   the received items' list and the scouted locations (asked for every 5 s), a helper with no
   file of that seed from an earlier run knows no own trap: one picked up in those seconds
   does nothing. A seed's file merged with another list of traps starts the two looks over,
@@ -1825,6 +1826,16 @@ game's own save getting the logo, and a plain randomizer save beside it none: wo
 
 `src/offline.cpp`, `src/game_offline.cpp`; the client side is `client/offline.py`.
 
+**Changed in 2.0.0 development, stand-in tests only, not run in the game on Windows** (the Linux
+half of each is stand-in tests too): the look's place in the frame (`Game::watch_rest`: right
+after the ARCHIPELAGO choice, before the file select's, INTEL CHIP's, the title's and the disks'
+watches; the Windows helper ran it after them); a client's going (`Game::client_gone`, each part
+guarded, only after a request that sets something: `helper.py status` no longer redresses the
+save); a seed put and not kept staying the helper's until the game closes; `trap_status`,
+`feats_status` and `title_status` answering with no config on the Windows pipe. Every "working in
+game" line below about the look, the file select's counts or a client going on Windows (the
+2026-11-14 run among them) describes the old order and the old probe rule.
+
 - **What the client leaves:** while connected, `offline_put` (when they change) sends the
   addresses it resolved for this build, with the first 16 bytes of each game function, and a
   small file per seed: its item table (154 bytes, or 155 with Secret Shuffle) and start, the Intel Chip and ASSIST settings, the OS
@@ -2033,8 +2044,8 @@ copies, a cut copy's refusal and that `helper.py status` writes nothing.
   already there), and at a read of the files that writes: at the helper's start (which writes local
   files only: no slot list is known yet, so no copy is written then; the copy thread rewrites the
   copies a moment after the game's first frames, if a slot uses their seeds), and when a client
-  that set something goes (a request that is no probe: not `hello`, `ping` or a `*_status`, so
-  `helper.py status` writes nothing), and by the copy thread when the game's slots change. One
+  that set something goes (one of the requests `zap::sets_client_state` names, as "A client
+  going away" lists them, so `helper.py status` writes nothing), and by the copy thread when the game's slots change. One
   thread at a time reads or writes the seed files (a mutex inside `put_offline_file` and
   `read_offline_files`). A read that writes makes a seed's missing copy for a seed a slot uses, and
   a seed that has no local file its file. A copy that was read and does not parse (a bad CRC, a
@@ -2069,7 +2080,7 @@ copies, a cut copy's refusal and that `helper.py status` writes nothing.
     copies of one seed differ only in what each has seen), and only with no client.
 - **Limits:** 48 KB a file (`kMaxFile`), and 256 seed files read from each folder. Steam's quota
   for the game is 97.7 MiB and 640 files, and it tracks the 30 saves and two more already.
-- **Tests:** `native/tests/offline_tests.cpp` (the text, the crc, the merge, the slots' seeds from
+- **Tests:** `native/tests/inbox_tests.cpp` (the seeds the serving thread hands the game's thread: the files, the puts, a seed not kept; both helpers), `native/tests/requests_tests.cpp` (the shared request table and `sets_client_state`), `native/tests/offline_tests.cpp` (also the watches' order, a watch or a client-gone part that throws, through `Game::set_step_hook`; the text, the crc, the merge, the slots' seeds from
   the stand-in game's memory and `SavedSeeds`, the put and the read with a stand-in save folder and
   lists, `restrict_to_test_folder` with junctions, the write primitives' refusal),
   `apply_test.cpp` (through the loaded helper: the frame calls publish the slots and the copy thread
@@ -2862,8 +2873,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   `_GLOBAL__sub_I_offline.cpp`; not run in the game). `tests/test_native_linux_init_order.py`
   reads `helper.cpp`, `game_mem_linux.cpp` and `offline.cpp` and fails for any namespace-scope
   object in them that is none of constant by its type, `Kept` with `init_priority(101)` (a
-  function-local `Kept` in `offline.cpp`) or a `std::mutex`, checks the Steam export's stand-in
-  holder is `constinit`, and, with a build, that the helper's `.init_array` holds no initializer
+  function-local `Kept` in `offline.cpp`) or a `std::mutex` or `std::once_flag`, checks the Steam
+  export's stand-in holder (`feats_linux.cpp`) is `constinit`, expects `g_inbox` among the globals, and, with a build, that the helper's `.init_array` holds no initializer
   of `offline.cpp` or any shared source other than the memory layer's; the other shared
   sources' globals (`feats.cpp`'s others) are constant by their types: no dynamic initializer
   of theirs is in the build. The statically linked libstdc++'s own initializers (`*.cc`) do run
@@ -3172,7 +3183,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   - the KEYS row's branch is `jne +0x3C` (`75 3C`), made `EB 3C` (`src/pause.cpp`);
   - the equipment screen's new child array is glibc's `malloc`, freed with glibc's `free`, as the
     game's own `calloc` and `free` (`src/equip.cpp`): no allocator slots;
-  - EQUIPMENT's callback is called with no arguments (`equipment_hook`); the Energy Tank panel's
+  - EQUIPMENT's callback is called with no arguments (`equipment_game` and `equipment_after`, wrapped by `Wrapper`); the Energy Tank panel's
     handler takes `(widget, event)` and the pause menu's way back its menu, as on Windows
     (`equipment_panel_game`, `options_back_game`, each wrapped by `Wrapper`, the template all
     the Linux hooks but RETURN HOME's are made from, `linux/src/helper.cpp`);
@@ -3429,7 +3440,7 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
 - **The look without the client.** `Game::watch_offline` runs at each frame call, before the
   watches that apply what it sets (`Game::watch_rest` runs it right after the ARCHIPELAGO choice,
   on both helpers; the Windows helper ran INTEL CHIP's and the disks' watches before it, a frame
-  behind, until 2.0.0) ("AP saves without the client"): with
+  behind, until 2.0.0; stand-in tests only, not run in the game on Windows) ("AP saves without the client"): with
   no client (configured from the game's symbols, or its client gone), or with one that said
   `other_save`, a known seed's save is dressed once in play since it loaded, from its seed file:
   the item labels, INTEL CHIP, the ASSIST lock and the disk count and scanner's line, with the
@@ -3507,7 +3518,7 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   Linux (`docs/re/linux.md`, "Mapped by disassembly: the Feats guard's Steam and load test"):
   - no slot is written and no code made: the helper exports `SteamInternal_ContextInit` itself, so
     the dynamic linker binds the game's call (from its two accessors, `SteamUserStats()` and
-    `SteamUtils()`, on the frame call's thread) to it, and `feats_context_init` (`src/feats.cpp`)
+    `SteamUtils()`, on the frame call's thread) to it, and `feats_context_init` (`src/feats_linux.cpp`)
     answers the stats context (`SteamUserStats()`'s, from the game's own symbols) with a stand-in
     interface whose every method returns 0 while the guard blocks: on, or the load test's save
     loaded, marker 1 and slot an AP save's, read at the call; every other call goes on to
@@ -3739,7 +3750,7 @@ Most ctest tests run against **the stand-in game**: the test program's own data 
 laid out as the helper expects the game's (`tests/stand_in.h`, `tests/stand_in_menu.h`) and
 configured by RVA like the real game. A test's source is `tests/<name>_tests.cpp`
 (`apply_test.cpp`, `unload_test.cpp` and `proxy_test.cpp` for `apply_in_frames`,
-`unload_under_load` and `proxy`). They share `tests/check.h` (with one test of a code patch on a
+`unload_under_load` and `proxy`). They share `tests/check.h`, which the Linux tests include too (with one test of a code patch on a
 page of its own, `check_code_patch`, that `game` and `mapmarks` run on theirs); `tests/fake_gl.h` is
 the fake OpenGL of `apitem` and `offline`; `tests/pipe_client.h` is the pipe client of `parts`,
 `apply_in_frames` and `unload_under_load`, and the last two's busy threads and wait for an unload.
@@ -3901,7 +3912,8 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
 | `iat.cpp` | the import-table hook and trampoline |
 | `build.cpp` | the known builds |
 | `findaddr.h`, `findaddr.cpp`, `findaddr_patterns.h` | the helper's own address scan: the rules, and `client/patterns.py`'s patterns as C++ (generated by `tools/gen_native_patterns.py`; never edit it) |
-| `game_mem.h`, `game_mem.cpp`, `game_layout.h` | fault-safe memory access (`game_mem_win.cpp`, `game_mem_linux.cpp`: each platform's); code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
+| `feats.cpp`, `feats_win.cpp`, `feats_linux.cpp`, `feats_ending.h` | the Feats guard: the shared part, each platform's ending patch and Steam handling, and the ending's patch both make |
+| `game_mem.h`, `game_mem.cpp`, `game_mem_win.cpp`, `game_mem_linux.cpp`, `game_layout.h` | fault-safe memory access (`game_mem_win.cpp`, `game_mem_linux.cpp`: each platform's); code patched and put back (`game_mem.h`'s `CodePatch`, for `TextCut`, `SeenMarker` and, while a trap runs, `trap.h`'s `HitPatch` and `WavePatch`); the layouts several parts share |
 | `kept.h` | `Kept`: a global the helper never destroys (the Linux helper's threads run through the game's exit) |
 | `apitem`, `looks`, `menu`, `intel`, `scan`, `equip`, `pause`, `files`, `mission`, `offline`, `mapmarks`, `title`, `feats`, `translation` | one part each, as named above (`menu`: the ASSIST lock; `feats`: Feats and achievements in AP saves; `translation`: Translations) |
 
