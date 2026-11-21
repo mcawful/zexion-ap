@@ -1,10 +1,12 @@
 name: Release
 
 # A merge into main (only develop's pull requests, which release-gate.yml checked) publishes
-# the release: the helper and proxy built here, the Linux helper built in the Steam Runtime's
-# SDK (the linux-helper job), the apworld, the player guides and the sample YAMLs, under the
-# tag v<VERSION>. A version already released from this same commit is skipped (a re-run); one
-# released from another commit, or left as a draft, fails the job instead. The release job runs
+# the release under the tag v<VERSION>: tools/build_apworld.py's three files, the apworld on its
+# own and an archive for each system, zexion-ap-<VERSION>-windows.zip (the helper and proxy built
+# here) and zexion-ap-<VERSION>-linux.tar.gz (the Linux helper built in the Steam Runtime's SDK,
+# the linux-helper job), each with the apworld, the player guides, the sample YAMLs and a README.
+# A version already released from this same commit is skipped (a re-run); one released from
+# another commit, or left as a draft, fails the job instead. The release job runs
 # in the "release" environment, which waits for the owner's approval in GitHub before anything is
 # tagged or published, each attempt again (a re-run too); the linux-helper job before it only
 # builds, with a read-only token, and publishes nothing.
@@ -93,6 +95,7 @@ jobs:
             echo "v$version is already released from this commit: nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
+      # Into an empty dist/, so dist/* below is the builder's three files and nothing else.
       - name: Build the release
         if: steps.version.outputs.skip != 'true'
         run: python tools/build_apworld.py --out dist

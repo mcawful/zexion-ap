@@ -3694,7 +3694,8 @@ own, `release-dry-run` (Windows, after `native-linux-runtime`), does what `relea
 that artifact: builds the DLLs, downloads it into `native/build` and runs
 `tools/build_apworld.py --out <scratch>` (a dry run of the release, so a release that would refuse
 its own artifact, its age check against `native/`'s sources among them, fails in CI, not at the
-release). It is a job apart so that the Windows build and tests do not wait for, or fail with, the
+release), keeping what it built, the apworld and both archives, as the `release-dry-run` artifact
+for a week. It is a job apart so that the Windows build and tests do not wait for, or fail with, the
 Steam Runtime container job (a registry that is down).
 
 CI builds both, runs the ctest tests, and runs `tests/test_native.py` on Windows, which loads

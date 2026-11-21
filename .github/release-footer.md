@@ -2,8 +2,17 @@
 
 A quick reminder; the full steps are in the
 [setup guide](https://github.com/mcawful/zexion-ap/blob/v{{VERSION}}/worlds/zexion/docs/setup_en.md),
-also attached below as `zexion-setup-guide.md`. You need Zexion on Steam (Windows, Linux or the
-Steam Deck), Steam build 23943567, and Archipelago 0.6.8 or newer.
+also in each archive below as `zexion-setup-guide.md`. You need Zexion on Steam (Windows, Linux or
+the Steam Deck), Steam build 23943567, and Archipelago 0.6.8 or newer.
+
+**Download** the archive for your system, below, and unpack it:
+
+- Windows: `zexion-ap-{{VERSION}}-windows.zip`
+- Linux and the Steam Deck: `zexion-ap-{{VERSION}}-linux.tar.gz`
+
+Its folder holds `zexion.apworld`, the mod for your system, the player guides, a sample YAML for
+each mode and a short `README.md`. `zexion.apworld` is also attached on its own, for anyone who
+needs only that (to generate a game with Zexion in it).
 
 **New install**
 
@@ -23,9 +32,11 @@ Steam Deck), Steam build 23943567, and Archipelago 0.6.8 or newer.
 
 - Finish your seed first, or keep {{PREVIOUS}} until it ends. Everyone playing Zexion in a game should
   use the same release.
-- Close Zexion and replace the files together: install the new `zexion.apworld`, and copy the
-  new `zexion_ap.dll` and `version.dll` into Zexion's folder (on Linux, the new
-  `libzexion_ap.so`).
+- Close Zexion and replace the mod files and `zexion.apworld` together, from the new archive for
+  your system: install the new `zexion.apworld`, and copy the new `zexion_ap.dll` and
+  `version.dll` into Zexion's folder (on Linux, the new `libzexion_ap.so`). Releases before 2.0.0
+  came as loose files, not an archive; the files in the archive have the same names, so copy them
+  over the old ones.
 - Then connect the client once with Zexion running.
 {{UPDATE_STEPS}}
 

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+import build_apworld as bap
 import release_notes as rn
 from build_apworld import client_version
 
@@ -83,6 +84,10 @@ def test_a_release_without_update_steps_gets_the_guides_alone(tmp_path: Path) ->
     assert "blob/v1.2.0/worlds/zexion/docs/setup_en.md" in message
     assert "- Then connect the client once with Zexion running.\n\nSomething wrong?" in message
     assert "{{" not in message
+    # It sends each player to the release's archive for their system, by the name the builder
+    # gives it for this version.
+    for platform in bap.PLATFORMS:
+        assert f"`{bap.archive_name(platform, '1.2.0')}`" in message
     assert message.endswith(
         "**Full list of changes:** [v1.1.0...v1.2.0]"
         "(https://github.com/mcawful/zexion-ap/compare/v1.1.0...v1.2.0)\n"

@@ -93,9 +93,18 @@ jobs:
         with:
           python-version: "3.13"
           activate-environment: true
+      # The release's three files, as release.yml builds them: the apworld and the two archives,
+      # which the builder reads back (each archive's files, and the Linux helper's mode) and lists.
       - name: Release build (dry run)
         shell: bash
         run: python tools/build_apworld.py --out "$RUNNER_TEMP/dist"
+      # Kept a week, to look inside what a release of this commit would publish.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run
+          path: ${{ runner.temp }}/dist
+          if-no-files-found: error
+          retention-days: 7
 
   native-linux:
     name: native helper (ubuntu-latest)
