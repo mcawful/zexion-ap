@@ -203,15 +203,15 @@ int wmain(int argc, wchar_t** argv) {
     check(hello.find(" offline=1") != std::string::npos, "hello: one seed", hello);
 
     // A connection that sets nothing (`hello`, a status: what `tools/helper.py status` sends) and
-    // goes is no client going (zap::sets_client_state, and dllmain's pipe thread): the look is as
-    // it was, no notice shows again. The connection that put the seed goes first, and the look
-    // dresses the save with no client.
+    // goes is no client going (zap::sets_client_state, and dllmain's pipe thread): the frame does
+    // not run Game::client_gone for it (the hook-test helper counts those: `client_gone_count`),
+    // and the look stays as it was. The connection that put the seed goes first, and does count.
+    auto gones = [&] { return std::stoi(zap_test::ask(pipe, "client_gone_count")); };
     CloseHandle(pipe);
     pipe = zap_test::connect(zap::pipe_name(GetCurrentProcessId()));
     check(pipe != INVALID_HANDLE_VALUE, "connects as a probe");
-    hello = zap_test::ask(pipe, "hello");
+    hello = zap_test::ask(pipe, "hello");  // a frame has run client_gone for the one that went
     check(hello.find(" active=0") != std::string::npos, "no client after the last went", hello);
-    reply.clear();
     for (int i = 0; i < 200 && hello.find(" offline=1:12345-0-1") == std::string::npos; ++i) {
         Sleep(5);
         hello = zap_test::ask(pipe, "hello");
@@ -219,6 +219,7 @@ int wmain(int argc, wchar_t** argv) {
     check(hello.find(" offline=1:12345-0-1") != std::string::npos,
           "the save dressed offline with no client", hello);
     Sleep(100);
+    const int before = gones();
     const int messages = stand_in::g_messages;
     reply = zap_test::ask(pipe, "trap_status");
     CloseHandle(pipe);  // a probe goes
@@ -226,9 +227,18 @@ int wmain(int argc, wchar_t** argv) {
     check(pipe != INVALID_HANDLE_VALUE, "connects again after the probe");
     hello = zap_test::ask(pipe, "hello");
     Sleep(100);
+    check(gones() == before, "a probe went: no client_gone", std::to_string(gones()));
     check(hello.find(" offline=1:12345-0-1") != std::string::npos,
-          "after a probe went: the look still dressed", hello);
+          "the look still dressed", hello);
     check(stand_in::g_messages == messages, "and no notice shown again");
+    reply = zap_test::ask(pipe, config_request());
+    check(reply == "ok", "a client's config", reply);
+    CloseHandle(pipe);  // a connection that set something goes
+    pipe = zap_test::connect(zap::pipe_name(GetCurrentProcessId()));
+    check(pipe != INVALID_HANDLE_VALUE, "connects after the client");
+    hello = zap_test::ask(pipe, "hello");
+    check(gones() == before + 1, "a connection that set something went: one client_gone",
+          std::to_string(gones()));
     reply = zap_test::ask(pipe, config_request());
     check(reply == "ok", "config for what follows", reply);
 

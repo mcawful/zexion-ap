@@ -88,6 +88,10 @@ bool g_unloading = false;  // guarded by g_menu_lock
 std::atomic<int> g_in_callback{0};
 // Set by the pipe thread on a disconnect; the next frame puts everything back before any request.
 std::atomic<bool> g_client_gone{false};
+#ifdef ZAP_HOOKTEST
+// Tests only: how many times a frame ran Game::client_gone (the `client_gone_count` request).
+std::atomic<int> g_client_gones{0};
+#endif
 // Loaded from the game's own folder (by the proxy, or a client with no build): `hello` reports it.
 bool g_from_game_folder = false;
 // The seed files, the helper's own scan and the thread that copies the seeds (host_offline.h).
@@ -239,6 +243,9 @@ uintptr_t frame(void* argument) {
             g_game.note_play(GetTickCount64());
             if (g_client_gone.exchange(false)) {
                 // Only the offline look dresses a save until a client configures again.
+#ifdef ZAP_HOOKTEST
+                g_client_gones.fetch_add(1);
+#endif
                 g_game.client_gone(&archipelago_chosen);
             }
             g_host.take();
@@ -374,6 +381,9 @@ std::string handle(const std::string& request, bool& stop) {
     if (g_slot != nullptr) g_host.start_copy_thread();
     if (request == "hello") return hello();
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
+#ifdef ZAP_HOOKTEST
+    if (request == "client_gone_count") return std::to_string(g_client_gones.load());
+#endif
     if (zap::sets_client_state(request)) g_client_set.store(true);
     if (request.rfind("offline_put ", 0) == 0) {
         // Only in the game (a known build): a program that merely loads this DLL, a test host

@@ -400,8 +400,6 @@ void test_a_save_of_the_seed_dressed_offline() {
           "the known seed's slot 3 keeps its own count with a client of another seed");
 }
 
-// A dressed save stays dressed, ASSIST locked, through a menu; a client going away with the
-// options menu up locks it again in the same frame call, so the cursor never finds it open.
 // Each guarded step (Game::step) on its own: one that throws keeps none of the others from running.
 int g_step_calls = 0, g_throw_at = 0;
 zap::Game* g_watched = nullptr;
@@ -490,6 +488,8 @@ void test_a_part_of_a_clients_going_that_throws_keeps_the_others_running() {
     game.set_step_hook(nullptr);
 }
 
+// A dressed save stays dressed, ASSIST locked, through a menu; a client going away with the
+// options menu up locks it again in the same frame call, so the cursor never finds it open.
 void test_assist_locked_again_in_the_same_frame() {
     reset_game();
     zap::Game game;
