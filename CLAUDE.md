@@ -405,8 +405,10 @@ Committed under `.claude/`, so they apply to anyone working here:
   shell forms that hide the verb (`command cd`, a script piped into a shell), PowerShell and .NET
   calls, other tools (`takeown`, `icacls`, `Clear-Content`), code in other languages
   (`python -c shutil.rmtree`), other variables (`$PUBLIC/..`, `$HOMEDRIVE$HOMEPATH`, `~+`), UNC
-  admin shares and links; and archives or tree copies into the home folder (`tar -x -C ~`,
-  `rsync -a x ~/`, `cp -r x ~`), which pass unless they overwrite (`unzip -o`, `-Force`). The
+  admin shares and links, and a script word over 2000 characters (`sh -c`, `eval`, `cmd /c`); and
+  archives or tree copies into the home folder (`tar -x -C ~`, `rsync -a x ~/`, `cp -r x ~`)
+  pass: they add files and overwrite only what the archive holds, unless the overwrite is asked
+  for (`unzip -o`, `tar --overwrite`, `Expand-Archive -Force`). The
   guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.

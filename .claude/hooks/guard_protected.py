@@ -107,8 +107,10 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     ``Remove-Item`` given nothing of its own to remove, fed by a command of its *pipeline* that
     named such a folder (``ls ~ | xargs rm``, ``gci $env:APPDATA -r | ri``, ``$HOME | ri -r``, a
     lister with no folder after ``cd ~``, a lone ``/`` piped in; not a command before a ``;`` or
-    ``&&``: ``ls ~ ; find lab | xargs rm`` passes; ``_pipeline_groups``, linear in the line). A
-    ``while read f`` fed by such a pipeline, ``set -- ~`` and ``for f in $(ls -d ~/*)`` make their
+    ``&&``: ``ls ~ ; find lab | xargs rm`` passes; ``_pipeline_groups``, linear in the line; a
+    ``{ …; }`` or ``while … done`` that a pipe goes on from is part of it, a line continuation
+    after a pipe too). A ``while read f`` fed by such a pipeline, ``set -- ~``, ``for f in $(ls -d
+    ~/*)``, ``x=$(ls ~)`` and PowerShell's ``$x = gci ~`` and ``gci ~ -OutVariable o`` make their
     variables the folder, as ``H=~`` does. A lone ``/`` or ``/c`` is a root only as an operand of
     these (``cmd /c``, ``findstr /s`` and ``print(1 / 2)`` name none). Not these: creating files in
     the folder, copying into or out of it, listing or reading it, ``tar -C ~``, ``unzip -d ~``,
@@ -121,12 +123,18 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     -delete`` and ``git clean`` that follow, so ``cd $d && rm -rf *`` blocks and ``cd $d && rm -rf
     build`` does not. A temporary or workspace folder is known not to be home: ``cd $(mktemp
     -d)``, ``cd "$(git rev-parse --show-toplevel)"``, ``cd "$RUNNER_TEMP"`` (also ``$TEMP``,
-    ``$TMP``, ``$TMPDIR``), and a variable set from one (``d=$(mktemp -d)``, ``t=$TMPDIR/x``).
+    ``$TMP``, ``$TMPDIR``), and a variable set from one (``d=$(mktemp -d)``, ``t=$TMPDIR/x``):
+    by value, as the whole word with only ``/name`` parts after it (never ``..``), ``mktemp`` with
+    no ``..`` or exactly ``git rev-parse --show-toplevel``; a name the line sets to anything else
+    (``TMPDIR=~``) is not known from then on, and a variable the line sets is not read from the
+    hook's environment.
     A relative operand is joined to that folder (``rm -rf ../../..`` from a folder under the home
     folder). Words are read again as a command's in ``sh -c`` (also ``-lc``, with ``$0``, ``$1``
     and ``"$@"`` filled from the words after it), ``eval``, ``cmd /c "…"``, ``powershell
-    -Command`` and ``iex``; ``sudo``, ``env``, ``nice``, ``timeout 5``, ``nohup``, ``command``
-    and ``cmd /c`` (also Git Bash's ``//c``) are taken off first (``_unwrap``). A backtick or
+    -Command`` and ``iex`` (a ``cmd /c "…"`` script is lexed as PowerShell from the source text,
+    so its backslashes stay); ``sudo``, ``env``, ``nice``, ``timeout 5``, ``nohup``, ``command``,
+    ``cmd /v:on /c`` (also Git Bash's ``//c``), and cmd's ``call``, ``start /b`` and ``if [not]
+    exist X`` are taken off first (``_unwrap``). A backtick or
     ``$(…)`` operand that names one (``rm -rf `echo ~```, ``rm -rf $(echo ~)``), a parenthesis
     (``ri -r ($HOME)``, ``@(~)``), PowerShell's ``-Path:~`` and a comma list (``x,$HOME``) count,
     and so does a variable the line sets to one (``H=~; rm -rf "$H"``, ``for d in ~ /; do rm -rf
@@ -186,7 +194,8 @@ and the folders above a protected one that other variables name: ``$PUBLIC/..``,
 ``$HOMEDRIVE$HOMEPATH``, ``%HOMEDRIVE%%HOMEPATH%``, ``$SYSTEMDRIVE``, ``$ProgramData/..``,
 ``$PWD/../..``, ``$env:SystemDrive/``, ``~+``, a variable set by another variable
 (``H=$X``), and UNC admin shares (``//localhost/C$/Users/…``, which the guard does not ask the
-network about). Wrappers it does not know (``chrt``, ``taskset``, ``flock``, ``strace``,
+network about). A script that is a word of more than 2000 characters (``sh -c``, ``eval``, ``cmd
+/c``) is not read again. Wrappers it does not know (``chrt``, ``taskset``, ``flock``, ``strace``,
 ``watch``, ``unbuffer``, ``script -qc``, ``parallel``, ``wsl``) hide the verb; so do
 ``command cd`` and ``builtin cd``, ``bash -c --`` and ``-o … -c``, a script piped or here-stringed
 into a shell with no ``-c``, ``xargs … sh -c`` with the listing, ``pwsh -co``, a variable that
@@ -426,6 +435,7 @@ class Word(str):
     bare: str = ""
     start: int = 0
     end: int = 0
+    raw: str = ""  # the source text of the word: quotes and backslashes as written
 
 
 def _word(text: str, bare: str, start: int, end: int) -> Word:
@@ -465,6 +475,7 @@ def lex(command: str, powershell: bool) -> tuple[list[list[Word]], list[Word]]:
             return
         _tick()
         w = _word(text, bare, start, end)
+        w.raw = command[start:end]
         if expect_target:
             targets.append(w)
             expect_target = False
@@ -491,6 +502,9 @@ def lex(command: str, powershell: bool) -> tuple[list[list[Word]], list[Word]]:
         elif c in "'\"":
             quote = c
             add("", False, i)
+        elif c == escape and command[i + 1 : i + 2] == "\n":
+            i += 2  # a line continuation: the backslash and the newline are gone
+            continue
         elif c == escape and i + 1 < n:
             add(command[i + 1], False, i)
             i += 1
@@ -1104,6 +1118,46 @@ def _is_absolute(path: str) -> bool:
 POP_VERBS = {"popd", "pop-location"}
 
 
+def _known_folder_word(text: str, safe_vars: set[str]) -> bool:
+    """Whether a word is a folder known not to be above a protected one: a variable of
+    ``safe_vars`` (the shell's temporary and workspace folders, and variables set to one), or
+    ``$(mktemp …)`` or ``$(git rev-parse --show-toplevel)``, the whole word, with only ``/name``
+    parts after it (no ``..``)."""
+    m = _KNOWN_VARIABLE.fullmatch(text)
+    if m:
+        return (m.group(1) or m.group(2)).lower() in safe_vars
+    m = _KNOWN_SUBSTITUTION.fullmatch(text)
+    return m is not None and ".." not in (m.group(1) or m.group(2))
+
+
+def _known_command_ends(words: list[Word], code: str) -> bool:
+    """Whether the command ``words`` that the lexer split off a ``$(`` is ``mktemp …`` or exactly
+    ``git rev-parse --show-toplevel``, and the text after it closes the ``)`` with only ``/name``
+    parts before the next separator."""
+    if not words:
+        return False
+    plain = _verb(words[0]) == "mktemp" and not any(".." in w for w in words)
+    exact = [str(w) for w in words] == ["git", "rev-parse", "--show-toplevel"]
+    return (plain or exact) and _KNOWN_AFTER.match(code, words[-1].end) is not None
+
+
+def _assignments(words: list[Word]) -> list[tuple[str, str]]:
+    """The variables a simple command sets: ``NAME=value`` words at its start (also after
+    ``export``) and PowerShell's ``$name = value`` and ``$env:name = value``."""
+    items = [w for w in words if w not in ("export", "local", "declare", "readonly")]
+    out = []
+    for w in items:
+        m = re.fullmatch(r"\$?(?:env:)?([A-Za-z_]\w*)\+?=(.*)", w, re.DOTALL)
+        if not m:
+            break
+        out.append((m.group(1), m.group(2)))
+    if not out and len(items) >= 3 and items[1] == "=":
+        m = re.fullmatch(r"\$(?:env:)?(\w+)", items[0])
+        if m:
+            out.append((m.group(1), str(items[2])))
+    return out
+
+
 def _walk_cds(
     segments: list[list[Word]], cwd: str, code: str, protected, powershell: bool = False
 ) -> tuple[list[str | None], list[str | None]]:
@@ -1114,32 +1168,33 @@ def _walk_cds(
     None: a folder that is unknown, because the target still holds a variable or a substitution
     (``cd $d``, ``` cd `echo ~` ```; unless it is one that holds a protected one by name:
     ``cd $APPDATA`` where the variable is not set here), or is ``-``, ``$OLDPWD`` or ``popd``.
+
+    A folder known not to be above a protected one is ``SAFE_FOLDER`` (``_known_folder_word``):
+    the shell's temporary and workspace variables, and ``$(mktemp -d)``, ``$(git rev-parse
+    --show-toplevel)`` and variables set to one, as the whole word with only ``/name`` parts
+    after it. It is by value: a variable the line sets to anything else (``TMPDIR=~``) is not
+    known from then on, and a variable the line sets is not read from the hook's environment.
     """
     current: str | None = cwd or os.getcwd()
     assigned = _assigned_names(code, segments)
     before: list[str | None] = []
     targets: list[str | None] = []
-    safe_vars = set(SAFE_FOLDER_VARS)  # also variables set from ``$(mktemp -d)`` and the like
+    safe_vars = set(SAFE_FOLDER_VARS)
     pending: list[str] = []  # variables set to a ``$(`` that the next command fills
     for si, words in enumerate(segments):
         before.append(current)
         nxt = next((s for s in segments[si + 1 :] if s), [])
-        nxt_verb = _verb(nxt[0]) if nxt else ""
-        nxt_safe = nxt_verb == "mktemp" or (nxt_verb == "git" and "rev-parse" in nxt[1:3])
-        for name in pending:
-            if words and (_verb(words[0]) == "mktemp" or "rev-parse" in words[:3]):
+        for name in pending:  # ``d=$(mktemp -d)``, split by the lexer at the ``$(``
+            if _known_command_ends(words, code):
                 safe_vars.add(name)
         pending = []
-        for w in words:  # ``d=$(mktemp -d)``, split by the lexer at the ``$(``
-            m = _ASSIGNMENT.fullmatch(w) if "=" in w else None
-            if m and m.group(2).endswith("$"):
-                pending.append(m.group(1).lower())
-            elif m and (
-                _SAFE_SUBSTITUTION.match(m.group(2))
-                or (v := re.match(r"\$\{?(\w+)\}?(?:/|$)", m.group(2))) is not None
-                and v.group(1).lower() in safe_vars
-            ):  # ``t=$TMPDIR/x``
-                safe_vars.add(m.group(1).lower())
+        for name, value in _assignments(words):
+            lname = name.lower()
+            safe_vars.discard(lname)
+            if value.endswith("$"):
+                pending.append(lname)
+            elif _known_folder_word(value, safe_vars):
+                safe_vars.add(lname)
         words = _strip_prefix(words, powershell)
         if not words:
             continue
@@ -1152,14 +1207,13 @@ def _walk_cds(
             continue
         args = [w for w in words[1:] if (w == "-" or not w.startswith("-")) and w.lower() != "/d"]
         raw = args[0] if args else "~"
-        target = _expand_env(protected._expand(raw), assigned)
+        names = {next(g for g in m.groups() if g).lower() for m in _ENV_REF.finditer(raw)}
+        # A variable set on this line is not the hook's environment's: left as written.
+        target = raw if names & assigned else _expand_env(protected._expand(raw), assigned)
         if re.fullmatch(r"[A-Za-z]:", target):
             target += "/"  # ``cd C:``: the drive's root here (and its own folder in cmd: close)
-        var = _VARIABLE.fullmatch(raw)
-        if (
-            _SAFE_SUBSTITUTION.match(raw)
-            or (var and (var.group(1) or var.group(2) or "").lower() in safe_vars)
-            or (raw.endswith("$") and nxt_safe)
+        if _known_folder_word(raw, safe_vars) or (
+            raw.endswith("$") and _known_command_ends(nxt, code)
         ):
             new = SAFE_FOLDER  # a temporary folder, or the repo: not the home folder
         elif raw == "-" or re.search(r"\$\{?(?:OLDPWD|PWD)\b|%CD%", raw, re.IGNORECASE):
@@ -1255,6 +1309,8 @@ WRAPPERS: dict[str, tuple[set[str], int]] = {
     "stdbuf": ({"-i", "-o", "-e"}, 0),
     "setsid": (set(), 0),
     "busybox": (set(), 0),
+    "call": (set(), 0),  # cmd's
+    "start": (set(), 0),
 }
 # What ``find -exec`` can run without it being a write.
 EXEC_READERS = {
@@ -1277,7 +1333,16 @@ SAFE_FOLDER_VARS = {
     "github_workspace",
     "claude_project_dir",
 }
-_SAFE_SUBSTITUTION = re.compile(r"^(?:\$\(|`)\s*(?:mktemp|git\s+rev-parse)\b")
+# What may follow a known folder: ``/name`` parts, never ``..`` (``$TMPDIR/../..`` is the home
+# folder's parent).
+_KNOWN_SUFFIX = r"((?:/(?!\.\.(?:/|$))[\w.-]+)*)/?"
+_KNOWN_VARIABLE = re.compile(r"(?:\$\{?(?:env:)?(\w+)\}?|%(\w+)%)" + _KNOWN_SUFFIX, re.IGNORECASE)
+_KNOWN_SUBSTITUTION = re.compile(
+    r"(?:\$\(\s*(mktemp\b[^()`]*|git\s+rev-parse\s+--show-toplevel)\s*\)"
+    r"|`\s*(mktemp\b[^()`$]*|git\s+rev-parse\s+--show-toplevel)\s*`)" + _KNOWN_SUFFIX,
+)
+# The same after the lexer split a ``$(`` off: what follows the command's last word.
+_KNOWN_AFTER = re.compile(r"\s*\)" + _KNOWN_SUFFIX + r"(?=[\s;&|)]|$)")
 _ASSIGNMENT = re.compile(r"([A-Za-z_]\w*)=(.*)", re.DOTALL)
 _VALUE_START = re.compile(r"[$~%@(\"'/\\]")  # a word that is a value, not a command
 SAFE_FOLDER = "/tmp/known-folder"  # stands for such a folder
@@ -1293,17 +1358,24 @@ def _unwrap(words: list[Word], powershell: bool) -> list[Word]:
         if not words:
             break
         verb = _verb(words[0])
-        if verb == "cmd":
+        if verb == "cmd":  # ``cmd /v:on /c …``: the switches up to ``/c`` or ``/k``
             i = 1
-            while i < len(words) and re.fullmatch(r"//?[A-Za-z]", words[i]):
+            while i < len(words) and re.fullmatch(r"//?[A-Za-z][\w:]*", words[i]):
                 i += 1
-            if i == 1:
+                if words[i - 1].lstrip("/").lower() in ("c", "k"):
+                    break
+            else:
                 break
             rest = words[i:]
             if len(rest) == 1 and re.search(r"\s", rest[0]):
-                words = [Word("eval"), rest[0]]  # ``cmd /c "rd /s /q %USERPROFILE%"``: a script
+                # ``cmd /c "rd /s /q C:\Users\x"``: a script, read from the source text, where
+                # the backslashes still are
+                words = [Word("cmd-script"), rest[0]]
                 break
             words = _strip_prefix(rest, powershell)
+            continue
+        if verb in ("not", "exist", "defined"):  # cmd's ``if [not] exist X command``
+            words = _strip_prefix(words[2 if verb != "not" else 1 :], powershell)
             continue
         spec = WRAPPERS.get(verb)
         if spec is None:
@@ -1317,6 +1389,8 @@ def _unwrap(words: list[Word], powershell: bool) -> list[Word]:
                 break
             if w.startswith("-") and len(w) > 1:
                 i += 2 if w in valued else 1
+            elif verb in ("start", "call") and re.fullmatch(r"//?[A-Za-z]\w*", w):
+                i += 1  # cmd's ``start /b``, ``start /wait``
             elif verb == "env" and re.fullmatch(r"[A-Za-z_]\w*=.*", w, re.DOTALL):
                 i += 1
             else:
@@ -1476,12 +1550,32 @@ def _pipeline_groups(segments: list[list[Word]], code: str) -> list[int]:
             if last is not None:
                 sep = code[last.end : s[0].start]
                 inside = depth > 0 or re.match(r"[^;&\n|(]*\(", sep) is not None
-                if not inside and not re.fullmatch(r"[\s})]*\|&?\s*|\s*\{\s*", sep):
+                if not inside and not re.fullmatch(r"[\s})\\`]*\|&?[\s\\`]*|\s*\{\s*", sep):
                     gid += 1
                 depth = max(0, depth + sep.count("(") - sep.count(")"))
             last = s[-1]
         groups.append(gid)
-    return groups
+    # A ``{ …; }`` and a ``while … done`` that a pipe goes on from (``{ ls ~; } | xargs rm``,
+    # ``ls ~ | while read f; do …; done | xargs rm``) are one pipeline with it, whatever is inside.
+    opened: list[int] = []
+    parent: dict[int, int] = {}
+
+    def find(g: int) -> int:
+        while g in parent:
+            g = parent[g]
+        return g
+
+    for i, s in enumerate(segments):
+        first = s[0] if s else ""
+        if first in ("{", "while", "until", "for"):
+            opened.append(i)
+        elif first in ("}", "done") and opened:
+            start = opened.pop()
+            if i + 1 < len(segments) and groups[i + 1] == groups[i]:  # a pipe goes on
+                for g in {groups[k] for k in range(start, i + 1)}:
+                    if find(g) != find(groups[i]):
+                        parent[find(g)] = find(groups[i])
+    return [find(g) for g in groups] if parent else groups
 
 
 def _body_after(segments: list[list[Word]], i: int, code: str) -> list[Word]:
@@ -1651,6 +1745,11 @@ def _segment_violation(
 
         script = re.sub(r"\"?\$\{?([0-9@*])\}?\"?", argument, script)
         return _script_violation(script, folder, protected, False, depth)
+    elif verb == "cmd-script":  # lexed as PowerShell: a backslash is no escape there
+        text = words[1].raw or str(words[1])
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+            text = text[1:-1]
+        return _script_violation(text, folder, protected, True, depth)
     elif verb == "eval" and args:
         return _script_violation(" ".join(map(str, args)), folder, protected, False, depth)
     elif verb in PS_SHELLS and args:
@@ -1736,6 +1835,12 @@ def _ancestor_violation(
             return found
         if verb in LISTERS and not any(not _CMD_SWITCH.fullmatch(a) for a in given):
             given = ["."]  # ``ls | xargs rm`` after ``cd ~``
+        if any(a[:3].lower() in ("-ov", "-ou") for a in stripped[1:]) and any(
+            _operand_ancestor(a, folder, protected, anc_vars, False) for a in given
+        ):  # ``gci ~ -OutVariable o``: what ``$o`` holds is what was listed
+            anc_vars.update(
+                v.lstrip("+").lower() for v in _option_value(stripped[1:], r"-ov|-outv\w*")
+            )
         if _VALUE_START.match(stripped[0]):  # a value piped in: ``$HOME | ri -r``
             given.append(str(stripped[0]))
         seen.setdefault(groups[si], []).extend((a, folder) for a in given)
@@ -1749,7 +1854,6 @@ def _note_assignment(words: list[Word], folder, protected, anc_vars: set[str], b
     if not any("=" in w for w in words) and words[:1] != ["for"]:
         return
     items = [w for w in words if w not in ("export", "local", "declare", "readonly")]
-    pairs = []
     if len(items) >= 4 and items[0] == "for" and items[2] == "in":  # ``for d in ~ /; do``
         values = [str(v) for v in items[3:] if v not in ("do", ";")]
         if any(_operand_ancestor(v, folder, protected, anc_vars) for v in values) or (
@@ -1757,18 +1861,20 @@ def _note_assignment(words: list[Word], folder, protected, anc_vars: set[str], b
         ):
             anc_vars.add(str(items[1]).lower())
         return
-    for w in items:
-        m = re.fullmatch(r"\$?(?:env:)?([A-Za-z_]\w*)\+?=(.*)", w, re.DOTALL)
-        if not m:
-            break
-        pairs.append((m.group(1), m.group(2)))
-    if not pairs and len(items) >= 3 and items[1] == "=":
-        m = re.fullmatch(r"\$(?:env:)?(\w+)", items[0])
-        if m:
-            pairs.append((m.group(1), str(items[2])))
-    for name, value in pairs:
-        if value and _operand_ancestor(value, folder, protected, anc_vars):
+    for name, value in _assignments(words):
+        if value and (
+            _operand_ancestor(value, folder, protected, anc_vars)
+            or (value.endswith("$") and body())  # ``x=$(ls ~)``
+        ):
             anc_vars.add(name.lower())
+    # PowerShell's ``$x = gci ~``: what the variable holds is what the lister listed.
+    lister = len(items) >= 4 and items[1] == "=" and _verb(items[2]) in LISTERS | {"gi", "get-item"}
+    if lister and any(
+        _operand_ancestor(str(a), folder, protected, anc_vars, False)
+        for a in items[3:]
+        if not a.startswith("-")
+    ):
+        anc_vars.add(str(items[0]).lstrip("$").removeprefix("env:").lower())
 
 
 def _repo_checkout(folder: str | None, protected) -> bool:
