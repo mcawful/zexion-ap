@@ -874,8 +874,8 @@ class ZexionWorld(World):
             )
             raise OptionError(
                 f"Zexion ({world.player_name}): {n} excluded {locations}, but only {have} filler "
-                f"items (Scrap, traps, Area Maps or Intel Chips) to put there, and the other "
-                f"players' filler does not make up the difference{why}: {fix}"
+                f"items (Scrap, traps, Area Maps, Intel Chips or Energy Shields) to put there, "
+                f"and the other players' filler does not make up the difference{why}: {fix}"
             )
 
     def write_spoiler_header(self, spoiler_handle: TextIO) -> None:

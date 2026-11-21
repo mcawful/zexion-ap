@@ -30,7 +30,7 @@ from collections.abc import Iterable
 
 from BaseClasses import Item, ItemClassification
 
-from .custom import AREA_MAP, KEY_CODES, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL
+from .custom import AREA_MAP, ENERGY_SHIELD, KEY_CODES, SCRAP_CHUNK, SCRAP_ENERGY, SCRAP_METAL
 from .logic import WEAPON_UPGRADES
 
 GAME = "Zexion"
@@ -106,9 +106,13 @@ PROGRESSION |= {27, 28, 29, 30, 33, 34, 36, 37} | UPGRADES
 # not worth an Area Map's hint (worlds/zexion/world.py).
 SUPPLIES = {0, 1, 2, 36, 37}
 # Intel Chips are filler like the Area Maps they replace, so excluded locations still have
-# filler.
+# filler. The Energy Shield is filler too: no rule reads it, and the OS Install Disks goal's
+# disks replace it last (world.py, DISC_REPLACES). Classified useful, it could go only where a
+# useful item may: with another player on minimal accessibility, whose unreachable locations
+# take only filler, a full accessibility player's disks ate the filler and left it, and the
+# Navcore, no place (docs/re/locations.md, "Where the world departs from the game").
 SCRAP = (SCRAP_METAL, SCRAP_ENERGY, SCRAP_CHUNK)  # the game's filler; the traps take its places
-FILLER = {*SCRAP, AREA_MAP, INTEL_CHIP}
+FILLER = {*SCRAP, AREA_MAP, INTEL_CHIP, ENERGY_SHIELD}
 DATA_DISC = 44  # the OS Install Disk (the game's Data Disc): progression, never balanced
 
 # What a Zexion trap lying in a Zexion world is shown as (the owner's choices, 2026-11-11): one of
