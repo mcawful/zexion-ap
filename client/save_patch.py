@@ -35,7 +35,6 @@ GUNS_FIRST = 10  # setting t10: the item redirects (docs/re/randocells.md)
 # The same places from the section's start, as the game holds it loaded (game.Game.rando_blob).
 TABLE_AT, START_AT, OPTIONS_AT = ITEM_TABLE - SECTION, START_RECORD - SECTION, OPTIONS - SECTION
 
-SAVE_ROOM = 0x22  # the value a fresh save's start cell holds
 TILES_X, TILES_Y = 14, 20  # tiles per map cell
 
 

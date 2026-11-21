@@ -44,6 +44,25 @@ def test_a_symbol_is_found_by_its_exact_name() -> None:
         image.symbol("PlaySound")
 
 
+def test_many_lookups_read_the_symbol_tables_once(monkeypatch) -> None:
+    # A build's configuration looks up dozens of symbols: the tables are read for the first alone.
+    image = elf.parse(elf_image())
+    reads: list[int] = []
+    real = elf.Image.symbols
+    monkeypatch.setattr(elf.Image, "symbols", lambda self: reads.append(1) or real(self))
+    for name in ("gGameState", "gCurrentSaveGame", "_Z10PlaySoundi", "gGameState"):
+        image.symbol(name)
+    assert len(reads) == 1
+
+
+def test_a_name_past_its_string_table_is_refused() -> None:
+    data = bytearray(elf_image())
+    table = elf.parse(bytes(data)).section(".symtab")
+    struct.pack_into("<I", data, table.offset + elf.SYMBOL_SIZE, 0x7FFF)  # the first symbol's name
+    with pytest.raises(elf.ELFError, match="names a string past its table"):
+        elf.parse(bytes(data)).symbol("gGameState")
+
+
 def test_an_address_is_named_by_the_function_holding_it() -> None:
     image = elf.parse(elf_image())
     symbol, offset = image.function_at(0x412340 + 0x20)

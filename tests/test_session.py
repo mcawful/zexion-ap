@@ -7,9 +7,9 @@ import logging
 import struct
 
 import pytest
-from fakes import CELLS, SECRET_CELLS, SECRET_LIST, plan, secret_plan, section
+from fakes import CELLS, SECRET_CELLS, SECRET_LIST, LinuxPm, plan, secret_plan, section
 
-from client import game, ids, native, offline, reconcile
+from client import game, ids, linux_helper, native, offline, reconcile
 from client import save_patch as sp
 from client import session as ss
 
@@ -495,6 +495,36 @@ def test_a_lost_reply_counts_the_held_traps_handed_over(with_helper) -> None:
     step = session.step(g, received, gap=0, senders=senders)
     assert isinstance(step.helper_error, native.ReplyLost)
     assert helper.popups() == ["popup 103 from Alice"] and session.held_traps == []
+
+
+@pytest.mark.parametrize(
+    ("error", "handed"),
+    [
+        (linux_helper.NoReply("the helper did not answer within 5 s"), 1),  # may have been applied
+        (linux_helper.ConnectionLost("the helper closed its socket"), 1),
+        (linux_helper.LinuxHelperError("connecting to the helper again failed"), 0),  # never sent
+        (linux_helper.LinuxHelperError("unexpected reply to apply: 'error x'"), 0),
+    ],
+    ids=["no reply", "connection lost", "never sent", "unexpected reply"],
+)
+def test_the_linux_helpers_errors_reach_the_step_as_they_are(setup, error, handed) -> None:
+    # No translation on the way (LinuxMod.apply used to turn a NoReply into native.ReplyLost, and
+    # the poll back again): the step counts a request that went out as handed over, never gives a
+    # popup twice, and gives nothing after any error.
+    session, g = setup
+    mod = linux_helper.LinuxMod(LinuxPm({"apply": error}))
+    session.announced_read = True
+    writes = []
+    real = g.set_item
+    g.set_item = lambda *a: (writes.append(a), real(*a))
+    session.step(g, [17], gap=0, senders=["Bob"], helper=mod)
+    step = session.step(g, [17], gap=0, senders=["Bob"], helper=mod)
+    assert step.helper_error is error
+    assert isinstance(step.helper_error, native.ReplyLost) is isinstance(
+        error, linux_helper.NoReply
+    )
+    assert step.granted == {} and writes == [] and g.inv[17] == 0
+    assert session.announced == handed
 
 
 def test_a_big_batch_goes_in_requests_under_the_pipes_limit(with_helper) -> None:

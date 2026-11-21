@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from functools import cached_property
 
 MAGIC = b"\x7fELF"
 ELFCLASS64 = 2
@@ -100,22 +101,31 @@ class Image:
                 raise ELFError(f"{section.name} names no string table")
             strings = self.sections[section.link]
             names = self.data[strings.offset : strings.offset + strings.size]
-            end = section.offset + section.size - section.size % SYMBOL_SIZE
-            for at in range(section.offset, end, SYMBOL_SIZE):
+            table_end = section.offset + section.size - section.size % SYMBOL_SIZE
+            for at in range(section.offset, table_end, SYMBOL_SIZE):
                 if at + SYMBOL_SIZE > len(self.data):
                     raise ELFError(f"{section.name} runs past the end of the file")
                 name_at, info, _other, shndx, value, size = struct.unpack_from(
                     "<IBBHQQ", self.data, at
                 )
-                end = names.find(b"\0", name_at)
-                name = names[name_at : end if end >= 0 else len(names)].decode("utf-8", "replace")
+                name = _string(names, name_at, section.name)
                 found.append(Symbol(name, value, size, info & 0xF, shndx != 0))
         return found
+
+    @cached_property
+    def _defined(self) -> dict[str, dict[tuple[int, int], Symbol]]:
+        """The defined symbols by name, each name's by (value, size): the tables are read once,
+        however many symbols are looked up (a build's configuration looks up dozens)."""
+        index: dict[str, dict[tuple[int, int], Symbol]] = {}
+        for sym in self.symbols():
+            if sym.defined:
+                index.setdefault(sym.name, {})[(sym.value, sym.size)] = sym
+        return index
 
     def symbol(self, name: str) -> Symbol:
         """The one defined symbol called ``name`` (a mangled name for C++). Raises when there is
         none, or more than one with different values."""
-        matches = {(s.value, s.size): s for s in self.symbols() if s.name == name and s.defined}
+        matches = self._defined.get(name)
         if not matches:
             raise ELFError(f"no symbol {name}")
         if len(matches) > 1:
@@ -233,7 +243,6 @@ def parse(data: bytes) -> Image:
         names = data[offset : offset + size]
     sections = []
     for name_at, stype, flags, addr, offset, size, link, entsize in raw:
-        end = names.find(b"\0", name_at)
-        name = names[name_at : end if end >= 0 else len(names)].decode("ascii", "replace")
+        name = _string(names, name_at, "the section names")
         sections.append(Section(name, stype, flags, addr, offset, size, link, entsize))
     return Image(kind, machine, entry, tuple(sections), data)

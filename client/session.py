@@ -362,7 +362,7 @@ class Session:
         # helper (give_through_helper); dropped with direct writes, as received traps are.
         self.held_traps: list[int] = []
         # Set by the poll while an old helper has refused to unload and none is attached since
-        # (ZexionContext.swap_pending): the traps received meanwhile join held_traps instead of
+        # (GameRun.swap_pending): the traps received meanwhile join held_traps instead of
         # being dropped with the direct writes, for the helper that replaces it.
         self.keep_traps = False
         # Whether this session has taken the server's record of the waiting held traps: only its

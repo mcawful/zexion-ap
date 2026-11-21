@@ -283,6 +283,13 @@ def parse_seed(blob: bytes) -> Seed:
     return Seed(cells, items)
 
 
+def on_linux(g: object) -> bool:
+    """Whether ``g``, the attached game, is the game's Linux build (``Game.platform``): the one
+    test of it the client makes. False for no game, and for the stand-ins of a test that have no
+    platform."""
+    return getattr(g, "platform", "windows") == "linux"
+
+
 # --- the running game ---------------------------------------------------------------------
 
 
@@ -296,7 +303,7 @@ class Game:
     rva: dict[str, int]
     pid: int
     build: Build
-    platform: str = "windows"  # "linux": the Linux build, through its helper
+    platform: str = "windows"  # "linux": the Linux build, through its helper (see on_linux)
     # On Linux: where the player state's pointer is and what it must hold (checked by state()),
     # and the targets docs/re/linux.md has only assumed, which nothing writes through.
     linux_player: tuple[int, int] | None = None

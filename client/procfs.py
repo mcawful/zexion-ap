@@ -30,6 +30,16 @@ class ProcessError(OSError):
     there is not known."""
 
 
+NSPID = re.compile(r"^NSpid:\s*(.*)$", re.MULTILINE)
+
+
+def namespace_pids(status: str) -> list[str]:
+    """The pids a process has in each namespace it is in, outermost first: the ``NSpid`` line of
+    its ``/proc/<pid>/status`` text. Empty on a kernel without the line."""
+    match = NSPID.search(status)
+    return match.group(1).split() if match else []
+
+
 WSL_ENV = ("WSL_DISTRO_NAME", "WSL_INTEROP")  # WSL sets them in its shells
 
 
@@ -60,8 +70,7 @@ def _blind_spot(proc: Path, root: Path, environ: Mapping[str, str] | None = None
         status = (proc / "self" / "status").read_text(errors="replace")
     except OSError as exc:
         return f"{proc / 'self' / 'status'} can't be read ({exc})"
-    nspid = re.search(r"^NSpid:\s*(.*)$", status, re.MULTILINE)
-    if nspid and len(nspid.group(1).split()) > 1:
+    if len(namespace_pids(status)) > 1:
         return "this runs in a process-id namespace of its own, which hides the game"
     if (root / ".flatpak-info").exists():
         return "this runs inside a Flatpak sandbox, which hides the game"
