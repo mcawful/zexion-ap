@@ -393,14 +393,15 @@ Committed under `.claude/`, so they apply to anyone working here:
 - `.claude/settings.json`: the hook `guard_protected.py` blocks writes into the game install,
   the save folder, Steam's cloud cache for the game and the mod's offline files
   (`%LOCALAPPDATA%\ZexionAP`, and Linux's) (rules: its docstring; cases:
-  `tests/test_guard_hook.py`). So does a command that names a folder above them (`~`,
-  `$APPDATA`, `%LOCALAPPDATA%`, `/`, a drive's root, Roaming, `.var`, Steam's own folders; `..` or a
-  last name that is only a wildcard up to one: `rm -rf ~`, `mv "$APPDATA" x`, `find ~ -delete`,
-  `gci $env:APPDATA -r | ri`), and one with a name pattern that may match the files in them
-  (`*.sav`, `Save*`, `*seed*`, `token`, a bare `*`: `find lab -name '*.sav' -delete` blocks, use
-  `rm` with the paths): both only when the command is not read-only, so `find "$APPDATA" -name x
-  -print` and `ls -R ~` pass (the guard's docstring has the false positives, such as `find ~
-  -exec cat {} +` and `cp -r ~ x`). The guard also reads Monitor's and the terminal tool's
+  `tests/test_guard_hook.py`). So does a command that deletes, moves out, changes or searches and
+  acts on a folder above them (`~`, `$APPDATA`, `%LOCALAPPDATA%`, `/`, a drive's root, Roaming,
+  `.var`, Steam's own folders; `..` or a last name that is only a wildcard up to one: `rm -rf ~`,
+  `mv "$APPDATA" x`, `find ~ -delete`, `gci $env:APPDATA -r | ri`, `cd ~ && rm -rf *`), and one
+  with a name pattern that may match the files in them (`*.sav`, `Save*`, `*seed*`, `token`, a
+  bare `*`: `find lab -name '*.sav' -delete` blocks, use `rm` with the paths). Reads, creating
+  files in such a folder and copying into it pass (`find "$APPDATA" -name x -print`, `ls -R ~`,
+  `cd ~ && git clone`, `cp a ~`); the guard's docstring lists what each verb does to count and
+  what it misses. The guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
   The hook has a 120 s timeout in `settings.json`, a backstop: a hook that times out lets the

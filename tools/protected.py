@@ -21,8 +21,8 @@ write the save folder only through ``save_lab.py install`` and ``restore``.
 A folder that holds one of them at any depth (Roaming, the home folder and what is above it, ``/``,
 a drive's root, Steam's own folders: ``holds_protected``) and a name pattern that may match the
 name of a file in one (``Save Game 1.sav``, ``token``, …: ``pattern_may_name_protected``) count
-for the hook too: deleting, moving or copying the first, or searching it and acting on what is
-found, reaches the folders.
+for the hook too: deleting the first, moving it out or changing it, or searching it and acting on
+what is found, reaches the folders (creating files in it, copying into it and reading it do not).
 
 Matching is by pattern rather than by this machine's paths, so the same rules hold on any PC,
 but for the home folder and the folders of the environment's variables (``APPDATA``, ``HOME``, …),
@@ -115,10 +115,19 @@ _ENV_SPELLINGS = [
 _TILDE = re.compile(r"(^|[\s\"'=])~(?=[/\\\s\"');&|]|$)")
 
 
+# ``${NAME:-x}``, ``${NAME%/}``, ``${NAME/a/b}``: a parameter expansion with an operator, read as
+# the variable itself.
+_PARAM_OPERATOR = re.compile(
+    r"\$\{(" + "|".join(re.escape(n) for n in _ENV_NAMES) + r")(?::?[-=+?]|[%#/^,@:])[^{}]*\}",
+    re.IGNORECASE,
+)
+
+
 def _expand(text: str) -> str:
     """Expand the env-var spellings of cmd, PowerShell and sh, and a leading ``~``."""
     if not re.search(r"[$%~]", text):
         return text
+    text = _PARAM_OPERATOR.sub(lambda m: "${" + m.group(1) + "}", text)
     for name, spellings in _ENV_SPELLINGS:
         value = os.environ.get(name)
         if value:
@@ -308,8 +317,11 @@ _ANCESTOR_TAILS: list[tuple[str, ...]] = [
     (".var", "app"),
     (".steam",),
     (".steam", "steam"),
+    (".steam", "root"),
+    (".steam", "debian-installation"),
     (".local", "share", "steam"),
     ("snap", "steam"),
+    ("snap", "steam", "common"),
     ("program files (x86)",),
     ("program files (x86)", "steam"),
 ]
@@ -330,6 +342,8 @@ def _drive_parts(path: str) -> tuple[list[str], bool]:
     absolute = normalize(path).startswith("/")
     if absolute and parts[:1] == ["?"]:
         parts = parts[1:]
+    while absolute and parts[:1] == [".."]:
+        parts = parts[1:]  # ``/..`` is ``/``
     if absolute and len(parts) > 1 and parts[0] in ("mnt", "cygdrive") and len(parts[1]) == 1:
         parts = parts[1:]
     if absolute and parts and re.fullmatch(r"[a-z]", parts[0]):
@@ -347,6 +361,12 @@ def _ancestor_chains() -> list[list[str]]:
         parts, absolute = _drive_parts(value) if value else ([], False)
         if absolute and parts and not any(re.search(r"[*?\[{$%~]", p) for p in parts):
             chains.append(parts)
+    # ``~/snap`` holds Snap Steam's data; a folder named ``snap`` elsewhere does not count.
+    home = os.path.expanduser("~")
+    for value in (os.environ.get("HOME") or "", os.environ.get("USERPROFILE") or "", home):
+        parts, absolute = _drive_parts(value) if value else ([], False)
+        if absolute and parts and not any(re.search(r"[*?\[{$%~]", p) for p in parts):
+            chains.append([*parts, "snap"])
     return chains
 
 
@@ -381,6 +401,8 @@ def is_ancestor_folder(path: str) -> bool:
     leads to is not followed.
     """
     raw = [p for p in normalize(path).split("/") if p not in ("", ".")]
+    if len(raw) > 1 and "*" in raw[-1] and not re.search(r"[a-z0-9_]", _CLASS.sub("?", raw[-1])):
+        raw.pop()  # ``$APPDATA/../*``: any folder in it
     if raw and _is_ancestor_token(raw[0]) and all(p == ".." for p in raw[1:]):
         return True  # ``$APPDATA/..``: the variable, then folders up
     parts, absolute = _drive_parts(path)
