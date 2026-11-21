@@ -49,6 +49,13 @@ def _ptrace_scope() -> int:
 
 
 SELF_CONFIG = {"ZAP_TEST_NO_SELF_CONFIG": "0"}
+SELF = "self-configured"  # a `game` parameter: the hooktest helper, configuring itself as released
+# The tests of a client's attach run both ways: from a helper that has not configured (the start
+# the test build keeps by default) and from one that configured itself, as the release's does at
+# every start, which a client's `config` then takes over from.
+BOTH_WAYS = pytest.mark.parametrize(
+    "game", [HOOKTEST, SELF], indirect=True, ids=["unconfigured", "self-configured"]
+)
 
 
 class Game:
@@ -74,6 +81,7 @@ class Game:
         }
         env.pop("ZEXION_SAVE_DIR", None)
         env.update(env_more)
+        self.self_configured = env["ZAP_TEST_NO_SELF_CONFIG"] != "1"  # it configures itself
         self.proc = subprocess.Popen(
             [str(GAME)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
@@ -122,7 +130,10 @@ class Game:
 
 @pytest.fixture
 def game(request, tmp_path):
-    started = Game(request.param, tmp_path / "data")
+    if request.param == SELF:
+        started = Game(HOOKTEST, tmp_path / "data", **SELF_CONFIG)
+    else:
+        started = Game(request.param, tmp_path / "data")
     yield started
     if started.proc.poll() is None:
         started.proc.kill()
@@ -957,7 +968,7 @@ def test_a_config_outside_the_games_data_or_code_is_refused(game: Game) -> None:
         assert ask(sock, PLAN) == "refused not configured"
 
 
-@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+@BOTH_WAYS
 def test_a_client_that_goes_takes_its_plan_with_it(game: Game) -> None:
     at = config_addresses()
     with game.connect() as sock:
@@ -982,12 +993,15 @@ def test_a_helper_of_another_version_is_not_used(game: Game, monkeypatch) -> Non
         pass
 
 
-@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+@BOTH_WAYS
 def test_an_apply_gives_the_items_and_shows_their_popup(game: Game) -> None:
     at = config_addresses()
     batch = "apply\ncas 3 0 1\npopup 3 from Tester"
     with game.connect() as sock:
-        assert ask(sock, batch) == "refused not configured"
+        if game.self_configured:  # the client attaches to a helper that configured itself
+            assert wait_for(sock, "assists free", lambda r: r == "free") == "free"
+        else:
+            assert ask(sock, batch) == "refused not configured"
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
         assert ask(sock, "apply\ncas 3 1 2") == "refused item 3 holds 0"  # nothing written
@@ -1042,7 +1056,7 @@ def test_in_a_translation_a_popup_in_pixel_text_is_not_left_hidden(game: Game) -
         assert wait_for(sock, f"read {has_text:#x} 1", lambda r: r == "data \x00") == "data \x00"
 
 
-@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
+@BOTH_WAYS
 def test_labels_name_the_stand_ins_and_size_the_popup_until_the_client_goes(game: Game) -> None:
     from client import aplabels
 
@@ -1051,7 +1065,10 @@ def test_labels_name_the_stand_ins_and_size_the_popup_until_the_client_goes(game
     width = stand_in("zap_pickup") + 1  # the immediate of its mov esi, 24
     labels = aplabels.labels_request({(3, 2): "Hookshot\nfor Alice"})  # the player's: row 2
     with game.connect() as sock:
-        assert ask(sock, labels) == "refused not configured"
+        if game.self_configured:  # the client attaches to a helper that configured itself
+            assert wait_for(sock, "assists free", lambda r: r == "free") == "free"
+        else:
+            assert ask(sock, labels) == "refused not configured"
         config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
         assert ask(sock, config) == "ok"
         assert ask(sock, labels) == "labeled 1"
@@ -1470,7 +1487,8 @@ def test_the_title_lines_wait_for_the_title(game: Game) -> None:
 def test_a_start_with_no_seed_file_and_no_client_configures_itself(tmp_path: Path) -> None:
     # A machine no client has run on (no ZexionAP folder, no seed file, no copy in the save folder):
     # the helper configures itself from the game's symbols at the first frames all the same, as the
-    # Windows helper does from its scan, so the title's lines and the text window's repair run.
+    # Windows helper does from its scan (what runs once configured, the title's lines among it, is
+    # the stand-in's no more than the other tests here: the stand-in has no title to show).
     data = tmp_path / "data"
     started = Game(HOOKTEST, data, **SELF_CONFIG)
     try:
@@ -1478,23 +1496,35 @@ def test_a_start_with_no_seed_file_and_no_client_configures_itself(tmp_path: Pat
         with started.connect() as sock:  # the token's folder is the only thing there
             seeds = started.offline / "seeds"
             assert not seeds.exists() or not list(seeds.iterdir())  # no seed file to work from
-            assert wait_for(sock, "assists free", lambda r: r == "free") == "free"  # configured
-            assert (
-                ask(sock, f"write {at['save_loaded']:#x} ff") == "written 1"
-            )  # no save: the title
+            # Configured (a request that needs it is served, not refused) with no client config.
+            assert wait_for(sock, "assists free", lambda r: r == "free") == "free"
+            assert ask(sock, "intel on") == "intel on"
+            # A save slot of the game in use, and the game's save folder there: the slots'
+            # seeds are published at a frame and the copy thread looks (every 250 ms), but with
+            # no seed file for the slot's seed there is nothing to copy.
+            started.save.mkdir(parents=True)
+            (started.save / "Save Game 1.sav").write_bytes(b"SAVE")
+            assert ask(sock, f"write {at['slot_array'] + 0x9400:#x} 0100") == "written 2"
             frames = int(ask(sock, "ping").split("frames=")[1])
-            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 20)
-            # The title watch runs (the stand-in's title layer is empty, so nothing is made).
-            assert ask(sock, "title_status") == "0"
-            assert ask(sock, "intel on") == "intel on"  # a request that needs a configuration
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 60)
+            time.sleep(1.0)  # past the next publication and two looks of the copy thread
+            assert sorted(p.name for p in started.save.iterdir()) == ["Save Game 1.sav"]
+            # The slot was seen all the same: a seed file for its seed (the all-zeros one, as in
+            # the copy's own test) is copied at once, by the thread that found nothing before.
+            from client import offline
+
+            text = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None)
+            name = offline.seed_file_name("S", 0, 1)
+            assert ask(sock, offline.put_request("seed", text, name)) == "stored"
+            copy = started.save / f"ZexionAP-seed-{name}.sav"
+            assert wait_until(copy.exists), "the slot was not seen: the check above proved nothing"
             # A client's config still takes over, with the addresses the helper has.
             config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
             assert ask(sock, config) == "ok"
     finally:
         _, _, err = started.stop()
-    assert "configured from the game's symbols, no client, no seed file read yet" in err
+    assert "configured from the game's symbols, no client, no seed file taken yet" in err
     assert "not configured with no client" not in err
-    assert not started.save.exists()  # no copy written: no save slot uses a seed
 
 
 def test_a_plain_randomizer_save_is_left_alone_by_a_helper_with_no_seed_file(

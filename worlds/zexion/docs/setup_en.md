@@ -118,11 +118,12 @@ Zexion's Linux version, which Steam runs on Linux and the Steam Deck, takes the 
    the client as your own user, not inside Steam (not as a non-Steam game).
 
 On the Steam Deck, play in **Desktop Mode**, where the Launcher and the client run next to the
-game. When the mod is in, the title screen is meant to show ARCHIPELAGO MOD and START THE AP
-CLIENT TO PLAY A SEED the first time Zexion starts, as on Windows, with no client having
-connected (not yet seen on Linux from a first start: if it doesn't, connect the client once and
-start Zexion again). If the client says "Can't reach the running game", check the launch
-option and that `libzexion_ap.so` is in the folder it names (Troubleshooting, below).
+game. When the mod is in, Zexion's native Linux version's title screen is meant to show
+ARCHIPELAGO MOD and START THE AP CLIENT TO PLAY A SEED the first time it starts, as on Windows,
+with no client having connected (not yet seen on Linux from a first start: if it doesn't, it
+shows once the client has connected; if it still doesn't, the mod isn't loaded: check the launch
+option and that `libzexion_ap.so` is in the folder it names (Troubleshooting, below)). The
+client's "Can't reach the running game" has the same causes.
 
 The mod's small files for playing without the client are in `~/.local/share/ZexionAP` (with
 Flathub's Steam, usually `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP`). Playing

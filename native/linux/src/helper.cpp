@@ -923,9 +923,9 @@ void note_put_seed(zap::OfflineSeed seed, bool kept) {
 // From the first frames, whether or not any seed file has been read (a game with none has no AP
 // save: nothing is dressed, no Feats are held, and the title's lines and the text window's repair
 // run, as on Windows with no client), and only once the game's player pointer reads where the
-// config's player state is (tried again each frame until then). Until a seed file is read, the
-// stderr line says so.
-bool g_seed_files = false;  // a seed file has been read (the stderr line only)
+// config's player state is (tried again each frame until then). The stderr line says when no seed
+// file had been taken by that frame (the serving thread's read at start may not be, yet).
+bool g_seed_files = false;  // a seed file has been taken (the stderr line only)
 #ifdef ZAP_HOOKTEST
 // Tests only (ZAP_TEST_NO_SELF_CONFIG=1, read in the constructor): the stand-in game starts
 // unconfigured, for the tests of a client's `config` and of the requests refused before it.
@@ -950,7 +950,7 @@ void configure_self() {
     if (why.empty()) {
         install_config(found, false);
         std::fprintf(stderr, "zexion-ap %s: configured from the game's symbols, no client%s\n",
-                     kVersion, g_seed_files ? "" : ", no seed file read yet");
+                     kVersion, g_seed_files ? "" : ", no seed file taken yet");
     } else {
         failed = true;  // the same symbols would fail the same: not tried again
         std::fprintf(stderr, "zexion-ap %s: not configured with no client: %s\n", kVersion,
