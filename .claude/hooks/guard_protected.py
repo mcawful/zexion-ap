@@ -1146,7 +1146,12 @@ def _assignments(words: list[Word]) -> list[tuple[str, str]]:
 
 
 def _walk_cds(
-    segments: list[list[Word]], cwd: str, code: str, protected, powershell: bool = False
+    segments: list[list[Word]],
+    cwd: str,
+    code: str,
+    protected,
+    powershell: bool = False,
+    assigned: set[str] | None = None,
 ) -> tuple[list[str | None], list[str | None]]:
     """The folder each simple command runs in, and the folders the command's ``cd``s go to.
 
@@ -1161,7 +1166,8 @@ def _walk_cds(
     unknown one: a variable may be empty, and ``cd`` with none goes home.
     """
     current: str | None = cwd or os.getcwd()
-    assigned = _assigned_names(code, segments)
+    if assigned is None:
+        assigned = _assigned_names(code, segments)
     before: list[str | None] = []
     targets: list[str | None] = []
     for words in segments:
@@ -1194,11 +1200,6 @@ def _walk_cds(
         targets.append(new)
         current = new
     return before, targets
-
-
-def _cd_targets(segments: list[list[Word]], cwd: str, code: str, protected) -> list[str | None]:
-    """The folders the command's ``cd``s go to (``_walk_cds``)."""
-    return _walk_cds(segments, cwd, code, protected)[1]
 
 
 def _folder_is_suspect(folder: str | None, protected) -> bool:
@@ -1459,11 +1460,10 @@ def _find_writes(exprs: list[Word]) -> bool:
     ``-exec`` of anything but a reader (``EXEC_READERS``)."""
     for i, a in enumerate(exprs):
         low = a.lower()
-        if low in ("-delete", "-fprint", "-fprint0", "-fprintf", "-fls", "-ok", "-okdir"):
-            return True
-        if low in ("-exec", "-execdir") and _verb(
-            exprs[i + 1] if i + 1 < len(exprs) else ""
-        ) not in (EXEC_READERS):
+        if low in ("-exec", "-execdir"):
+            if _verb(exprs[i + 1] if i + 1 < len(exprs) else "") not in EXEC_READERS:
+                return True
+        elif low in FIND_WRITE_FLAGS:
             return True
     return False
 
@@ -1735,6 +1735,7 @@ def _ancestor_violation(
     powershell: bool,
     code: str,
     depth: int = 0,
+    before: list[str | None] | None = None,
 ) -> str | None:
     """A reason when a simple command of the line deletes, moves out, changes or searches-and-acts
     on a folder above a protected one at any depth (``~``, Roaming, ``/``, a drive's root: the
@@ -1747,7 +1748,8 @@ def _ancestor_violation(
     folder, as ``H=~`` does), not a command before a ``;`` or ``&&``. A variable set on the line
     to such a folder (``H=~; rm -rf "$H"``, ``for d in ~ /; do …``) is read as the folder.
     Each command's arguments are read once, so the time is linear in the line."""
-    before, _ = _walk_cds(segments, start, code, protected, powershell)
+    if before is None:
+        before, _ = _walk_cds(segments, start, code, protected, powershell)
     groups = _pipeline_groups(segments, code)
     anc_vars: set[str] = set()
     seen: dict[int, list[tuple[str, str | None]]] = {}  # per pipeline: what its commands were given
@@ -2127,8 +2129,10 @@ def _substitutions_only_read(code: str, powershell: bool) -> bool:
     return "$(" not in rest and (powershell or "`" not in rest)
 
 
-def _may_reach_protected(text, words, targets, folders, protected) -> bool:
-    """``folders``: where the command runs (the ``cwd``) and its ``cd`` targets."""
+def _may_reach_protected(text, words, targets, folders, protected, unknown_cd: bool) -> bool:
+    """``folders``: where the command runs (the ``cwd``) and its ``cd`` targets. After a ``cd``
+    to a folder that is unknown (``unknown_cd``), a ``..`` may lead anywhere: a word that goes up
+    and then names a protected folder (``a/../../ZexionAP/x``) may reach it."""
     every = list(dict.fromkeys(words + targets))  # a word again is not read again
     links = any(w.lower() in LINK_WORDS for w in words)
     return (
@@ -2142,6 +2146,7 @@ def _may_reach_protected(text, words, targets, folders, protected) -> bool:
             _reaches_protected(w, folders, protected) or _names_parent(w, folders, protected)
             for w in every[:64]
         )
+        or (unknown_cd and any(_goes_up_to_protected(str(w), protected) for w in every))
     )
 
 
@@ -2171,7 +2176,7 @@ def _command_assigns(words: list[Word]) -> set[str]:
 
 def _assigned_names(code: str, segments: list[list[Word]]) -> set[str]:
     """Variables the command sets itself, which the hook's environment says nothing about."""
-    names = re.findall(r"(?:^|[\s;&|(])(?:export\s+|local\s+)?([A-Za-z_]\w*)\+?=", code)
+    names = re.findall(r"(?:^|[\s;&|(])([A-Za-z_]\w*)\+?=", code)
     names += re.findall(r"\bfor\s+([A-Za-z_]\w*)\s+in\b", code)
     names += re.findall(
         r"\$(?:(?:global|script|local|private|env):)?(\w+)\s*(?:[-+*/%]|\?\?)?=(?!=)", code, re.I
@@ -2393,25 +2398,20 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
     unique = {str(w) for w in words}  # message text is read as no path
     work = sum(_work(w) for w in unique) + 8 * len({str(t) for t in targets})
     over = len(segments) > MAX_SEGMENTS or work > MAX_WORK
-    cds = [] if over else _walk_cds(segments, cwd, code, protected, powershell)[1]
+    assigned: set[str] = set() if over else _assigned_names(code, segments)  # unread when over
+    before, cds = ([], []) if over else _walk_cds(
+        segments, cwd, code, protected, powershell, assigned
+    )
     distinct = list(dict.fromkeys(cds))  # the same folder again is not read again
     over = over or len(distinct) > MAX_FOLDERS
     folders = ([cwd] if cwd else []) + distinct
+    unknown_cd = None in cds
     kept = [[w for w in s if id(w) not in text_ids] for s in segments]
     above = None
     if over:  # not read word by word: taken to reach a protected folder, as far as it goes
         by_path, by_name = True, False
     else:
-        by_path = _may_reach_protected(text, words, targets, folders, protected)
-        # After a ``cd`` to a folder that is unknown, a ``..`` may lead anywhere: a word that goes
-        # up and then names a protected folder (``a/../../ZexionAP/x``) may reach it.
-        unknown_cd = None in cds
-        by_path = by_path or (
-            unknown_cd
-            and any(
-                _goes_up_to_protected(str(w), protected) for w in dict.fromkeys(words + targets)
-            )
-        )
+        by_path = _may_reach_protected(text, words, targets, folders, protected, unknown_cd)
         # A redirect's target is read as an argument is: ``> "$(find ~ -name ZexionAP)/x"``.
         by_name = _selects_protected_name(
             kept + [[t] for t in targets], protected, powershell, text=text
@@ -2419,7 +2419,7 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
         # A command that deletes, moves out, changes or searches-and-acts on a folder above a
         # protected one (``~``, ``"$APPDATA"``, ``/``), where it runs or where its operand is.
         above = _ancestor_violation(
-            segments, cwd or os.getcwd(), text_ids, protected, powershell, code
+            segments, cwd or os.getcwd(), text_ids, protected, powershell, code, before=before
         )
     if not (by_path or by_name or above):
         return None
@@ -2451,7 +2451,6 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
     if powershell and (call := _ps_calls_block(code)):
         return block(f"A method or .NET call next to a protected path: {call}")
 
-    assigned = _assigned_names(code, segments)
     for target in targets:
         if target.startswith("&") or target.lower() in HARMLESS_TARGETS:
             continue
@@ -2466,7 +2465,7 @@ def _check(tool_name: str, tool_input: dict, protected, session_cwd: str):
         if (
             protected.is_protected_path(expanded)  # also by its words: Gallant*, GALLAN~1
             or _reaches_protected(expanded, folders, protected)
-            or (None in cds and _goes_up_to_protected(str(target), protected))
+            or (unknown_cd and _goes_up_to_protected(str(target), protected))
             or _DYNAMIC_TARGET.search(expanded)
             or "(" in target.bare  # PowerShell's ``> (expr)``; one in quotes is a name
         ):
