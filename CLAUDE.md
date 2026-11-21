@@ -130,7 +130,8 @@ helper also built and tested in the Steam Runtime's SDK (`native-linux-runtime`,
 (`native-linux-runtime-check`, "Linux helper (Steam Runtime) loads": `tools/build_apworld.py
 --check-linux-helper`, then `tests/test_native_linux.py` and
 `tests/test_native_linux_init_order.py` against that build), and a dry run of the release's build
-with it (`release-dry-run`, "release build, dry run"). A pull request into `main` also runs the release gate
+with it (`release-dry-run`, "release build, dry run", which keeps what it built as the
+`release-dry-run` artifact for 7 days). A pull request into `main` also runs the release gate
 (`.github/workflows/release-gate.yml`).
 `/preflight` runs the four locally; the fourth needs `.ap/`.
 
@@ -219,7 +220,7 @@ game or save folders.
 | `gen_world_data.py [--backup FOLDER]` | regenerate `worlds/zexion/data.py` (Easy's and Standard's fresh saves come from a `lab/backups/` folder, `--backup`) | no |
 | `gen_native_patterns.py [--check]` | regenerate `native/src/findaddr_patterns.h` from `client/patterns.py` (after any change to it) | no |
 | `gen_sample_yamls.py` | regenerate `samples/` (needs `.ap/`) | no |
-| `build_apworld.py` | a release into `dist/` | no |
+| `build_apworld.py` | a release into `dist/`: the apworld and an archive for each system | no |
 | `release_check.py [--base REF] [--above TAG]` | the release version; fails unless above `TAG` and the version at git `REF`, and its notes are written | no |
 | `release_notes.py [VERSION] [--previous TAG] [--notes FILE] [--out FILE]` | the release's message, to check before it is published | no |
 
@@ -237,17 +238,26 @@ those folders.
 
 ## Releases and versions
 
-`tools/build_apworld.py` writes into `dist/`: `zexion.apworld` (the world without its tests, with
-`client` as `worlds.zexion.client`), `zexion_ap.dll`, `version.dll`, `libzexion_ap.so` (the Linux
-helper, as the release workflow builds it in the Steam Runtime's SDK), and the player guides
-`zexion-setup-guide.md` and `zexion-game-page.md` (copies of `worlds/zexion/docs/setup_en.md` and
-`en_Zexion.md`, which name each other by those names), and the sample YAMLs from `samples/`, one
-per mode. It packs only git-tracked files and refuses missing, stale or mismatched DLLs or Linux
+`tools/build_apworld.py` writes the release's three files into `dist/`: `zexion.apworld` (the
+world without its tests, with `client` as `worlds.zexion.client`), on its own for anyone who needs
+only the world, and an archive for each system, `zexion-ap-<version>-windows.zip` and
+`zexion-ap-<version>-linux.tar.gz` (Linux and the Steam Deck). Each unpacks into a folder of its
+own name and holds `zexion.apworld`, the mod for that system (`zexion_ap.dll` and `version.dll`, or
+`libzexion_ap.so`, the Linux helper as the release workflow builds it in the Steam Runtime's SDK,
+marked executable in the tarball), the player guides `zexion-setup-guide.md` and
+`zexion-game-page.md` (copies of `worlds/zexion/docs/setup_en.md` and `en_Zexion.md`, which name
+each other by those names), the sample YAMLs from `samples/`, one per mode, and a `README.md`
+made at build time from the setup guide's section for that system ("Install", or "Linux and Steam
+Deck"), never kept by hand. It makes and reads back each archive before it writes anything, dates
+every file by `SOURCE_DATE_EPOCH` or else the commit's time (two builds of one commit are the
+same bytes), and refuses an `--out` holding any other file. It packs only git-tracked
+files and refuses missing, stale or mismatched DLLs or Linux
 helper, a Linux helper that would not load in the Steam Runtime (a glibc symbol version newer
 than its 2.31, an unnumbered one such as `GLIBC_PRIVATE`, or a version of any library but glibc's:
 `libc`, `libm`, `ld-linux`, and `libdl`, `libpthread` and `librt`, which 2.31 keeps out of `libc`;
-so no libstdc++, whose runtime is linked in), a mismatched `world_version`, and samples that are
-missing, untracked or for another version (its docstring): rebuild `native/` first.
+so no libstdc++, whose runtime is linked in), a mismatched `world_version`, samples that are
+missing, untracked or for another version, and a setup guide without a README's section (its
+docstring): rebuild `native/` first.
 `--check-linux-helper PATH` checks one Linux helper alone, as the build would, and builds nothing.
 Run locally, the builder needs a Linux helper it accepts: Windows can't build one, and a build on
 a newer distribution is refused when it asks for a newer glibc (one on glibc 2.44 asked for 2.38),
@@ -337,7 +347,8 @@ rebuild 1.0.0's published message (the later ones carry an install guide that ha
   `worlds/zexion/test/test_samples.py` fails while one is out of date (after a change to the
   options, their descriptions or the version: run the tool again).
 - `tools/`: RE and save tooling, and the release builder and its checks. `tools/protected.py`
-  defines the protected folders (for the tools and the write guard) and `append_log`.
+  defines the protected folders (for the tools and the write guard) and `append_log`;
+  `tools/versions.py` reads the release version and the versions the release tools are given.
 - `docs/re/`: the reverse-engineering record.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan, a
