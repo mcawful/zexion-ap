@@ -406,7 +406,16 @@ DWORD WINAPI copy_thread(void*) {
 
 // Starts the copy thread (the helper's start, and again after a refused unload stopped it).
 void start_copy_thread() {
-    if (g_copy_thread != nullptr) return;
+    if (g_copy_thread != nullptr) {
+        // One that is still running is the one to keep. One that is gone (a stop that timed out and
+        // was not taken back, or one that ended on its own) leaves its handles: closed and cleared,
+        // so a new thread starts in its place, not none ever again.
+        if (WaitForSingleObject(g_copy_thread, 0) != WAIT_OBJECT_0) return;
+        CloseHandle(g_copy_thread);
+        CloseHandle(g_copy_wake);
+        g_copy_thread = nullptr;
+        g_copy_wake = nullptr;
+    }
     g_copy_stop.store(false);
     g_copy_wake = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (g_copy_wake == nullptr) return;
@@ -420,14 +429,18 @@ void start_copy_thread() {
 // Stops the copy thread and waits for it, at most `milliseconds`: true if it is gone (or there was
 // none). It may be inside a file call that does not return (an antivirus filter, a cloud
 // placeholder on the save folder), and the DLL must not be freed under it: on false it is asked
-// to go on as before (it was not stopped), and the caller does not unload.
-bool stop_copy_thread(DWORD milliseconds) {
+// to go on as before (it was not stopped), and the caller does not unload. With `resume` false (the
+// helper's last wait, which is not followed by any unload) the stop stays asked for: the thread
+// ends when its call returns, and the DLL, which stays loaded, is never freed under it.
+bool stop_copy_thread(DWORD milliseconds, bool resume = true) {
     if (g_copy_thread == nullptr) return true;
     g_copy_stop.store(true);
     SetEvent(g_copy_wake);
     if (WaitForSingleObject(g_copy_thread, milliseconds) != WAIT_OBJECT_0) {
-        g_copy_stop.store(false);
-        ResetEvent(g_copy_wake);
+        if (resume) {
+            g_copy_stop.store(false);
+            ResetEvent(g_copy_wake);
+        }
         // It may have seen the stop just before: then it is gone, and the caller may go on.
         if (WaitForSingleObject(g_copy_thread, 0) != WAIT_OBJECT_0) return false;
     }
@@ -438,7 +451,10 @@ bool stop_copy_thread(DWORD milliseconds) {
     return true;
 }
 
-constexpr DWORD kCopyStopMs = 5000;  // how long an unload waits for the copy thread
+// How long an unload waits for the copy thread: well under the 2 s the client waits for the
+// unload's reply (client/native.py, REPLY_SECONDS), or its refusal ("the copy thread is busy")
+// would come after the client gave up on the request. An idle thread stops at once (its event).
+constexpr DWORD kCopyStopMs = 1000;
 
 // Pipe thread: a seed file a client has just put, for the next frame to know (take_offline).
 void note_put_seed(zap::OfflineSeed seed) {
@@ -843,7 +859,7 @@ DWORD WINAPI helper_thread(void*) {
         }
         // Normally stopped by the unload request already. If it is stuck (a file call that does not
         // return) the DLL stays loaded, as when the hook was replaced: never freed under a thread.
-        if (!stop_copy_thread(kCopyStopMs)) return 0;
+        if (!stop_copy_thread(kCopyStopMs, false)) return 0;
         wait_until_no_call_inside();
         while (g_in_callback.load() != 0) Sleep(1);
     } catch (...) {

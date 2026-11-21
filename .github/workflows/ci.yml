@@ -47,6 +47,9 @@ jobs:
   native:
     name: native helper (windows-latest)
     runs-on: windows-latest
+    # The release dry run at the end takes the Linux helper from that job's artifact, as release.yml
+    # takes it from its own linux-helper job.
+    needs: native-linux-runtime
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -69,6 +72,17 @@ jobs:
         env:
           ZEXION_REQUIRE: helper
         run: python -m pytest tests/test_native.py -v
+      # The release's build as release.yml does it: the Linux helper of the Steam Runtime build,
+      # downloaded as an artifact (made by an earlier job: the file's age, which the builder checks
+      # against native/'s sources, is the download's), with the DLLs just built, into a scratch
+      # folder. A release that would refuse its own artifact fails here, not at the release.
+      - uses: actions/download-artifact@v4
+        with:
+          name: libzexion_ap-runtime
+          path: native/build
+      - name: Release build (dry run)
+        shell: bash
+        run: python tools/build_apworld.py --out "$RUNNER_TEMP/dist"
 
   native-linux:
     name: native helper (ubuntu-latest)
@@ -91,7 +105,7 @@ jobs:
       - name: Preload test
         env:
           ZEXION_REQUIRE: helper
-        run: python -m pytest tests/test_native_linux.py -v
+        run: python -m pytest tests/test_native_linux.py tests/test_native_linux_init_order.py -v
 
   # The Linux helper as a release builds it (release.yml): in the Steam Runtime's SDK, sniper, at
   # a pinned snapshot (by tag and digest), the runtime the game asks Steam for, with glibc 2.31,
@@ -117,13 +131,23 @@ jobs:
           if-no-files-found: error
 
   # The release's own check of that build (tools/build_apworld.py, --check-linux-helper): its
-  # version, glibc 2.31 at most, numbered glibc versions only, no library but glibc's.
+  # version, glibc 2.31 at most, numbered glibc versions only, no library but glibc's. Then the file
+  # that ships, loaded: the stand-in game and the test helper are built here as native-linux builds
+  # them, the downloaded Steam Runtime build takes the place of that job's own libzexion_ap.so, and
+  # tests/test_native_linux.py preloads it into the stand-in (it does nothing in another program,
+  # exports only the calls it stands in for) and tests/test_native_linux_init_order.py reads the
+  # order of its own initializers (round 7's LM1: the Steam Runtime job ran only ctest, which loads
+  # none of it).
   native-linux-runtime-check:
     name: Linux helper (Steam Runtime) loads
     runs-on: ubuntu-latest
     needs: native-linux-runtime
     steps:
       - uses: actions/checkout@v7
+      - name: Build the stand-in game and the test helper
+        run: |
+          cmake -S native -B native/build
+          cmake --build native/build -j --target zap_fake_game zap_sdl_stub zap_swap_wrapper zexion_ap_hooktest
       - uses: actions/download-artifact@v4
         with:
           name: libzexion_ap-runtime
@@ -134,6 +158,12 @@ jobs:
           activate-environment: true
       - name: Check
         run: python tools/build_apworld.py --check-linux-helper native/build/libzexion_ap.so
+      - name: Install
+        run: uv pip install "$(grep -o '^pytest==[^ ]*' requirements-dev.txt)"
+      - name: Preload test with the helper that ships
+        env:
+          ZEXION_REQUIRE: helper
+        run: python -m pytest tests/test_native_linux.py tests/test_native_linux_init_order.py -v
 
   world:
     name: Archipelago world tests

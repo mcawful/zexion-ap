@@ -21,6 +21,7 @@
 #endif
 
 #include "game_mem.h"
+#include "kept.h"      // Kept
 #include "requests.h"  // parse_config, parse_discs, parse_hex
 #include "trap.h"      // trap::is_trap
 
@@ -607,6 +608,12 @@ std::string write_synced_copy(const std::wstring& save, const std::string& base,
     if (save.empty() || !folder_exists(save)) return "";
     const std::string text = synced_file_text(seed);
     if (text.size() > kMaxFile) return "too large";
+    // A copy that is there and cannot be read (opened by Steam or another program with no sharing,
+    // locked, not ours to open, past the size read) is not seen, so it is not replaced: one that
+    // read and did not parse is, as a half-synced file.
+    std::string held;
+    const std::wstring present = join(save, synced_file_name(base));
+    if (exists(present) && !read_file(present, held)) return "its copy cannot be read, left as it is";
     bool changed = false;
     return write_whole(join(save, synced_file_name(base)), text, changed);
 }
@@ -626,11 +633,22 @@ std::string put_synced_copy(const std::wstring& save, const std::string& base,
 // disk) and whose copy waited for a slot, by NAME: the copy thread's pass reaches no file for
 // them, so they are checked against the slots here. An entry goes once its copy is written or a
 // local file for it exists (the next put or read finds it). Guarded by g_files_mutex.
-std::map<std::string, OfflineSeed> g_pending;
+//
+// Never destroyed, and built on its first use (thread-safely), not as a global: on Linux the helper's
+// constructor starts the serving thread, which reads the seed files and runs join_saves at once,
+// and a global built by this file's own initializer comes after that constructor in the library's
+// .init_array: the thread would walk a map not built yet, and at exit() one already destroyed
+// (native/README.md, "Seed files in the save folder").
+using PendingSeeds = std::map<std::string, OfflineSeed>;
+PendingSeeds& pending_seeds() {
+    static Kept<PendingSeeds> pending;
+    return *pending;
+}
 
 void pend(const std::string& name, const OfflineSeed& seed) {
-    if (g_pending.size() >= kMaxSeeds && g_pending.count(name) == 0) return;
-    g_pending[name] = seed;
+    PendingSeeds& pending = pending_seeds();
+    if (pending.size() >= kMaxSeeds && pending.count(name) == 0) return;
+    pending[name] = seed;
 }
 
 // A seed put by a client, made one with the copy already in the save folder if that is the
@@ -675,7 +693,8 @@ void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstr
     std::map<std::string, size_t> local;  // NAME -> its index in files.seeds
     for (size_t i = 0; i < files.seeds.size(); ++i) local[base_name(files.seeds[i].name)] = i;
     const size_t local_count = files.seeds.size();
-    std::set<std::string> there;  // NAMEs whose copy in the save folder is as it should be
+    // NAMEs whose copy in the save folder is as it should be, or is there and not read (left alone).
+    std::set<std::string> there;
     std::vector<OfflineSeed> added;
     std::string text;
     auto note = [&](const std::string& file, const std::string& why) {
@@ -696,9 +715,15 @@ void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstr
             continue;
         }
         OfflineSeed copy;
-        std::string why = read_file(join(save, file), text) ? parse_synced_file(text, copy)
-                                                              : "unreadable";
-        if (!why.empty()) {
+        if (!read_file(join(save, file), text)) {
+            // Not opened (locked, in use with no sharing, access denied) or not read: a file not
+            // seen is not replaced. Left as it is, and the next pass tries it again.
+            there.insert(base);
+            note(file, "unreadable");
+            continue;
+        }
+        const std::string why = parse_synced_file(text, copy);
+        if (!why.empty()) {  // read, and no good: a half-synced file, replaced by a good local one
             note(file, why);
             continue;
         }
@@ -733,12 +758,13 @@ void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstr
         }
     }
     // Put seeds with no local file: the copy once a slot uses the seed, else they wait.
-    for (auto it = g_pending.begin(); it != g_pending.end();) {
+    PendingSeeds& pending = pending_seeds();
+    for (auto it = pending.begin(); it != pending.end();) {
         const std::string base = it->first;
         const bool file_there = local.count(base) != 0 ||
                                 (!folder.empty() && exists(join(join(folder, "seeds"), base + ".txt")));
         if (file_there) {
-            it = g_pending.erase(it);
+            it = pending.erase(it);
         } else if (write && used(it->second)) {
             OfflineSeed result = it->second, theirs;
             if (read_synced_copy(save, base, theirs).empty() && offline_matches(theirs, result)) {
@@ -746,7 +772,7 @@ void join_saves(OfflineFiles& files, const std::wstring& folder, const std::wstr
             }
             const std::string why = write_synced_copy(save, base, result);
             note(synced_file_name(base), why);
-            it = why.empty() ? g_pending.erase(it) : std::next(it);
+            it = why.empty() ? pending.erase(it) : std::next(it);
         } else {
             ++it;
         }
@@ -823,7 +849,7 @@ std::string put_offline_file(const std::wstring& folder, const char* build,
         if (may_wait) pend(name, *waiting);
         return "error " + why;
     }
-    if (waiting) g_pending.erase(name);  // its file is there: the passes find it
+    if (waiting) pending_seeds().erase(name);  // its file is there: the passes find it
     return changed ? "stored" : "unchanged";
 }
 
@@ -1110,7 +1136,7 @@ std::string put_offline_file(const std::wstring& folder, const char*, const std:
         if (may_wait) pend(name, waiting);
         return "error " + why;
     }
-    g_pending.erase(name);  // its file is there: the passes find it
+    pending_seeds().erase(name);  // its file is there: the passes find it
     return changed ? "stored" : "unchanged";
 }
 
