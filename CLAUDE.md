@@ -76,8 +76,8 @@ Where things are:
   `/reload_mod`, and `save_lab.py install` and `restore`. Grants and memory writes go only
   into a lab slot; grants only while the player stands still in play. Loading the helper
   (`helper.py load`), starting the game with the mod, and a client run also make the helper write
-  seed copies into the real save folder for the saves there (see above), which Steam is
-  expected to upload (not yet seen): ask first for those too.
+  seed copies into the real save folder for the saves there (see above), which Steam uploads
+  (seen between two Windows PCs, 2026-11-20, B1; not on Linux): ask first for those too.
 - **Branches and releases.** `main` holds released code; `develop` holds code ready for the next
   release. Work on a short-lived topic branch cut from `develop`, merged into `develop` by pull
   request, then deleted. `develop` and `main` take changes only through pull requests with every CI

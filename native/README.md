@@ -1905,7 +1905,13 @@ disconnected.
 `Game::saved_seeds` (`src/game_calls.cpp`), `src/dllmain.cpp` (`save_dir`, `offline_dir`,
 `snapshot_saves`, `copy_thread`), the Linux helper's `g_save_folder`, `g_saved` and `copy_loop`;
 `docs/re/save-format.md`, "Steam Auto-Cloud syncs only `*.sav` and `*.png` in the save folder
-itself". Stand-in tests only: not yet run in the game, nor on two machines.
+itself". Working in game on Windows, between two PCs (2026-11-20, B1, develop bf86eb5,
+`zexion_ap.dll` `2d8b696f…`, `version.dll` `b5a196b2…`, `zexion.apworld` `a2bcc022…`; the owner's
+report, `docs/re/save-format.md`, "The helpers keep the file of each seed a save uses here"): AP
+saves made on one PC showed as AP saves on the other after Steam Cloud synced them. Not run in
+the game, so stand-in tests only: Linux and Windows with Linux, whether a client ran on the second
+PC first, which seeds and slots (neither was reported), the new-seed step below, the merge of two
+machines' copies, a cut copy's refusal and that `helper.py status` writes nothing.
 
 - **Why:** Steam Cloud syncs the game's saves, so a save made on one machine is on the next, but
   the seeds' files, which make it an AP save, are in a folder it does not sync. On that machine
@@ -1947,9 +1953,11 @@ itself". Stand-in tests only: not yet run in the game, nor on two machines.
   starting in while it is queued) is measured on Linux by disassembly (`docs/re/linux.md`) and
   inferred for Windows, not checked there; so the copy may be written before the game's first save of
   that slot reaches the disk, or only after it (a quit in between leaves a copy and no save, or a
-  save and no copy until the next start: the in-game check in the PR is for this).
-  Not run in the game (stand-in game tests only: Windows `apply_in_frames` through the loaded
-  helper, Linux `tests/test_native_linux.py` through the socket).
+  save and no copy until the next start: the in-game check in the PR is for this). That check (a
+  new seed, one save, a quit to the desktop from play, then a look for the copy) has not been run.
+  The new-game timing is not run in the game (stand-in game tests only: Windows
+  `apply_in_frames` through the loaded helper, Linux `tests/test_native_linux.py` through the
+  socket).
 - **Where:** the game's own folder, as SDL names it (`SDL_GetPrefPath("Gallant Leaf", "Zexion")`,
   the call the game makes, B1: `docs/re/save-format.md`), found without calling SDL, which makes
   the folder: on Windows the Roaming AppData known folder (`SHGetKnownFolderPath`, asked of

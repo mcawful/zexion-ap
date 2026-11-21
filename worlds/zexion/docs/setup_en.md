@@ -161,7 +161,9 @@ With Steam Cloud on, your saves follow you to another computer, a Steam Deck or 
 operating system. The mod is meant to know your seed's saves there too, with no client run on
 that machine: it keeps a small file for each seed a save of yours uses, named `ZexionAP-seed-`
 and the seed's name, ending in `.sav`, in Zexion's save folder beside the saves, and Steam Cloud
-syncs it with them. This is expected to work but has not been tried on two machines yet.
+syncs it with them. This has been tried between two Windows PCs, where saves made on one showed
+as AP saves on the other. It has not been tried on Linux, a Steam Deck, or between Windows and
+Linux yet.
 
 - Both machines need the mod, from a release with this feature.
 - The file comes from the client, so it exists only once the client has connected for that seed.
