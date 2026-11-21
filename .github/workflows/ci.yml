@@ -168,7 +168,7 @@ jobs:
       - name: Build the stand-in game and the test helper
         run: |
           cmake -S native -B native/build
-          cmake --build native/build -j --target zap_fake_game zap_sdl_stub zap_swap_wrapper zexion_ap_hooktest
+          cmake --build native/build -j --target zap_fake_game zap_fake_game_bad zap_sdl_stub zap_swap_wrapper zexion_ap_hooktest
       - uses: actions/download-artifact@v4
         with:
           name: libzexion_ap-runtime

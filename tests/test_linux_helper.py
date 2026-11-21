@@ -13,7 +13,7 @@ import types
 from pathlib import Path
 
 import pytest
-from fakes import ELF_BUILD_ID, elf_image, fake_proc, proc_entry
+from fakes import ELF_BUILD_ID, LinuxPm, elf_image, fake_proc, proc_entry
 from native_source import linux_config_table
 
 from client import linux_helper, patterns
@@ -422,3 +422,18 @@ def test_the_token_file_the_helper_took_is_remembered(monkeypatch, tmp_path: Pat
     process = object.__new__(linux_helper.LinuxProcess)
     process._helper = helper
     assert process.token_path == live
+
+
+@pytest.mark.parametrize(
+    "reply", ["error unknown key assist_menu_fn", "error missing randomizer_menu"]
+)
+def test_a_config_of_another_set_of_keys_says_the_mod_is_from_another_build(reply: str) -> None:
+    # A helper and a client of one version but different builds (the keys a config carries
+    # changed): said as the version check says it, not as a bad address.
+    with pytest.raises(linux_helper.LinuxHelperError) as raised:
+        linux_helper.LinuxMod(LinuxPm({"config": reply}))
+    assert "different builds" in str(raised.value) and "libzexion_ap.so" in str(raised.value)
+    with pytest.raises(linux_helper.LinuxHelperError, match="did not take the game's addresses"):
+        linux_helper.LinuxMod(
+            LinuxPm({"config": "error flags is not where the game's symbols put it"})
+        )

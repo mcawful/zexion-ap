@@ -355,7 +355,7 @@ WINDOWS_ONLY_REPLIES = (  # the Windows helper's alone: its own branches
     "; not unloading", "bye", "ok differs ", "error no LOCALAPPDATA",
 )  # fmt: skip
 LINUX_ONLY_REPLIES = (  # the Linux helper's alone: native/linux/src, or the shared #else branches
-    "written ", "data ", "error no folder",
+    "written ", "data ", "error no folder", "error unknown key ", "error missing ",
 )  # fmt: skip
 SHARED_REPLIES = (
     "error too large", "refused not settled", "error unknown request",

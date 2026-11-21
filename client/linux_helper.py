@@ -561,6 +561,12 @@ class LinuxMod:
         self.pm = pm
         self.told = state.HelperState()
         reply = pm.request(linux_targets.config_request(pm.game.image))
+        if reply.startswith(("error unknown key ", "error missing ")):
+            # Another build's set of keys: the helper and this client are not from one release.
+            raise LinuxHelperError(
+                f"the mod in Zexion and this client are from different builds ({reply}): copy "
+                "this client's libzexion_ap.so into the game's folder"
+            )
         if reply != "ok":
             raise LinuxHelperError(f"the helper did not take the game's addresses: {reply}")
         self.connection = pm.connection

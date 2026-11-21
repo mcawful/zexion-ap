@@ -121,7 +121,11 @@ unsigned char (&zap_message_slots)[4 * 0x1628] = in_state<unsigned char, 4 * 0x1
 // The new-game state, as the game keeps it in its .bss (native/src/newgame.h), for
 // tests/test_native_linux.py's new games.
 extern "C" {
+#ifdef ZAP_FAKE_BAD_KEY
+unsigned char zap_section[0x908] = {1};  // in .data, not the .bss the helper requires
+#else
 unsigned char zap_section[0x908];
+#endif
 unsigned char zap_menu[0x114];
 void* zap_transition;
 int zap_timer;

@@ -2658,7 +2658,8 @@ RETURN HOME prompt put back being offered again, and the look's gate on the seed
 Run 3 (2026-11-20, develop at 5611378) checked the attach with the token, #162, the file select's
 fixes (#164, #165), DeathLink's death count (#169) and the client's seed and labels (#170, #171)
 in the game (`docs/re/linux.md`, "Seen in the running game, 2026-11-20"); the rest of the list has
-run on stand-ins only.
+run on stand-ins only: and, since run 3, the `config` that carries only the client's targets
+for the helper to check against its own addresses, and the language in the Linux `hello` (#201).
 
 **Seen on a Steam Deck, and a Linux PC's sync (2026-11-20).** Two short runs the
 owner reported (the Deck's helper is `develop` at 246c850, with the self-configure of #189 and the
@@ -3408,8 +3409,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   taken, and puts it again only when it changes; `error no folder` is not reached on Linux, where
   a helper with no data folder has nowhere for its token and serves no one) stays the helper's
   until the game closes, added again after each read. No config is kept: with no client yet,
-  the helper configures itself from the game's own symbols (`configure_self`: the addresses a
-  client's `config` must give, checked as one, said on stderr), with no client attached, so this
+  the helper configures itself from the game's own symbols (`configure_self`: the helper's own
+  addresses, `g_own`, checked once at start-up by `read_own_symbols` and installed inactive with no
+  text round trip; said on stderr, and if a check failed, its reason once), with no client attached, so this
   world's own traps and disks work with no client, and with no seed file at all (a machine no
   client has run on: the stderr line then ends "no seed file taken yet"). The icon sheets' hold
   (`hold_icon_sheets`, from the game's sprite definition count) is decided at each config, so
@@ -3708,7 +3710,9 @@ labels, at the game's own offsets (`gGameState` one array in `.bss` with the fla
 pools and the message slots at their offsets, and the code the helper patches at its real offsets
 within the functions that hold it: `fake_game.cpp`), so the helper's one table finds everything by
 the names `docs/re/linux.md` gives and the client's own `linux_targets.resolve` gives the stand-in's
-`config`. ctest runs `tests/core_tests.cpp` (build ids, replies);
+`config`. `zap_fake_game_bad` is the same program with `gCurrentRando` in `.data` instead of the
+`.bss`, for the helper's start-up check failing (a `config` refused with its reason, the
+self-configuring start saying it once). ctest runs `tests/core_tests.cpp` (build ids, replies);
 `tests/test_native_linux.py` preloads both builds into the stand-in game ("The Linux helper"),
 `zap_newgame_tests` runs the shared new-game logic (`linux/tests/newgame_tests.cpp`), and
 `zap_patch_tests` runs the Linux build's code patches side by side with the game's bytes
@@ -3782,7 +3786,8 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
   (one that fails held), the build check, the pipe and `CellWatch` (cell_watch.h: a pickup
   needs two looks in play, a list that changed or a reset starts over, a cell put back is told).
 - `requests`: the request parsers, the popup text's layout and the mailbox.
-- `game`: the `discs` and `@N NAME` parsers, configuring, applying, the major-item list's fill (an
+- `game`: the `discs` and `@N NAME` parsers, configuring (every required key missing refused, from a
+  client's config and from the helper's own), applying, the major-item list's fill (an
   AP save's only, each icon once, by item ID, up to 26), R'Talva X34 Y51's marker hidden (every
   frame while flag 154 is clear, by its shown byte; shown again on the flag, off the logo frame and
   on restore; no stand-in for names; another type left alone), this player's own Scrap Metal
@@ -3829,21 +3834,21 @@ code (`/OPT:NOICF`), was disproved by the c5500c7 run. With the reads through vo
   row's disc and the file select's logo in its colors painted through a fake OpenGL, the
   translations' icon sheets painted and cleared (and left alone where not as traced; each
   sheet's icons made once), the label parser.
-- `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`: the part of that
+- `equip`, `pause`, `files`, `intel`, `title`, `mapmarks`, `mission`, `offline`, `offline_look`: the part of that
   name (`files`: the disk count and the AP logo; `title`: also its two lines built in English(HD)'s
   font and back to pixels, hidden there under a menu (Option, the file select, a client connecting
   meanwhile, English(HD) picked there), none made under a menu, with `menu_state` unreadable and
   with the game's line gone, and the default English's lines following the © whatever the menu;
-  `offline`: the seed file, its match and disk count, the folder, the cache check, `offline_put`, a
-  stand-in game dressed and undressed, the look held through a menu (the files read again, a read of
-  no known seed, a client going away, ASSIST locked again in the same frame call), a notice
-  withdrawn with its save, the not-connected warning again after a client came and went, a seed put
-  with a client, the AP saves' slots, the slots' seeds from the stand-in game's memory
-  (`Game::saved_seeds`) and `SavedSeeds`, the seed copies in a stand-in save folder (a put, a read,
-  a put waiting for a slot, `restrict_to_test_folder` with a junction, the write primitives'
-  refusal), and the file select's logo through the frame call: painted,
-  whitened through a new game's fade, and cleared by `put_back_files`, and a cache missing a key
-  refused).
+  `offline`: the seed file, its match and disk count, the folder, the cache check, `offline_put`,
+  the seed's text, crc and merge, the slots' seeds from the stand-in game's memory
+  (`Game::saved_seeds`) and `SavedSeeds`, and the seed copies in a stand-in save folder (a put, a
+  read, a put waiting for a slot, `restrict_to_test_folder` with a junction, the write primitives'
+  refusal); `offline_look`: a stand-in game dressed and undressed, the look held through a menu (the
+  files read again, a read of no known seed, a client going away, ASSIST locked again in the same
+  frame call), a notice withdrawn with its save, the not-connected warning again after a client
+  came and went, a seed put with a client, the AP saves' slots, the file select's logo through the
+  frame call (painted, whitened through a new game's fade, and cleared by `put_back_files`), and the
+  text window's cut under a cache's config).
 - `findaddr`: the helper's own address scan ("Finding its own addresses") on synthetic code: both
   kinds, the addend, exactly once (none, twice, overlapping matches), wildcards, the ends of the
   code, patterns that disagree, texts it cannot read, each of the generated table's patterns on its

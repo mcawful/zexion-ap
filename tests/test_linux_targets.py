@@ -7,7 +7,10 @@ import re
 from pathlib import Path
 
 import pytest
-from fakes import b1_like  # tests/test_cross_checks.py and test_game_linux.py take it from here
+from fakes import (
+    b1_like,
+    b1_values,
+)  # tests/test_cross_checks.py and test_game_linux.py take it from here
 from native_source import linux_client_keys, linux_config_table
 
 from client import elf, linux_targets
@@ -91,14 +94,20 @@ def test_the_helpers_client_keys_are_the_clients_targets() -> None:
     assert {name for name, _, _ in only} == set(keys) - {n for n, *_ in linux_config_table()}
 
 
-def test_every_helper_key_is_a_measured_row_of_the_lookup() -> None:
-    """The helper's own addresses (kConfigKeys) and the client-only ones are all in
-    docs/re/linux.md's Lookup, and each is measured."""
+def test_every_helper_row_is_at_its_measured_b1_address_in_the_lookup() -> None:
+    """Each row of the helper's own table (kConfigKeys) and each client-only one (kClientOnly),
+    its symbol's address on B1 plus its offset, is the address docs/re/linux.md's Lookup records
+    for the key, and the row is measured: so a transposed offset in helper.cpp (the helper writes
+    and reads through these, in the game's own process) fails here."""
     doc = (ROOT / "docs" / "re" / "linux.md").read_text("utf-8")
     start = doc.index("## Lookup: targets")
     lookup = doc[start : doc.index("\n## ", start + 1)]
+    values = b1_values()
     _, only = linux_client_keys()
-    names = [name for name, *_ in linux_config_table()] + [name for name, *_ in only]
-    for name in names:
+    rows = [(name, symbol, offset) for name, _, symbol, offset in linux_config_table()] + only
+    assert len(rows) > 90
+    for name, symbol, offset in rows:
         row = next(r for r in lookup.splitlines() if r.startswith(f"| `{name}` |"))
+        address = values[symbol] + offset
+        assert f"0x{address:X}" in row.replace("`", ""), (name, f"{address:#x}")
         assert row.rstrip(" |").rsplit(" | ", 1)[1].startswith("measured"), name

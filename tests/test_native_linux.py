@@ -31,6 +31,7 @@ BUILD = Path(os.environ.get("ZEXION_NATIVE_BUILD", ROOT / "native" / "build"))
 HELPER = BUILD / "libzexion_ap.so"
 HOOKTEST = BUILD / "libzexion_ap_hooktest.so"
 GAME = BUILD / "zap_fake_game"
+GAME_BAD = BUILD / "zap_fake_game_bad"  # one helper address outside the .bss
 WRAPPER = BUILD / "libzap_swap_wrapper.so"  # another library's SDL_GL_SwapWindow, to go first
 MARKER = b"zexion-ap test marker"
 
@@ -73,6 +74,7 @@ class Game:
         preload: Path | tuple[Path, ...],
         data_home: Path,
         player: bool = False,
+        exe: Path = GAME,
         **env_more: str,
     ) -> None:
         self.offline = data_home / "ZexionAP"
@@ -94,7 +96,7 @@ class Game:
         env.update(env_more)
         self.self_configured = player  # it configures itself
         self.proc = subprocess.Popen(
-            [str(GAME)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            [str(exe)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
         line = self.proc.stdout.readline()
         match = re.fullmatch(r"marker (0x[0-9a-f]+) block (0x[0-9a-f]+)\n", line)
@@ -661,9 +663,9 @@ PLAN = (
 
 
 @functools.cache
-def stand_in_image() -> elf.Image:
+def stand_in_image(exe: Path = GAME) -> elf.Image:
     """The stand-in game's ELF, parsed once."""
-    return elf.parse(GAME.read_bytes())
+    return elf.parse(exe.read_bytes())
 
 
 def config_request(at: dict[str, int]) -> str:
@@ -672,10 +674,10 @@ def config_request(at: dict[str, int]) -> str:
     return "config " + " ".join(f"{t.name}={at[t.name]:#x}" for t in linux_targets.TARGETS)
 
 
-def config_addresses() -> dict[str, int]:
+def config_addresses(exe: Path = GAME) -> dict[str, int]:
     """The stand-in's addresses for the client's targets, resolved by the client's own code, and
     for ``OTHER_KEYS``."""
-    image = stand_in_image()
+    image = stand_in_image(exe)
     found = linux_targets.resolve(image)
     for key, (name, offset) in OTHER_KEYS.items():
         found[key] = image.symbol(name).value + offset
@@ -919,6 +921,23 @@ def test_a_config_that_disagrees_on_a_client_key_is_refused(game: Game) -> None:
         )
         assert ask(sock, PLAN) == "refused not configured"  # nothing changed
         assert ask(sock, config_request(at)) == "ok"  # and the right one still takes
+
+
+@pytest.mark.skipif(not GAME_BAD.is_file(), reason="no zap_fake_game_bad in the build")
+def test_an_address_that_fails_the_startup_check_configures_nothing(tmp_path: Path) -> None:
+    # The helper checks each of its own addresses once, at start-up (read_own_symbols): here
+    # gCurrentRando is in .data, not the game's .bss. A client's config, though it agrees with the
+    # helper's reading, is refused with that reason, and the helper that would configure itself
+    # (the player pointer reads the player state) says so once and stays unconfigured.
+    with Game(HOOKTEST, tmp_path / "data", player=True, exe=GAME_BAD) as started:
+        at = config_addresses(GAME_BAD)
+        with started.connect() as sock:
+            frames_pass(sock, 30)
+            assert ask(sock, config_request(at)) == "error rando_blob is not in the game's data"
+            assert ask(sock, PLAN) == "refused not configured"
+        _, _, err = started.stop()
+    assert err.count("not configured with no client: rando_blob is not in the game's data") == 1
+    assert "configured from the game's symbols" not in err
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

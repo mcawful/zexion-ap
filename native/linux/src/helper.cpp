@@ -596,7 +596,7 @@ std::string check_client_config(std::string_view request) {
     }
     for (size_t i = 0; i < std::size(kClientKeys); ++i) {
         auto found = given.find(kClientKeys[i]);
-        if (found == given.end()) return std::string("missing ") + kClientKeys[i];
+        if (found == given.end()) return "missing " + std::string(kClientKeys[i]);
         if (found->second != g_expected_client[i]) {
             return std::string(kClientKeys[i]) + " is not where the game's symbols put it";
         }

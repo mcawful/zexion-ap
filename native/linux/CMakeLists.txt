@@ -89,12 +89,18 @@ set_target_properties(zap_sdl_stub PROPERTIES CXX_VISIBILITY_PRESET default)
 add_library(zap_swap_wrapper SHARED tests/swap_wrapper.cpp)
 target_compile_options(zap_swap_wrapper PRIVATE -fomit-frame-pointer)
 add_executable(zap_fake_game tests/fake_game.cpp)
-target_link_libraries(zap_fake_game PRIVATE zap_sdl_stub)
-# A fixed-address executable (ET_EXEC), as the game is, so its sections are at their link
-# addresses when it runs.
-set_target_properties(zap_fake_game PROPERTIES POSITION_INDEPENDENT_CODE OFF)
-target_compile_options(zap_fake_game PRIVATE -fno-pie)
-target_link_options(zap_fake_game PRIVATE -no-pie -rdynamic)  # its stand-in OpenGL found by dlsym
+# The same stand-in with one of the helper's addresses outside the game's .bss (ZAP_FAKE_BAD_KEY:
+# gCurrentRando in .data), for the helper's start-up check failing.
+add_executable(zap_fake_game_bad tests/fake_game.cpp)
+target_compile_definitions(zap_fake_game_bad PRIVATE ZAP_FAKE_BAD_KEY)
+foreach(game IN ITEMS zap_fake_game zap_fake_game_bad)
+  target_link_libraries(${game} PRIVATE zap_sdl_stub)
+  # A fixed-address executable (ET_EXEC), as the game is, so its sections are at their link
+  # addresses when it runs.
+  set_target_properties(${game} PROPERTIES POSITION_INDEPENDENT_CODE OFF)
+  target_compile_options(${game} PRIVATE -fno-pie)
+  target_link_options(${game} PRIVATE -no-pie -rdynamic)  # its stand-in OpenGL found by dlsym
+endforeach()
 
 enable_testing()
 add_executable(zap_linux_core_tests tests/core_tests.cpp)
