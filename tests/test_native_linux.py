@@ -10,6 +10,7 @@ Skips without a build of native/ on Linux; ``ZEXION_REQUIRE=helper`` makes that 
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 import shutil
@@ -117,7 +118,7 @@ class Game:
     def as_found(self) -> linux_helper.LinuxGame:
         """The stand-in as find_game would give it, the hooktest build's "test" as its build."""
         build = patterns.LinuxBuild("test", "", "")
-        image = elf.parse(GAME.read_bytes())
+        image = stand_in_image()
         return linux_helper.LinuxGame(self.pid, linux_helper.inner_pid(self.pid), build, image)
 
     def stop(self) -> tuple[int, str, str]:
@@ -499,7 +500,7 @@ def test_a_connection_that_sets_something_has_it_put_back_when_it_goes(game: Gam
     at = config_addresses()
     scanner = stand_in("zap_texts") + 12 * 32
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a seed's save
         assert ask(sock, aplabels.labels_request({(3, 2): "Hookshot\nfor Alice"})) == "labeled 1"
@@ -734,8 +735,19 @@ PLAN = (
 )
 
 
+@functools.cache
+def stand_in_image() -> elf.Image:
+    """The stand-in game's ELF, parsed once."""
+    return elf.parse(GAME.read_bytes())
+
+
+def config_request(at: dict[str, int]) -> str:
+    """The ``config`` request for the addresses ``at`` (a stand-in game's, or a doctored copy)."""
+    return "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+
+
 def config_addresses() -> dict[str, int]:
-    image = elf.parse(GAME.read_bytes())
+    image = stand_in_image()
     found = {}
     for key, where in CONFIG_SYMBOLS.items():
         name, offset = where if isinstance(where, tuple) else (where, 0)
@@ -745,7 +757,7 @@ def config_addresses() -> dict[str, int]:
 
 def stand_in(name: str) -> int:
     """The stand-in game's symbol ``name``."""
-    return elf.parse(GAME.read_bytes()).symbol(name).value
+    return stand_in_image().symbol(name).value
 
 
 def read_at(sock: socket.socket, address: int, size: int) -> bytes:
@@ -783,7 +795,7 @@ def configure_and_use_seed(sock: socket.socket) -> None:
     the only byte set), as the game's memory would hold one: the frame calls publish the slots'
     seeds from there, and no save file of the game is involved."""
     at = config_addresses()
-    assert ask(sock, "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())) == "ok"
+    assert ask(sock, config_request(at)) == "ok"
     assert ask(sock, f"write {at['slot_array'] + 0x9400:#x} 0100") == "written 2"
 
 
@@ -928,7 +940,7 @@ def test_a_new_game_queued_with_the_seeds_text_gets_the_seed(game: Game) -> None
     at = config_addresses()
     with game.connect() as sock:
         assert ask(sock, PLAN) == "refused not configured"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, PLAN) == "armed"
         assert ask(sock, "newgame_status") == "armed"
@@ -954,16 +966,16 @@ def test_a_config_outside_the_games_data_or_code_is_refused(game: Game) -> None:
     at = config_addresses()
     with game.connect() as sock:
         bad = dict(at, rando_blob=game.marker)  # not the game's own symbol for it
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in bad.items())
+        config = config_request(bad)
         assert ask(sock, config) == "error rando_blob is not where the game's symbols put it"
         bad = dict(at, placement_fn=at["rando_blob"])
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in bad.items())
+        config = config_request(bad)
         assert ask(sock, config) == "error placement_fn is not where the game's symbols put it"
         bad = dict(at, start_cells=at["start_cells"] + 4)  # inside .bss, off by a room
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in bad.items())
+        config = config_request(bad)
         assert ask(sock, config) == "error start_cells is not where the game's symbols put it"
         missing = {k: v for k, v in at.items() if k != "start_flags"}
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in missing.items())
+        config = config_request(missing)
         assert ask(sock, config) == "error missing start_flags"
         assert ask(sock, PLAN) == "refused not configured"
 
@@ -972,7 +984,7 @@ def test_a_config_outside_the_games_data_or_code_is_refused(game: Game) -> None:
 def test_a_client_that_goes_takes_its_plan_with_it(game: Game) -> None:
     at = config_addresses()
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, PLAN) == "armed"
     with game.connect() as sock:  # as the Windows helper does: no plan kept for a client gone
@@ -1005,7 +1017,7 @@ def test_an_apply_gives_the_items_and_shows_their_popup(game: Game) -> None:
             assert wait_for(sock, "assists free", lambda r: r == "free") == "free"
         else:
             assert ask(sock, batch) == "refused not configured"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, "apply\ncas 3 1 2") == "refused item 3 holds 0"  # nothing written
         assert read_at(sock, at["inventory"] + 3, 1) == b"\x00"
@@ -1029,7 +1041,7 @@ def test_an_apply_gives_the_items_and_shows_their_popup(game: Game) -> None:
 def test_an_apply_is_refused_out_of_play(game: Game) -> None:
     at = config_addresses()
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, f"write {at['menu_state']:#x} 01") == "written 1"  # a menu up
         assert ask(sock, "apply\ncas 3 0 1") == "refused not in play"
@@ -1045,7 +1057,7 @@ def test_in_a_translation_a_popup_in_pixel_text_is_not_left_hidden(game: Game) -
     at = config_addresses()
     has_text = at["hd_messages"] + 0x22C
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         entry_66 = stand_in("zap_small") + 4 * 200
         assert ask(sock, f"write {entry_66:#x} 58000000") == "written 4"  # an X there
@@ -1072,7 +1084,7 @@ def test_labels_name_the_stand_ins_and_size_the_popup_until_the_client_goes(game
             assert wait_for(sock, "assists free", lambda r: r == "free") == "free"
         else:
             assert ask(sock, labels) == "refused not configured"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, labels) == "labeled 1"
         wait_for(sock, f"read {energy:#x} 12", lambda r: "SCRAP ENERGY" not in r)
@@ -1100,7 +1112,7 @@ def test_with_no_logos_painted_the_stand_ins_stay_the_games(game: Game) -> None:
     energy = stand_in("zap_record_table") + 47 * 100 + 0x0A
     with game.connect() as sock:
         assert ask(sock, f"write {stand_in('zap_no_texture'):#x} 01") == "written 1"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         labels = aplabels.labels_request({(3, 2): "Hookshot\nfor Alice"})
         assert ask(sock, labels) == "labeled 1"
@@ -1129,7 +1141,7 @@ def hit_patch_bytes(sock: socket.socket, at: dict[str, int]) -> list[int]:
 def test_a_received_trap_goes_off_as_its_popup_shows(game: Game) -> None:
     at = config_addresses()
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, "apply\npopup 102 from Tester") == "applied"  # a Disruption Trap
         assert wait_for(sock, "trap_status", lambda r: "set 102" in r).endswith("set 102")
@@ -1155,7 +1167,7 @@ def test_this_worlds_own_trap_goes_off_at_its_pickup(game: Game) -> None:
     seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
     put = offline.put_request("seed", seed, offline.seed_file_name("S", 0, 1))
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, put) == "stored"
         assert ask(sock, offline.put_request("config", "x")) == "error not on the Linux build"
@@ -1189,7 +1201,7 @@ def test_an_own_disk_picked_up_with_no_client_shows_its_count(game: Game) -> Non
         wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
 
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, put) == "stored"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the seed's save
@@ -1282,7 +1294,7 @@ def test_an_ap_save_gets_its_look_with_no_client_and_its_notices(tmp_path: Path)
             assert wait_for(sock, f"read {record + 0x0A:#x} 10", lambda r: "INTEL" in r) == (
                 "data INTEL CHIP"
             )
-            config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+            config = config_request(at)
             assert ask(sock, config) == "ok"  # a client: its own look, the game's record
             wait_for(sock, f"read {record + 0x0A:#x} 8", lambda r: r == "data AREA MAP")
             assert ask(sock, "client_back") == "shown"
@@ -1354,7 +1366,7 @@ def test_a_seed_taken_but_not_kept_stays_the_helpers_when_its_client_goes(tmp_pa
     try:
         at = config_addresses()
         with started.connect() as sock:
-            config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+            config = config_request(at)
             assert ask(sock, config) == "ok"
             assert ask(sock, put).startswith("error cannot create")
         with started.connect() as sock:  # the client gone, the files read again: none
@@ -1389,7 +1401,7 @@ def test_no_achievement_is_set_while_an_ap_save_is_loaded(game: Game) -> None:
 
     with game.connect() as sock:
         assert achievement(sock) == 1  # not configured: Steam's
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, put) == "stored"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the AP save
@@ -1417,7 +1429,7 @@ def test_an_ap_saves_ending_is_patched_over_its_feats_and_put_back_after(game: G
     with game.connect() as sock:
         game_bytes = read_at(sock, site, 12)
         assert game_bytes[:6] == bytes.fromhex("bf0d000000e8")
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, put) == "stored"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the AP save
@@ -1456,7 +1468,7 @@ def test_after_an_unpatched_ap_ending_achievements_wait_for_the_next_load(game: 
         return int.from_bytes(read_at(sock, count, 4), "little") - before
 
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, put) == "stored"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # the AP save
@@ -1479,7 +1491,7 @@ def test_the_title_lines_wait_for_the_title(game: Game) -> None:
     # native/tests/title_tests.cpp).
     at = config_addresses()
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, f"write {at['save_loaded']:#x} ff") == "written 1"  # no save: the title
         frames = int(ask(sock, "ping").split("frames=")[1])
@@ -1522,7 +1534,7 @@ def test_a_start_with_no_seed_file_and_no_client_configures_itself(tmp_path: Pat
             copy = started.save / f"ZexionAP-seed-{name}.sav"
             assert wait_until(copy.exists), "the slot was not seen: the check above proved nothing"
             # A client's config still takes over, with the addresses the helper has.
-            config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+            config = config_request(at)
             assert ask(sock, config) == "ok"
     finally:
         _, _, err = started.stop()
@@ -1570,7 +1582,7 @@ def test_in_the_labels_seeds_save_the_map_marks_item_48_as_a_major(game: Game) -
     at = config_addresses()
     tests = (at["seen_marker_code"] + 3, at["seen_marker_code"] + 0x112 + 3)  # cmp ax, imm8
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert [read_at(sock, t, 1) for t in tests] == [b"\x02", b"\x02"]
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a seed's save
@@ -1592,7 +1604,7 @@ def test_in_an_ap_save_owned_items_go_in_the_major_item_list(game: Game) -> None
     at = config_addresses()
     records = stand_in("zap_record_table")
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         for item, icon in ((5, 0xC5), (6, 0xC6), (27, 0xC7)):  # 27, a key: never listed
             assert ask(sock, f"write {records + item * 100 + 8:#x} {icon:02x}") == "written 1"
@@ -1622,7 +1634,7 @@ def test_the_text_windows_cut_is_patched_once_configured(game: Game) -> None:
     ours = bytes.fromhex("8B45E42B45F483E0070F1F440000")
     with game.connect() as sock:
         assert read_at(sock, cut, 14) == game_bytes
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         frames = int(ask(sock, "ping").split("frames=")[1])
         wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
@@ -1635,7 +1647,7 @@ def test_in_a_translation_a_popup_shows_in_its_font(game: Game) -> None:
     # game's pickup gives its own, with the pickup's ints (the Linux build reads them).
     at = config_addresses()
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, f"write {at['tr_flag']:#x} 01") == "written 1"  # a translation on
         assert ask(sock, "apply\npopup 3 from Tester") == "applied"
@@ -1661,7 +1673,7 @@ def test_the_disks_count_writes_the_scanners_line_and_takes_the_keys_row(game: G
     scanner = stand_in("zap_texts") + 12 * 32
     branch = at["keys_branch"]
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         put_clients_seed(sock, at)  # the disks' look is its seed's save's (seed_look_loaded)
         line = b"4 OS Install Disks detected!".hex()
@@ -1689,7 +1701,7 @@ def test_a_received_scraps_drop_is_spawned_after_its_popup(game: Game) -> None:
     calls = stand_in("zap_spawn_count")
     with game.connect() as sock:
         assert ask(sock, "drop_status") == "queued 0; last none"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         for item, event, count in ((46, 3548, 1), (47, 3549, 2), (48, 3550, 3)):
             assert ask(sock, f"apply\npopup {item} from Tester") == "applied"
@@ -1715,7 +1727,7 @@ def test_a_received_energy_shield_is_spawned_once_the_player_has_settled(game: G
     calls = stand_in("zap_spawn_count")
     with game.connect() as sock:
         assert ask(sock, "shield") == "refused not configured"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert wait_for(sock, "shield", lambda r: r != "refused not settled") == "spawned"
         assert read_at(sock, calls, 4) == (1).to_bytes(4, "little")
@@ -1735,7 +1747,7 @@ def test_a_deathlink_death_is_dealt_as_the_damage_code_deals_one(game: Game) -> 
     deaths = stand_in("zap_death_count")
     with game.connect() as sock:
         assert ask(sock, "die") == "refused not configured"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         halt = at["halt_flag"]
         assert ask(sock, f"write {halt:#x} 01") == "written 1"
@@ -1757,7 +1769,7 @@ def test_intel_chips_name_the_area_map_until_the_client_goes(game: Game) -> None
     record = stand_in("zap_record_table") + 49 * 100
     with game.connect() as sock:
         assert ask(sock, "intel on") == "refused not configured"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         put_clients_seed(sock, at)  # the look is its seed's save's (seed_look_loaded)
         assert ask(sock, "intel on") == "intel on"
@@ -1787,7 +1799,7 @@ def test_the_look_applies_only_in_the_clients_seeds_save(game: Game) -> None:
     named = f"read {record + 0x0A:#x} 10"
     games = f"read {record + 0x0A:#x} 8"
     with game.connect() as sock:
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"  # a seed's save
         assert ask(sock, "intel on") == "intel on"
@@ -1817,7 +1829,7 @@ def test_the_clients_seed_goes_with_the_client_and_a_status_connection_changes_n
 
     at = config_addresses()
     record = stand_in("zap_record_table") + 49 * 100
-    config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+    config = config_request(at)
     with game.connect() as sock:
         assert ask(sock, config) == "ok"
         put_clients_seed(sock, at)
@@ -1846,7 +1858,7 @@ def test_the_assist_lock_is_taken_once_configured(game: Game) -> None:
     at = config_addresses()
     with game.connect() as sock:
         assert ask(sock, "assists lock") == "refused not configured"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, "assists lock") == "locked"
         assert ask(sock, "assists free") == "free"
@@ -1862,7 +1874,7 @@ def test_return_home_is_asked_for_and_dropped_with_the_disks(game: Game) -> None
     at = config_addresses()
     with game.connect() as sock:
         assert ask(sock, "mission_prompt 191 329") == "refused not configured"
-        config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+        config = config_request(at)
         assert ask(sock, config) == "ok"
         assert ask(sock, "mission_prompt 9999 1") == "error bad mission_prompt request"
         line = b"4 OS Install Disks detected!".hex()
