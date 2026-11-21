@@ -48,10 +48,15 @@ def _ptrace_scope() -> int:
         return -1  # no Yama
 
 
+SELF_CONFIG = {"ZAP_TEST_NO_SELF_CONFIG": "0"}
+
+
 class Game:
     """The stand-in game, started with ``preload``; its pid and its marker's address.
     ``data_home`` is its XDG_DATA_HOME: the helper's seed files go in its ``ZexionAP``, never the
-    real one."""
+    real one. The test build starts unconfigured (``ZAP_TEST_NO_SELF_CONFIG=1``, the tests of a
+    client's config and of the requests refused before it); ``SELF_CONFIG`` lets it configure
+    itself from the game's symbols as the release helper does."""
 
     def __init__(self, preload: Path | tuple[Path, ...], data_home: Path, **env_more: str) -> None:
         self.offline = data_home / "ZexionAP"
@@ -65,6 +70,7 @@ class Game:
             "LD_PRELOAD": ":".join(str(p) for p in preloads),
             "XDG_DATA_HOME": str(data_home),
             "ZAP_TEST_SAVE_DIR": str(self.save),
+            "ZAP_TEST_NO_SELF_CONFIG": "1",
         }
         env.pop("ZEXION_SAVE_DIR", None)
         env.update(env_more)
@@ -1210,7 +1216,7 @@ def test_with_a_seed_file_and_no_client_the_helper_configures_itself(tmp_path: P
     seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
     (data / "ZexionAP" / "seeds").mkdir(parents=True)
     (data / "ZexionAP" / "seeds" / "S-0-1.txt").write_text(seed)
-    started = Game(HOOKTEST, data)
+    started = Game(HOOKTEST, data, **SELF_CONFIG)
     try:
         at = config_addresses()
         with started.connect() as sock:  # reads only: no config
@@ -1235,7 +1241,7 @@ def test_an_ap_save_gets_its_look_with_no_client_and_its_notices(tmp_path: Path)
     seed = offline.seed_text([0] * 154, (0, 0, 0), True, False, None, None)
     (data / "ZexionAP" / "seeds").mkdir(parents=True)
     (data / "ZexionAP" / "seeds" / "S-0-1.txt").write_text(seed)
-    started = Game(HOOKTEST, data)
+    started = Game(HOOKTEST, data, **SELF_CONFIG)
     try:
         at = config_addresses()
         record = stand_in("zap_record_table") + 49 * 100
@@ -1288,7 +1294,7 @@ def test_with_no_client_nothing_runs_while_the_player_pointer_reads_elsewhere(
     seed = offline.seed_text([0] * 154, (0, 0, 0), False, False, None, None, [(cell, 103)])
     (data / "ZexionAP" / "seeds").mkdir(parents=True)
     (data / "ZexionAP" / "seeds" / "S-0-1.txt").write_text(seed)
-    started = Game(HOOKTEST, data)
+    started = Game(HOOKTEST, data, **SELF_CONFIG)
     try:
         at = config_addresses()
         pointer = stand_in("zap_main_character")
@@ -1461,12 +1467,65 @@ def test_the_title_lines_wait_for_the_title(game: Game) -> None:
         assert ask(sock, "title_status") == "0"
 
 
-@pytest.mark.parametrize("game", [HOOKTEST], indirect=True)
-def test_with_no_seed_file_the_helper_waits_for_a_client(game: Game) -> None:
-    with game.connect() as sock:
-        frames = int(ask(sock, "ping").split("frames=")[1])
-        wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 5)
-        assert ask(sock, "intel on") == "refused not configured"
+def test_a_start_with_no_seed_file_and_no_client_configures_itself(tmp_path: Path) -> None:
+    # A machine no client has run on (no ZexionAP folder, no seed file, no copy in the save folder):
+    # the helper configures itself from the game's symbols at the first frames all the same, as the
+    # Windows helper does from its scan, so the title's lines and the text window's repair run.
+    data = tmp_path / "data"
+    started = Game(HOOKTEST, data, **SELF_CONFIG)
+    try:
+        at = config_addresses()
+        with started.connect() as sock:  # the token's folder is the only thing there
+            seeds = started.offline / "seeds"
+            assert not seeds.exists() or not list(seeds.iterdir())  # no seed file to work from
+            assert wait_for(sock, "assists free", lambda r: r == "free") == "free"  # configured
+            assert (
+                ask(sock, f"write {at['save_loaded']:#x} ff") == "written 1"
+            )  # no save: the title
+            frames = int(ask(sock, "ping").split("frames=")[1])
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 20)
+            # The title watch runs (the stand-in's title layer is empty, so nothing is made).
+            assert ask(sock, "title_status") == "0"
+            assert ask(sock, "intel on") == "intel on"  # a request that needs a configuration
+            # A client's config still takes over, with the addresses the helper has.
+            config = "config " + " ".join(f"{k}={v:#x}" for k, v in at.items())
+            assert ask(sock, config) == "ok"
+    finally:
+        _, _, err = started.stop()
+    assert "configured from the game's symbols, no client, no seed file read yet" in err
+    assert "not configured with no client" not in err
+    assert not started.save.exists()  # no copy written: no save slot uses a seed
+
+
+def test_a_plain_randomizer_save_is_left_alone_by_a_helper_with_no_seed_file(
+    tmp_path: Path,
+) -> None:
+    # Configured with no seed file, the helper has no AP save to dress or guard: a randomizer
+    # save in play (marker 1, the stand-in's zeros as its section) shows no notice, keeps its item
+    # names, and Steam's achievements still reach Steam (no Feats guard).
+    data = tmp_path / "data"
+    started = Game(HOOKTEST, data, **SELF_CONFIG)
+    try:
+        at = config_addresses()
+        count, achieve = stand_in("zap_achievements"), stand_in("zap_achieve")
+        record = stand_in("zap_record_table") + 49 * 100
+        shown = stand_in("zap_shown")
+        with started.connect() as sock:
+            assert wait_for(sock, "assists free", lambda r: r == "free") == "free"  # configured
+            before_record = read_at(sock, record, 32)
+            assert ask(sock, f"write {at['rando_marker']:#x} 0100") == "written 2"
+            frames = int(ask(sock, "ping").split("frames=")[1])
+            wait_for(sock, "ping", lambda r: int(r.split("frames=")[1]) > frames + 40)
+            assert read_at(sock, record, 32) == before_record  # no INTEL CHIP, no labels
+            assert b"NOT CONNECTED" not in read_at(sock, shown, 64).upper()
+            assert ask(sock, "feats_status") != "on"
+            before = int.from_bytes(read_at(sock, count, 4), "little")
+            assert ask(sock, f"write {achieve:#x} 01") == "written 1"
+            wait_for(sock, f"read {achieve:#x} 1", lambda r: r == "data \x00")
+            after = int.from_bytes(read_at(sock, count, 4), "little")
+            assert after - before == 1  # Steam's call, not the stand-in's
+    finally:
+        started.stop()
 
 
 @pytest.mark.parametrize("game", [HOOKTEST], indirect=True)

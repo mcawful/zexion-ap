@@ -150,9 +150,13 @@ know where the game's state and functions are.
   table at start, after the binary's GNU build id matched a known build (`configure_self`,
   `read_own_symbols` in `linux/src/helper.cpp`; "The Linux helper"), and refuses a client's
   `config` that gives any key another address (`parse_config`), so a mismatch there is an
-  error, not a warning. It differs from the Windows helper in one rule: it configures only once a
-  seed file has been read (a first start on a PC no client has run on stays unconfigured, so no
-  title lines, until one has), and once the game's player pointer reads the player state.
+  error, not a warning. Like the Windows helper's, its configuring needs no seed file and no
+  client: a first start on a machine no client has run on (no data folder, no seed file, no synced
+  copy in the save folder: a fresh Steam Deck) configures from the first frames, once the game's
+  player pointer reads the player state, so the title lines show with no client having connected
+  (stand-in tests only, not yet run in the game from a first start). It used to wait for a seed
+  file to have been read; that rule dated from before the Windows scan, when a config came only
+  from files a client had written.
 - **Cost, and the pipe's start:** the pipe comes up after the scan, so a helper loaded late (the
   client's injection, `/reload_mod`) answers about that much later. On a copy of B1's exe
   (2026-11-20, the development PC, `tests/findaddr_tests.cpp`, 248 patterns): `find_all` 205 ms and
@@ -2630,9 +2634,10 @@ its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
    `memory reads refused: <why>` and `failed to start`, the last three stopping before `serving
    build` (the helper serves no one). Before it, `write: N ranges, M bytes allowed` (the client's
    writes the helper takes) and, for a range the game's layout leaves out, `write: 0x... is
-   outside gGameState ...: the client's writes there are refused`. Later, with a seed's file
-   and no client: `configured from the game's symbols, no client`, or `not configured with no
-   client: <why>`, and `seed files: <why>` for files it could not read. No `serving build` and no
+   outside gGameState ...: the client's writes there are refused`. Later, with no client (a seed's
+   file or not): `configured from the game's symbols, no client` (with `, no seed file read yet`
+   at its end when none had been read at that frame, as on a machine no client has run on), or
+   `not configured with no client: <why>`, and `seed files: <why>` for files it could not read. No `serving build` and no
    failure line: not loaded, turned off by a `zexion_ap.disabled` beside it, or the socket's
    creation or the serving thread's start failed (the two silent paths in `start`); glibc's loader says why it
    did not load (`ERROR: ld.so: object … from LD_PRELOAD cannot be preloaded (…): ignored.`,
@@ -2652,7 +2657,8 @@ its folder or a save is the owner's, asked first (`CLAUDE.md`, "Ask first"):
    `~/.var/app/com.valvesoftware.Steam/.local/share/ZexionAP/seeds/` (seen there, 2026-11-20:
    "Seed files", below), `<seed>-<team>-<slot>.txt` (`client/offline.py`, `seed_file_name`), and
    the stderr line `configured from the game's symbols, no client` once the game runs with it and
-   no client. Only the helper writes them (`CLAUDE.md`, "Rules").
+   no client (which no longer waits for a seed's file: before the client has run, the line ends
+   `, no seed file read yet`). Only the helper writes them (`CLAUDE.md`, "Rules").
 
 What to try first, each before the next:
 
@@ -3286,11 +3292,11 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   seed taken but not kept (`error too large`, a write that failed: the client takes each for
   taken, and puts it again only when it changes; `error no folder` is not reached on Linux, where
   a helper with no data folder has nowhere for its token and serves no one) stays the helper's
-  until the game closes, added again after each read. No config is kept: with a seed file read and no client yet,
+  until the game closes, added again after each read. No config is kept: with no client yet,
   the helper configures itself from the game's own symbols (`configure_self`: the addresses a
   client's `config` must give, checked as one, said on stderr), with no client attached, so this
-  world's own traps and disks work with no client; with no seed file it waits for a client, as
-  before. Configured so, or once its client has gone, it touches the game only while the game's
+  world's own traps and disks work with no client, and with no seed file read at all (a machine
+  no client has run on: the stderr line then ends "no seed file read yet"). Configured so, or once its client has gone, it touches the game only while the game's
   player pointer (`gMainCharacterSpriteP`) reads the player state the config's `inventory` lies
   in, as the client checks before it attaches. With a disk seed's file, the pause screen's disk
   row shows its save's count with no client, and in a translation the helper's icons are painted
@@ -3300,9 +3306,14 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   through the socket (`tests/test_native_linux.py`: a seed put stored in the stand-in's own data
   folder, `unchanged` the second time; with a seed file at start and no client, an own trap going
   off at its pickup, and not while the player pointer reads elsewhere; a seed not kept still the
-  helper's after its client went; with no seed file, a request refused until a client configures);
+  helper's after its client went; with no seed file, no data folder and no copy in the save
+  folder, the helper configured at the first frames, its title watch running, a plain randomizer
+  save left alone with Steam's achievements reaching Steam, no copy written, and a client's
+  `config` still taking over; the test build starts unconfigured unless a test lets it configure
+  itself, `ZAP_TEST_NO_SELF_CONFIG=1`, which `tests/test_native_linux.py` sets for every other
+  test, so a client's `config` and the requests refused before it stay tested);
   the helper configured from a seed's file, run in the game, 2026-11-19 ("The Linux helper",
-  above).
+  above); configured with no seed file at all is stand-in tests only, not yet run in the game.
 - **The look without the client.** `Game::watch_offline` runs at each frame call, before the
   watches that apply what it sets (on Windows `watch_all` runs INTEL CHIP's and the disks' watches
   before it, so they apply its changes a frame later there) ("AP saves without the client"): with
@@ -3360,11 +3371,13 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   `text_new_fn`, `newSpriteString`; `text_place_fn`; `text_link_fn`, `addSpriteString`), only
   while no menu is open, and in English(HD) in the translation's font through the shared label
   builder (`docs/re/linux.md`, "Mapped by disassembly: the title screen's lines"). Configured from
-  the game's symbols with no client (a seed file read), the lines show with the hint as they do on
-  Windows with its own addresses (found by its scan, "Finding its own addresses"), while the game's player pointer reads the player state the
-  config's `inventory` lies in ("Seed files."): it did at the title screen before any save, and in
-  play (`docs/re/linux.md`, "Read from the running game"), so from the first title; with no seed
-  file and no client, the helper is not configured, so no line shows until a client configures. If
+  the game's symbols with no client (with or without a seed file read), the lines show with the
+  hint as they do on Windows with its own addresses (found by its scan, "Finding its own
+  addresses"), while the game's player pointer reads the player state the config's `inventory`
+  lies in ("Seed files."): it did at the title screen before any save, and in play
+  (`docs/re/linux.md`, "Read from the running game"), so from the first title, on a machine no
+  client has run on too (run in the game, 2026-11-19, with a seed file; with none, stand-in tests
+  only, not yet run in the game). If
   the mouse sets `menu_state` to 1 at the title (open: `docs/re/linux.md`), the lines wait unmade,
   or the translated ones hidden, until a key is pressed. `title_status` says what the watch last
   found (for checks). Tested through the socket only for the watch and the request

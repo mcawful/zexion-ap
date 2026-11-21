@@ -107,8 +107,10 @@ worlds/zexion/ → generation → slot data → client
   text window's repair, the Feats guard, the map markers) works on a first start, before any
   client has run. A client's `config` still takes over, and the helper says so in its reply if
   the addresses differ from its own (the client logs a warning: a bug in one of the scans). The
-  Linux helper configures itself from the game's symbols instead, with a seed file to work from.
-  Stand-in tests only: not yet run in the game from a first start.
+  Linux helper configures itself from the game's symbols instead (by name, once the binary's build
+  id matches), also at every start with no client and no seed file read, so a fresh Linux machine
+  or Steam Deck shows the title screen's lines on its first start. Stand-in tests only: neither is
+  run in the game from a first start.
 - **The offline files.** The client sends the helper a small file per seed it connects to (and,
   as a fallback should the helper's own scan fail, the addresses it found for this build); the
   helper keeps them in `%LOCALAPPDATA%\ZexionAP` (the Linux helper the seeds alone, under
@@ -348,8 +350,9 @@ Deck and Snap's Steam are not tried: what is known of the Deck and the runtime i
   of the memory layer; it runs every part but unloading), shows other players' items as
   Archipelago items (on the map too), sets off traps, shows its text in a translation's font, and
   runs the OS Install Disks goal (its count, this world's own disks counted at their pickup with
-  no client, and RETURN HOME); it keeps the seeds' files (under `$XDG_DATA_HOME`) and, with one
-  and no client, configures itself from the game's symbols, so this world's own traps and disks
+  no client, and RETURN HOME); it keeps the seeds' files (under `$XDG_DATA_HOME`) and, with no
+  client, configures itself from the game's symbols (with no seed file read either: stand-in tests
+  only, not run in the game), so this world's own traps and disks
   work with no client, gives AP saves their look without the client and the file select's AP logo,
   disk counts and ITEMS row, shows the title screen's lines, keeps Feats and Steam achievements
   out of AP saves, with the Feats screen's note, and repairs tall popups' text. Tested against a
