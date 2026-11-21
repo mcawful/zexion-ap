@@ -155,8 +155,8 @@ constexpr char kSpriteDefCount[] = "gSpriteDefCount";
 constexpr int16_t kTracedSpriteDefs = zap::kHdIconSheet - 5;
 uint64_t g_sprite_def_count = 0;
 
-// The game's pointer to the player in play: the helper configures itself, and runs with no client
-// configured, only while it points at the player state the config's `inventory` lies in, as the
+// The game's pointer to the player in play: the helper configures itself (at the first frames,
+// seed file or not), and runs with no client configured, only while it points at the player state the config's `inventory` lies in, as the
 // client checks before it attaches (client/game.py; docs/re/linux.md, "Read from the running
 // game"). In the test build, the stand-in game's.
 #ifdef ZAP_HOOKTEST
@@ -919,13 +919,24 @@ void note_put_seed(zap::OfflineSeed seed, bool kept) {
 
 // Game thread: with no client yet, the helper configured from the game's own symbols (the
 // addresses a client's config must give: parse_config), inactive, as the Windows helper's own scan's
-// (or its cache's) is: only what runs with no client uses it. Only with a seed file read to work from, so
-// a game with none is left alone until a client configures, and only once the game's player
-// pointer reads where the config's player state is (tried again each frame until then).
-bool g_seed_files = false;  // a seed file has been read
+// is (since #186, with no seed file or cache to wait for): only what runs with no client uses it.
+// From the first frames, whether or not any seed file has been read (a game with none has no AP
+// save: nothing is dressed, no Feats are held, and the title's lines and the text window's repair
+// run, as on Windows with no client), and only once the game's player pointer reads where the
+// config's player state is (tried again each frame until then). The stderr line says when no seed
+// file had been taken by that frame (the serving thread's read at start may not be, yet).
+bool g_seed_files = false;  // a seed file has been taken (the stderr line only)
+#ifdef ZAP_HOOKTEST
+// Tests only (ZAP_TEST_NO_SELF_CONFIG=1, read in the constructor): the stand-in game starts
+// unconfigured, for the tests of a client's `config` and of the requests refused before it.
+bool g_test_no_self_config = false;
+#endif
 void configure_self() {
     static bool failed = false;
-    if (failed || !g_seed_files || g_game->configured() || !g_expected_known) return;
+    if (failed || g_game->configured() || !g_expected_known) return;
+#ifdef ZAP_HOOKTEST
+    if (g_test_no_self_config) return;
+#endif
     if (!player_where_expected()) return;
     std::string request = "config";
     char address[32];
@@ -938,8 +949,8 @@ void configure_self() {
     std::string why = parse_config(request, found);
     if (why.empty()) {
         install_config(found, false);
-        std::fprintf(stderr, "zexion-ap %s: configured from the game's symbols, no client\n",
-                     kVersion);
+        std::fprintf(stderr, "zexion-ap %s: configured from the game's symbols, no client%s\n",
+                     kVersion, g_seed_files ? "" : ", no seed file taken yet");
     } else {
         failed = true;  // the same symbols would fail the same: not tried again
         std::fprintf(stderr, "zexion-ap %s: not configured with no client: %s\n", kVersion,
@@ -989,7 +1000,7 @@ void take_offline() {
         guarded([&] { g_game->note_client_seed(seeds.back()); });
         g_game->merge_offline(std::move(seeds));  // after the files, read earlier
     }
-    configure_self();  // each frame until it has configured, a seed file once read
+    configure_self();  // each frame until it has configured, seed file or not
 }
 
 // The requests that act on the game (native/README.md, "The Linux helper"), or nothing for one
@@ -1478,6 +1489,12 @@ void start_inside() {
 #else
     *g_offline_folder = zap::offline_folder();  // here, before the game's threads (getenv)
     *g_save_folder = zap::save_folder();
+#endif
+#ifdef ZAP_HOOKTEST
+    {  // here, before the game's threads (getenv)
+        const char* hold = std::getenv("ZAP_TEST_NO_SELF_CONFIG");
+        g_test_no_self_config = hold != nullptr && std::strcmp(hold, "1") == 0;
+    }
 #endif
     g_game->set_title_version(kVersion);  // the title's version line (title.h), as on Windows
     if (!read_own_symbols()) {

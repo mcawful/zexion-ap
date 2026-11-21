@@ -352,7 +352,9 @@ the release's.
   exe copy only, not yet run in the game) and, in `proxy/`, the proxy
   `version.dll`; in `linux/`,
   the Linux helper `libzexion_ap.so`, which also builds the sources of `src/` it shares (`Game`,
-  through `src/platform.h`; it runs new games, grants with their popups, scrap's drops and Energy
+  through `src/platform.h`; it configures itself from the game's own symbols at every start, with
+  no client and no seed file read, like the Windows helper from its scan: stand-in tests only, not
+  yet run in the game from a first start; it runs new games, grants with their popups, scrap's drops and Energy
   Shields, DeathLink's deaths, Intel Chips, the ASSIST lock, other players' items, traps,
   translations, the OS Install Disks goal, AP saves' look without the client, the file select's AP
   logo, disk counts and ITEMS row, the title screen's lines, Feats and Steam achievements kept out
