@@ -3031,9 +3031,8 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   addresses (with the rest of the 90), which the client resolves from the game's symbols
   (`client/linux_targets.py`, `helper_config`) and the helper checks against its own reading of
   them, so a client and a helper that disagree change nothing (the client also refuses a helper of
-  another version, and one of this version built before the traps, which answers `trap_status`
-  with `error unknown request`: it would refuse every batch with a trap's popup; any other reply
-  but `queued …`, such as `refused no frame`, is a configuration tried again). "Frame" requests
+  another version; it asks nothing else to tell a build, so a `config` reply other than `ok`,
+  such as `refused no frame`, is the one check, and a configuration tried again). "Frame" requests
   and the watch run on the game's thread through `src/mailbox.h` (`src/mailbox_linux.cpp`), only
   at `SWHardwareEnd`'s swap, by its return address (not the palette window's: `docs/re/linux.md`,
   "The per-frame call"), with nothing they throw reaching the game. As on Windows, a client that
@@ -3223,12 +3222,12 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   does any connection that sent a request that sets something (`sets_client_state`) and closes,
   until the next `config`: so a client configuring on another
   connection than before takes the disks the save holds for counted at its next look
-  (`ticks.linux_newgame_tick`, as `attach_helper` does on Windows), and gives no follow-up through
-  a connection not configured yet (`linux_finds_tick`), so one pickup shows one count; one picked
+  (`ticks.configure_linux`, as `attach_helper` does on Windows), and gives no follow-up through
+  a connection not configured yet (`ticks.helper_link`, for every tick), so one pickup shows one count; one picked
   up with the client attached just before its connection closed, its follow-up not run yet, shows
   none, as on Windows. Tested on the stand-in game through the socket
   (`tests/test_native_linux.py`: a pickup with a client queues nothing, one after it has gone
-  queues the count) and with stand-ins for the client (`tests/test_zexion_client.py`); with a
+  queues the count) and with stand-ins for the client (`tests/test_ticks_linux.py`); with a
   client attached run in the game, 2026-11-19 ("The Linux helper", above: run 2), with none not
   yet.
 - **RETURN HOME WITH THE DISKS?** `Game::watch_mission` runs at each frame call and
@@ -3252,7 +3251,7 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     helper does not, and the look without the client (below) does not ask for it either. A Linux
     client's connection closes with any request that
     gets no reply, so the client follows a prompt it queued while it is on its way
-    (`mission_status`, `ticks.linux_finds_tick`) while it is on its way (`asked`, `opening…`) and
+    (`mission_status`, `ticks.return_home_tick`) while it is on its way (`asked`, `opening…`) and
     after a YES until the ending has started (`yes: ending when idle…`): one the cancel dropped
     (`not asked`), or left up with YES put back to NO's callback (`put back: …`, which
     `MissionPrompt::restore` sets only for a prompt still open, so a NO the player pressed, which
@@ -3268,8 +3267,9 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
     (`taken_over`, `fade_still_ours`); not measured.
 
   The client's side runs on Linux too: the finds' follow-ups (the found disks' counts, the Area
-  Maps' hints) and the Landing Pod's reminder and prompt (`ticks.linux_finds_tick`), and the
-  ending again on a save past it (`linux_replay_tick`). Tested on the stand-in game through the
+  Maps' hints, `ticks.followups_tick`) and the Landing Pod's reminder and prompt
+  (`ticks.mission_tick`, `ticks.return_home_tick`), and the ending again on a save past it
+  (`ticks.replay_tick`), all through `ticks.helper_link`. Tested on the stand-in game through the
   socket: `mission_prompt` taken once configured, lapsing away from home's cell, waiting at home
   (the stand-in has no event 3667 or prompt to open), and dropped when `discs` turns off. The
   prompt itself: stand-in tested on Windows only (`tests/mission_tests.cpp`); the prompt at the
@@ -3294,11 +3294,12 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   (`docs/re/linux.md`, "Mapped by disassembly: received Energy Shields"). A request with no reply
   leaves it looked for, as a reply lost on Windows (one that failed in making the connection again
   never went out: not looked for); the Linux helper is dropped (`linux_mod_lost`) either way. A
-  Linux helper of this version built before shields answers `error unknown request`: said once,
-  and received shields wait for a newer one. Tested on the stand-in game through the socket
+  Linux helper of this version built before shields is no special case: its `error unknown
+  request` is the ordinary refusal, asked again every `GAP_SECONDS`. Tested on the stand-in game
+  through the socket
   (`tests/test_native_linux.py`: `shield` refused unconfigured and until settled, then event 3553
   run with the player's cell; a received one's popup spawning nothing) and with stand-ins for the
-  client (`tests/test_ticks.py`, the poll's gate in `test_zexion_client.py`); run in the game,
+  client (`tests/test_ticks.py`, the poll's gate in `test_ticks_linux.py`); run in the game,
   2026-11-19 ("The Linux helper", above).
 - **DeathLink's deaths received.** `die` runs `Game::kill` as on Windows ("DeathLink"): once the
   player has been in play in one cell for a second, not while the game is halted (`halt_flag`,
@@ -3354,14 +3355,14 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   file's record 49 reads as `kAreaMap` (whether anything writes the records after the load is
   not swept: the check before each write leaves one that reads otherwise alone)
   (`docs/re/linux.md`, "Mapped by disassembly: Intel Chips"). A received one's popup and its name in a translation were shared already ("Grants
-  and popups", "Translations"). The client sends it through `LinuxMod` (`ticks.linux_intel_tick`);
+  and popups", "Translations"). The client sends it through `LinuxMod` (`ticks.toggle_tick`);
   a Linux helper of this version built before Intel Chips refuses it, which the client asks again
-  every few seconds, saying nothing. Tested on the stand-in game through the socket
+  every few seconds (`REFUSED_RETRY_SECONDS`), saying nothing. Tested on the stand-in game through the socket
   (`tests/test_native_linux.py`: refused unconfigured, named with its event off in the client's
   seed's save only, not before the helper has the seed, in a normal save or another seed's, put
   back by `intel off` and by the client going, and not named for the next client until it has put
   its seed; stand-in tests only, not run in game on Linux) and with stand-ins for the client
-  (`tests/test_zexion_client.py`); a received chip and its hint run in the game, 2026-11-19 ("The
+  (`tests/test_ticks_linux.py`); a received chip and its hint run in the game, 2026-11-19 ("The
   Linux helper", above).
 - **The ASSIST lock.** `assists lock` and `assists free` are taken as on Windows ("The assist
   menu"), and `Game::watch_assists` runs at each frame call: while locked, the options menu's
@@ -3378,10 +3379,10 @@ connected: the helper serves one at a time, so `grant.py` (`set` too) waits whil
   more way to be built again (the translation-mod screens' way back), which finding the entry
   afresh each frame call covers (`assist_menu_fn`, `AssistMenu`; `docs/re/linux.md`, "Mapped by
   disassembly: the ASSIST lock"). The client sends it through `LinuxMod`
-  (`ticks.linux_assists_tick`); a Linux helper of this version built before the lock refuses it,
+  (`ticks.toggle_tick`); a Linux helper of this version built before the lock refuses it,
   which the client asks again every few seconds, saying nothing. Tested through the socket only
   for the requests (`tests/test_native_linux.py`: refused unconfigured, then taken; the stand-in
-  opens no options menu) and with stand-ins for the client (`tests/test_zexion_client.py`); the
+  opens no options menu) and with stand-ins for the client (`tests/test_ticks_linux.py`); the
   lock itself is stand-in tested on Windows (`tests/menu_tests.cpp`); not run in the game.
 - **Seed files.** `offline_put seed` writes the seed's file as the Windows helper does ("AP saves
   without the client", `src/offline.cpp`), into `$XDG_DATA_HOME/ZexionAP/seeds/NAME.txt`, else
@@ -3447,8 +3448,8 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   not-connected notice (or, for `other_save`, the other-seed notice) once a load; left, it is put
   back. A client's `config` takes the look off first and withdraws the notices not shown yet; the
   client then asks `client_back`, which pops up ARCHIPELAGO CLIENT CONNECTED. once if that save
-  was dressed (`ticks.linux_client_back_tick`, before the poll's step), and `other_save` for
-  another seed's save in play (`linux_other_save_tick`). The client hands over the whole seed
+  was dressed (`ticks.client_back_tick`, before the poll's step), and `other_save` for
+  another seed's save in play (`ticks.other_save_tick`). The client hands over the whole seed
   file, its labels included, once known (`offline_seed`, as on Windows), and what the slot data
   alone gives until then, never after the whole file went in that client run (a reconnect lists
   the items afresh: `ZexionContext.linux_full_seeds`), and a new client run's first put, before
@@ -3484,10 +3485,10 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   and no client, the save dressed (INTEL CHIP) with the not-connected notice; a client's config
   taking the look back, `client_back` shown once, `other_save` dressing it again with the
   other-seed notice, and that client gone, dressed afresh with the not-connected notice again) and
-  with stand-ins for the client (`tests/test_zexion_client.py`: the whole seed file not replaced
-  by the slot data's after a reconnect); run in the game, 2026-11-19 ("The Linux helper",
-  above). The stored file's labels kept in a new run's first put are stand-in tests only
-  (`tests/test_zexion_client.py`, `tests/test_offline.py`).
+  with stand-ins for the client (`tests/test_ticks_linux.py`:
+  `test_on_linux_the_whole_seed_file_is_never_replaced_by_the_slot_datas`); run in the game,
+  2026-11-19 ("The Linux helper", above). The stored file's labels kept in a new run's first put
+  are stand-in tests only (`tests/test_ticks_linux.py`, `tests/test_offline.py`).
 - **The title screen's lines.** `Game::watch_title` runs at each frame call with no save loaded,
   as on Windows ("The title screen's lines"): ARCHIPELAGO MOD and the version (set in the helper's
   constructor), ©2026 MCAWFUL, and with no client attached the hint to start it, made with the
@@ -3572,9 +3573,9 @@ the helper's own write: `CLAUDE.md`, "Rules"). Tested on the stand-in game
   so `src/text.cpp` builds its own patch there: the edge less the row's top, as the Windows
   patch's. The cut's second branch, for a glyph whose `+0x38` reads `0x5A` (cut mod 9), is left
   alone (what those glyphs are, and whether popups draw them: not traced). The client no longer
-  says a part is missing on Linux: the Linux helper runs every part (`native.attach` refuses the
-  Windows helper there, `native.NoWindowsHelper`, said nothing of, and the client goes on with the
-  Linux helper). Tested beside the game's bytes (`linux/tests/patch_tests.cpp`: for rows 0 to 31
+  says a part is missing on Linux: the Linux helper runs every part (`ticks.attach_helper` does
+  not try the Windows helper there, says nothing of it, and the client goes on with the Linux
+  helper). Tested beside the game's bytes (`linux/tests/patch_tests.cpp`: for rows 0 to 31
   and every edge the cut is taken at, the game's gives the edge mod 8 and ours the edge less the
   row's top) and on the stand-in game through the socket (patched once configured); tall popups
   run in the game, 2026-11-19 ("The Linux helper", above: run 2).
