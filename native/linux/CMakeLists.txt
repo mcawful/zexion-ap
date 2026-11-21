@@ -100,6 +100,7 @@ target_link_options(zap_fake_game PRIVATE -no-pie -rdynamic)  # its stand-in Ope
 enable_testing()
 add_executable(zap_linux_core_tests tests/core_tests.cpp)
 target_link_libraries(zap_linux_core_tests PRIVATE zap_linux_core)
+target_include_directories(zap_linux_core_tests PRIVATE ../src)  # check.h's platform.h
 add_test(NAME linux_core COMMAND zap_linux_core_tests)
 
 add_executable(zap_newgame_tests tests/newgame_tests.cpp)

@@ -10,19 +10,12 @@
 #include <string>
 #include <vector>
 
+#include "../../tests/check.h"
 #include "core.h"
 
 using namespace zap::linux_helper;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool ok, const char* what, const std::string& detail = "") {
-    if (ok) return;
-    std::printf("FAIL: %s %s\n", what, detail.c_str());
-    ++g_failures;
-}
 
 void put32(std::vector<unsigned char>& out, uint32_t v) {
     for (int i = 0; i < 4; ++i) out.push_back(static_cast<unsigned char>(v >> (8 * i)));
@@ -358,6 +351,5 @@ int main() {
     test_writes();
     test_own_symbols();
     check(socket_name(4242) == "zexion-ap-4242", "the socket's name");
-    if (g_failures == 0) std::printf("linux core: all passed\n");
-    return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return report("linux core");
 }
