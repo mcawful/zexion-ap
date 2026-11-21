@@ -403,7 +403,13 @@ Committed under `.claude/`, so they apply to anyone working here:
   (`ls ~ | (cat) | xargs rm -rf`); and
   archives or tree copies into the home folder (`tar -x -C ~`, `rsync -a x ~/`, `cp -r x ~`)
   pass: they add files and overwrite only what the archive holds, unless the overwrite is asked
-  for (`unzip -o`, `tar --overwrite`, `Expand-Archive -Force`). The
+  for (`unzip -o`, `tar --overwrite`, `Expand-Archive -Force`). The repo's own build and
+  release files are no protected folder, whatever their names: `rm native/build/libzexion_ap.so`,
+  `cp x native/build/version.dll`, `rm dist/zexion_ap.dll` and `mkdir -p dist/x` pass, and the
+  same names in the game's install block. A `sed` script is no path (the script of `sha256sum
+  dist/* | sed -E 's/^(.{12})[^ ]* \\*?/\\1  /'` read as one was three wildcard names, which
+  may be `Gallant Leaf/Zexion`, and blocked any `rm`, `cp` or `mkdir` in the same command);
+  `unzip -l`, `tar -t` and `zipinfo` only list, so they count as reads. The
   guard also reads Monitor's and the terminal tool's
   (`mcp__terminal__run_in_terminal`) commands, and `settings.json`'s matcher sends them to it: it
   runs for Write, Edit, MultiEdit, NotebookEdit, Bash, PowerShell, Monitor and the terminal tool.
