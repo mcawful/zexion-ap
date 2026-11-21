@@ -33,26 +33,17 @@ import re
 import sys
 from pathlib import Path
 
-from build_apworld import client_version
 from protected import ROOT, assert_writable
+from versions import bare, client_version
 
 NOTES = ROOT / "docs" / "releases"  # <version>.md for each release; README.md is the guide
 FOOTER = ROOT / ".github" / "release-footer.md"
 REPO_URL = "https://github.com/mcawful/zexion-ap"
 PLACEHOLDER = "TODO"  # what docs/releases/TEMPLATE.md marks every line to replace with
 
-_VERSION = re.compile(r"v?(\d+\.\d+\.\d+)")
 _UPDATING = re.compile(r"^## Updating from (\S+)[ \t]*$", re.MULTILINE)
 _HEADING = re.compile(r"^## ", re.MULTILINE)
 _STEP = re.compile(r"(- |  )\S")  # a list item, or a line continuing one
-
-
-def bare(version: str) -> str:
-    """``v1.1.0`` or ``1.1.0`` as ``1.1.0``; ValueError for anything else."""
-    match = _VERSION.fullmatch(version.strip())
-    if not match:
-        raise ValueError(f"not a version: {version!r}")
-    return match.group(1)
 
 
 def notes_path(version: str) -> Path:

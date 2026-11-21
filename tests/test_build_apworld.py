@@ -415,7 +415,7 @@ def test_a_missing_linux_helper_is_refused(tmp_path: Path, dlls) -> None:
 
 def test_a_linux_helper_of_another_version_is_refused(tmp_path: Path, dlls) -> None:
     stub_linux_helper(bap.LINUX_HELPER, "0.9.0")
-    refused(tmp_path, "the built Linux helper is not version")
+    refused(tmp_path, "libzexion_ap.so: it is not version .*: rebuild native/")
 
 
 def test_a_linux_helper_needing_a_newer_glibc_than_the_runtimes_is_refused(

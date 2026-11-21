@@ -347,7 +347,8 @@ rebuild 1.0.0's published message (the later ones carry an install guide that ha
   `worlds/zexion/test/test_samples.py` fails while one is out of date (after a change to the
   options, their descriptions or the version: run the tool again).
 - `tools/`: RE and save tooling, and the release builder and its checks. `tools/protected.py`
-  defines the protected folders (for the tools and the write guard) and `append_log`.
+  defines the protected folders (for the tools and the write guard) and `append_log`;
+  `tools/versions.py` reads the release version and the versions the release tools are given.
 - `docs/re/`: the reverse-engineering record.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
 - `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan, a

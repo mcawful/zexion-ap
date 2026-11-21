@@ -79,6 +79,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from protected import ROOT, assert_writable
+from versions import client_version
 
 sys.path.insert(0, str(ROOT))  # the client package
 from client import elf  # noqa: E402
@@ -145,18 +146,6 @@ MANIFEST = "zexion/archipelago.json"
 # The keys APWorldContainer.get_manifest() gives in AP 0.6.8 besides "game", which the world's
 # has, merged as worlds/LauncherComponents.py's Build APWorlds does.
 CONTAINER_KEYS = {"version": 7, "compatible_version": 7}
-
-
-def version_in(text: str, where: str) -> str:
-    """The ``VERSION`` that ``text``, client/native.py here or at a commit (``where``), sets."""
-    match = re.search(r'^VERSION = "([0-9.]+)"', text, re.M)
-    if not match:
-        raise SystemExit(f"{where} has no VERSION")
-    return match.group(1)
-
-
-def client_version() -> str:
-    return version_in((CLIENT / "native.py").read_text(encoding="utf-8"), "client/native.py")
 
 
 def helper_has_version(dll: Path, version: str) -> bool:
@@ -281,11 +270,9 @@ def build(out: Path) -> list[Path]:
             raise SystemExit(f"{dll.name} is older than {listed}: rebuild native/")
     if not helper_has_version(HELPER, version):
         raise SystemExit(f"the built helper is not version {version}: rebuild native/")
-    if not helper_has_version(LINUX_HELPER, version):
-        raise SystemExit(f"the built Linux helper is not version {version}: rebuild native/")
-    problem = linux_helper_problem(LINUX_HELPER)
+    problem = check_linux_helper(LINUX_HELPER, version)
     if problem:
-        raise SystemExit(f"{LINUX_HELPER.name} would not load in the Steam Runtime: {problem}")
+        raise SystemExit(f"{LINUX_HELPER.name}: {problem}: rebuild native/")
     files = packed_files()  # the guides among them: tracked
     samples = sample_files(version)
     names = [name for _, name in files] + [MANIFEST]
@@ -440,12 +427,13 @@ def archive(platform: str, version: str, contents: list[Entry], stamp: int) -> t
     return name, data
 
 
-def check_linux_helper(path: Path) -> str | None:
-    """Why the Linux helper at ``path`` can't be released, or None: the build's checks of it
-    (``build``) but its age, which a file made elsewhere (CI's artifact) can't be judged by."""
+def check_linux_helper(path: Path, version: str | None = None) -> str | None:
+    """Why the Linux helper at ``path`` can't be released as ``version`` (the client's by
+    default), or None. ``build`` runs it after its own check of the file's age, which a file
+    made elsewhere (CI's artifact, ``--check-linux-helper``) can't be judged by."""
     if not path.is_file():
         return f"{path} is missing"
-    version = client_version()
+    version = version or client_version()
     if not helper_has_version(path, version):
         return f"it is not version {version}"
     problem = linux_helper_problem(path)
