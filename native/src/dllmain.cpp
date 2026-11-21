@@ -21,17 +21,19 @@
 #include "findaddr.h"
 #include "game_calls.h"
 #include "game_requests.h"
+#include "host_offline.h"
 #include "iat.h"
 #include "mailbox.h"
-#include "offline_inbox.h"
 #include "pipe.h"
 
 #ifdef ZAP_HOOKTEST
+#define ZAP_TEST_BUILD_HOST true
 #define ZAP_TARGET_DLL "kernel32.dll"
 #define ZAP_TARGET_DLL_W L"kernel32.dll"
 #define ZAP_TARGET_FUNCTION "GetTickCount"
 #define ZAP_CHECK_BUILD 0
 #else
+#define ZAP_TEST_BUILD_HOST false
 #define ZAP_TARGET_DLL "SDL2.dll"
 #define ZAP_TARGET_DLL_W L"SDL2.dll"
 #define ZAP_TARGET_FUNCTION "SDL_GL_SwapWindow"
@@ -67,119 +69,14 @@ std::atomic<int> g_in_callback{0};
 std::atomic<bool> g_client_gone{false};
 // Loaded from the game's own folder (by the proxy, or a client with no build): `hello` reports it.
 bool g_from_game_folder = false;
-// The offline files (offline.h), read on the helper's thread at start and after each
-// disconnect, and the seeds put since (`offline_put`): the next frame takes both (take_offline).
-SRWLOCK g_offline_lock = SRWLOCK_INIT;
-zap::OfflineInbox g_inbox;
-// For `hello`: the reads taken by a frame, the seeds the last one found, and its error.
-std::atomic<int> g_offline_reads{0};
-std::atomic<int> g_offline_found{-1};
-std::string g_offline_error;  // guarded by g_offline_lock
-
-// The helper's own scan of the game's code for its addresses (findaddr.h). Made on the helper's
-// thread after the hook and before the first read of the offline files and the pipe, so every
-// reader (the game's thread taking those files, a `config` request, `hello`) comes after it, by
-// the offline lock or the pipe. `why` is "" once it ran, else why it did not (the hook-test build,
-// a build the helper does not know).
-struct SelfScan {
-    std::string why = "not run";
-    zap::find::Found found;
-};
-SelfScan g_scan;
-// Game thread, from the scan on: `hello`'s scan and addresses fields (native/README.md, "Finding
-// its own addresses").
-std::string g_scan_note = "-";
-std::string g_addresses = "-";  // "scan", "cache" or "client": where the configuration came from
-
-// Helper's thread: finds the game's addresses by byte pattern (the client's, findaddr.h) in a
-// known build. It never runs in DllMain: the thread starts after the loader lock is released.
-// Everything that allocates is inside the try, and the catch allocates nothing (an assignment of
-// a short literal to a string, `clear`), so a failed allocation cannot escape: it would skip the
-// files and the pipe, leaving the helper hooked, unreachable and unable to unload.
-void run_self_scan() {
-    try {
-        g_scan = {};
-        g_scan.why = zap::find::find_in_image(GetModuleHandleW(nullptr), g_scan.found);
-        if (!g_scan.why.empty()) {
-            g_scan_note = g_scan.why;
-        } else if (!g_scan.found.failed.empty()) {
-            g_scan_note = "failed " + g_scan.found.failed.front();  // taken or refused: below
-        } else {
-            g_scan_note = "ok";
-        }
-    } catch (...) {
-        g_scan.found.rvas.clear();
-        g_scan.found.failed.clear();
-        g_scan.why = "scan_failed";
-        g_scan_note = "scan_failed";
-    }
-}
-
-// The helper's own folder for the seeds, and the game's save folder, where each seed's copy goes
-// (offline.h). The test build is a host program's, never the game's, and takes every folder it
-// writes through restrict_to_test_folder: inside the temporary folder, and never the real ones.
-// Its save folder is only what a test names in ZAP_TEST_SAVE_DIR (not ZEXION_SAVE_DIR, which the
-// repo's tools define as the real one), its own folder only what LOCALAPPDATA names if that is
-// such a folder: else none, and then nothing is read or written. The production build uses none
-// of this outside the game: with no known build (a program that is not Zexion) it has no save
-// folder, and it takes no seed (handle).
-std::wstring offline_dir() {
-#ifdef ZAP_HOOKTEST
-    return zap::restrict_to_test_folder(zap::offline_folder());
-#else
-    return zap::offline_folder();
-#endif
-}
-
-std::wstring save_dir() {
-#ifdef ZAP_HOOKTEST
-    wchar_t folder[MAX_PATH];
-    DWORD n = GetEnvironmentVariableW(L"ZAP_TEST_SAVE_DIR", folder, MAX_PATH);
-    return n != 0 && n < MAX_PATH ? zap::restrict_to_test_folder(std::wstring(folder, n))
-                                  : std::wstring();
-#else
-    return g_build == nullptr ? std::wstring() : zap::save_folder();
-#endif
-}
-
-// The seeds of the game's randomizer saves, as its memory holds the slots (Game::saved_seeds),
-// published from the frame call and read by the pipe thread and the copy thread: a seed's copy goes
-// into the save folder only while a slot here uses it, and no save file of the game is opened (the
-// game opens one to write with no share mode, so a read open of ours could fail its save).
-zap::SavedSeeds g_saved;
+// The seed files, the helper's own scan and the thread that copies the seeds (host_offline.h).
+zap::HostOffline g_host{g_game};
 
 // Set by any request that sets something a client's going must put back (requests that
 // zap::sets_client_state names: `config`, `offline_put`, ...), taken when the connection goes: a
 // client that set nothing, `helper.py status` or a hello, leaves the game and the files as they
 // are (no put back, no copy written for it).
 std::atomic<bool> g_client_set{false};
-
-// An exclusive hold of the offline lock, released however the scope ends.
-class OfflineLock {
-public:
-    OfflineLock() { AcquireSRWLockExclusive(&g_offline_lock); }
-    ~OfflineLock() { ReleaseSRWLockExclusive(&g_offline_lock); }
-    OfflineLock(const OfflineLock&) = delete;
-    OfflineLock& operator=(const OfflineLock&) = delete;
-};
-
-// `write` false only makes the seeds one, writing nothing (a client that set nothing went).
-void read_offline_with(bool write) {
-    const std::vector<zap::OfflineSeed> saved = g_saved.get();
-    zap::OfflineFiles files =
-        zap::read_offline_files(offline_dir(), g_build, save_dir(), write, &saved);
-    // Copied before the lock, and the lock released however this ends: a throw under it would
-    // leave the next `hello` waiting for it for good.
-    {
-        std::string error = files.error;
-        OfflineLock lock;
-        g_offline_error = std::move(error);
-    }
-    g_offline_found.store(static_cast<int>(files.seeds.size()));
-    g_inbox.set_files(std::move(files));
-}
-
-void read_offline() { read_offline_with(true); }
 
 // Counts a call from the game into one of the helper's functions outside the frame call (the
 // trampoline counts those inside): helper_thread waits for none before it unloads.
@@ -191,8 +88,8 @@ public:
     InCallback& operator=(const InCallback&) = delete;
 };
 
-// Runs the helper's part of a call from the game, or its thread's start-up reads (the files),
-// and nothing may unwind: into the game, or past the pipe's start.
+// Runs the helper's part of a call from the game, or its thread's start-up work (the scan, the
+// files), and nothing may unwind: into the game, or past the pipe's start.
 template <typename Work>
 void guarded(Work&& work) {
     try {
@@ -294,137 +191,6 @@ void set_hooks() {
     g_game.set_hooks(hooks);
 }
 
-// Game thread: with no client yet, the helper configured (inactive: only what runs with no client
-// uses it) from its own scan's addresses if it found every one the game needs; else, from the
-// cached addresses for this build, if they check out against the game (client/offline.py wrote
-// them). Nothing from a scan that missed a required address: those are the cache's or the
-// client's.
-void configure_without_client(const zap::OfflineFiles& files) {
-    HMODULE exe = GetModuleHandleW(nullptr);
-    if (g_scan.why.empty()) {
-        std::string why = g_game.configure(exe, g_scan.found.rvas, false);
-        if (why.empty()) {
-            g_addresses = "scan";
-            // Only optional keys can be missing from an accepted scan (kConfigKeys).
-            const std::string lacking = zap::find::failed_names(g_scan.found);
-            g_scan_note = lacking.empty() ? "ok" : "ok without " + lacking;
-            return;
-        }
-        g_scan_note = "refused " + zap::find::failure_of(g_scan.found, why);
-    }
-    if (files.config.empty()) return;
-    std::string why = zap::check_offline_cache(exe, files);
-    if (why.empty()) why = g_game.configure(exe, files.config, false);
-    if (why.empty()) {
-        g_addresses = "cache";
-        return;
-    }
-    // The game's thread never waits for the lock (the pipe thread holds it only to swap the files
-    // in): an error it cannot record now is dropped.
-    if (TryAcquireSRWLockExclusive(&g_offline_lock)) {
-        g_offline_error = "cache: " + why;
-        ReleaseSRWLockExclusive(&g_offline_lock);
-    }
-}
-
-// Game thread: the files read last and the seeds put since, if new (OfflineInbox::take). Files
-// are first the chance of the helper's own configuration with no client.
-void take_offline() {
-    g_inbox.take(g_game, [](const zap::OfflineFiles& files) {
-        g_offline_reads.fetch_add(1);
-        if (!g_game.configured()) configure_without_client(files);
-    });
-}
-
-// Game thread: the slots' seeds published for the other threads, on the first frame and every
-// 16th (cheap: 30 slots' markers and sections). A change wakes the copy thread by its generation.
-void snapshot_saves() {
-    static uint32_t frame_count = 0;
-    if ((frame_count++ & 15u) != 0) return;
-    g_saved.publish(g_game.saved_seeds());
-}
-
-// The copy thread: when the game's slots change (a save made, a new game, a deleted save) it
-// reads the seed files and writes the copy of each seed a slot now uses into the save folder:
-// the case of a seed a client put before the game's first save, which the put could not copy,
-// whatever the client does after (it may be connected till the game closes). Never the frame
-// call. Polls the slots' generation every 250 ms and stops when asked (helper_thread joins it
-// before the DLL can go).
-std::atomic<bool> g_copy_stop{false};
-HANDLE g_copy_thread = nullptr;
-HANDLE g_copy_wake = nullptr;  // set to stop it at once (else it looks every 250 ms)
-
-DWORD WINAPI copy_thread(void*) {
-    uint64_t done = 0;
-    while (!g_copy_stop.load()) {
-        WaitForSingleObject(g_copy_wake, 250);
-        if (g_copy_stop.load()) break;
-        const uint64_t generation = g_saved.generation();
-        if (generation == done) continue;
-        done = generation;
-        try {
-            const std::vector<zap::OfflineSeed> saved = g_saved.get();
-            zap::OfflineFiles files =
-                zap::read_offline_files(offline_dir(), g_build, save_dir(), true, &saved);
-            if (!files.error.empty()) {
-                OfflineLock lock;
-                g_offline_error = files.error;
-            }
-        } catch (...) {
-            // Nothing may end this thread but being asked to.
-        }
-    }
-    return 0;
-}
-
-// Starts the copy thread: the helper's start, again after a refused unload stopped it, and at each
-// request (handle), which finds one that went since a stop timed out.
-void start_copy_thread() {
-    if (g_copy_thread != nullptr) {
-        // One that is still running is the one to keep. One that is gone (a stop that timed out and
-        // was not taken back, or one that ended on its own) leaves its handles: closed and cleared,
-        // so a new thread starts in its place, not none ever again.
-        if (WaitForSingleObject(g_copy_thread, 0) != WAIT_OBJECT_0) return;
-        CloseHandle(g_copy_thread);
-        CloseHandle(g_copy_wake);
-        g_copy_thread = nullptr;
-        g_copy_wake = nullptr;
-    }
-    g_copy_stop.store(false);
-    g_copy_wake = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (g_copy_wake == nullptr) return;
-    g_copy_thread = CreateThread(nullptr, 0, copy_thread, nullptr, 0, nullptr);
-    if (g_copy_thread == nullptr) {
-        CloseHandle(g_copy_wake);
-        g_copy_wake = nullptr;
-    }
-}
-
-// Stops the copy thread and waits for it, at most `milliseconds`: true if it is gone (or there was
-// none). It may be inside a file call that does not return (an antivirus filter, a cloud
-// placeholder on the save folder), and the DLL must not be freed under it: on false it is asked
-// to go on as before (it was not stopped), and the caller does not unload. With `resume` false (the
-// helper's last wait, which is not followed by any unload) the stop stays asked for: the thread
-// ends when its call returns, and the DLL, which stays loaded, is never freed under it.
-bool stop_copy_thread(DWORD milliseconds, bool resume = true) {
-    if (g_copy_thread == nullptr) return true;
-    g_copy_stop.store(true);
-    SetEvent(g_copy_wake);
-    if (WaitForSingleObject(g_copy_thread, milliseconds) != WAIT_OBJECT_0) {
-        if (resume) {
-            g_copy_stop.store(false);
-            ResetEvent(g_copy_wake);
-        }
-        // It may have seen the stop just before: then it is gone, and the caller may go on.
-        if (WaitForSingleObject(g_copy_thread, 0) != WAIT_OBJECT_0) return false;
-    }
-    CloseHandle(g_copy_thread);
-    CloseHandle(g_copy_wake);
-    g_copy_thread = nullptr;
-    g_copy_wake = nullptr;
-    return true;
-}
-
 // How long an unload waits for the copy thread. The reply comes after this and, once it has
 // stopped, the wait for a frame in undo_for_unload (1 s), and the client waits for it 3 s in
 // `Helper.unload` (APPLY_SECONDS) but only 2 s in `_unload_refusal` and tools/helper.py
@@ -454,8 +220,8 @@ uintptr_t frame(void* argument) {
                 // Only the offline look dresses a save until a client configures again.
                 g_game.client_gone(&archipelago_chosen);
             }
-            take_offline();
-            guarded([] { snapshot_saves(); });  // a throw here skips no other frame work
+            g_host.take();
+            guarded([] { g_host.snapshot_saves(); });  // a throw here skips no other frame work
             g_mailbox.serve();
             if (TryAcquireSRWLockExclusive(&g_menu_lock)) {
                 // No watch once an unload has begun: what the client asked for stays set, and a
@@ -488,6 +254,7 @@ uintptr_t frame(void* argument) {
 void hook() {
     HMODULE exe = GetModuleHandleW(nullptr);
     g_build = zap::identify_build(exe);
+    g_host.set_build(g_build, ZAP_TEST_BUILD_HOST);
     // The real helper hooks only a known build; the hook-test build never hooks the game.
     if (ZAP_CHECK_BUILD ? g_build == nullptr : g_build != nullptr) return;
     HMODULE target_dll = GetModuleHandleW(ZAP_TARGET_DLL_W);
@@ -521,41 +288,30 @@ void wait_until_no_call_inside() {
 constexpr char kHookReplaced[] = "the frame hook was replaced by something else";
 std::string undo_for_unload();
 
-// A hello field kept to one word: spaces (a seed file's name, a reason) as underscores.
-std::string one_word(std::string text) {
-    std::replace(text.begin(), text.end(), ' ', '_');
-    return text;
-}
-
 std::string hello() {
     // The fields read on the game's thread; these defaults stand if no frame comes.
     std::string game = " configured=0 feats=off", look = " offline=- active=0 title=0 lang=?";
-    std::string found = " scan=- addresses=-";
+    std::string scan = " scan=- addresses=-";
     if (g_slot != nullptr) {
         std::string ignored;
         g_mailbox.call(
             [&] {
                 game = std::string(" configured=") + (g_game.configured() ? "1" : "0") +
-                       " feats=" + one_word(g_game.feats_state());
-                look = " offline=" + one_word(g_game.offline_state()) +
+                       " feats=" + zap::one_word(g_game.feats_state());
+                look = " offline=" + zap::one_word(g_game.offline_state()) +
                        " active=" + (g_game.active() ? "1" : "0") +
-                       " title=" + one_word(g_game.title_state()) +
-                       " lang=" + one_word(g_game.language());
-                found = " scan=" + one_word(g_scan_note) + " addresses=" + g_addresses;
+                       " title=" + zap::one_word(g_game.title_state()) +
+                       " lang=" + zap::one_word(g_game.language());
+                scan = g_host.scan_fields();
                 return std::string();
             },
             kFrameWaitMs, ignored);
     }
-    AcquireSRWLockShared(&g_offline_lock);
-    std::string error = g_offline_error;
-    ReleaseSRWLockShared(&g_offline_lock);
     return std::string("zexion-ap ") + kVersion + " build=" +
            (g_build ? g_build : "unknown") +
            " hooked=" + (g_slot ? "1" : "0") + game +
            " folder=" + (g_from_game_folder ? "1" : "0") + look +
-           " reads=" + std::to_string(g_offline_reads.load()) + "/" +
-           std::to_string(g_offline_found.load()) + found +
-           (error.empty() ? "" : " read_error=" + one_word(error));
+           g_host.read_fields() + scan + g_host.error_field();
 }
 
 // Pipe thread: `work`'s reply, run at the game's next frame; "refused not configured" when
@@ -584,11 +340,7 @@ std::string config(const std::string& request) {
         [&] {
             std::string e = g_game.configure(exe, rvas);
             if (!e.empty()) return "error " + e;
-            g_addresses = "client";
-            // The client's addresses take over as they are; a key where they differ from the
-            // helper's own is a bug in one scan, said so it is seen (client/native.py logs it).
-            std::string differs =
-                g_scan.why.empty() ? zap::find::differing_keys(rvas, g_scan.found.rvas) : "";
+            const std::string differs = g_host.client_configured(rvas);
             return differs.empty() ? std::string("ok") : "ok differs " + differs;
         },
         false, error);
@@ -598,7 +350,7 @@ std::string handle(const std::string& request, bool& stop) {
     // Each request (the client pings every few seconds): a copy thread that is not there is
     // started, which is the case after a stop that timed out and then ended on its own. One that
     // is running is left alone (start_copy_thread).
-    if (g_slot != nullptr) start_copy_thread();
+    if (g_slot != nullptr) g_host.start_copy_thread();
     if (request == "hello") return hello();
     if (request == "ping") return "pong frames=" + std::to_string(g_frames.load());
     if (zap::sets_client_state(request)) g_client_set.store(true);
@@ -608,29 +360,15 @@ std::string handle(const std::string& request, bool& stop) {
 #if ZAP_CHECK_BUILD
         if (g_build == nullptr) return "error not the game";
 #endif
-        // Written by the helper: a packaged client's AppData writes are redirected (offline.h).
-        // The seed's copy in the game's save folder too (offline.h): Steam Cloud carries it.
-        zap::OfflineSeed seed;
-        std::string save_error;
-        const std::vector<zap::OfflineSeed> saved = g_saved.get();
-        std::string reply = zap::put_offline_file(offline_dir(), g_build, request, &seed,
-                                                  save_dir(), &save_error, &saved);
-        if (!save_error.empty()) {
-            OfflineLock lock;
-            g_offline_error = "save folder copy: " + save_error;
-        }
-        if (!seed.name.empty()) {
-            g_inbox.put_seed(std::move(seed), reply == "stored" || reply == "unchanged");
-        }
-        return reply;
+        return g_host.put(request);
     }
     if (request == "unload") {
         // The copy thread goes first, with a bounded wait: stuck in a file call it would keep the
         // DLL from being freed, so the unload is refused and the helper works on.
-        if (!stop_copy_thread(kCopyStopMs)) return "error the copy thread is busy; not unloading";
+        if (!g_host.stop_copy_thread(kCopyStopMs)) return "error the copy thread is busy; not unloading";
         std::string why = undo_for_unload();
         if (!why.empty()) {
-            start_copy_thread();  // refused: the helper stays, and keeps writing its copies
+            g_host.start_copy_thread();  // refused: the helper stays, and keeps writing its copies
             return "error " + why + "; not unloading";
         }
         stop = true;
@@ -714,17 +452,17 @@ DWORD WINAPI helper_thread(void*) {
         hook();
         // Then the helper's own scan (never in DllMain: this thread starts after the loader lock
         // is released), before the first read of the files and the pipe: those come after it.
-        if (g_slot != nullptr) guarded(run_self_scan);
+        if (g_slot != nullptr) guarded([] { g_host.run_self_scan(); });
         // Guarded as the scan is: the pipe comes up whatever these throw (no files read then).
-        if (g_slot != nullptr) guarded(read_offline);
-        if (g_slot != nullptr) start_copy_thread();
+        if (g_slot != nullptr) guarded([] { g_host.read_files(true); });
+        if (g_slot != nullptr) g_host.start_copy_thread();
         if (!zap::serve_pipe(zap::pipe_name(GetCurrentProcessId()), handle, [] {
                 // Only a client that set something has anything to put back, and the copies in the
                 // save folder are written only for one (a probe, `helper.py status`, does neither).
                 // The files are read for any: the client may have written them.
                 const bool write = g_client_set.exchange(false);
                 if (write) g_client_gone.store(true);
-                if (g_slot != nullptr) guarded([write] { read_offline_with(write); });
+                if (g_slot != nullptr) guarded([write] { g_host.read_files(write); });
             })) {
             // No pipe: nothing could ever unload us, so put the game back as unload does and
             // leave, retrying until a frame comes; if the hook was replaced, stay.
@@ -737,7 +475,7 @@ DWORD WINAPI helper_thread(void*) {
         }
         // Normally stopped by the unload request already. If it is stuck (a file call that does not
         // return) the DLL stays loaded, as when the hook was replaced: never freed under a thread.
-        if (!stop_copy_thread(kCopyStopMs, false)) return 0;
+        if (!g_host.stop_copy_thread(kCopyStopMs, false)) return 0;
         wait_until_no_call_inside();
         while (g_in_callback.load() != 0) Sleep(1);
     } catch (...) {
