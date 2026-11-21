@@ -27,7 +27,7 @@ WEAPON_UPGRADES = {3: 9, 4: 14, 5: 15, 6: 10, 7: 12}
 REDIRECT_IF_MISSING = {upgrade: weapon for weapon, upgrade in WEAPON_UPGRADES.items()}
 
 
-def collect(have: MutableMapping[int, int], item: int, guns_first: bool = True) -> None:
+def collect(have: MutableMapping[int, int], item: int, guns_first: bool) -> None:
     """Add one picked-up item to the counts, as the generator does (RVA 0xE5680): the
     redirects only with Guns First (setting t10)."""
     if not guns_first:
@@ -45,8 +45,11 @@ def collect(have: MutableMapping[int, int], item: int, guns_first: bool = True) 
 
 
 # Settings bytes t the logic reads besides code 68's t0 to t63 (docs/re/randocells.md, "Where
-# each setting is stored"): Guns First, then Safety's and Gates' bits, lowest first.
+# each setting is stored"): Guns First, then Safety's and Gates' bits, lowest first. And Secret
+# Shuffle's t37, inside code 68's range and read by reach.seed_locations: it makes the 155th
+# location.
 GUNS_FIRST, SAFETY, GATES = 10, (42, 43), (72, 73)
+SECRET_SHUFFLE = 37
 
 
 @dataclass(frozen=True)

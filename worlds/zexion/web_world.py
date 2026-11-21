@@ -7,7 +7,7 @@ from .items import GAME
 
 # Custom mode's own options (options.py: "Custom mode only"), in the options' order: grouped
 # after the options of every mode in the YAML templates and on the website.
-CUSTOM_ONLY = {"custom_base", "custom_items", *options.AMOUNTS, *options.SETTINGS}
+CUSTOM_ONLY = {"custom_base", *options.CUSTOM_ONLY}
 
 
 class ZexionWebWorld(WebWorld):

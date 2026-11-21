@@ -137,7 +137,7 @@ item_name_groups = {
 }
 
 
-def as_inventory(counts: Iterable[tuple[int, int]], guns_first: bool = True) -> dict[int, int]:
+def as_inventory(counts: Iterable[tuple[int, int]], *, guns_first: bool) -> dict[int, int]:
     """Counts by the game's item IDs as the game holds them: with Guns First, a progressive
     weapon as its weapon, and a second copy as its upgrade too, the way the game counts a weapon
     picked up twice; without it, every item as itself."""

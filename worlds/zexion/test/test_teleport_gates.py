@@ -14,8 +14,7 @@ from .. import custom, data, logic, reach
 from ..custom import Menu
 from ..options import Gates
 from ..world import ZexionWorld
-from .bases import FLAGGED, ZexionTestBase, preset, with_settings
-from .test_world import disks, fake_world
+from .bases import FLAGGED, ZexionTestBase, disks, fake_world, preset, with_settings
 
 
 class TestTheUsefulItemScore(unittest.TestCase):

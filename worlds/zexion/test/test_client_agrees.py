@@ -115,7 +115,7 @@ class TestClientCodes(unittest.TestCase):
     def test_the_locations(self) -> None:
         self.assertEqual(ids.LOCATIONS, len(data.LOCATIONS))
         self.assertEqual(ids.MAX_LOCATIONS, len(reach.ALL_LOCATIONS))
-        self.assertEqual(ids.SECRET_SHUFFLE, reach.SECRET_SHUFFLE)
+        self.assertEqual(ids.SECRET_SHUFFLE, logic.SECRET_SHUFFLE)
         # The game's list order is grid order: the 154 already in it, the 155th at 134.
         self.assertEqual(save_patch.game_order(data.LOCATIONS), tuple(range(154)))
         self.assertEqual(save_patch.game_order(reach.ALL_LOCATIONS).index(154), 134)
@@ -138,18 +138,20 @@ class TestClientCodes(unittest.TestCase):
         newgame.start_with({ids.MISSILE_CONTAINER: most})
         with self.assertRaises(newgame.NewGameError):
             newgame.start_with({ids.MISSILE_CONTAINER: most + 1})
-        self.assertEqual(starting.problems({ids.MISSILE_CONTAINER: most}, False), [])
-        self.assertNotEqual(starting.problems({ids.MISSILE_CONTAINER: most + 1}, False), [])
+        one = {ids.MISSILE_CONTAINER: most}
+        self.assertEqual(starting.problems(one, False, guns_first=True), [])
+        one = {ids.MISSILE_CONTAINER: most + 1}
+        self.assertNotEqual(starting.problems(one, False, guns_first=True), [])
         # The most Energy and missiles generation accepts are amounts the client writes (16
         # bits each, plan_text).
         top = {starting.ENERGY_TANK: starting.MAX_ENERGY, starting.MISSILE_BOX: 99}
         top[starting.MISSILE_CONTAINER] = most
-        self.assertEqual(starting.problems(top, False), [])
+        self.assertEqual(starting.problems(top, False, guns_first=True), [])
         _, amounts = newgame.start_with(top)
         self.assertEqual((amounts["energy"], amounts["missiles"]), (40, 999))
         self.assertTrue(all(-(2**15) <= v < 2**15 for v in amounts.values()))
         over = {starting.ENERGY_TANK: 41, starting.MISSILE_BOX: 100}
-        self.assertEqual(len(starting.problems(over, False)), 2)
+        self.assertEqual(len(starting.problems(over, False, guns_first=True)), 2)
         # Without Guns First, the upgrades are started as themselves: one each, in the array.
         one_each = dict.fromkeys(newgame.START_WITH_ORDER, 1)
         self.assertEqual(starting.problems(one_each, False, guns_first=False), [])

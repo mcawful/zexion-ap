@@ -6,8 +6,7 @@ start_inventory copy of an item the pool holds too, and the game holds once, is 
 from .. import starting
 from ..items import NAMES, code_of
 from ..options import Goal
-from .bases import ZexionStartTestBase
-from .test_world import RefusalTestCase, disks, fake_world, pool_names
+from .bases import RefusalTestCase, ZexionStartTestBase, disks, fake_world, pool_names
 
 SLIDE_MOD, SNAKE = code_of["Slide Mod"], code_of["Progressive Snake"]
 
@@ -105,7 +104,7 @@ class TestPoolDuplicatesRefused(RefusalTestCase):
 
     def test_pool_duplicates_counts_the_seeds_own_start(self) -> None:
         def found(start: dict[int, int], guns_first: bool = True) -> list[str]:
-            return starting.pool_duplicates({SNAKE: 1}, start, [SNAKE], guns_first)
+            return starting.pool_duplicates({SNAKE: 1}, start, [SNAKE], guns_first=guns_first)
 
         self.assertEqual(found({}), [])  # the weapon and its upgrade
         self.assertEqual(len(found({SNAKE: 1})), 1)

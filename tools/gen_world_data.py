@@ -72,7 +72,7 @@ def default_modes(backup: str = BACKUP) -> dict[str, Path]:
 def full_inventory(start: Counter, pool: list[int]) -> Counter:
     have = Counter(start)
     for item in pool:
-        rc.logic.collect(have, item)
+        rc.logic.collect(have, item, guns_first=True)
     return have
 
 

@@ -37,7 +37,7 @@ def inventory(counts: Mapping[int, int]) -> Inventory:
     return tuple(sorted((code, n) for code, n in counts.items() if n))
 
 
-def collected(start_inventory: Mapping[int, int], guns_first: bool = True) -> dict[int, int]:
+def collected(start_inventory: Mapping[int, int], *, guns_first: bool) -> dict[int, int]:
     """Starting items by item code, counted as the game counts them (``logic.collect``): with
     Guns First, a progressive weapon held twice as the weapon and its upgrade."""
     have: dict[int, int] = {}
@@ -71,7 +71,6 @@ def _ways(settings: logic.Settings, have: Inventory) -> tuple[dict, list]:
 # Every location by location index: the game's 154, then Secret Shuffle's (index 154).
 ALL_LOCATIONS: tuple[Cell, ...] = (*data.LOCATIONS, data.SECRET_LOCATION)
 LOCATION_AT = {cell: i for i, cell in enumerate(ALL_LOCATIONS)}
-SECRET_SHUFFLE = 37  # the setting (t37) that makes the 155th a location
 
 
 def seed_locations(settings: logic.Settings) -> tuple[Cell, ...]:
@@ -79,7 +78,7 @@ def seed_locations(settings: logic.Settings) -> tuple[Cell, ...]:
     155th as index 154. The game's own list holds it at position 134, in grid order
     (docs/re/randocells.md, "The pool"); the client works in location indices and puts the
     game's list in its order itself (client/save_patch.py, ``game_order``)."""
-    return ALL_LOCATIONS if settings.options[SECRET_SHUFFLE] else ALL_LOCATIONS[:-1]
+    return ALL_LOCATIONS if settings.options[logic.SECRET_SHUFFLE] else ALL_LOCATIONS[:-1]
 
 
 def collectible(
@@ -163,7 +162,7 @@ class Seed:
         # Every item: the starting items, then the pool, as the game's generator counts them
         # (with Guns First, a weapon picked up twice as its upgrade: ``logic.collect``).
         guns_first = settings.guns_first
-        have = collected(start_inventory, guns_first)
+        have = collected(start_inventory, guns_first=guns_first)
         start = inventory(have)
         for item in pool:
             if item not in UNREAD:
