@@ -1369,8 +1369,6 @@ BY_NAME_ALLOWED = [
     # Other names, wherever they are deleted: this repo's own work.
     ("Bash", "find . -name '*.pyc' -delete"),
     ("Bash", "find . -name __pycache__ -exec rm -r {} +"),
-    ("Bash", "find lab -name '*.sav' -delete"),
-    ("Bash", "find . -name '*' -delete"),
     ("Bash", "find . -name 'zexion*.py' -delete"),
     ("Bash", "find . -name 'zx*.py' -delete"),
     ("Bash", "find . -iname '*.log' -exec rm {} +"),
@@ -1408,7 +1406,7 @@ BY_NAME_ALLOWED = [
     # Round 4: reads only, around a substitution that reads.
     ("Bash", 'cd "$(find ~ -name ZexionAP)" && ls'),
     ("Bash", "cat $(find ~ -name ZexionAP -type f)"),
-    ("PowerShell", "Get-Item ~\\* -Include '*.pyc', '*.pyo' | Remove-Item"),
+    ("PowerShell", "Get-Item .\\* -Include '*.pyc', '*.pyo' | Remove-Item"),
     ("PowerShell", "Remove-Item ~\\lab\\* -Recurse -Include x, y"),
     ("PowerShell", "gci . ('*.pyc') -r | Remove-Item"),
     # The folders' names are text in a message, not a command.
@@ -1468,11 +1466,7 @@ def test_reads_by_a_protected_folders_bare_name_and_other_names_allowed(
         ("*zexion*.pyc", "path", False),
         (".*zexion.*\\.pyc", "regex", False),
         ("*zexion", "name", False),
-        ("*", "name", False),
-        ("Z*", "name", False),
         ("*P", "name", False),
-        ("[Z]*", "name", False),
-        ("[A-Z][a-z]*", "name", False),
         ("*.py", "name", False),
         ("zexion*.py", "name", False),
         ("zexion_client.py", "name", False),
@@ -1945,7 +1939,7 @@ def test_on_linux_a_backslash_folder_name_is_no_root(command: str, cwd: str, pos
 
 
 def test_a_slow_command_is_blocked_at_the_deadline(monkeypatch) -> None:
-    command = "find ~ " + " -o ".join(f"-name 'q{i}'" for i in range(200)) + " -delete"
+    command = "find lab " + " -o ".join(f"-name 'q{i}'" for i in range(200)) + " -delete"
     assert run("Bash", command=command) is None  # read in full: no protected name
     monkeypatch.setattr(guard_protected, "DEADLINE", 0.0)
     reason = run("Bash", command=command)
@@ -2129,3 +2123,975 @@ def test_the_hook_process_blocks_with_exit_2(payload: str, code: int) -> None:
     result = _hook(payload)
     assert result.returncode == code
     assert code == 0 or "guard_protected" in result.stderr
+
+
+# Folders above the protected ones, and the names of the files in them (round 7). A command that
+# starts from Roaming, the home folder or the root, and deletes or moves what it finds, reaches
+# the saves whatever name it looks for.
+
+FAKE_ENV = {
+    "APPDATA": "C:\\Users\\someone\\AppData\\Roaming",
+    "LOCALAPPDATA": "C:\\Users\\someone\\AppData\\Local",
+    "USERPROFILE": "C:\\Users\\someone",
+    "HOME": "C:/Users/someone",
+}
+
+
+HOST_FOLDER_VARS = (
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "RUNNER_TEMP",
+    "GITHUB_WORKSPACE",
+    "CLAUDE_PROJECT_DIR",
+)
+
+
+@pytest.fixture(params=["set", "unset", "posix"])
+def home_env(request, monkeypatch) -> str:
+    """The three ways the environment tells the guard where Roaming and the home folder are: set
+    as on Windows, not set at all (the variables are read as written), and Linux's."""
+    if request.param == "posix":
+        request.getfixturevalue("posix")
+    for name in HOST_FOLDER_VARS:  # the host's own, which a ``cd`` would expand: not these tests'
+        monkeypatch.delenv(name, raising=False)
+    for name, value in FAKE_ENV.items():
+        if request.param == "set":
+            monkeypatch.setenv(name, value)
+        elif request.param == "unset":
+            monkeypatch.delenv(name, raising=False)
+    return request.param
+
+
+ABOVE_BLOCKED = [
+    # Allowed on v1.2.0 and develop before round 7.
+    ("Bash", 'find "$APPDATA" -name "Save Game*.sav" -delete'),
+    ("Bash", 'find ~ -name "ZexionAP-seed-*.sav" -exec rm {} +'),
+    ("Bash", 'find "$APPDATA" -name "*seed*" -delete'),
+    ("PowerShell", "gci $env:APPDATA -r -Filter ZexionAP-seed-* | ri"),
+    ("Bash", 'find "$APPDATA" -delete'),
+    ("Bash", 'rm -rf "$APPDATA"'),
+    ("Bash", 'mv "$APPDATA" x'),
+    ("Bash", "rm -rf ~"),
+    # find with a write action from a folder above, whatever it looks for
+    ("Bash", "find ~ -delete"),
+    ("Bash", 'find "$HOME" -delete'),
+    ("Bash", "find $USERPROFILE -delete"),
+    ("Bash", "find %APPDATA% -delete"),
+    ("Bash", 'find "$LOCALAPPDATA" -delete'),
+    ("Bash", 'find "${APPDATA}" -ok rm {} \\;'),
+    ("Bash", "find ~ -execdir rm {} +"),
+    ("Bash", "find ~ -name x -fprint out.txt"),
+    ("Bash", "find ~ -name '*.pyc' -delete"),
+    ("Bash", "find -L ~ -delete"),
+    ("Bash", "find ~ -name x -exec sed -i s/a/b/ {} +"),
+    ("Bash", "find ~ -name x -exec sh -c 'rm {}' ';'"),
+    ("Bash", 'find -H "$APPDATA" -type f -delete'),
+    ("Bash", "find ~ -type f -print0 | xargs -0 rm"),
+    ("Bash", "find ~ -name '*.sav' | xargs rm"),
+    ("Bash", "find ~ -mindepth 1 -maxdepth 1 -exec mv {} /tmp/x \\;"),
+    ("Bash", "find / -delete"),
+    ("Bash", "find / -name token -delete"),
+    ("Bash", "find C:/ -delete"),
+    ("Bash", "find 'C:\\' -delete"),
+    ("Bash", "find /c/Users -exec rm {} +"),
+    ("Bash", "find /c/Users/someone -delete"),
+    ("Bash", "find /mnt/c/Users/someone/AppData/Roaming -delete"),
+    ("Bash", "find ~/.. -delete"),
+    ("Bash", "find ~/.var -delete"),
+    ("Bash", "find ~/AppData -delete"),
+    ("Bash", "sh -c 'find ~ -delete'"),
+    ("Bash", 'bash -c "find \\"$APPDATA\\" -delete"'),
+    ("Bash", "eval 'find ~ -delete'"),
+    ("Bash", "cd ~ && find . -delete"),
+    ("Bash", 'cd "$APPDATA" && find . -delete'),
+    ("Bash", 'cd "$APPDATA" && find -delete'),
+    ("Bash", "cd ~ && rm -rf *"),
+    ("Bash", "cd ~ && rm -rf .*"),
+    ("Bash", "cd $LOCALAPPDATA && rm -rf ZexionAP"),
+    ("Bash", "cd /c/Users/someone && rm -rf AppData"),
+    ("Bash", "cd / && rm -rf *"),
+    # the same in PowerShell
+    ("PowerShell", "gci $env:APPDATA -r | ri"),
+    ("PowerShell", "Get-ChildItem ~ -Recurse | Remove-Item -Force"),
+    ("PowerShell", "Get-ChildItem $env:USERPROFILE -Recurse -Filter *seed* | Remove-Item"),
+    ("PowerShell", "gci $env:LOCALAPPDATA -rec -Include ZexionAP-seed-* | Remove-Item -Force"),
+    ("PowerShell", "Remove-Item -Recurse $env:APPDATA"),
+    ("PowerShell", 'Remove-Item -Recurse -Force "$env:APPDATA"'),
+    ("PowerShell", "Move-Item $env:APPDATA x"),
+    ("PowerShell", "mi $env:APPDATA x"),
+    ("PowerShell", "ri -r -fo ~"),
+    ("PowerShell", "rm -r C:\\Users\\someone"),
+    ("PowerShell", "Remove-Item C:\\ -Recurse"),
+    ("PowerShell", "gci C:\\ -r -Include token | ri"),
+    ("PowerShell", "gci ~ -r | where Name -like '*seed*' | ri"),
+    ("PowerShell", "Get-ChildItem -Path $env:APPDATA -Recurse | Remove-Item -Recurse"),
+    ("PowerShell", "Get-ChildItem -Path $env:APPDATA -Recurse | % { Remove-Item $_.FullName }"),
+    ("PowerShell", "Set-Location $env:APPDATA; Remove-Item * -Recurse"),
+    ("PowerShell", "cd ~; ri * -r"),
+    ("PowerShell", "Get-Item ~\\* -Include '*.pyc', '*.pyo' | Remove-Item"),
+    # an ancestor deleted, moved or copied whole
+    ("Bash", "rm -rf $HOME"),
+    ("Bash", 'rm -rf "$HOME"'),
+    ("Bash", "rm -rf ${HOME}"),
+    ("Bash", "rm -rf /"),
+    ("Bash", "rm -rf /*"),
+    ("Bash", "rm -rf /c/Users/someone"),
+    ("Bash", "rm -rf /c/Users"),
+    ("Bash", "rm -rf /c"),
+    ("Bash", "rm -rf /mnt/c"),
+    ("Bash", "rm -rf /cygdrive/c/Users"),
+    ("Bash", "rm -rf C:/"),
+    ("Bash", "rm -rf 'C:\\Users'"),
+    ("Bash", "rm -rf C:/Users/someone"),
+    ("Bash", "rm -rf /home"),
+    ("Bash", "rm -rf /home/u"),
+    ("Bash", "rm -rf /Users/u"),
+    ("Bash", "rm -rf ~/*"),
+    ("Bash", "rm -rf ~/.*"),
+    ("Bash", 'rm -rf "$APPDATA/*"'),
+    ("Bash", 'rm -rf "$APPDATA"/*'),
+    ("Bash", "rm -rf %APPDATA%\\.."),
+    ("Bash", 'rm -rf "$APPDATA/.."'),
+    ("Bash", 'rm -rf "$LOCALAPPDATA"'),
+    ("Bash", 'rm -rf "$LOCALAPPDATA/.."'),
+    ("Bash", 'rm -rf "$XDG_DATA_HOME"'),
+    ("Bash", "rm -rf ~/.local"),
+    ("Bash", "rm -rf ~/.local/share"),
+    ("Bash", "rm -rf ~/.var"),
+    ("Bash", "rm -rf ~/.var/app"),
+    ("Bash", "rm -rf ~/.steam"),
+    ("Bash", "rm -rf ~/.local/share/Steam"),
+    ("Bash", 'rm -rf "C:/Program Files (x86)/Steam"'),
+    ("Bash", 'rm -rf "C:/Program Files (x86)"'),
+    ("Bash", "rm -rf C:/Users/someone/AppData/Roaming"),
+    ("Bash", "rm -rf C:/Users/someone/AppData"),
+    ("Bash", "rm -rf C:/Users/*/AppData/Roaming"),
+    ("Bash", "mv ~ x"),
+    ("Bash", 'mv "$HOME" x'),
+    ("Bash", "rmdir ~"),
+    ("Bash", "chmod -R 000 ~"),
+    ("Bash", "rsync -a --delete x/ ~"),
+    ("Bash", "rsync -a --remove-source-files ~/ /tmp/x/"),
+    ("Bash", "git -C ~ clean -fdx"),
+    ("Bash", "git clean -fdx ~"),
+    ("Bash", "cmd /c rd /s /q %APPDATA%"),
+    ("Bash", "cmd /c rd /s /q %USERPROFILE%"),
+    ("Bash", "rm -rf --one-file-system ~"),
+    ("Bash", "rm -rf -- ~"),
+    ("Bash", "rm -rf --no-preserve-root /"),
+    ("Bash", "sh -c 'rm -rf /'"),
+    ("Bash", "find / -name x -delete"),
+    ("Bash", "mv / /tmp/x"),
+    ("PowerShell", "ri -r -fo /"),
+    ("PowerShell", "Remove-Item -Recurse /c"),
+    ("Bash", "rm -rf /c"),
+    ("Bash", "cmd /c rd /s /q C:\\"),
+    ("Bash", 'rm -r "$APPDATA" "$HOME"'),
+    # Git Bash's spelling of a drive, and where a cd leaves the shell (round 7, review of #195)
+    ("Bash", "cd /c/Users/DKboy && rm -rf *"),
+    ("Bash", "cd /c/Users/DKboy && git clean -fdx"),
+    ("Bash", "cd /c/Users/DKboy && find . -type f -mtime -1 -delete"),
+    ("Bash", "cd /c && rm -rf Users"),
+    ("Bash", "cd /c && rm -rf *"),
+    ("Bash", "cd /c/Users && rm -rf *"),
+    ("Bash", "cd /mnt/c/Users/DKboy && rm -rf *"),
+    ("Bash", "cd && rm -rf *"),
+    ("Bash", "cd; find . -delete"),
+    ("Bash", "cd -- && rm -rf *"),
+    ("Bash", "cd ~/Documents && cd .. && rm -rf *"),
+    ("Bash", "cd ~/Documents/x && cd ../.. && git clean -fdx"),
+    ("PowerShell", "Set-Location ~\\Documents; Set-Location ..; Remove-Item -Recurse *"),
+    ("PowerShell", "cd; ri -r *"),
+    ("Bash", "pushd ~/x && popd && rm -rf *"),
+    ("Bash", "cd `echo ~` && rm -rf *"),
+    ("Bash", "cd $d && rm -rf *"),
+    ("Bash", "cd $d && find . -delete"),
+    ("Bash", "cd - && rm -rf *"),
+    # wrappers that hide the verb, and a root that is only piped or passed in
+    ("Bash", "sudo find / -delete"),
+    ("Bash", "env find / -delete"),
+    ("Bash", "env X=1 find / -delete"),
+    ("Bash", "nice find / -delete"),
+    ("Bash", "nice -n 5 find / -delete"),
+    ("Bash", "timeout 10 find / -delete"),
+    ("Bash", "sudo -u root rm -rf --no-preserve-root /"),
+    ("Bash", "command rm -rf ~"),
+    ("Bash", "nohup rm -rf ~"),
+    ("Bash", "sudo env nice rm -rf ~"),
+    ("Bash", "echo / | xargs rm -rf"),
+    ("Bash", "ls -d / | xargs rm -rf"),
+    ("Bash", "printf %s / | xargs -0 rm -rf"),
+    ("Bash", "echo ~ | xargs -n1 rm -rf"),
+    ("Bash", "sh -c 'rm -rf \"$0\"' /"),
+    ("Bash", "bash -c 'rm -rf \"$1\"' x ~"),
+    ("PowerShell", "powershell -Command 'Remove-Item -Recurse ~'"),
+    ("PowerShell", "iex 'ri -r ~'"),
+    # Steam's other roots
+    ("Bash", "rm -rf ~/.steam/debian-installation"),
+    ("Bash", "rm -rf ~/.steam/root"),
+    ("Bash", "rm -rf ~/snap"),
+    ("Bash", "rm -rf ~/snap/steam/common"),
+    ("Bash", "find ~/snap -delete"),
+    # substitutions and parameter expansions
+    ("Bash", "rm -rf `echo ~`"),
+    ("Bash", "rm -rf `dirname $APPDATA`"),
+    ("Bash", 'rm -rf "$(dirname "$APPDATA")"'),
+    ("Bash", 'rm -rf "${APPDATA:-x}"'),
+    ("Bash", 'rm -rf "${APPDATA%/}"'),
+    ("Bash", 'rm -rf "${HOME}"'),
+    # a variable the line sets to one
+    ("Bash", 'H=~; rm -rf "$H"'),
+    ("Bash", 'D="$APPDATA"; find "$D" -delete'),
+    ("Bash", 'export D=$HOME && rm -rf "$D"'),
+    ("PowerShell", '$d = "$env:LOCALAPPDATA\\"; Remove-Item -Recurse $d'),
+    ("PowerShell", "$d = $env:APPDATA; gci $d -r | ri"),
+    ("Bash", 'for d in ~ /; do rm -rf "$d"; done'),
+    # more shapes of the same
+    ("Bash", "rm -rf $(echo ~)"),
+    ("Bash", "bash -lc 'cd ~ && rm -rf *'"),
+    ("Bash", "cd ~ ; ls | xargs rm -rf"),
+    ("Bash", "cd ~ && find . -type f | xargs rm"),
+    ("Bash", 'cd "$APPDATA/.." && rm -rf *'),
+    ("Bash", 'cd "$OLDPWD" && rm -rf *'),
+    ("Bash", "cd C: && rm -rf *"),
+    ("Bash", "cd C:/ && rm -rf Users"),
+    ("Bash", 'cd ~ && rm -rf "$PWD"'),
+    ("Bash", 'cd ~ && rm -rf "$(pwd)"'),
+    ("Bash", "tar -cf x.tar --remove-files ~"),
+    ("PowerShell", "robocopy empty $env:USERPROFILE /MIR"),
+    ("PowerShell", "robocopy empty C:\\Users\\someone /PURGE"),
+    ("PowerShell", "Set-Location ~; gci -r | ri -r"),
+    ("PowerShell", "Set-Location ~; Get-ChildItem -Recurse | ForEach-Object { Remove-Item $_ }"),
+    ("PowerShell", "cd ~; ls | Remove-Item -Recurse"),
+    # round 7, second review of #195: cmd with a quoted script, Git Bash's //c, cmd's move
+    ("Bash", 'cmd /c "rd /s /q %USERPROFILE%"'),
+    ("Bash", "cmd //c rd //s //q %USERPROFILE%"),
+    ("Bash", 'cmd /c "del /s /q %USERPROFILE%\\*"'),
+    ("Bash", "cmd /c move %USERPROFILE%\\AppData D:\\x"),
+    ("PowerShell", "cmd /c move %USERPROFILE%\\AppData D:\\x"),
+    # PowerShell operands: -Name:value, a parenthesis, a named destination, a piped-in value
+    ("PowerShell", "Remove-Item -Recurse -Path:~"),
+    ("PowerShell", "ri -r -LiteralPath:$env:USERPROFILE"),
+    ("PowerShell", "Move-Item -Path:~\\AppData -Destination D:\\x"),
+    ("PowerShell", "ri -r ($HOME)"),
+    ("PowerShell", "ri -r (Get-Item ~)"),
+    ("PowerShell", "ri -r @($HOME)"),
+    ("PowerShell", "Move-Item -Destination D:\\x -Path ~\\AppData"),
+    ("PowerShell", "gci ~ | Move-Item -Destination D:\\x"),
+    ("PowerShell", "$HOME | ri -r"),
+    ("PowerShell", '"$HOME" | Remove-Item -Recurse'),
+    ("PowerShell", "ri -r x,$HOME"),
+    ("Bash", "rm -rf lab/x,$HOME"),
+    # loops fed by a listing, and positional parameters
+    ("Bash", 'ls -d ~/* | while read -r f; do rm -rf "$f"; done'),
+    ("Bash", 'find ~ -maxdepth 1 | while read f; do rm -rf "$f"; done'),
+    ("Bash", 'for f in $(ls -d ~/*); do rm -rf "$f"; done'),
+    ("Bash", 'set -- ~ && rm -rf "$1"'),
+    ("Bash", 'set -- /tmp ~ && rm -rf "$@"'),
+    ("Bash", "ls ~ |\n  xargs rm"),
+    # git and other options
+    ("Bash", "git --work-tree=~ clean -fdx"),
+    ("Bash", "git --work-tree ~ clean"),
+    ("Bash", "GIT_WORK_TREE=~ git clean -fdx"),
+    ("Bash", "cd ~ && git stash -u"),
+    ("Bash", "cd ~ && git stash --include-untracked"),
+    ("Bash", "git -C ~ stash -u"),
+    ("Bash", "cd ~ && git reset --hard"),
+    ("Bash", "cd ~ && git checkout -- ."),
+    ("Bash", "cd ~ && git restore ."),
+    ("Bash", "find -- ~ -delete"),
+    ("Bash", "robocopy %USERPROFILE% D:/x /MOVE /E"),
+    ("Bash", "robocopy %USERPROFILE% D:/x /MOV"),
+    ("Bash", "rsync -a --remove-source-files ~/ /tmp/x/"),
+    ("Bash", "rsync -a --delete x/ ~/"),
+    # extraction over what is there
+    ("Bash", "unzip -o x.zip -d ~"),
+    ("Bash", "tar --overwrite -xf x.tar -C ~"),
+    ("PowerShell", "Expand-Archive x.zip ~ -Force"),
+    ("PowerShell", "Expand-Archive -Path x.zip -DestinationPath ~ -Force"),
+    # a known folder is known by value (third review of #195): a name set to something else, a
+    # substitution with more after it, a variable the line sets
+    ("Bash", "TMPDIR=~; cd $TMPDIR && rm -rf *"),
+    ("Bash", "RUNNER_TEMP=/; cd $RUNNER_TEMP; rm -rf *"),
+    ("Bash", 'CLAUDE_PROJECT_DIR=~; cd "$CLAUDE_PROJECT_DIR" && git clean -fdx'),
+    ("Bash", 'd=$(mktemp -d); d=~; cd "$d" && rm -rf *'),
+    ("Bash", 't=$TMPDIR/; t=~; cd "$t" && rm -rf *'),
+    ("Bash", 't=$TMPDIR/../..; cd "$t" && rm -rf *'),
+    ("Bash", 't=$TEMP/../../..; cd "$t" && rm -rf *'),
+    ("Bash", 'cd "$(mktemp -d)/../.." && rm -rf *'),
+    ("Bash", "cd `mktemp -d`/../.. && rm -rf *"),
+    ("Bash", 'cd "$(git rev-parse --show-toplevel)/../.." && rm -rf *'),
+    ("Bash", 'cd "$(git rev-parse --show-toplevel)/.." && git clean -fdx'),
+    ("Bash", 'd=$(mktemp -d)/../..; cd "$d" && rm -rf *'),
+    ("Bash", 'cd "$(git rev-parse --show-cdup)../.." && rm -rf *'),
+    ("Bash", "d=$(git --git-dir=x rev-parse --show-toplevel); cd $d; rm -rf *"),
+    ("Bash", 'export TEMP=$HOME; cd "$TEMP" && rm -rf *'),
+    ("Bash", "TMP=~ && cd $TMP && git clean -fdx"),
+    ("PowerShell", '$env:TMP = "C:\\Users\\DKboy"; cd $env:TMP; ri -r *'),
+    # cmd scripts keep their backslashes, switches before /c, call, start, if exist
+    ("Bash", 'cmd /c "rd /s /q C:\\Users\\DKboy"'),
+    ("PowerShell", 'cmd /c "rd /s /q C:\\Users\\DKboy"'),
+    ("Bash", 'cmd /v:on /c "rd /s /q %USERPROFILE%"'),
+    ("Bash", "cmd /c call rd /s /q %USERPROFILE%"),
+    ("Bash", 'cmd /c "start /b rd /s /q %USERPROFILE%"'),
+    ("Bash", 'cmd /c "if exist %USERPROFILE% rd /s /q %USERPROFILE%"'),
+    ("Bash", 'cmd /d /q /c "if not exist x rd /s /q %USERPROFILE%"'),
+    # a group, a variable from a lister, a loop that a pipe goes on from, a continued line
+    ("Bash", "{ ls ~; } | xargs rm -rf"),
+    ("Bash", "( ls ~ ) | xargs rm -rf"),
+    ("PowerShell", "$x = gci ~; $x | ri -r"),
+    ("PowerShell", "gci ~ -OutVariable o | Out-Null; $o | ri -r"),
+    ("Bash", 'ls -d ~/* | while read -r f; do echo "$f"; done | xargs rm -rf'),
+    ("Bash", "ls ~ |\\\n  xargs rm"),
+    ("Bash", "x=$(ls ~); echo $x | xargs rm -rf"),
+    # ``..`` from a known folder leaves it for an unknown one (%TEMP%\.. holds ZexionAP)
+    ("Bash", 'cd "$TEMP" && echo x > ../ZexionAP/seeds.json'),
+    ("Bash", 'cd "$TEMP" && cd .. && rm -rf *'),
+    ("Bash", 'cd "$TEMP" && rm -rf ../*'),
+    ("Bash", 'cd "$(git rev-parse --show-toplevel)" && cd .. && rm -rf *'),
+    ("Bash", 'cd "$(git rev-parse --show-toplevel)" && rm -rf ../*'),
+    ("Bash", 'cd "$TMPDIR" && rm -rf ../ZexionAP'),
+    ("Bash", "cd $(mktemp -d) && rm -rf ../../ZexionAP"),
+    ("Bash", 'cd "$TEMP" && cd ../.. && git clean -fdx'),
+    ("Bash", 'cd "$RUNNER_TEMP" && find .. -delete'),
+    ("PowerShell", "cd $env:TEMP; ri -r ..\\*"),
+    ("Bash", "cd $(mktemp -d) && cd ../.. && rm -rf ZexionAP"),
+    # no known-folder rule: an unset variable is a bare ``cd`` (home), a name may come before ``..``
+    ("Bash", "cd $RUNNER_TEMP && rm -rf *"),
+    ("Bash", "cd $GITHUB_WORKSPACE && git clean -fdx"),
+    ("Bash", "cd $TMPDIR && rm -rf *"),
+    ("Bash", "cd $(mktemp -d) && rm -rf a/../../.."),
+    ("Bash", 'cd "$TMPDIR" && echo x > a/../../ZexionAP/seeds.json'),
+    ("Bash", 'cd "$TMPDIR" && cp x a/../../ZexionAP/'),
+    ("PowerShell", "$global:TEMP = $HOME; cd $TEMP; ri -r *"),
+    ("PowerShell", "${env:TEMP} = $HOME; cd $env:TEMP; ri -r *"),
+    ("PowerShell", "[Environment]::SetEnvironmentVariable('TEMP', $HOME); cd $env:TEMP; ri -r *"),
+    ("Bash", "d=$(mktemp -d)/...; cd $d && rm -rf *"),
+    # a safe-listed name set by read, for, printf -v, Set-Variable, New-Variable, Set-Item
+    ("Bash", "read -r TMPDIR <<< ~; cd $TMPDIR && rm -rf *"),
+    ("Bash", "for TMPDIR in ~; do cd $TMPDIR && rm -rf *; done"),
+    ("Bash", "printf -v TMPDIR %s ~; cd $TMPDIR && rm -rf *"),
+    ("Bash", "d=$(mktemp -d); read d <<< ~; cd $d && rm -rf *"),
+    ("PowerShell", "Set-Variable TEMP $HOME; cd $TEMP; ri -r *"),
+    ("PowerShell", "New-Variable TMP ~; cd $TMP; ri -r *"),
+    ("PowerShell", "sv TMP ~; cd $TMP; ri -r *"),
+    ("PowerShell", "Set-Item env:TEMP $HOME; cd $env:TEMP; ri -r *"),
+    # names of the files in the protected folders, wherever the search starts
+    ("Bash", "find lab -name 'Save Game*.sav' -delete"),
+    ("Bash", "find . -name 'GameUnlocks.sav' -delete"),
+    ("Bash", "find . -name 'ZexionAP-seed-*' -delete"),
+    ("Bash", "find . -name 'ZexionAP-seed-*.sav' -exec rm {} +"),
+    ("Bash", "find . -name 'Pref*' -delete"),
+    ("Bash", "find . -name 'Preferences*' -delete"),
+    ("Bash", "find . -name 'PreferencesLocal' -delete"),
+    ("Bash", "find . -name 'steam_autocloud.vdf' -exec rm {} +"),
+    ("Bash", "find . -name token -delete"),
+    ("Bash", "find . -name seeds -exec rm -r {} +"),
+    ("Bash", "find . -name 'config-*.txt' -delete"),
+    ("Bash", "find . -name '*.sav' -delete"),
+    ("Bash", "find lab -name '*.sav' -delete"),
+    ("Bash", "find . -name '*.vdf' -delete"),
+    ("Bash", "find . -name '*' -delete"),
+    ("Bash", "find . -name '*.*' -delete"),
+    ("Bash", "find . -name '?????' -delete"),
+    ("Bash", "find . -iname '*seed*' -delete"),
+    ("Bash", "find . -iname 'SAVE*' -delete"),
+    ("Bash", "find . -iname 'zexionap-seed-*' -delete"),
+    ("Bash", "find . -name 'Save?Game*' -delete"),
+    ("Bash", "find . -name 'Sav[e]*' -delete"),
+    ("Bash", "find . -name '{token,x}' -delete"),
+    ("Bash", "find . -regex '.*\\.sav' -delete"),
+    ("Bash", "find . -regex '.*/Save Game.*\\.sav' -delete"),
+    ("Bash", "find . -path '*/Save Game*' -delete"),
+    ("Bash", "find . -path './lab/*.sav' -delete"),
+    ("Bash", "find . -wholename '*/token' -delete"),
+    ("Bash", "find . -name 'Save*' -exec rm {} +"),
+    ("Bash", "find . -name '*.sav' -o -name '*.tmp' | xargs rm"),
+    ("Bash", "find lab -type f -name '*.sav' -exec shred {} +"),
+    ("Bash", "find . -name 'sav*' -exec mv {} /tmp/x \\;"),
+    ("PowerShell", "gci -r -Filter Save* | ri"),
+    ("PowerShell", "gci . -Recurse -Filter 'ZexionAP-seed-*' | Remove-Item"),
+    ("PowerShell", "Get-ChildItem -Recurse -Include *.sav | Remove-Item"),
+    ("PowerShell", "gci -r *.sav | ri"),
+    ("PowerShell", "gci -r -Filter * | ri"),
+    ("PowerShell", "gci -r -Filter GameUnlocks.sav | ri"),
+    ("PowerShell", "Get-ChildItem . -Recurse -Include token,seeds | Remove-Item -Recurse"),
+]
+ABOVE_ALLOWED = [
+    # Reads from a folder above, and everyday work that names none.
+    ("Bash", 'find "$APPDATA" -name x -print'),
+    ("Bash", 'find "$APPDATA" -name "Save Game*.sav" -print'),
+    ("Bash", 'find "$APPDATA" -name "*seed*" -ls'),
+    ("Bash", 'find "$APPDATA" -maxdepth 2'),
+    ("Bash", 'find ~ -name "*.sav" -print'),
+    ("Bash", "find ~ -name token"),
+    ("Bash", "find / -name token 2>/dev/null"),
+    ("Bash", "find ~ -maxdepth 1 -type f | head"),
+    ("Bash", "find . -name '*.sav' -print"),
+    ("Bash", "find . -name '*' -type f | wc -l"),
+    ("Bash", "find lab -name 'Save Game*.sav' | sort"),
+    ("Bash", "ls -R ~"),
+    ("Bash", "ls -la ~"),
+    ("Bash", "ls ~"),
+    ("Bash", 'ls "$APPDATA"'),
+    ("Bash", 'ls "$APPDATA/*"'),
+    ("Bash", "ls ~/*"),
+    ("Bash", "ls /"),
+    ("Bash", "ls /c/Users"),
+    ("Bash", "ls C:/"),
+    ("Bash", 'ls "$HOME"'),
+    ("Bash", 'ls "$LOCALAPPDATA"'),
+    ("Bash", "du -sh ~"),
+    ("Bash", 'du -sh "$APPDATA"/*'),
+    ("Bash", "df -h /"),
+    ("Bash", "stat ~"),
+    ("Bash", "tree -L 1 ~"),
+    ("Bash", "cat ~/.bashrc"),
+    ("Bash", "grep -rn foo ~/work"),
+    ("Bash", "grep -r foo ~"),
+    ("Bash", "rg foo ~"),
+    ("Bash", "cd ~ && ls"),
+    ("Bash", "cd ~ && cat .bashrc"),
+    ("Bash", 'cd "$APPDATA" && ls'),
+    ("Bash", "cd / && ls"),
+    ("Bash", 'cd "$APPDATA" && find . -name x -print'),
+    ("Bash", "wc -l ~/.bashrc"),
+    ("Bash", "echo ~"),
+    ("Bash", "echo $HOME"),
+    ("Bash", 'echo "$APPDATA"'),
+    ("Bash", 'git commit -m "docs: ~ and $APPDATA, rm -rf ~ is blocked"'),
+    ("Bash", 'git commit -m "find ~ -delete"'),
+    ("Bash", 'gh pr create --title "x" --body "find ~ -delete and rm -rf $APPDATA"'),
+    ("Bash", "git commit -F - <<'EOF'\nGuard: rm -rf ~ and find \"$APPDATA\" -delete\nEOF"),
+    ("Bash", "git diff HEAD~ -- tools"),
+    ("Bash", "git log HEAD~3..HEAD"),
+    ("Bash", "git reset --soft HEAD~1"),
+    # A lone ``/`` or ``/c`` is a root only for a command that deletes, moves or copies.
+    ("Bash", "cmd /c dir"),
+    ("Bash", "cmd /c echo hi > lab/x.txt"),
+    ("Bash", 'cmd /c "type lab\\x.txt"'),
+    ("Bash", 'python -c "print(1 / 2)"'),
+    ("Bash", "robocopy lab lab2 /MIR /E"),
+    ("Bash", "findstr /s /i foo lab"),
+    ("Bash", "xcopy lab lab2 /s /e"),
+    ("Bash", "cmake --build native/build /m"),
+    ("PowerShell", "cmd /c dir"),
+    ("PowerShell", "robocopy lab lab2 /MIR /E"),
+    ("PowerShell", "gci $env:APPDATA -r | select Name"),
+    ("PowerShell", "gci $env:APPDATA -r -Filter *seed* | select -First 3"),
+    ("PowerShell", "Get-ChildItem ~ -Recurse | Measure-Object"),
+    ("PowerShell", "Get-ChildItem C:\\ | Sort-Object Name"),
+    ("PowerShell", "ls ~"),
+    ("PowerShell", "dir $env:APPDATA"),
+    ("PowerShell", "gci -r -Filter *.sav | select Name"),
+    ("PowerShell", "Get-Content ~/.bashrc"),
+    ("PowerShell", "Set-Location ~"),
+    ("PowerShell", "cd ~; ls"),
+    # Creating files in a folder above, copying in or out, and naming it only to read (M3).
+    ("Bash", "cd ~ && git clone https://github.com/a/b"),
+    ("Bash", "cd ~ && mkdir x"),
+    ("Bash", "cd ~ && touch x"),
+    ("Bash", "cp a.txt ~"),
+    ("Bash", "mv a.txt ~/"),
+    ("Bash", "scp host:x ~"),
+    ("Bash", "unzip x.zip -d ~"),
+    ("Bash", "tar -xzf x.tgz -C ~"),
+    ("Bash", "tar -czf out.tgz -C ~ .gitconfig"),
+    ("Bash", "rsync -a x ~/"),
+    ("Bash", "ls ~ && make clean"),
+    ("Bash", "echo $HOME && rm -rf build"),
+    ("Bash", "grep -r foo ~ | head; rm x"),
+    ("Bash", "ls -la ~ /tmp && rm -f lab/x"),
+    ("Bash", "cd ~ && rm x"),
+    ("Bash", "cd ~ && rm -rf x y"),
+    ("Bash", "cd ~ && git pull"),
+    ("Bash", "cd ~ && git status && ls"),
+    ("Bash", "cd ~/work && cd proj && rm -rf build"),
+    ("Bash", "cd ~/work && cd .. && ls"),
+    ("Bash", "ls ~ | xargs echo"),
+    ("Bash", "find ~ -name x | xargs wc -l"),
+    ("Bash", "find ~ -name x | head && rm -rf build"),
+    ("Bash", "cp -r ~ /tmp/x"),
+    ("Bash", 'cp -r "$APPDATA" x'),
+    ("Bash", "tar czf x.tgz ~"),
+    ("Bash", "find ~ -name x -exec cat {} +"),
+    ("Bash", "find ~ -exec grep -l foo {} +"),
+    ("Bash", "find ~ -name '*.log' -exec ls -l {} \\;"),
+    ("Bash", "sudo ls /"),
+    ("Bash", "sudo rm -rf build"),
+    ("Bash", "nice -n 5 make"),
+    ("Bash", "timeout 10 find . -name x"),
+    ("Bash", "env X=1 make"),
+    ("Bash", "python -c \"import os; print(os.path.expanduser('~'))\" > lab/home.txt"),
+    ("Bash", 'sh -c "echo $0" /'),
+    ("Bash", "H=~; echo $H && rm -rf build"),
+    ("Bash", 'D=lab; find "$D" -delete'),
+    ("PowerShell", "Copy-Item a.txt ~"),
+    ("PowerShell", "Copy-Item $env:APPDATA x -Recurse"),
+    ("PowerShell", "cd ~; New-Item -ItemType Directory x"),
+    ("PowerShell", "$env:HOME; Remove-Item lab\\x"),
+    ("PowerShell", "gci ~; Remove-Item lab\\x -Recurse"),
+    ("PowerShell", "gci lab | ri"),
+    ("PowerShell", "gci -r | ri -r"),  # in the repo
+    ("Bash", "ls | xargs rm -rf"),  # in the repo
+    ("Bash", "cd lab && ls | xargs rm"),
+    ("Bash", "cd ~/work && ls | xargs rm"),
+    ("Bash", 'rm -rf "$PWD/build"'),
+    ("Bash", "robocopy a b /MIR"),
+    ("PowerShell", "robocopy a b /MIR"),
+    ("Bash", "tar -cf x.tar --remove-files lab/x"),
+    # The workarounds for the documented false positives of an unknown ``cd``
+    # (``KNOWN_FALSE_POSITIVES``): name the folder in the command instead of ``cd``-ing into it.
+    ("Bash", 'd=$(mktemp -d) && rm -rf "$d"/*'),
+    ("Bash", 'd=$(mktemp -d) && git -C "$d" clean -fdx'),
+    ("Bash", 'git -C "$(git rev-parse --show-toplevel)" clean -fdx'),
+    ("Bash", 'rm -rf "$RUNNER_TEMP"/*'),
+    ("Bash", 'rm -rf "$TMPDIR"/*'),
+    ("Bash", 'find "$TEMP" -mindepth 1 -delete'),
+    ("Bash", "cd $d && rm -rf build"),
+    # only the pipeline that feeds a command counts (Low 4)
+    ("Bash", "ls ~ ; find lab -name x.tmp | xargs rm"),
+    ("Bash", "echo $HOME && git ls-files -o | xargs rm"),
+    ("Bash", "ls -la ~ && ls lab/old | xargs rm -rf"),
+    ("Bash", "rm -rf $(git ls-files -o) && ls ~"),
+    ("Bash", 'for f in lab/*; do rm -rf "$f"; done'),
+    ("Bash", 'ls lab | while read f; do rm -rf "lab/$f"; done'),
+    ("Bash", 'ls ~; ls lab | while read f; do rm -rf "lab/$f"; done'),
+    ("PowerShell", "gci ~ | Out-Null; gci lab | ri"),
+    ("PowerShell", "gci ~ | select Name; Get-ChildItem lab | Remove-Item"),
+    ("Bash", "rsync -a --delete ~/ /backup/home/"),
+    ("Bash", "rsync -a --delete lab/ /backup/lab/"),
+    ("Bash", "git --work-tree=lab clean -fdx"),
+    ("Bash", "git stash -u"),
+    ("Bash", "git reset --hard"),
+    ("Bash", "git checkout -- ."),
+    ("Bash", "find -- lab -delete"),
+    ("Bash", "robocopy lab D:/x /MOVE /E"),
+    ("Bash", "unzip x.zip -d ~"),
+    ("Bash", "tar -xzf x.tgz -C ~"),
+    ("Bash", "unzip -o x.zip -d lab"),
+    ("PowerShell", "Expand-Archive x.zip ~"),
+    ("PowerShell", "Expand-Archive x.zip lab -Force"),
+    ("PowerShell", "Move-Item lab\\x lab\\y"),
+    ("PowerShell", "Move-Item -Path lab\\x -Destination ~"),
+    ("Bash", "mv -t ~ a b"),
+    ("Bash", "cmd /c dir"),
+    ("Bash", 'cmd /c "dir lab"'),
+    ("Bash", 'cmd /c "rd /s /q lab\\x"'),
+    ("Bash", "cmd //c dir"),
+    ("Bash", 'cmd /c "dir /s /b"'),
+    ("Bash", 'cmd //c "rd /s /q build"'),
+    ("Bash", 'cmd /c "cd /d native && build.bat"'),
+    ("Bash", 'cmd /c "rd /s /q lab\\x"'),
+    ("Bash", 'cmd /c "if exist lab rd /s /q lab"'),
+    ("Bash", "cmd /c start /b notepad"),
+    ("Bash", "{ ls lab; } | xargs rm -rf"),
+    ("Bash", "ls ~; { ls lab; } | xargs rm -rf"),
+    ("Bash", 'ls lab | while read -r f; do echo "$f"; done | xargs rm -rf'),
+    ("Bash", "for f in ~/x; do echo $f; done; ls lab | xargs rm"),
+    ("PowerShell", "$x = gci lab; $x | ri -r"),
+    ("PowerShell", "gci lab -OutVariable o | Out-Null; $o | ri -r"),
+    ("Bash", "x=$(ls lab); echo $x | xargs rm -rf"),
+    ("Bash", 'cd "$TEMP" && rm -rf ./x'),
+    ("Bash", 'cd "$TEMP" && echo x > out.txt'),
+    ("Bash", 'for f in a b; do cd "$TMPDIR" && rm -rf x; done'),
+    ("PowerShell", "cd ~; ls; Remove-Item x"),
+    # Work in the repo and in the project folders under the home folder.
+    ("Bash", "rm -rf build"),
+    ("Bash", "rm -rf ./build/*"),
+    ("Bash", "rm lab/*.txt"),
+    ("Bash", "rm -rf lab/work"),
+    ("Bash", "rm -rf ~/work/x"),
+    ("Bash", "rm ~/notes.txt"),
+    ("Bash", "cp x ~/work/"),
+    ("Bash", "cp x ~/.bashrc"),
+    ("Bash", "mkdir -p ~/work"),
+    ("Bash", "mkdir ~/work && cd ~/work && git clone https://example.com/x.git"),
+    ("Bash", "echo x > ~/work/y"),
+    ("Bash", "echo x > ~/.bashrc"),
+    ("Bash", "touch ~/x"),
+    ("Bash", "cd ~/work && git pull"),
+    ("Bash", "cd ~/work && rm -rf build"),
+    ("Bash", "rm -rf /tmp/x"),
+    ("Bash", "rm -rf /tmp/*"),
+    ("Bash", 'rm -rf "$TEMP/foo"'),
+    ("Bash", "rm -rf /var/tmp/x"),
+    ("Bash", "find . -name '*.pyc' -delete"),
+    ("Bash", "find . -name '__pycache__' -exec rm -rf {} +"),
+    ("Bash", "find . -name '*.o' -delete"),
+    ("Bash", "find . -name '*.py' -exec wc -l {} +"),
+    ("Bash", "find . -name '*.md' -exec sed -i s/a/b/ {} +"),
+    ("Bash", "find build -name '*.tmp' -delete"),
+    ("Bash", "find . -name '*~' -delete"),
+    ("Bash", "find . -name '.DS_Store' -delete"),
+    ("Bash", "find . -name '*.log' -delete"),
+    ("Bash", "find . -name '*.json' -exec cat {} +"),
+    ("Bash", "find ~/work -name x -delete"),
+    ("Bash", "find ./build -type f -delete"),
+    ("Bash", "find . -path './lab/*' -delete"),
+    ("Bash", "find . -path './build/*' -delete"),
+    ("Bash", "find . -regex '.*/[^/]*\\.pyc' -delete"),
+    ("Bash", "find . -type f -name '*.orig' -delete"),
+    ("Bash", "find . -path './node_modules' -prune -o -name '*.js' -print"),
+    ("Bash", "find dist -name 'zexion*' -delete"),
+    ("Bash", "find worlds -name 'test_*.py' -exec ruff check {} +"),
+    ("Bash", ".venv/Scripts/python -m pytest -q"),
+    ("Bash", "cmake -S native -B native/build"),
+    ("Bash", "cmake --build native/build --config Release"),
+    ("PowerShell", "Remove-Item build -Recurse"),
+    ("PowerShell", "gci -r -Filter *.pyc | ri"),
+    ("PowerShell", "gci lab -r -Filter *.tmp | ri"),
+    ("PowerShell", "Remove-Item $env:TEMP\\foo -Recurse"),
+    ("PowerShell", "Remove-Item ~\\work\\x -Recurse"),
+    ("PowerShell", "New-Item -ItemType Directory ~\\work"),
+    # The repo's own build folders: the helpers' files there are plain work.
+    ("Bash", "rm native/build/version.dll"),
+    ("Bash", "rm native/build/libzexion_ap.so"),
+    ("Bash", "rm -f native/build/version.dll native/build/libzexion_ap.so"),
+    ("Bash", "cp native/build/version.dll dist/version.dll"),
+    ("Bash", "cp native/build/libzexion_ap.so dist/libzexion_ap.so"),
+    ("Bash", "cp -f native/build/Release/zexion_ap.dll dist/"),
+    ("Bash", "rm dist/version.dll dist/libzexion_ap.so dist/zexion_ap.dll"),
+    ("Bash", "rm -rf native/build"),
+    ("Bash", "cd native/build && rm version.dll libzexion_ap.so"),
+    ("Bash", "cd native/build && cp libzexion_ap.so ../../dist/"),
+    ("Bash", "rm native/build/proxy/Release/version.dll"),
+    ("Bash", "rm native/build/libzexion_ap.so && cmake --build native/build --clean-first"),
+    ("Bash", "gh run download 123 -n libzexion_ap-runtime -D native/build"),
+    ("PowerShell", "Remove-Item native\\build\\version.dll"),
+    ("PowerShell", "Copy-Item native\\build\\libzexion_ap.so dist\\"),
+    ("PowerShell", "Remove-Item native\\build\\proxy\\Release\\version.dll -Force"),
+]
+
+
+# Commands that name a protected folder through ``%TEMP%``, which is under ``%LOCALAPPDATA%`` on
+# Windows only: they are run with both set, so that they read the same on every platform.
+NEEDS_TEMP_UNDER_LOCALAPPDATA = {'cd "$TEMP" && echo x > ../ZexionAP/seeds.json'}
+
+
+@pytest.mark.parametrize(("tool", "command"), ABOVE_BLOCKED)
+def test_a_write_that_reaches_a_folder_above_a_protected_one_blocked(
+    tool: str, command: str, home_env: str, monkeypatch
+) -> None:
+    if command in NEEDS_TEMP_UNDER_LOCALAPPDATA:
+        monkeypatch.setenv("LOCALAPPDATA", FAKE_ENV["LOCALAPPDATA"])
+        monkeypatch.setenv("TEMP", FAKE_ENV["LOCALAPPDATA"] + "\\Temp")
+    assert run(tool, command=command), (home_env, command)
+
+
+@pytest.mark.parametrize(("tool", "command"), ABOVE_ALLOWED)
+def test_reads_from_a_folder_above_and_everyday_work_allowed(
+    tool: str, command: str, home_env: str
+) -> None:
+    assert run(tool, command=command) is None, (home_env, command)
+
+
+def test_in_a_folder_above_only_a_destructive_command_blocks(home_env: str) -> None:
+    folders = (FAKE_ENV["USERPROFILE"], FAKE_ENV["APPDATA"], "C:/", "/", "/home/u")
+    for cwd in folders:
+        for command in ("rm -rf *", "rm -rf .", "find . -delete", "find -delete", "git clean -fdx"):
+            assert run("Bash", command=command, cwd=cwd), (cwd, command)
+        assert run("PowerShell", command="Remove-Item -Recurse *", cwd=cwd), cwd
+        for command in (
+            "rm -rf xx",
+            "git pull",
+            "git clone https://example.com/x.git",
+            "mkdir xx",
+            "touch xx",
+            "cp a b",
+            "ls -R",
+            "find . -name x -print",
+            "make clean",
+        ):
+            assert run("Bash", command=command, cwd=cwd) is None, (cwd, command)
+    for project in ("D:/code/zexion-ap", f"{FAKE_ENV['USERPROFILE']}/work"):
+        for command in ("rm -rf *", "find . -delete", "git clean -fdx"):
+            assert run("Bash", command=command, cwd=project) is None, (project, command)
+
+
+def test_a_relative_operand_is_joined_to_where_the_command_runs(home_env: str) -> None:
+    home = FAKE_ENV["USERPROFILE"].replace("\\", "/")
+    deep = f"{home}/work/proj"
+    assert run("Bash", command="rm -rf ../../..", cwd=deep)  # C:/Users
+    assert run("Bash", command="rm -rf ../..", cwd=deep)  # the home folder
+    assert run("Bash", command="rm -rf ../../../someone", cwd=deep)  # the home folder again
+    assert run("Bash", command="find ../.. -delete", cwd=deep)
+    assert run("Bash", command="cd .. && cd .. && rm -rf *", cwd=deep)
+    assert run("Bash", command="cd .. && cd .. && cd .. && cd .. && rm -rf *", cwd=deep)
+    assert run("Bash", command="rm -rf ..", cwd=deep) is None  # ~/work
+    assert run("Bash", command="rm -rf ../x", cwd=deep) is None
+    assert run("Bash", command="cd .. && rm -rf *", cwd=deep) is None
+    assert run("Bash", command="cd ../.. && ls", cwd=deep) is None
+
+
+# Documented false positives: a ``cd`` to a folder the guard can't know (a variable, which may be
+# empty, and then ``cd`` goes home; a substitution) counts as unknown, so a glob or a clean after
+# it blocks. The workarounds, in ``ABOVE_ALLOWED``, name the folder in the command.
+KNOWN_FALSE_POSITIVES = [
+    'd=$(mktemp -d) && cd "$d" && rm -rf *',
+    'cd "$(git rev-parse --show-toplevel)" && git clean -fdx',
+    "cd $(git rev-parse --show-toplevel) && git clean -fdx",
+    'cd "$RUNNER_TEMP" && rm -rf *',
+    'cd "$GITHUB_WORKSPACE" && git clean -fdx',
+    "cd $TMPDIR && rm -rf *",
+    't=$TMPDIR/x && cd "$t" && rm -rf *',
+    'd=$(mktemp -d) && cd "$d" && git init && git clean -fdx',
+    'cd "$TMPDIR/work" && rm -rf *',
+    'cd "$(mktemp -d)/work" && rm -rf *',
+    'cd "$(mktemp -d)" && mkdir x && cd x && rm -rf *',
+    'read -r line; cd "$TMPDIR" && rm -rf *',
+    # and the holes that a "known folder" rule opened: the variable may be unset, a name may
+    # come before ``..``
+    "cd $(mktemp -d) && rm -rf a/../../..",
+    "cd $(mktemp -d) && rm -rf ../../ZexionAP",
+    'cd "$TMPDIR" && rm -rf ../ZexionAP',
+]
+
+
+def test_a_cd_to_an_unknown_folder_counts_as_unknown(home_env: str) -> None:
+    for command in KNOWN_FALSE_POSITIVES:
+        assert run("Bash", command=command), (home_env, command)
+
+
+def test_a_cd_to_a_folder_the_environment_knows_is_judged_by_its_real_path(monkeypatch) -> None:
+    monkeypatch.setenv("TMPDIR", "/var/tmp/x")
+    assert run("Bash", command='cd "$TMPDIR" && rm -rf *') is None
+    monkeypatch.delenv("TMPDIR")
+    assert run("Bash", command='cd "$TMPDIR" && rm -rf *')  # unset: a bare cd, which goes home
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'cd "$TEMP" && echo x > ../ZexionAP/seeds.json',
+        'cd "$TEMP" && echo x > ../ZexionAP/seeds/p.txt',
+        "cd $TEMP && cp a ../ZexionAP/config-B1.txt",
+        'cd "$TEMP" && rm -rf ../ZexionAP',
+        'cd "$TEMP" && cd .. && rm -rf *',
+        'cd "$TEMP" && rm -rf ../*',
+    ],
+)
+def test_dot_dot_from_the_temp_folder_reaches_the_offline_folder(monkeypatch, command: str) -> None:
+    # On Windows %TEMP% is %LOCALAPPDATA%\Temp: its parent holds ZexionAP. The variables are set
+    # here, so the test reads the same on every platform.
+    monkeypatch.setenv("LOCALAPPDATA", "C:\\Users\\someone\\AppData\\Local")
+    monkeypatch.setenv("TEMP", "C:\\Users\\someone\\AppData\\Local\\Temp")
+    assert run("Bash", command=command), command
+    assert run("Bash", command='cd "$TEMP" && echo x > out.txt') is None
+
+
+def test_a_lexed_cd_chain_and_unknown_folders() -> None:
+    walk = guard_protected._walk_cds
+    segments, _ = guard_protected.lex("cd a && cd b && cd .. && cd && cd - && ls", False)
+    before, targets = walk(segments, "D:/w", "", protected)
+    assert before[:3] == ["D:/w", os.path.join("D:/w", "a"), os.path.join("D:/w", "a", "b")]
+    assert targets[2] == os.path.join("D:/w", "a", "b", "..")
+    assert targets[3] in (os.path.expanduser("~"), "~")  # a bare cd goes home
+    assert targets[4] is None and before[5] is None  # cd - : unknown
+    segments, _ = guard_protected.lex("cd /c/Users/x && cd y", False)
+    before, targets = walk(segments, "D:/w", "", protected)
+    assert targets[0] == "/c/Users/x"  # not joined to D:/w
+    assert targets[1] == os.path.join("/c/Users/x", "y")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "~", "$HOME", "${HOME}", "%USERPROFILE%", "$env:USERPROFILE", "$env:APPDATA", "${APPDATA}",
+        "%LOCALAPPDATA%", "$XDG_DATA_HOME", "/", "//", "C:/", "C:\\", "d:/", "/c", "/mnt/c",
+        "/cygdrive/c", "//?/C:/", "/home", "/home/someone", "/Users/someone", "C:/Users",
+        "C:/Users/someone", "C:/Users/someone/AppData/Roaming", "~/AppData/Roaming/", "~/.var",
+        "~/.var/app", "~/.steam", "~/.steam/steam", "~/.local/share/Steam",
+        "C:/Program Files (x86)", "C:/Program Files (x86)/Steam", "~/*", "$APPDATA/*",
+        "$APPDATA/.*", "$APPDATA/..", "$HOME/../..", "C:/Users/*", "/home/*", "/*",
+        "C:/Users/someone/AppData/Roaming/..", "//?/C:/Users/someone", "PROGRA~2",
+        "C:/PROGRA~2/Steam", "~/snap/steam", "C:/Users/someone/AppData", "~/AppData/Local",
+        "~/snap", "~/snap/steam/common", "~/.steam/debian-installation", "~/.steam/root",
+        "$APPDATA/../*", "/../..", "${APPDATA:-x}", "${APPDATA%/}", "${HOME}",
+    ],
+)  # fmt: skip
+def test_a_folder_above_a_protected_one(path: str, home_env: str) -> None:
+    assert protected.holds_protected(path), (home_env, path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "lab", ".", "", "./build", "x/y", "C:/Users/someone/work", "C:/Users/someone/Documents",
+        "C:/Users/someone/AppData/Local/Temp/x", "C:/Users/someone/AppData/Roaming/Code",
+        "C:/Users/someone/AppData/Roaming/Code/*", "~/work", "~/work/*", "~/x/*", "/tmp", "/tmp/x",
+        "/home/someone/work", "/home/someone/work/zexion-ap", "D:/code/zexion-ap",
+        "D:/code/zexion-ap/native/build", "/c/Users/someone/work", "snap", "steam",
+        "C:/Program Files", "$TEMP", "$TEMP/x", "/usr/local", "C:/Users/someone/*.txt",
+        "~/*.txt", "/c/Users/someone/work/x/..", "worlds/zexion", "../x", "D:/code/snap",
+        "~/work/snap", "~/snap/x", "snap/steam/x",
+    ],
+)  # fmt: skip
+def test_a_folder_that_holds_no_protected_one(path: str, home_env: str) -> None:
+    assert not protected.holds_protected(path), (home_env, path)
+
+
+FILE_NAME_PATTERNS = [
+    # (pattern, kind, ignore_case, may it name a file in a protected folder)
+    ("*", "name", False, True),
+    ("Z*", "name", False, True),
+    ("[Z]*", "name", False, True),
+    ("[A-Z][a-z]*", "name", False, True),
+    ("*.sav", "name", False, True),
+    ("Save*", "name", False, True),
+    ("save*", "name", False, True),
+    ("Save Game*.sav", "name", False, True),
+    ("Save Game ??.sav", "name", False, True),
+    ("Save Game 7.sav", "name", False, True),
+    ("Save Game 31.sav", "name", False, False),
+    ("GameUnlocks.sav", "name", False, True),
+    ("gameunlocks.SAV", "name", False, True),
+    ("Pref*", "name", False, True),
+    ("Preferences*", "name", False, True),
+    ("PreferencesLocal", "name", False, True),
+    ("ZexionAP-seed-*", "name", False, True),
+    ("ZexionAP-seed-12345-0-1.sav", "name", False, True),
+    ("zexionap-seed-*", "name", False, False),  # the repo's own name in lower case
+    ("zexionap-seed-*", "name", True, True),  # -iname
+    ("*seed*", "name", False, True),
+    ("steam_autocloud.vdf", "name", False, True),
+    ("*.vdf", "name", False, True),
+    ("token", "name", False, True),
+    ("TOKEN", "name", False, True),
+    ("t*n", "name", False, True),
+    ("?????", "name", False, True),
+    ("seeds", "name", False, True),
+    ("config-*.txt", "name", False, True),
+    ("config-B1.txt", "name", False, True),
+    ("*.txt", "name", False, True),
+    ("*.*", "name", False, True),
+    ("{token,x}", "name", False, True),
+    ("Sav[e]*", "name", False, True),
+    ("Save\\ Game*", "name", False, True),
+    ("*/Save Game*", "path", False, True),
+    ("./lab/*.sav", "path", False, True),
+    ("*/token", "path", False, True),
+    (".*\\.sav", "regex", False, True),
+    (".*/Save Game.*\\.sav", "regex", False, True),
+    ("*.sav", "ps", False, True),
+    ("ZexionAP-seed-*", "ps", False, True),
+    ("zexionap-seed-*", "ps", False, True),  # PowerShell ignores case
+    ("Save*", "ps", False, True),
+    ("*", "ps", False, True),
+    # Not files of theirs.
+    ("*.py", "name", False, False),
+    ("*.pyc", "name", False, False),
+    ("*.pyo", "name", False, False),
+    ("*.md", "name", False, False),
+    ("*.json", "name", False, False),
+    ("*.log", "name", False, False),
+    ("*.tmp", "name", False, False),
+    ("*.o", "name", False, False),
+    ("*~", "name", False, False),
+    ("*foo*", "name", False, False),
+    ("test_*.py", "name", False, False),
+    ("x", "name", False, False),
+    ("tokens", "name", False, False),
+    ("Save Game.txt", "name", False, False),
+    ("worlds", "name", False, False),
+    ("./lab/*", "path", False, False),
+    ("./build/*", "path", False, False),
+    ("*/x/*", "path", False, False),
+    (".*\\.pyc", "regex", False, False),
+    (".*/[^/]*\\.pyc", "regex", False, False),
+    ("*.pyc", "ps", False, False),
+    ("*.py", "ps", False, False),
+]
+
+
+@pytest.mark.parametrize(("pattern", "kind", "ignore_case", "expected"), FILE_NAME_PATTERNS)
+def test_a_name_pattern_that_may_match_a_file_in_a_protected_folder(
+    pattern: str, kind: str, ignore_case: bool, expected: bool
+) -> None:
+    assert protected.pattern_may_name_protected(pattern, kind, ignore_case) is expected
+
+
+@pytest.mark.parametrize("length", [201, 500, 999])
+def test_a_long_part_of_a_name_pattern_is_read_as_a_file_name(length: int) -> None:
+    assert protected.pattern_may_name_protected("x" * length, "name")
+    assert not protected.pattern_may_name_protected("x" * 200, "name")
+
+
+def test_the_glob_reader_agrees_with_fnmatch() -> None:
+    import fnmatch
+    import random
+
+    rnd = random.Random(7)
+    for _ in range(3000):
+        pattern = "".join(rnd.choice("ab*?") for _ in range(rnd.randint(0, 8)))
+        name = "".join(rnd.choice("ab") for _ in range(rnd.randint(0, 7)))
+        tokens = protected._wildcard_tokens(pattern)
+        assert protected._glob_matches(tokens, name) is fnmatch.fnmatchcase(name, pattern), (
+            pattern,
+            name,
+        )
+
+
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [
+        ("Bash", "rm -rf ~"),
+        ("Bash", 'find "$APPDATA" -delete'),
+        ("PowerShell", "gci $env:APPDATA -r | ri"),
+        ("Bash", "find lab -name '*.sav' -delete"),
+    ],
+)
+def test_the_hook_process_blocks_a_folder_above_and_a_file_name(tool: str, command: str) -> None:
+    result = _hook(json.dumps({"tool_name": tool, "tool_input": {"command": command}}))
+    assert result.returncode == 2, command
+    assert "guard_protected" in result.stderr
+
+
+def _quick(tool: str, command: str, limit: float = 2.5) -> str | None:
+    started = time.monotonic()
+    result = run(tool, command=command)
+    assert time.monotonic() - started < limit, command[:80]
+    return result
+
+
+def test_the_reads_of_folders_above_and_of_file_names_answer_quickly() -> None:
+    long_star = "*a" * 450
+    spaced = "x " * 900
+    for tool, command in [
+        ("Bash", "rm -rf " + " ".join(f"~/x{i}" for i in range(3000))),
+        ("Bash", "rm -rf " + " ".join(f"../../x{i}/.." for i in range(3000))),
+        ("Bash", "rm -rf " + " ".join(f"$V{i}/.." for i in range(3000))),
+        ("Bash", "rm -rf " + " ".join(f"/{i}/.." for i in range(3000))),
+        ("Bash", "rm " + "~ " * 6000),
+        ("Bash", "rm " + "* " * 6000),
+        ("Bash", "sh -c " + " ".join(f"'{spaced}{i}'" for i in range(40))),
+        ("Bash", "sh -c " + " ".join(f"'find . -name n{i} -x y z'" for i in range(1500))),
+        ("Bash", "find ~ " + " -o ".join(f"-name 'n{i}*'" for i in range(1500)) + " -delete"),
+        ("Bash", f"find ~ -name '{long_star}' -delete"),
+        ("Bash", "find . " + " -o ".join(f"-name 'q{i}{'*a' * 100}'" for i in range(40))),
+        ("Bash", "find . -name '" + "{a,b}*" * 150 + "' -delete"),
+        ("Bash", "find . -regex '" + ".*a" * 300 + "' -delete"),
+        ("Bash", "find . -path '" + "*/a*" * 200 + "' -delete"),
+        ("PowerShell", "gci -r -Filter '" + "*a" * 450 + "' | ri"),
+        ("PowerShell", "gci -r -Filter " + ",".join(f"*a{i}*" for i in range(2000)) + " | ri"),
+        ("PowerShell", ";".join(f"gci . -Filter 'n{i} a b c'" for i in range(2000))),
+        ("Bash", ";".join(f"cd ~/d{i}" for i in range(2000)) + "; rm x"),
+        ("Bash", "eval " + "'eval " * 10 + "find ~ -delete" + "'" * 10),
+        ("Bash", "rm -rf " + "../" * 190),
+        ("Bash", "rm -rf " + "/a" * 190),
+        ("Bash", "ls a|xargs rm;" * 3900),  # each pipeline is read once: linear, not quadratic
+        ("Bash", "".join(f"ls a{i}|xargs rm;" for i in range(3900))),
+        ("PowerShell", "gci a|ri;" * 3000 + "gci ~"),
+        ("Bash", "rm $(x);" * 4000 + "ls ~"),
+        ("Bash", "cd ~;" + "rm *;" * 7900),
+        ("Bash", "ls ~ | " + " | ".join("xargs rm" for _ in range(3000))),
+        ("Bash", "".join(f"for d{i} in ~/a{i} b; do rm -rf $d{i}; done;" for i in range(2000))),
+    ]:
+        _quick(tool, command)
+
+
+def test_a_long_command_that_reads_only_still_passes_quickly() -> None:
+    words = " ".join(f"w{i}" for i in range(3000))
+    assert _quick("Bash", f"ls -R ~ {words}") is None
+    assert _quick("Bash", f"find ~ {words} -name x -print") is None
