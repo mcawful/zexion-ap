@@ -231,13 +231,7 @@ std::optional<std::string> note_build_id(const unsigned char* notes, size_t size
         size_t next = desc_at + align4(descsz);
         if (desc_at < name_at || next < desc_at || next > size) return std::nullopt;  // cut short
         if (type == kNtGnuBuildId && namesz == 4 && std::memcmp(notes + name_at, "GNU", 4) == 0) {
-            static const char kHex[] = "0123456789abcdef";
-            std::string hex;
-            for (size_t i = 0; i < descsz; ++i) {
-                hex += kHex[notes[desc_at + i] >> 4];
-                hex += kHex[notes[desc_at + i] & 0xF];
-            }
-            return hex;
+            return hex_text(notes + desc_at, descsz);
         }
         at = next;
     }

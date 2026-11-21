@@ -600,6 +600,7 @@ void set_client_writes(const zap::linux_helper::SymbolSpan& base) {
 // Each key's address by the game's own symbols (kConfigKeys), read from its binary at start-up:
 // a config must give these and no others, so a client whose mapping drifted changes nothing.
 uint64_t g_expected[kConfigKeyCount] = {};
+uint64_t g_expected_inventory = 0;  // the `inventory` key's, for player_where_expected
 bool g_expected_known = false;
 
 // The game binary's symbols the helper uses, from /proc/self/exe: the config keys' and the frame
@@ -621,6 +622,7 @@ bool read_own_symbols() {
     zap::set_feats_achievement_fn(reinterpret_cast<const void*>(found[kSetAchievement].value));
     for (size_t i = 0; i < kConfigKeyCount; ++i) {
         g_expected[i] = found[kConfigKeys[i].symbol].value + kConfigKeys[i].offset;
+        if (std::strcmp(kConfigKeys[i].name, "inventory") == 0) g_expected_inventory = g_expected[i];
     }
     set_client_writes(found[kWriteBase]);
     g_expected_known = true;
@@ -817,13 +819,24 @@ void install_config(const zap::GameAddresses& found, bool active) {
                             defs != kTracedSpriteDefs);
 }
 
+// A path as offline.cpp holds it (a wstring, one character a byte), and as the bytes the system
+// takes.
+[[maybe_unused]] std::wstring wide_of(const std::string& bytes) {  // the test build's folders only
+    std::wstring out;
+    for (char c : bytes) out += static_cast<wchar_t>(static_cast<unsigned char>(c));
+    return out;
+}
+
+std::string bytes_of(const std::wstring& path) {
+    std::string out;
+    for (wchar_t c : path) out += static_cast<char>(static_cast<unsigned char>(c));
+    return out;
+}
+
 // Whether the game's player pointer reads the player state `inventory` (the game's own symbols'
 // address, g_expected) lies in.
 bool player_where_expected() {
-    uint64_t inventory = 0;
-    for (size_t i = 0; i < kConfigKeyCount; ++i) {
-        if (std::strcmp(kConfigKeys[i].name, "inventory") == 0) inventory = g_expected[i];
-    }
+    const uint64_t inventory = g_expected_inventory;
     uint64_t player = 0;
     auto* pointer = reinterpret_cast<const BYTE*>(g_player_pointer);
     return g_expected_known && inventory != 0 && pointer != nullptr &&
@@ -863,7 +876,7 @@ void read_offline() {
 
 // Game thread: with no client yet, the helper configured from the game's own symbols (the
 // addresses a client's config must give: parse_config), inactive, as the Windows helper's own scan's
-// is (since #186, with no seed file or cache to wait for): only what runs with no client uses it.
+// is: only what runs with no client uses it.
 // From the first frames, whether or not any seed file has been read (a game with none has no AP
 // save: nothing is dressed, no Feats are held, and the title's lines and the text window's repair
 // run, as on Windows with no client), and only once the game's player pointer reads where the
@@ -996,9 +1009,7 @@ bool make_token(const std::string& folder) {
     // The test build writes no folder that is not a test's own, the token's included (the folder
     // already went through restrict_to_test_folder; this is the check at the write itself).
     {
-        std::wstring named;
-        for (char c : folder) named += static_cast<wchar_t>(static_cast<unsigned char>(c));
-        if (zap::restrict_to_test_folder(named).empty()) {
+        if (zap::restrict_to_test_folder(wide_of(folder)).empty()) {
             std::fprintf(stderr, "zexion-ap %s: no token: not a test folder\n", kVersion);
             return false;
         }
@@ -1158,15 +1169,14 @@ int listen_socket() {
     return fd;
 }
 
-// The serving thread, with every signal blocked from its first instruction: the game's signals
-// stay the game's threads'.
-bool start_thread(int fd) {
+// A thread of the helper's, with every signal blocked from its first instruction: the game's
+// signals stay the game's threads'. Detached; false if it was not made.
+bool spawn_thread(void* (*run)(void*), void* arg) {
     sigset_t all, old;
     sigfillset(&all);
     pthread_sigmask(SIG_SETMASK, &all, &old);
     pthread_t thread;
-    int failed = pthread_create(&thread, nullptr, serve,
-                                reinterpret_cast<void*>(static_cast<intptr_t>(fd)));
+    int failed = pthread_create(&thread, nullptr, run, arg);
     pthread_sigmask(SIG_SETMASK, &old, nullptr);
     if (failed != 0) return false;
     pthread_detach(thread);
@@ -1194,18 +1204,6 @@ void* copy_loop(void*) {
         }
     }
     return nullptr;
-}
-
-bool start_copy_thread() {
-    sigset_t all, old;
-    sigfillset(&all);
-    pthread_sigmask(SIG_SETMASK, &all, &old);
-    pthread_t thread;
-    int failed = pthread_create(&thread, nullptr, copy_loop, nullptr);
-    pthread_sigmask(SIG_SETMASK, &old, nullptr);
-    if (failed != 0) return false;
-    pthread_detach(thread);
-    return true;
 }
 
 extern "C" void* SteamInternal_ContextInit(void* context);  // defined at the end, exported
@@ -1258,11 +1256,7 @@ void start_inside() {
     // folder is only what a test names in ZAP_TEST_SAVE_DIR, not $HOME or $XDG_DATA_HOME.
     *g_offline_folder = zap::restrict_to_test_folder(zap::offline_folder());
     const char* test_save = std::getenv("ZAP_TEST_SAVE_DIR");
-    std::wstring named;  // the folder's bytes, as offline.cpp holds a path in a wstring
-    for (const char* c = test_save; c != nullptr && *c != '\0'; ++c) {
-        named += static_cast<wchar_t>(static_cast<unsigned char>(*c));
-    }
-    *g_save_folder = zap::restrict_to_test_folder(named);
+    *g_save_folder = zap::restrict_to_test_folder(wide_of(test_save != nullptr ? test_save : ""));
 #else
     *g_offline_folder = zap::offline_folder();  // here, before the game's threads (getenv)
     *g_save_folder = zap::save_folder();
@@ -1279,19 +1273,16 @@ void start_inside() {
                      kVersion);
     }
     // The token before the socket: a client that finds the socket finds the token's file.
-    std::string data_folder;  // the folder's bytes, as offline.cpp holds a path in a wstring
-    for (wchar_t c : *g_offline_folder) {
-        data_folder += static_cast<char>(static_cast<unsigned char>(c));
-    }
+    const std::string data_folder = bytes_of(*g_offline_folder);
     if (!make_token(data_folder)) return;
     int fd = listen_socket();
     if (fd < 0) return;
-    if (!start_thread(fd)) {
+    if (!spawn_thread(serve, reinterpret_cast<void*>(static_cast<intptr_t>(fd)))) {
         close(fd);
         return;
     }
     g_active = true;
-    start_copy_thread();  // no copies if it fails: the local files and the puts still work
+    spawn_thread(copy_loop, nullptr);  // no copies if it fails: the local files and the puts still work
     std::fprintf(stderr, "zexion-ap %s: serving build %s\n", kVersion, g_build);
 }
 

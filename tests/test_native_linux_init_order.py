@@ -2,10 +2,9 @@
 (native/linux/src/helper.cpp, ``start``), a function in the library's ``.init_array`` of default
 priority: it runs ahead of the initializers with a priority (``init_priority(101)``) and, among
 those of default priority, in link order, so a dynamic initializer of a shared source
-(``zap_shared``: ``offline.cpp`` was one, found by the review before 2.0.0) can run after it, in
-the thread's way. A
-global the thread reads that is built dynamically after that would be built afresh over what the
-thread holds, or walked before it is built.
+(``zap_shared``: ``offline.cpp`` was one) can run after it, in the thread's way. A global the
+thread reads that is built dynamically after that would be built afresh over what the thread
+holds, or walked before it is built.
 
 What this covers, exactly:
 
@@ -133,8 +132,8 @@ def test_every_global_is_constant_kept_or_built_before_the_helpers_constructor()
             if path == OFFLINE:
                 raise AssertionError(
                     f"{path.name}: {name} ({kind}) is a global with a constructor in a shared "
-                    "source: built after the helper's constructor started the serving thread "
-                    f"(the 2.0.0 review's start-up race); hold it in a function-local Kept: "
+                    "source: built after the helper's constructor started the serving thread; "
+                    "hold it in a function-local Kept: "
                     f"{statement.strip()}"
                 )
             if kind.startswith("Kept<") or PRIORITY.search(statement):
@@ -180,9 +179,9 @@ def test_the_steam_exports_stand_in_is_built_at_load_time() -> None:
 
 
 def test_the_pending_seeds_are_built_on_first_use_and_never_destroyed() -> None:
-    # Round 7's LH1: `std::map g_pending;` at namespace scope in offline.cpp was built by that
-    # file's own initializer, after the helper's constructor had started the serving thread, which
-    # walks it in its first join_saves; and destroyed by exit() under the threads.
+    # A `std::map g_pending;` at namespace scope in offline.cpp would be built by that file's own
+    # initializer, after the helper's constructor had started the serving thread, which walks it in
+    # its first join_saves; and destroyed by exit() under the threads.
     source = OFFLINE.read_text(encoding="utf-8")
     assert "g_pending" not in source
     assert re.search(
