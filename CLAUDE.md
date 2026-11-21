@@ -311,10 +311,10 @@ rebuild 1.0.0's published message (the later ones carry an install guide that ha
   | `zexion_client.py` | `CommonClient` wiring, the commands, the game loop |
   | `session.py` | one poll: checks, the goal, grants, other players' items kept collected |
   | `reconcile.py` | what to give: should own minus inventory |
-  | `state.py` | the client's state, by lifetime, and pure decisions on it |
-  | `ticks.py` | the side tasks with the helper |
+  | `state.py` | the client's state, by lifetime (a connection, a helper, a seed, a load, an attached game's `GameRun`), and pure decisions on it (what a step gives through: `plan_give`, `after_step`) |
+  | `ticks.py` | the side tasks with the helper: one tick for either, through `helper_link` |
   | `storage.py` | records in the server's data storage; Area Map hints |
-  | `game.py` | attach, locate by pattern, checked reads and writes, `state()` |
+  | `game.py` | attach, locate by pattern, checked reads and writes, `state()`; `on_linux` |
   | `patterns.py` | byte patterns per target; known builds; `Target.rvas` |
   | `process.py` | another process's memory through the Windows API |
   | `pe.py` | the PE header fields the client and tools read |
@@ -357,10 +357,14 @@ rebuild 1.0.0's published message (the later ones carry an install guide that ha
   `tools/versions.py` reads the release version and the versions the release tools are given.
 - `docs/re/`: the reverse-engineering record.
 - `docs/releases/`: each release's notes for players, the template and the style guide.
-- `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a seed's plan, a
-  fresh save). `test_cross_checks.py` reads `native/src` and `native/linux/src` (through
-  `native_source.py`, which knows where the sources are and which files each platform builds) for
-  what the client and the helpers must agree on (version, builds, `config` keys, the request names and the
+- `tests/`: pytest, host-only. `fakes.py` holds the shared fakes (process, game, a binary of B1's
+  symbols, a `/proc`, `Answering` for a helper that answers by script and keeps its requests,
+  `LinuxPm` for the Linux helper's connection, the client's context on Archipelago's stand-ins:
+  `zc`, `context`, `stepping`; a seed's plan, a fresh save). `test_ticks_linux.py` holds the
+  Linux build's ticks, helper and poll. `test_cross_checks.py` reads `native/src` and
+  `native/linux/src` (through `native_source.py`, which knows where the sources are and which
+  files each platform builds) for what the client and the helpers must agree on (version, builds,
+  `config` keys, the request names and the
   replies the client branches on, the offline seed's header and keys, the label separator, the
   font's punctuation, the item record count, the flags and layouts both read), and the world's
   `world_version`. `test_gen_native_patterns.py` fails while `native/src/findaddr_patterns.h` is out of

@@ -7,28 +7,10 @@ import sys
 from pathlib import Path
 
 import pytest
+from fakes import fake_proc as _proc
+from fakes import proc_entry as _process
 
 from client import procfs
-
-
-def _proc(tmp_path: Path, processes: dict[str, bytes], nspid: str = "100") -> Path:
-    """A ``/proc`` of ``processes`` (id to comm), with ``self`` in a namespace of ``nspid``."""
-    proc = tmp_path / "proc"
-    proc.mkdir()
-    for pid, comm in processes.items():
-        _process(proc, pid, comm)
-    (proc / "self").mkdir()  # not a process id
-    (proc / "self" / "comm").write_bytes(b"Zexion\n")
-    (proc / "self" / "status").write_text(f"Name:\tpython\nNSpid:\t{nspid}\n")
-    return proc
-
-
-def _process(proc: Path, pid: str, comm: bytes, cmdline: bytes = b"", exe: str = "") -> None:
-    (proc / pid).mkdir()
-    (proc / pid / "comm").write_bytes(comm)
-    (proc / pid / "cmdline").write_bytes(cmdline)
-    if exe:
-        (proc / pid / "exe").symlink_to(exe)
 
 
 def _root(tmp_path: Path) -> Path:
@@ -100,6 +82,19 @@ def test_a_sandbox_that_hides_processes_is_an_error_not_an_absence(
         (proc / "sys" / "fs" / "binfmt_misc" / "WSLInterop").write_text("enabled\n")
     with pytest.raises(procfs.ProcessError, match=said):
         procfs.find_pid("Zexion", proc, root)
+
+
+@pytest.mark.parametrize(
+    ("status", "pids"),
+    [
+        ("Name:\tZexion\nNSpid:\t4242\t2\n", ["4242", "2"]),
+        ("Name:\tZexion\nNSpid:\t4242\n", ["4242"]),
+        ("Name:\tZexion\n", []),  # a kernel without NSpid
+        ("Name:\tZexion\nNSpid:\t\n", []),
+    ],
+)
+def test_the_pids_in_each_namespace_are_read_from_the_status_text(status, pids) -> None:
+    assert procfs.namespace_pids(status) == pids
 
 
 def _wsl_proc(tmp_path: Path, how: str) -> Path:

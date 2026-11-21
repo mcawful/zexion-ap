@@ -368,7 +368,7 @@ SHARED_REPLIES = (
     "discs on", "discs off",
     # An offline seed file's put (ticks.linux_seed_tick): "error " and its reason, or "stored".
     "error cannot ", "error bad ", "error not a seed file",
-    "not asked",  # a RETURN HOME prompt dropped before it showed (ticks.linux_finds_tick)
+    "not asked",  # a RETURN HOME prompt dropped before it showed (ticks.return_home_tick)
     "pong frames=",
     "asked", "opening", "yes",  # the statuses of a RETURN HOME prompt still on its way
 )  # fmt: skip

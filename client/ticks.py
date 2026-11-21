@@ -6,11 +6,12 @@ language the mod's text is not made for).
 
 Each tick asks the helper only when something changed or a retry is due, and keeps what it
 told in client/state.py (``HelperState``, mostly). client/zexion_client.py runs them (its
-``poll``, through ``side_tick``, so a failing one never stops items or checks), only while a
-helper is attached, except offline_tick, shields_tick (run with the Windows helper or the Linux
-one: zexion_client.shields_due) and deathlink_tick (either helper), which check, and the linux_
-ticks, which run while none is attached (through the Linux helper, with the game's Linux build),
-except linux_keepalive_tick, which zexion_client's ``keepalive_loop`` runs as a task of its own.
+``poll``, through ``side_tick``, so a failing one never stops items or checks) through the helper
+there is (``helper_link``): the Windows helper, or with the game's Linux build the Linux helper
+(``configure_linux``, and ``linux_seed_tick``, which only it has), the same tick for both except
+where it is said. offline_tick (the Windows helper's), shields_tick and deathlink_tick check
+for themselves, and linux_keepalive_tick is run by zexion_client's ``keepalive_loop`` as a task
+of its own.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import logging
 import os
 import stat
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -73,6 +75,36 @@ NEWGAME_POLL_SECONDS = 1.0
 REFUSED_RETRY_SECONDS = 5.0  # before asking the helper again after it refused a request
 OFFLINE_WRITE_SECONDS = 5.0  # between looks at what the helper needs without the client
 DEATH_RETRY_SECONDS = 1.0  # before asking the helper again to deal a received death
+# How long a helper dropped may be attached again after, and how long a step is held back for one
+# lost or let go: the Windows helper until it attaches (poll), the Linux helper until it is
+# configured (linux_mod_lost, plan_give), as most failures pass (no frame while the game is in
+# the background, a socket that closed).
+HELPER_RETRY_SECONDS = 30.0
+
+
+@dataclass(frozen=True)
+class Link:
+    """The helper a poll's ticks talk to, and what it was told: the Windows helper (``ctx.helper``,
+    ``ctx.told``) or, with the game's Linux build, the Linux helper (``LinuxMod``, with its own
+    ``told``)."""
+
+    helper: native.Helper | linux_helper.LinuxMod
+    told: state.HelperState
+    linux: bool
+
+
+def helper_link(ctx: ZexionContext) -> Link | None:
+    """The helper a tick may use now, or None. The Windows helper once it is attached. The Linux
+    helper only on the connection it was configured on (``LinuxMod.current``), for every tick: a
+    request on one made since (a closed connection is made again by the next read) reaches a
+    helper that has no client on it, which would keep what it is told past that connection's
+    close; the next poll configures it again (``configure_linux``) before any tick."""
+    if ctx.helper is not None:
+        return Link(ctx.helper, ctx.told, False)
+    mod = ctx.linux_mod
+    if mod is not None and mod.current():
+        return Link(mod, mod.told, True)
+    return None
 
 
 async def attach_helper(ctx: ZexionContext) -> bool:
@@ -84,10 +116,10 @@ async def attach_helper(ctx: ZexionContext) -> bool:
     developer's own build (native/build, ZEXION_DLL), the game folder's copy of another version
     loaded by the proxy meanwhile, replaced with the client's build on a later attach once it
     unloads; nor for one turned off (native.ModDisabled)."""
-    if getattr(ctx.game_conn, "platform", "windows") == "linux":
+    if game.on_linux(ctx.game_conn):
         # No Windows helper there, ever, while this game runs, and nothing to say: the Linux
-        # helper runs every part (the linux_ ticks). Nothing dropped (drop_helper would reset the
-        # new game the Linux helper holds: linux_newgame_tick).
+        # helper runs every part. Nothing dropped (drop_helper would reset the new game the
+        # Linux helper holds: configure_linux).
         return False
     dll = native.default_dll()  # used when the game has none loaded (no proxy in its folder)
     notes: list[str] = []
@@ -109,18 +141,19 @@ async def attach_helper(ctx: ZexionContext) -> bool:
         if ctx.said("helper detail", str(exc)):
             log.warning(f"The helper could not be used: {exc!r}")
         ctx.drop_helper()
+        run = ctx.run
         if exc.old_gone:
-            ctx.swap_pending = False  # nothing left to wait for: the old helper is gone
+            run.swap_pending = False  # nothing left to wait for: the old helper is gone
         # One that didn't unload (a menu open, a trap waiting or running) may on a later try:
         # worth waiting for, as for a helper lost, but asked only every REFUSED_RETRY_SECONDS
         # (each try has the old helper put back what a client going away does).
         if isinstance(exc, native.NotUnloaded):
-            ctx.attach_again_at = time.monotonic() + REFUSED_RETRY_SECONDS
-            ctx.swap_pending = True  # stays until a helper attaches or the game closes
+            run.attach_again_at = time.monotonic() + REFUSED_RETRY_SECONDS
+            run.swap_pending = True  # stays until a helper attaches or the game closes
             return True
         return not isinstance(exc, (native.ModFixable, native.ModDisabled))
     ctx.said.clear("helper", "helper detail")
-    ctx.swap_pending = False
+    ctx.run.swap_pending = False
     # A helper still loaded from before may hold a lock, labels (taken back unless this seed's
     # save is loaded, where this seed's are sent over them) and so on: it is told everything
     # again, and told the client is back if the save was played offline.
@@ -170,26 +203,20 @@ async def tell(
     return True
 
 
-async def toggle_tick(
-    ctx: ZexionContext, toggle: state.Toggle, want: bool, spec: tuple, helper=None
-) -> None:
-    """Tell the helper (``helper``, else ctx.helper) to turn a setting on or off (ASSISTS: the
-    options menu's ASSIST entry locked, docs/re/memory.md "The assist menu"; INTEL: the game's
-    Area Map named INTEL CHIP, its map reveal off, "Intel Chips"). Sent when that changes, or to
-    a new helper."""
+async def toggle_tick(toggle: state.Toggle, want: bool, spec: tuple, helper) -> None:
+    """Tell the helper to turn a setting on or off (ASSISTS: the options menu's ASSIST entry
+    locked, docs/re/memory.md "The assist menu"; INTEL: the game's Area Map named INTEL CHIP,
+    its map reveal off, "Intel Chips"). Sent when that changes (``toggle``: what it last took),
+    or to a new helper."""
     requests, replies, notes = spec
-    helper = helper if helper is not None else ctx.helper
     if await tell(helper, toggle, want, requests[want], replies[want]) and notes[want]:
         detail(notes[want])
 
 
-async def discs_helper_tick(ctx: ZexionContext, p: Poll, helper=None, told=None) -> None:
-    """With the OS Install Disks goal, give the helper (``helper``, else ctx.helper; what it was
-    told in ``told``, else ctx.told) the count and the scanner's line while this seed's save is
-    loaded (docs/re/memory.md, "The scanner"), and take them back otherwise. Sent when that
-    changes, or to a new helper."""
-    helper = helper if helper is not None else ctx.helper
-    told = told if told is not None else ctx.told
+async def discs_helper_tick(ctx: ZexionContext, p: Poll, helper, told: state.HelperState) -> None:
+    """With the OS Install Disks goal, give the helper (``told``: what it was told) the count and
+    the scanner's line while this seed's save is loaded (docs/re/memory.md, "The scanner"), and
+    take them back otherwise. Sent when that changes, or to a new helper."""
     conn = ctx.conn
     hunt = conn.hunt if conn is not None else None
     seed = ctx.seed_state
@@ -285,6 +312,26 @@ async def offline_config(ctx: ZexionContext) -> str | None:
     return text
 
 
+def seed_parts(ctx: ZexionContext, p: Poll, conn: state.Connection) -> tuple:
+    """What a seed's file holds beside its table, start and Intel Chips (offline.seed_text's
+    ``lock``, ``disc_info`` and ``traps``), the same for the whole file (offline_seed) and the slot
+    data's alone (linux_seed). Assist Unlock lifts the lock in every save of the seed, loaded in
+    this connection or not (``conn.lock_assists`` is the slot data's until this seed's save is
+    seen). With the OS Install Disks goal and the items listed: what every save of the seed
+    shares, and this world's own disks' cells, from which the helper counts each save's own from
+    its map (the file select's entries, and a save loaded with no client), as the client counts
+    the loaded one's (discs.owned)."""
+    hunt = conn.hunt
+    disc_info = None
+    if hunt is not None and conn.items_listed:
+        shared = discs.owned(hunt, p.codes, ())
+        own = offline.grid_cells(conn.plan.cells, hunt.locations)
+        disc_info = (shared, hunt.required, discs.scan_line(hunt.required), own)
+    cells = conn.plan.cells
+    traps = [(cells[i][1] * ids.MAP_SIZE + cells[i][0], code) for i, code in conn.traps.items()]
+    return conn.lock_assists and not ctx.assists_unlocked(), disc_info, traps
+
+
 def offline_seed(ctx: ZexionContext, p: Poll) -> str | None:
     """This seed's file for the helper to dress its saves without the client (client/
     offline.py), or None while it is not known yet (the items or the labels not listed yet)."""
@@ -295,27 +342,9 @@ def offline_seed(ctx: ZexionContext, p: Poll) -> str | None:
     if built is None:
         return None
     labels = aplabels.labels_request(built[0]) if built[0] else None
-    hunt = conn.hunt
-    disc_info = None
-    if hunt is not None:
-        # What every save of the seed shares, and this world's own disks' cells: the helper
-        # counts each save's own from its map (the file select's entries, and a save loaded
-        # with no client), as the client counts the loaded one's (discs.owned).
-        shared = discs.owned(hunt, p.codes, ())
-        own = offline.grid_cells(conn.plan.cells, hunt.locations)
-        disc_info = (shared, hunt.required, discs.scan_line(hunt.required), own)
-    cells = conn.plan.cells
-    traps = [(cells[i][1] * ids.MAP_SIZE + cells[i][0], code) for i, code in conn.traps.items()]
+    lock, disc_info, traps = seed_parts(ctx, p, conn)
     return offline.seed_text(
-        conn.plan.table,
-        conn.plan.start,
-        conn.intel_chip,
-        # Assist Unlock lifts the lock in every save of the seed, loaded in this connection or
-        # not (conn.lock_assists is the slot data's until this seed's save is seen).
-        conn.lock_assists and not ctx.assists_unlocked(),
-        disc_info,
-        labels,
-        traps,
+        conn.plan.table, conn.plan.start, conn.intel_chip, lock, disc_info, labels, traps
     )
 
 
@@ -365,13 +394,11 @@ async def offline_tick(ctx: ZexionContext, p: Poll) -> None:
             log.warning(f"The helper did not keep the offline {kind} file: {reply}")
 
 
-async def labels_tick(ctx: ZexionContext, helper=None, told=None) -> None:
+async def labels_tick(ctx: ZexionContext, helper, told: state.HelperState) -> None:
     """Once the server has said what each location holding another player's item holds, send
-    the helper (``helper``, else ctx.helper; what it was told in ``told``, else ctx.told) a label
-    per map cell (client/aplabels.py), while this seed's save is loaded. While another save (or
-    none) is loaded, and after a disconnect, take them back."""
-    helper = helper if helper is not None else ctx.helper
-    told = told if told is not None else ctx.told
+    the helper (``told``: what it was told) a label per map cell (client/aplabels.py), while this
+    seed's save is loaded. While another save (or none) is loaded, and after a disconnect, take
+    them back."""
     conn, seed = ctx.conn, ctx.seed_state
     if conn is None or not seed.dressed:
         if not told.labels_held or time.monotonic() < told.labels_retry_at:
@@ -448,9 +475,8 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
     if sh.pending is not None:
         await confirm_shield(ctx, game_conn, seed, key)
         return
-    helper = ctx.helper
-    mod = ctx.linux_mod if helper is None else None
-    if (helper is None and mod is None) or not sh.may_spawn(time.monotonic()):
+    link = helper_link(ctx)
+    if link is None or not sh.may_spawn(time.monotonic()):
         return
     if seed.session.holding:
         return  # the ending began in this load: on the next load, as other items (session.py)
@@ -465,19 +491,9 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
     # not counted there.
     sh.asking(time.monotonic())
     try:
-        if helper is not None:
-            reply = await asyncio.to_thread(helper.request, "shield")
-        else:
-            reply = await asyncio.to_thread(mod.request, "shield")
+        reply = await asyncio.to_thread(link.helper.request, "shield")
     except native.ReplyLost:
-        raise  # it may have spawned: looked for (side_tick drops the helper)
-    except linux_helper.NoReply as exc:
-        linux_mod_lost(ctx, exc)  # it may have spawned: looked for, as a reply lost on Windows
-        return
-    except linux_helper.LinuxHelperError as exc:
-        sh.not_sent(time.monotonic())  # it never reached the Linux helper
-        linux_mod_lost(ctx, exc)
-        return
+        raise  # it may have spawned (the Linux helper's NoReply too): looked for; helper dropped
     except Exception:  # a cancellation, whose thread may still deliver it, stays pending
         sh.not_sent(time.monotonic())  # never reached the helper, or an error reply
         raise
@@ -485,13 +501,6 @@ async def shields_tick(ctx: ZexionContext, received: list[int]) -> None:
         sh.spawned(time.monotonic())
     elif sh.refused(reply, time.monotonic()):
         detail(f"A received Energy Shield is waiting: {reply}")
-    if mod is not None and reply == "error unknown request" and ctx.said("linux mod", "shield"):
-        # A Linux helper of this version built before shields were ported: they wait for it.
-        logger.warning(
-            "Zexion's mod in the game is older than this client and can't give Energy Shields: "
-            "copy this client's libzexion_ap.so into the game's folder and restart Zexion. "
-            "Received shields wait until then."
-        )
 
 
 async def confirm_shield(
@@ -570,39 +579,27 @@ async def deathlink_tick(ctx: ZexionContext, step: session.Step) -> None:
         # runs (Session.holding; docs/re/memory.md, "DeathLink").
         deaths.owed = 0
         detail("DeathLink: the ending began, so the received deaths queued are dropped.")
-    helper = ctx.helper
-    mod = ctx.linux_mod if helper is None else None  # the game's Linux build: its helper's
-    if not deaths.owed or (helper is None and mod is None):
+    link = helper_link(ctx)
+    if not deaths.owed or link is None:
         return
     if state_now != game.IN_PLAY or now < seed.death_retry_at or deaths.watching:
         return  # (watching: the death of a lost reply is not settled: one never twice)
     deaths.dealing(now, count)  # a death seen after a lost reply is this one
-    if helper is not None:
-        reply = await asyncio.to_thread(helper.request, "die", native.APPLY_SECONDS)
-    else:
-        try:
-            reply = await asyncio.to_thread(mod.request, "die")
-        except linux_helper.NoReply as exc:
-            # It may have been dealt: a death seen soon is this one, soon from the next read of
-            # the state (a reply that timed out took the socket's whole timeout, longer than
-            # DEALT_SECONDS, and the next poll configures the helper again before it reads).
-            deaths.reply_lost(time.monotonic())
-            linux_mod_lost(ctx, exc)
-            return
-        except linux_helper.LinuxHelperError as exc:
-            deaths.refused()  # it never reached the Linux helper: still queued
-            linux_mod_lost(ctx, exc)
-            return
-        except Exception:  # not sent (a cancellation, which may still deliver it, stays dealing)
-            deaths.refused()
-            raise
-    if mod is not None and reply == "error unknown request" and ctx.said("linux mod", "die"):
-        # A Linux helper of this version built before deaths were ported: they wait for it.
-        logger.warning(
-            "Zexion's mod in the game is older than this client and can't deal DeathLink "
-            "deaths: copy this client's libzexion_ap.so into the game's folder and restart "
-            "Zexion. Received deaths wait until then."
-        )
+    try:
+        if link.linux:
+            reply = await asyncio.to_thread(link.helper.request, "die")
+        else:
+            reply = await asyncio.to_thread(link.helper.request, "die", native.APPLY_SECONDS)
+    except linux_helper.NoReply:
+        # It may have been dealt: a death seen soon is this one, soon from the next read of the
+        # state (a reply that timed out took the socket's whole timeout, longer than
+        # DEALT_SECONDS, and the next poll configures the helper again before it reads).
+        deaths.reply_lost(time.monotonic())
+        raise  # side_tick drops the Linux helper
+    except Exception:
+        if link.linux:  # it never reached the Linux helper: still queued (a cancellation, which
+            deaths.refused()  # may still deliver it, stays dealing)
+        raise
     if reply == "died":
         deaths.dealt(time.monotonic())
         ctx.said.clear("death")
@@ -633,14 +630,14 @@ def start_table_build(g) -> str:
     return build.sha256
 
 
-async def newgame_tick(ctx: ZexionContext, helper=None, offer_choice: bool = True) -> None:
-    """Arm the helper (``helper``, else ctx.helper) with the AP seed for the next randomizer new
-    game, and report what became of it. Runs in the game loop, the helper's only user. The lines
-    on how to start the seed are made at the first arm of a connection and said by how_to_play.
-    Without ``offer_choice`` the seed is started from RANDOMIZER only."""
-    helper = helper if helper is not None else ctx.helper
-    if ctx.disarm_pending:
-        ctx.disarm_pending = False
+async def newgame_tick(ctx: ZexionContext, helper, offer_choice: bool = True) -> None:
+    """Arm the helper with the AP seed for the next randomizer new game, and report what became
+    of it. Runs in the game loop, the helper's only user. The lines on how to start the seed are
+    made at the first arm of a connection and said by how_to_play. Without ``offer_choice`` the
+    seed is started from RANDOMIZER only."""
+    run = ctx.run
+    if run.disarm_pending:
+        run.disarm_pending = False
         await asyncio.to_thread(helper.request, "disarm")
     conn = ctx.conn
     if conn is None or conn.newgame in (state.NewGame.DONE, state.NewGame.UNAVAILABLE):
@@ -724,27 +721,24 @@ async def newgame_tick(ctx: ZexionContext, helper=None, offer_choice: bool = Tru
         conn.newgame = None  # the helper lost the plan (reloaded): arm again
 
 
-LINUX_HOLD_SECONDS = 30.0  # as zexion_client's HELPER_RETRY_SECONDS for the Windows helper
-# The steps in a row that fail with a real error (an unexpected reply or a reply lost: a
-# ``refused`` is no failure and is not counted), each on a connection configured afresh (a failed
-# step drops the mod, linux_mod_lost), after which the next step's items are written directly,
-# even if that poll configured a fresh mod: a mod that answers ``config`` but fails ``apply``
-# would else hold the items back for good. Fewer failures than that, the step goes through the
-# mod configured afresh, so its traps and popups are not lost to a direct write; and that step
-# going through (or the direct one) ends the count.
-LINUX_DIRECT_AFTER = 3
+async def newgame_link_tick(ctx: ZexionContext, link: Link) -> None:
+    """newgame_tick through the helper there is. With the game's Linux build, one that armed
+    has answered: its last failure is said again if it fails again (linux_mod_lost)."""
+    await newgame_tick(ctx, link.helper)
+    if link.linux:
+        ctx.said.clear("linux mod")
 
 
-async def linux_newgame_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build: the Linux helper configured once an attach, and again once
-    its connection was made again (linux_helper.LinuxMod, which the step then gives the items
-    through: zexion_client's poll; and linux_labels_tick the labels), and its new games,
-    ARCHIPELAGO offered as on Windows. A helper that can't be reached or refuses is told once
-    and tried again on a later poll (linux_mod_lost)."""
+async def configure_linux(ctx: ZexionContext) -> None:
+    """With the game's Linux build: the Linux helper configured once an attach, and again once its
+    connection was made again (linux_helper.LinuxMod, which the step then gives the items
+    through: zexion_client's poll; and the ticks everything else). A helper that can't be reached
+    or refuses is told once and tried again on a later poll (linux_mod_lost)."""
     g = ctx.game_conn
-    if g is None or getattr(g, "platform", "windows") != "linux":
+    if not game.on_linux(g):
         return
-    if ctx.helper_left and (ctx.conn is None or not ctx.slot):
+    run = ctx.run
+    if run.reattach is state.Reattach.LET_GO and (ctx.conn is None or not ctx.slot):
         # Let go while no connection steps (zexion_client.leave_helper_tick): the helper dresses
         # the save itself until one does.
         return
@@ -757,7 +751,7 @@ async def linux_newgame_tick(ctx: ZexionContext) -> None:
             mod = None
         if mod is None or mod.pm is not g.pm:
             ctx.linux_mod = mod = await asyncio.to_thread(linux_helper.LinuxMod, g.pm)
-            ctx.linux_back_by = 0.0
+            run.linux_back_by = 0.0
             here = (mod.pm, mod.connection)
             if ctx.linux_configured_on is not None and ctx.linux_configured_on != here:
                 # The helper had no client between the two connections (it takes one closing for
@@ -767,8 +761,6 @@ async def linux_newgame_tick(ctx: ZexionContext) -> None:
                 # (a refused config, say): the helper kept its client then.
                 ctx.load.disks_counted = None
             ctx.linux_configured_on = here
-        await newgame_tick(ctx, ctx.linux_mod)
-        ctx.said.clear("linux mod")
     except linux_helper.LinuxHelperError as exc:
         linux_mod_lost(ctx, exc)
 
@@ -785,16 +777,7 @@ def linux_seed(ctx: ZexionContext, p: Poll) -> str | None:
     conn = ctx.conn
     if conn is None:
         return None
-    hunt = conn.hunt
-    disc_info = None
-    if hunt is not None and conn.items_listed:
-        shared = discs.owned(hunt, p.codes, ())
-        own = offline.grid_cells(conn.plan.cells, hunt.locations)
-        disc_info = (shared, hunt.required, discs.scan_line(hunt.required), own)
-    cells = conn.plan.cells
-    traps = [(cells[i][1] * ids.MAP_SIZE + cells[i][0], code) for i, code in conn.traps.items()]
-    # Assist Unlock lifts the lock in every save of the seed, as offline_seed has it.
-    lock = conn.lock_assists and not ctx.assists_unlocked()
+    lock, disc_info, traps = seed_parts(ctx, p, conn)
     return offline.seed_text(
         conn.plan.table, conn.plan.start, conn.intel_chip, lock, disc_info, None, traps
     )
@@ -819,21 +802,15 @@ def read_stored_seed(folder: Path, name: str) -> str | None:
         return None
 
 
-def linux_stored_seed(mod, name: str) -> str | None:
+def linux_stored_seed(mod: linux_helper.LinuxMod, name: str) -> str | None:
     """The seed file the Linux helper keeps under ``name``, read as this client can see it, in the
-    data folder of the token the helper took (``LinuxProcess.token_path``; else the newest token
-    ``linux_helper.find_tokens`` finds); None where it can't be read. The helper has no request
-    that tells what its file holds."""
-    path = getattr(mod.pm, "token_path", None)
-    if path is None:
-        try:
-            path = linux_helper.find_tokens(mod.pm.game)[0][0]
-        except linux_helper.LinuxHelperError:
-            return None
-    return read_stored_seed(path.parent, name)
+    data folder of the token the helper took (``LinuxProcess.token_path``, set once connected);
+    None where it can't be read. The helper has no request that tells what its file holds."""
+    path = mod.pm.token_path
+    return None if path is None else read_stored_seed(path.parent, name)
 
 
-async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
+async def linux_seed_tick(ctx: ZexionContext, mod: linux_helper.LinuxMod, p: Poll) -> None:
     """With the game's Linux build: this seed's file (linux_seed) handed to the Linux helper for
     this world's own traps, which it sets off at their pickup (native/README.md, "Traps"), and
     own disks, whose count it shows at their pickup with no client, and once known the whole
@@ -845,9 +822,8 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
     keeps it as the Windows one does, in its own folder
     (``stored``, ``unchanged``: native/README.md, "The Linux helper"), for its later runs with
     no client; one it took but could not keep (no folder for it, too large, a failed write) is
-    its own until the game closes, and not put again. A helper that fails is linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None or time.monotonic() < mod.told.offline_at:
+    its own until the game closes, and not put again."""
+    if time.monotonic() < mod.told.offline_at:
         return
     mod.told.offline_at = time.monotonic() + OFFLINE_WRITE_SECONDS
     seed_name = ctx.server_seed_name or ctx.seed_name
@@ -879,11 +855,7 @@ async def linux_seed_tick(ctx: ZexionContext, p: Poll) -> None:
                 "This seed's own traps and disks are too many to hand to Zexion's mod on Linux."
             )
         return
-    try:
-        reply = await asyncio.to_thread(mod.request, request)
-    except linux_helper.LinuxHelperError as exc:
-        linux_mod_lost(ctx, exc)
-        return
+    reply = await asyncio.to_thread(mod.request, request)
     kept = reply in ("stored", "unchanged")
     # Taken for this run but not kept: no folder, too large, or its write failed.
     unkept = reply in ("error no folder", "error too large") or reply.startswith("error cannot ")
@@ -921,7 +893,7 @@ async def linux_keepalive_tick(ctx: ZexionContext) -> None:
     without a client). The game loop's own requests and reads keep it busy as a rule, but one
     poll can wait on the server longer (a stored-data reply, say), and this runs on its own
     (zexion_client.keepalive_loop). Only for a connection the helper was configured on: one lost
-    is found by the poll's ticks (``current``, linux_newgame_tick), not here. A ping that fails
+    is found by the poll's ticks (``current``, configure_linux), not here. A ping that fails
     is linux_mod_lost, as any tick's: the next request would else make the connection again,
     which never sent ``config``, and the poll's ticks would use it as configured."""
     mod = ctx.linux_mod
@@ -934,189 +906,49 @@ async def linux_keepalive_tick(ctx: ZexionContext) -> None:
             linux_mod_lost(ctx, exc)
 
 
-async def linux_language_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build: the language the game shows, asked of the Linux helper
-    (``lang``) as language_tick asks the Windows helper's hello, every LANGUAGE_ASK_SECONDS; the
-    same line once a game run in a translation other than English(HD). A helper that fails is
-    linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None or time.monotonic() < mod.told.language_at:
+async def return_home_tick(ctx: ZexionContext, mod: linux_helper.LinuxMod) -> None:
+    """With the game's Linux build, before the finds' follow-ups: a RETURN HOME prompt queued in
+    this load, followed through the Linux helper's connections. One that closes cancels what was
+    asked on it (the disks' goal off: native/README.md, "The Linux helper"), so a prompt queued on
+    another connection than this one is asked about (discs.MISSION_STATUS): dropped before it
+    showed (``not asked``), or shown or answered YES before its ending started (``put back: …``,
+    which the helper says apart from a NO), it is offered again. Followed while on its way; after
+    a YES (``yes: ending when idle ...``) until the ending has started, since a connection that
+    closes before then drops the queued ending too; and while it is up (``shown``), once on each
+    connection, since one that closes then puts YES back to NO's callback, which the status says
+    (``put back``: offered again, as for a YES it dropped before the ending started, which this
+    may not have read yet). One read as shown that then reads ``not asked`` was closed by NO
+    before the connection did; lapsed or ended (``ending started``): no longer followed, so a
+    prompt answered NO is not offered again."""
+    home = ctx.load.return_home
+    here = (mod.pm, mod.connection)
+    if not home.queued or home.shown_on == here:
         return
-    mod.told.language_at = time.monotonic() + state.LANGUAGE_ASK_SECONDS
-    try:
-        reply = await asyncio.to_thread(mod.request, "lang")
-    except linux_helper.LinuxHelperError as exc:
-        linux_mod_lost(ctx, exc)
-        return
-    lang = reply.removeprefix("lang ") if reply.startswith("lang ") else ""
-    line = state.language_line(lang)
-    if line is not None and ctx.said("language", "told"):  # once a game run (game_closed)
-        logger.warning(line)
-        log.info(f"The game's language: {lang}")
-
-
-async def linux_discs_tick(ctx: ZexionContext, p: Poll) -> None:
-    """With the game's Linux build: the OS Install Disks' count and the scanner's line given to
-    the Linux helper (discs_helper_tick, with what it told this helper: LinuxMod.told). A helper
-    that fails is linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None or not mod.current():
-        return
-    try:
-        await discs_helper_tick(ctx, p, mod, mod.told)
-    except linux_helper.LinuxHelperError as exc:
-        linux_mod_lost(ctx, exc)
-
-
-async def linux_client_back_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build: ARCHIPELAGO CLIENT CONNECTED for a save the Linux helper
-    dressed with no client (client_back_tick, with what it told this helper: LinuxMod.told). A
-    helper that fails is linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None or not mod.current():
-        return
-    try:
-        await client_back_tick(ctx, mod, mod.told)
-    except linux_helper.LinuxHelperError as exc:
-        linux_mod_lost(ctx, exc)
-
-
-async def linux_other_save_tick(ctx: ZexionContext, step: session.Step) -> None:
-    """With the game's Linux build: another seed's AP save told so, and given its look, by the
-    Linux helper (other_save_tick, with LinuxMod.told). A helper that fails is linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None or not mod.current():
-        return
-    try:
-        await other_save_tick(ctx, step, mod, mod.told)
-    except linux_helper.LinuxHelperError as exc:
-        linux_mod_lost(ctx, exc)
-
-
-async def linux_intel_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build: the Area Map named INTEL CHIP, its map reveal off, while
-    this seed's save is loaded and its Area Maps are Intel Chips (toggle_tick, with what it told
-    this helper: LinuxMod.told). Only on the connection it was configured on (``current``): the
-    helper keeps a setting made on one that never sent ``config``, past its close. A helper that
-    fails is linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None or not mod.current():
-        return
-    try:
-        await toggle_tick(ctx, mod.told.intel, ctx.load.intel_want, INTEL, mod)
-    except linux_helper.LinuxHelperError as exc:
-        linux_mod_lost(ctx, exc)
-
-
-async def linux_assists_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build: the options menu's ASSIST entry locked while this seed's
-    save is loaded and the seed disallows assists, until the slot receives Assist Unlock
-    (toggle_tick, with what it told this helper: LinuxMod.told). A helper that fails is
-    linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None or not mod.current():
-        return
-    try:
-        await toggle_tick(ctx, mod.told.assists, ctx.load.assists_want, ASSISTS, mod)
-    except linux_helper.LinuxHelperError as exc:
-        linux_mod_lost(ctx, exc)
-
-
-async def linux_finds_tick(ctx: ZexionContext, p: Poll, step: session.Step) -> None:
-    """With the game's Linux build, after the step: the follow-up popups of this world's finds
-    (followups_tick) and the Landing Pod's RETURN HOME (mission_tick), through the Linux helper
-    with what it was told (LinuxMod.told); a prompt queued in this load and dropped before it
-    showed (its status ``not asked``), or shown or answered YES before its ending started (its
-    status ``put back: …``, which the helper says apart from a NO), with the helper's last
-    connection, offered again. A helper that fails is linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None or not mod.current():
-        # Not through a connection made again since it was configured: the helper has no client
-        # on it until configured again (linux_newgame_tick, next poll), and counts own disks
-        # itself meanwhile.
-        return
-    try:
-        home = ctx.load.return_home
-        here = (mod.pm, mod.connection)
-        if home.queued and home.shown_on != here:
-            # A Linux helper's connection that closes cancels what was asked on it (the disks'
-            # goal off: native/README.md, "The Linux helper"). Followed while on its way: dropped
-            # before it showed ("not asked"), offered again; after a YES ("yes: ending when
-            # idle ...") until the ending has started, since a connection that closes before
-            # then drops the queued ending too; and while it is up ("shown"), once on each
-            # connection, since one that closes then puts YES back to NO's callback, which the
-            # status says ("put back": offered again, as for a YES it dropped before the ending
-            # started, which this may not have read yet). One read as shown that then reads "not
-            # asked" was closed by NO before the connection did; lapsed or ended ("ending
-            # started"): no longer followed, so a prompt answered NO is not offered again.
-            reply = await asyncio.to_thread(mod.request, discs.MISSION_STATUS)
-            if reply.startswith(discs.PUT_BACK) or (reply == "not asked" and home.shown_on is None):
-                home.again()
-            elif reply == "shown":
-                home.shown_on = here
-            elif reply.startswith("refused"):
-                pass  # no news (no frame yet, say): asked again next poll, not given up on
-            elif not reply.startswith(("asked", "opening", "yes")):
-                home.queued = False
-        await followups_tick(ctx, p, step, mod, mod.told)
-        if ctx.linux_mod is mod:
-            await mission_tick(ctx, p, step, mod, mod.told)
-    except (linux_helper.LinuxHelperError, native.HelperError) as exc:
-        # LinuxMod.apply raises native's (ReplyLost, HelperError): the Linux helper's, not the
-        # Windows helper's to drop (zexion_client's helper_error).
-        linux_mod_lost(ctx, exc)
-
-
-async def linux_replay_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build, before the step: replay_tick through the Linux helper. A
-    helper that fails is linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None:
-        return
-    try:
-        await replay_tick(ctx, mod)
-    except linux_helper.LinuxHelperError as exc:
-        linux_mod_lost(ctx, exc)
-
-
-async def linux_labels_tick(ctx: ZexionContext) -> None:
-    """With the game's Linux build: other players' items labeled through the Linux helper
-    (labels_tick, with what it told this helper: LinuxMod.told). A helper that fails is
-    linux_mod_lost."""
-    mod = ctx.linux_mod
-    if mod is None:
-        return
-    try:
-        await labels_tick(ctx, mod, mod.told)
-    except linux_helper.LinuxHelperError as exc:
-        linux_mod_lost(ctx, exc)
+    reply = await asyncio.to_thread(mod.request, discs.MISSION_STATUS)
+    if reply.startswith(discs.PUT_BACK) or (reply == "not asked" and home.shown_on is None):
+        home.again()
+    elif reply == "shown":
+        home.shown_on = here
+    elif reply.startswith("refused"):
+        pass  # no news (no frame yet, say): asked again next poll, not given up on
+    elif not reply.startswith(("asked", "opening", "yes")):
+        home.queued = False
 
 
 def linux_mod_lost(ctx: ZexionContext, exc: Exception) -> None:
     """The Linux helper failed (in a tick, or giving the step's items) or was connected to again:
     dropped, and configured again on a later poll, its plan armed again then (a connection that
-    closed lost it: the helper drops a client's plan). One that was configured holds the step
-    back for LINUX_HOLD_SECONDS (zexion_client's poll), as most failures pass (no frame while the
-    game is in the background, a socket that closed), as an attach does until the first one is
-    configured; after that, items are written directly, without popups, until it is back. One
-    too old holds nothing back. Said once for each distinct failure."""
+    closed lost it: the helper drops a client's plan). One that was configured holds the step back
+    for HELPER_RETRY_SECONDS (zexion_client's poll), as an attach does until the first one is
+    configured; after that, items are written directly, without popups, until it is back. Said
+    once for each distinct failure."""
     if ctx.linux_mod is not None:
-        ctx.linux_back_by = time.monotonic() + LINUX_HOLD_SECONDS
-    if isinstance(exc, linux_helper.HelperTooOld):
-        ctx.linux_back_by = 0.0  # nothing to wait for: items written directly until it is replaced
+        ctx.run.linux_back_by = time.monotonic() + HELPER_RETRY_SECONDS
     ctx.linux_mod = None
     conn = ctx.conn
     if conn is not None and conn.newgame is state.NewGame.ARMED:
         conn.newgame = None  # armed again once the helper answers
-    if isinstance(exc, linux_helper.HelperTooOld):
-        if ctx.said("linux mod", "too old"):
-            logger.warning(
-                "Zexion's mod in the game is older than this client: copy this client's "
-                "libzexion_ap.so into the game's folder and restart Zexion. Until then items "
-                "arrive without popups."
-            )
-            log.warning(f"The Linux helper is too old: {exc}")
-    elif ctx.said("linux mod", str(exc)):
+    if ctx.said("linux mod", str(exc)):
         logger.warning("Zexion's mod on Linux isn't answering right now; trying again.")
         log.warning(f"The Linux helper failed: {exc}")
 
@@ -1138,13 +970,13 @@ def how_to_play(ctx: ZexionContext, step: session.Step) -> None:
     conn.newgame_lines = ()
 
 
-async def other_save_tick(ctx: ZexionContext, step: session.Step, helper=None, told=None) -> None:
+async def other_save_tick(
+    ctx: ZexionContext, step: session.Step, helper, told: state.HelperState
+) -> None:
     """Once a load: a randomizer save of another seed in play. If it is an AP save (a seed the
     helper has a file for), the helper and the window tell the player items wait, and the save
-    gets its look (other_save; client/offline.py); a plain randomizer game is left alone. Through
-    ``helper`` (else ctx.helper; what it was told: ``told``, else ctx.told)."""
-    helper = helper if helper is not None else ctx.helper
-    told = told if told is not None else ctx.told
+    gets its look (other_save; client/offline.py); a plain randomizer game is left alone. What
+    the helper was told is in ``told``."""
     if not step.other_seed:
         # Asked again for the next such save: the helper says it once a load, and again after
         # a reconnect (Game::other_save).
@@ -1182,30 +1014,33 @@ async def feats_tick(ctx: ZexionContext, step: session.Step) -> None:
         log.warning(f"The mod's Feats and achievements guard: {detail}")
 
 
-async def language_tick(ctx: ZexionContext) -> None:
-    """Every few seconds while a helper is attached: which language the game shows (its hello's
-    ``lang``). In a translation other than English(HD) the player is told once per game run that
-    the mod's text is made for the default English and English(HD) (state.language_line)."""
-    helper, told = ctx.helper, ctx.told
+async def language_tick(ctx: ZexionContext, link: Link) -> None:
+    """Every few seconds while a helper is attached: which language the game shows (the Windows
+    helper's hello's ``lang``, the Linux helper's ``lang`` request). In a translation other than
+    English(HD) the player is told once per game run that the mod's text is made for the default
+    English and English(HD) (state.language_line)."""
     now = time.monotonic()
-    if now < told.language_at:
+    if now < link.told.language_at:
         return
-    told.language_at = now + state.LANGUAGE_ASK_SECONDS
-    lang = (await asyncio.to_thread(helper.hello)).get("lang", "")
+    link.told.language_at = now + state.LANGUAGE_ASK_SECONDS
+    if link.linux:
+        mod = link.helper
+        reply = await asyncio.to_thread(mod.request, "lang")
+        lang = reply.removeprefix("lang ") if reply.startswith("lang ") else ""
+    else:
+        lang = (await asyncio.to_thread(link.helper.hello)).get("lang", "")
     line = state.language_line(lang)
     if line is not None and ctx.said("language", "told"):  # once a game run (game_closed)
         logger.warning(line)
         log.info(f"The game's language: {lang}")
 
 
-async def client_back_tick(ctx: ZexionContext, helper=None, told=None) -> None:
+async def client_back_tick(ctx: ZexionContext, helper, told: state.HelperState) -> None:
     """Once per attach, once the poll before found this seed's save in play: if the helper
     dressed it with no client (client/offline.py), it pops up ARCHIPELAGO CLIENT CONNECTED
     (client_back). Asked before the poll's step, so the notice is queued ahead of the popups the
-    step hands over: those of what was received while the client was away. Through ``helper``
-    (else ctx.helper; what it was told: ``told``, else ctx.told)."""
-    helper = helper if helper is not None else ctx.helper
-    told = told if told is not None else ctx.told
+    step hands over: those of what was received while the client was away. ``told``: what the
+    helper was told."""
     load = ctx.load
     if told.client_back_sent or not load.seed_loaded or not load.in_play:
         return
@@ -1217,17 +1052,15 @@ async def client_back_tick(ctx: ZexionContext, helper=None, told=None) -> None:
 
 
 async def followups_tick(
-    ctx: ZexionContext, p: Poll, step: session.Step, helper=None, told=None
+    ctx: ZexionContext, p: Poll, step: session.Step, helper, told: state.HelperState
 ) -> None:
     """The follow-up popup for this world's finds in the loaded save. An Intel Chip's hint,
     found with or without a client: the server's popped_key keeps which were shown, so each
     shows once. An OS Install Disk's count, for each one picked up while this load is watched
     (LoadState.disks_counted): it follows the save, so one a death or a reload put back counts,
     and shows its count, again when picked up again. This world's own traps are the helper's:
-    it sets each off at its pickup (native/README.md, "Traps"). Through ``helper`` (else
-    ctx.helper; what it was told: ``told``, else ctx.told)."""
-    helper = helper if helper is not None else ctx.helper
-    told = told if told is not None else ctx.told
+    it sets each off at its pickup (native/README.md, "Traps"). ``told``: what the helper was
+    told."""
     conn, seed = ctx.conn, ctx.seed_state
     if conn is None or not conn.items_listed or not step.seed_matches:
         return
@@ -1272,16 +1105,14 @@ async def followups_tick(
         await store_popped(ctx, conn)
 
 
-async def replay_tick(ctx: ZexionContext, helper=None) -> None:
+async def replay_tick(ctx: ZexionContext, helper) -> None:
     """A save past its ending (flag 250) offered RETURN HOME WITH THE DISKS? in this load: once
     the helper says its YES has started the ending (discs.ENDING_STARTED), what is received
     waits for the next load as in a first ending (Session.hold_ending), which flag 250, set
     already, does not show. Before the poll's step, so its step gives nothing then. Nothing is
-    sent: the goal went once already (this save's ending, with enough disks, is the goal).
-    Through ``helper``, else ctx.helper."""
+    sent: the goal went once already (this save's ending, with enough disks, is the goal)."""
     conn = ctx.conn
-    helper = helper if helper is not None else ctx.helper
-    if conn is None or helper is None or not ctx.load.replay:
+    if conn is None or not ctx.load.replay:
         return
     current = ctx.seed_state.session
     if current.holding:
@@ -1294,7 +1125,7 @@ async def replay_tick(ctx: ZexionContext, helper=None) -> None:
 
 
 async def mission_tick(
-    ctx: ZexionContext, p: Poll, step: session.Step, helper=None, told=None
+    ctx: ZexionContext, p: Poll, step: session.Step, helper, told: state.HelperState
 ) -> None:
     """With the OS Install Disks goal, once the player has enough disks: the reminder to save at
     the Landing Pod (discs.POD_NOTE), once per load of this seed's save, after the disks'
@@ -1303,10 +1134,8 @@ async def mission_tick(
     starts the game's ending. A save that has reached the ending (flag 250) is offered it too,
     and its YES plays the ending again (replay_tick). Not while an ending runs in this load
     (Session.holding): its cutscenes read as play, and the save it makes as it begins reads as
-    a save at the pod. Every look at the save counts, in play or not (discs.ReturnHome). Through
-    ``helper`` (else ctx.helper; what it was told: ``told``, else ctx.told)."""
-    helper = helper if helper is not None else ctx.helper
-    told = told if told is not None else ctx.told
+    a save at the pod. Every look at the save counts, in play or not (discs.ReturnHome).
+    ``told``: what the helper was told."""
     conn = ctx.conn
     home = ctx.load.return_home
     if (

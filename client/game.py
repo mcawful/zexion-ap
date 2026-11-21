@@ -21,9 +21,9 @@ its binary's build id and hash, its targets (client/linux_targets.py, the ones t
 reads and writes) from the binary's symbol table, and every read and write through the Linux
 helper in the game (client/linux_helper.py), which must be loaded by the game's launch options.
 ``base`` is 0 there and ``rva`` holds the targets' addresses. The Windows helper's own targets and
-``code_checks`` are Windows-only: with the Linux build native.attach refuses the Windows helper,
-and the Linux helper gives the items with their popups and shows other players' items
-(linux_helper.LinuxMod).
+``code_checks`` are Windows-only: with the Linux build ticks.attach_helper leaves the Windows
+helper alone, and the Linux helper gives the items with their popups and shows other players'
+items (linux_helper.LinuxMod).
 """
 
 from __future__ import annotations
@@ -283,6 +283,13 @@ def parse_seed(blob: bytes) -> Seed:
     return Seed(cells, items)
 
 
+def on_linux(g: object) -> bool:
+    """Whether ``g``, the attached game, is the game's Linux build (``Game.platform``): the one
+    test of it the client makes. False for no game, and for the stand-ins of a test that have no
+    platform."""
+    return getattr(g, "platform", "windows") == "linux"
+
+
 # --- the running game ---------------------------------------------------------------------
 
 
@@ -296,7 +303,7 @@ class Game:
     rva: dict[str, int]
     pid: int
     build: Build
-    platform: str = "windows"  # "linux": the Linux build, through its helper
+    platform: str = "windows"  # "linux": the Linux build, through its helper (see on_linux)
     # On Linux: where the player state's pointer is and what it must hold (checked by state()),
     # and the targets docs/re/linux.md has only assumed, which nothing writes through.
     linux_player: tuple[int, int] | None = None

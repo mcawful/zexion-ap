@@ -20,7 +20,7 @@ DEALT_SECONDS = 5.0
 # A lost reply (the Linux helper's connection closed, or its socket timed out) is looked into by
 # the state alone only if the first state read after it comes this soon: past it, a death seen is
 # the player's own as likely as the dealt one. The death count (``deaths``) holds at any delay.
-# The poll holds the step for 30 s while the helper is configured again (ticks.LINUX_HOLD_SECONDS,
+# The poll holds the step for 30 s while the helper is configured again (ticks.HELPER_RETRY_SECONDS,
 # the socket's 5 s after the ask).
 #
 # The count is the save's own (discs.deaths): on Windows B1 a death writes it into the slot's block

@@ -210,11 +210,11 @@ class ReturnHome:
     shown: int | None = None  # the GAME SAVED message last seen with a new stamp
     offer: bool = False  # a save at the pod, the prompt not yet queued
     # Queued in this load and still on its way (not shown, answered, lapsed or ended): a Linux
-    # helper connected to again drops it, and it is offered again (again: ticks.linux_finds_tick).
+    # helper connected to again drops it, and it is offered again (again: ticks.return_home_tick).
     queued: bool = False
     # The Linux helper connection (its process, its number) on which that prompt was last read as
     # ``shown``: not asked about again until the connection changes, as one closing while it is up
-    # puts YES back to NO (ticks.linux_finds_tick).
+    # puts YES back to NO (ticks.return_home_tick).
     shown_on: tuple | None = None
 
     def see(

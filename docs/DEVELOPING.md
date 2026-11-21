@@ -433,41 +433,43 @@ there is:
   the game loop is busy. It writes nothing through a target `re/linux.md` only assumes (every one
   is measured now; `Game.unwritable` stays for any later one), and reports play only while the
   player state is where the layout puts it. The Linux helper is configured once an attach, and
-  again once the client's connection to it was made again (`ticks.linux_newgame_tick`,
-  `client/linux_targets.py`'s `helper_config`, `client/linux_helper.py`'s `LinuxMod`); what the
-  helper keeps past a connection's close (Intel Chips, the ASSIST lock, the disk count) is sent
-  only on the connection it was configured on (`LinuxMod.current`), never on one made again by a
-  read in the same poll. New games go through it, ARCHIPELAGO offered as on Windows, and so do the
-  step's items, with their popups, traps and scrap's drops (`apply`), received Energy Shields
-  (`ticks.shields_tick`) and DeathLink's deaths (`ticks.deathlink_tick`), Intel Chips
-  (`ticks.linux_intel_tick`), the ASSIST lock (`ticks.linux_assists_tick`), other players' items'
-  labels (`ticks.linux_labels_tick`), this seed's file (`ticks.linux_seed_tick`: at first its own
-  traps and disks, with the labels, disk counts and free ASSIST menu the file already kept where
-  the client can read it, then the whole file, labels included, for the look without the client;
-  the file's labels kept, and a DeathLink death whose reply was lost counted (by the save's death
-  count: Windows B1's by disassembly, assumed on Linux, untraced), are stand-in tests only, not
-  run in the game), CLIENT CONNECTED and the other-seed notice
-  (`linux_client_back_tick`, `linux_other_save_tick`), the language (`linux_language_tick`), the
-  OS Install Disks' count (`linux_discs_tick`), the finds' follow-ups and RETURN HOME
-  (`linux_finds_tick`, `linux_replay_tick`). An attach holds the step back until the Linux helper
-  is first configured, or for 30 s (`LINUX_HOLD_SECONDS`, the poll), so no step meanwhile writes
-  the items owed with no popup or drops a waiting trap. One lost after it was configured holds
-  the step back for 30 s too (`ticks.linux_mod_lost`), as does one let go of with no server
-  connection (`LinuxProcess.disconnect`, `linux_back_by`: the poll waits for it
-  to be configured again, up to 30 s), then the items are written directly with no popup until it
-  is back; one that failed three steps running (`ticks.LINUX_DIRECT_AFTER`: real errors in a row,
-  an unexpected reply or a reply lost, each on a mod configured afresh; a refusal does not count,
-  and a step that goes through ends the count) has the next step's written directly, and a
-  keep-alive ping that fails counts as a lost mod as any tick's does. A Linux helper
-  of this version built before traps, which answers `trap_status` with `error unknown request`
-  (`linux_helper.HelperTooOld`), holds nothing back: items are written directly until it is
-  replaced; any other reply but `queued …` (a frame not come in time: `refused no frame`) is a
-  failed configuration, tried again. The rest of the client runs as without the mod:
-  `native.attach` refuses the Linux build (`native.NoWindowsHelper`, nothing said: the Linux
-  helper runs every part); checks, the goal, DeathLink's deaths out and marking other players'
-  items collected go on. Tested against stand-ins; run in the game for the attach, the seed's new
-  game and grants (2026-11-19: `native/README.md`, "The Linux helper"), the rest not yet, and the
-  keep-alive and the let-go not at all (the token was checked in run 3);
+  again once the client's connection to it was made again (`ticks.configure_linux`,
+  `client/linux_targets.py`'s `helper_config`, `client/linux_helper.py`'s `LinuxMod`). The poll
+  runs one list of ticks through whichever helper there is (`ticks.helper_link`: the Windows
+  helper, or the Linux helper only on the connection it was configured on, `LinuxMod.current`,
+  for every tick: what the helper keeps past a connection's close (Intel Chips, the ASSIST lock,
+  the disk count, the labels) is never sent on one made again by a read in the same poll, and the
+  next poll configures it again first), and a failure is the Linux helper's to drop by the
+  error's own type (`linux_helper.LinuxHelperError`, a `native.HelperError` too:
+  `zexion_client.side_tick`). New games go through it, ARCHIPELAGO offered as on Windows, and so
+  do the step's items, with their popups, traps and scrap's drops (`apply`: its errors reach the
+  step as they are), received Energy Shields (`ticks.shields_tick`) and DeathLink's deaths
+  (`ticks.deathlink_tick`), Intel Chips, the ASSIST lock, other players' items' labels, CLIENT
+  CONNECTED, the other-seed notice, the language (its `lang` request), the OS Install Disks'
+  count, the finds' follow-ups and RETURN HOME (`ticks.return_home_tick` follows a prompt over the
+  connections), and this seed's file (`ticks.linux_seed_tick`: at first its own traps and disks,
+  with the labels, disk counts and free ASSIST menu the file already kept where the client can
+  read it, then the whole file, labels included, for the look without the client; the file's
+  labels kept, and a DeathLink death whose reply was lost counted (by the save's death count:
+  Windows B1's by disassembly, assumed on Linux, untraced), are stand-in tests only, not run in
+  the game). An attach holds the step back until the Linux helper is first configured, or for
+  30 s (`ticks.HELPER_RETRY_SECONDS`, the poll), so no step meanwhile writes the items owed with
+  no popup or drops a waiting trap. One lost after it was configured holds the step back for 30 s
+  too (`ticks.linux_mod_lost`), as does one let go of with no server connection
+  (`LinuxProcess.disconnect`, `GameRun.linux_back_by`: the poll waits for it to be configured
+  again, up to 30 s), then the items are written directly with no popup until it is back; one
+  that failed three steps running (`state.LINUX_DIRECT_AFTER`: real errors in a row, an
+  unexpected reply or a reply lost, each on a mod configured afresh; a refusal does not count, and
+  a step that goes through ends the count) has the next step's written directly, and a keep-alive
+  ping that fails counts as a lost mod as any tick's does (what the step gives through, and
+  what it leaves, are `state.plan_give` and `state.after_step`). The client makes no request to
+  tell a helper from before the traps' port or the shields' and deaths': no release carries one,
+  and every connection checks the version in the helper's `hello`. The rest of the client runs as
+  without the mod (the Windows helper is not tried with the Linux build: `ticks.attach_helper`);
+  checks, the goal, DeathLink's deaths out and marking other players' items collected go on.
+  Tested against stand-ins; run in the game for the attach, the seed's new game and grants
+  (2026-11-19: `native/README.md`, "The Linux helper"), the rest not yet, and the keep-alive and
+  the let-go not at all (the token was checked in run 3);
 - finding it: `tools/protected.py` looks for an install with `Zexion.exe` or the Linux
   `Zexion` in the libraries of a native (`~/.steam/steam`, `~/.local/share/Steam`), Flatpak
   (`~/.var/app/com.valvesoftware.Steam/.local/share/Steam`) or Snap Steam, and for the saves in

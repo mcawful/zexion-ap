@@ -433,6 +433,151 @@ class LoadState:
         self.__init__()
 
 
+class Reattach(enum.Enum):
+    """Why the poll attaches the Windows helper again before its next step (``GameRun.reattach``):
+    a step with no helper writes the items owed with no popup."""
+
+    NONE = "none"
+    LET_GO = "let go"  # while no connection stepped (zexion_client.leave_helper_tick)
+    LOST = "lost"  # in a side tick, or giving the step's items (zexion_client.helper_error)
+
+
+@dataclass
+class GameRun:
+    """What the client keeps of one attached game's helper, started afresh when that game closes
+    (zexion_client.game_closed): the next game's helper is attached with none of it."""
+
+    # When a helper dropped may be attached again (30 s after the drop), and whether it turned
+    # out not to match this client (said, and left alone until Zexion restarts).
+    helper_retry_at: float = 0.0
+    mismatched: bool = False
+    reattach: Reattach = Reattach.NONE
+    # When a failing attach after ``reattach`` stops holding back the step.
+    helper_back_by: float = 0.0
+    # A helper of another version refused to unload (native.NotUnloaded): not asked again before
+    # then, as each try has it put things back (ticks.attach_helper).
+    attach_again_at: float = 0.0
+    # An old helper refused to unload and none is attached since, whatever the refusals after it
+    # (a menu, a trap, no answer): the traps received meanwhile are kept for the helper that
+    # replaces it, not dropped with the direct writes once the hold is over. Cleared when a helper
+    # attaches or the game closes.
+    swap_pending: bool = False
+    # The last step in play that had a helper found it failing, or waited for one lost just before
+    # it: one failing again is not attached again before the next step (after_step).
+    step_failed: bool = False
+    reload_mod_pending: bool = False  # /reload_mod: the game loop unloads it, then loads it again
+    disarm_pending: bool = False  # the game loop, the helper's only user, disarms a new game
+    # The Linux helper's: when its loss, or its wait to be configured once attached, stops holding
+    # back the step (ticks.linux_mod_lost, plan_give), and the steps it failed in a row.
+    linux_back_by: float = 0.0
+    linux_failed: int = 0
+    # (Not here: ZexionContext.linux_configured_on, which outlives the game on purpose.)
+
+
+# The steps in a row that fail with a real error (an unexpected reply, or one lost: a ``refused``
+# is no failure and is not counted), each on a Linux helper configured afresh (a failed step
+# drops it, ticks.linux_mod_lost), after which the next step's items are written directly, even if
+# that poll configured a fresh one: a helper that answers ``config`` but fails ``apply`` would else
+# hold the items back for good. Fewer failures than that, the step goes through the helper
+# configured afresh, so its traps and popups are not lost to a direct write; and that step going
+# through (or the direct one) ends the count.
+LINUX_DIRECT_AFTER = 3
+
+
+class Grants(enum.Enum):
+    """What a poll's step gives the items owed through (``plan_give``)."""
+
+    HELPER = "the Windows helper"
+    MOD = "the Linux helper"
+    DIRECT = "direct writes, with no popups"
+
+
+@dataclass(frozen=True)
+class GivePlan:
+    """How one poll's step gives what is owed, from the state of the helpers (``plan_give``)."""
+
+    grants: Grants
+    give: bool  # False: nothing is given this poll, a helper is waited for
+    keep_traps: bool  # direct writes keep the received traps for the helper to come
+    waiting: bool  # a lost Windows helper is waited for
+    linux: bool  # the game's Linux build, with no Windows helper
+    linux_waiting: bool  # the Linux helper, lost or not configured yet, is waited for
+    reattach: Reattach  # the run's, after the one hold a failing step allows
+
+
+def plan_give(run: GameRun, *, helper: bool, mod: bool, linux_game: bool, now: float) -> GivePlan:
+    """What a poll's step gives through, whether it gives at all, and the traps it keeps, from
+    ``run`` and which of the Windows ``helper`` and the Linux ``mod`` are there (``linux_game``:
+    the game is the Linux build). A lost Windows helper holds the step back once: if the last
+    step already failed or waited, the hold is let go (``reattach`` back to NONE) and the items go
+    directly. The Linux helper, lost or not yet configured, holds it until ``run.linux_back_by``;
+    after LINUX_DIRECT_AFTER real failures in a row its steps are direct writes once."""
+    reattach = run.reattach
+    waiting = not helper and reattach is Reattach.LOST
+    if waiting and run.step_failed:
+        waiting, reattach = False, Reattach.NONE
+    linux = not helper and linux_game
+    if helper:
+        grants = Grants.HELPER
+    elif mod and not (linux and run.linux_failed >= LINUX_DIRECT_AFTER):
+        grants = Grants.MOD
+    else:
+        grants = Grants.DIRECT
+    linux_waiting = linux and not mod and now < run.linux_back_by
+    return GivePlan(
+        grants=grants,
+        give=not (waiting or linux_waiting),
+        keep_traps=not helper and run.swap_pending,
+        waiting=waiting,
+        linux=linux,
+        linux_waiting=linux_waiting,
+        reattach=reattach,
+    )
+
+
+class Failure(enum.Enum):
+    """Whose failure a step's ``helper_error`` was (``after_step``)."""
+
+    LINUX_MOD = "the Linux helper"  # dropped, and configured again next poll
+    HELPER = "the Windows helper"  # attached again before the next step, once
+
+
+@dataclass(frozen=True)
+class AfterStep:
+    """What the poll records of a step (``after_step``)."""
+
+    failure: Failure | None
+    forgive_lost: bool  # a Windows helper that failed the step again is not attached again
+    step_failed: bool
+    linux_failed: int
+
+
+def after_step(
+    plan: GivePlan, run: GameRun, *, error: bool, helper: bool, in_play: bool
+) -> AfterStep:
+    """The records a step leaves, from the ``plan`` it ran under: the failure to handle (a step's
+    helper error nothing was given after: ``error``), and the run's ``step_failed`` and
+    ``linux_failed`` counts. ``helper``: the Windows helper is attached after the step. The Linux
+    helper's real failures in a row are counted; a step that goes through it, or is written
+    directly, ends the count, but a step held back for the Linux helper does not."""
+    step_failed, linux_failed = run.step_failed, run.linux_failed
+    failure, forgive = None, False
+    if error and plan.linux and plan.grants is Grants.MOD:
+        failure, linux_failed = Failure.LINUX_MOD, linux_failed + 1
+    elif error:
+        # Attached again before the next step, once: one that fails the step again (a request it
+        # keeps refusing) is left to the usual retry, the items written directly meanwhile, so
+        # nothing it refuses can hold them back for good.
+        failure, forgive, step_failed = Failure.HELPER, step_failed, True
+    elif plan.waiting:
+        step_failed = True
+    elif helper and in_play:
+        step_failed = False
+    if plan.linux and not error and in_play and not plan.linux_waiting:
+        linux_failed = 0  # given (or refused) through it, or written directly once
+    return AfterStep(failure, forgive, step_failed, linux_failed)
+
+
 REPORT = "https://github.com/mcawful/zexion-ap/issues"
 SAVE_CLOSED = "You left this seed's save. Items sent to you wait until you load it again."
 OTHER_SAVE = (
@@ -511,16 +656,13 @@ def reload_reply(reply: str | None) -> tuple[bool, str]:
 
 def helper_failed(exc: native.HelperError) -> str | None:
     """The client's line when the mod could not be used (the details go to the log), or None
-    when the game has just closed or is the Linux build, whose Linux helper runs it all
-    (nothing for the player to do). A mod that doesn't match the client (native.ModMismatch) is
+    when the game has just closed. A mod that doesn't match the client (native.ModMismatch) is
     said to be so, and any other cause the player can fix (native.ModFixable) as it is; any
     other gets one plain line."""
     if isinstance(exc, native.GameExited):
         return None
     if isinstance(exc, native.ModDisabled):
         return str(exc)
-    if isinstance(exc, native.NoWindowsHelper):
-        return None  # the Linux helper runs every part instead (ticks.attach_helper)
     meanwhile = "new games of this seed can't be started, and items arrive without popups."
     if isinstance(exc, native.ModMismatch):
         return f"The Zexion mod and this client don't match: {exc}. Until they do, {meanwhile}"

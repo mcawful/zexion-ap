@@ -1,11 +1,19 @@
-"""Stand-ins the tests share: a fake process and game.Game on it, and a seed's plan with a fresh
-randomizer save and the loaded section of a save of it (no game, no exe, no real save)."""
+"""Stand-ins the tests share: a fake process and game.Game on it, a binary of B1's symbols, a
+``/proc``, helpers that answer by script and the client's context on Archipelago's stand-ins, and a
+seed's plan with a fresh randomizer save and the loaded section of a save of it (no game, no exe,
+no real save)."""
 
 from __future__ import annotations
 
+import logging
+import os
 import struct
+import sys
+import types
+from pathlib import Path
+from unittest import mock
 
-from client import game, ids, session, state
+from client import elf, game, ids, session, state
 from client import save_patch as sp
 
 # --- a fake process and the client's Game on it ---------------------------------------------
@@ -176,9 +184,117 @@ def verneed_image(needs: list[tuple[str, list[str]]], cut: int = 0) -> bytes:
     return bytes(body)
 
 
+# --- a binary of B1's symbols ------------------------------------------------------------------
+
+# B1's symbols the targets name: (name, address, size).
+B1_SYMBOLS = [
+    ("gGameState", 0x9E7840, 0x8CCCF8),
+    ("gCurrentRando", 0x12F6E00, 0x908),
+    ("gSaveGames", 0x14945C0, 30 * 0x9408),
+    ("gCursorMode", 0x12F9901, 1),
+    ("gExitDelay", 0x12F570C, 4),
+    ("gCurrentSaveGame", 0x14945A0, 4),
+    ("gMainCharacterSpriteP", 0x12B4578, 8),
+]
+
+
+# The helper's new games' symbols too (linux_targets.HELPER_TARGETS): (name, address, size, type).
+B1_HELPER_SYMBOLS = [
+    ("gRandoPreferences", 0x12F6CE0, 0x114, 1),
+    ("gExitActionP", 0x12F5710, 8, 1),
+    ("_Z16StartNewGameExitv", 0x563363, 0x200, 2),
+    ("_Z13generateRandov", 0x5ABD55, 0x200, 2),
+    ("rStartingLocationCount", 0x9E0C40, 2, 1),
+    ("rStartingLocations", 0x9E0B40, 0x100, 1),
+    ("rStartingLocationCage", 0x9E0C60, 0x40, 1),
+    ("gLastGameMenuP", 0x12F5700, 8, 1),
+    ("_Z14RandomizerMenuv", 0x6021B1, 0x100, 2),
+    ("_Z18StandardMenuActionP12GameMenuItemi", 0x58B8CB, 0x100, 2),
+    ("_Z16FrameWrapOrArrowP12GameMenuItemi", 0x56ED11, 0x100, 2),
+    ("_Z9forceSeedv", 0x5AF50F, 0x100, 2),
+    ("gCurrentTranslation", 0x12B4840, 0x40150, 1),
+    ("gPowerUpDefs", 0x16DA0B8, 8, 1),
+    ("gPreferences", 0x12F5A00, 0xE70, 1),
+    ("gGameSoundManager", 0x9E6F60, 0x8C8, 1),
+    ("gTranslationGameMessages", 0x12F49A0, 0x8E0, 1),
+    ("_Z17createGameMessagePKciiiiii", 0x631C5B, 0x100, 2),
+    ("_Z13PlayGameSoundP16GameSoundManagersffffss", 0x4D0398, 0x100, 2),
+    ("_Z19updateNumberDisplayP13NumberDisplaydb", 0x4A2E9F, 0x100, 2),
+    ("_Z29updateNumberDisplayVisibilityP12PlayerStruct", 0x51773F, 0x100, 2),
+    ("_Z15updateEnergyBarP12PlayerStructb", 0x518CB2, 0x100, 2),
+    ("_Z19updateWeaponDisplayP12PlayerStruct", 0x4F0231, 0x100, 2),
+    ("_Z16setSpritePalettehs", 0x4953EE, 0x100, 2),
+    ("gSpriteWorldP", 0x9E6F50, 8, 1),
+    ("_Z17playerCollideProcP10CollideRecS0_P6dPointc", 0x64086D, 0x401B, 2),
+    ("gSpriteDrawProcs", 0x12F7E40, 0x208, 1),
+    ("gMasterSpritesP", 0x14937E8, 8, 1),
+    ("gAreaEvents", 0x16DA010, 8, 1),
+    ("gAreaEventCount", 0x16DA008, 2, 1),
+    ("gAreaEventProcs", 0x12F87A0, 0x180, 1),
+    ("gEditorMode", 0x12B456E, 1, 1),
+    ("_Z10weaponCoolP12PlayerStruct", 0x5074F6, 0x1293, 2),
+    ("gMoveProcs", 0x12F79A0, 0x4A0, 1),
+    ("_Z15PowerUpMoveProcP9SpriteRec", 0x53D3E4, 0xDFA, 2),
+    ("_Z17alterSpriteStringP9SpriteRecPKcii", 0x566E1F, 0xDC, 2),
+    ("gSmallTextCount", 0x16DA0D8, 2, 1),
+    ("gPowerUpDefCount", 0x16DA0AA, 2, 1),
+    ("_Z28createTranslationGameMessagePKwiiiiiissP9SpriteRec", 0x637EFD, 0x62E, 2),
+    (
+        "_Z12generateTextffNSt7__cxx1112basic_stringIwSt11char_traitsIwESaIwEEE"
+        "P8GameFontP12SpriteStringb",
+        0x54DA05,
+        0x33C5,
+        2,
+    ),
+    ("gSmallTexts", 0x16DA0E0, 8, 1),
+    ("_Z13EquipmentMenuv", 0x5E32FB, 0x40C3, 2),
+    ("_Z14EquipmentFrameP12GameMenuItemi", 0x572842, 0x2D66, 2),
+    ("_Z16moveGameMenuItemP9SpriteReciib", 0x56BF2E, 0x169, 2),
+    ("_Z16moveSpriteStringP9SpriteRecii", 0x568526, 0x15E, 2),
+    (
+        "_Z18createGameMenuItemPKciP8GameMenuPFvP12GameMenuItemiEPFvvEPvS9_iP5sRect",
+        0x56BD34,
+        0x1FA,
+        2,
+    ),
+    ("_Z20SWChangeMasterSpriteP9SpriteRecS0_", 0x4CD979, 0x27D, 2),
+    ("_Z11addGameMenuP8GameMenu", 0x56CC09, 0x7E, 2),
+    ("_Z9PauseGamev", 0x6189E2, 0xC2B, 2),
+    ("_Z22refreshPauseFromOptionP14GameMenuScreen", 0x618777, 0x26B, 2),
+    ("gExitActions", 0x12F5720, 0x80, 1),
+    ("_Z17PlayerDestructionP9SpriteRecc", 0x51C15C, 0x11BF, 2),
+    ("_Z10AssistMenuv", 0x6081F1, 0xFBE, 2),
+    ("gStatsSpriteLayerP", 0x12B46C0, 0x8, 1),
+    ("_Z15newSpriteStringPKcii", 0x5588CD, 0x39D, 2),
+    ("_Z15addSpriteStringP9SpriteRec", 0x569651, 0xBD, 2),
+    ("gSavedRandos", 0x16BF7C0, 0x10EF0, 1),
+    ("_Z14EndingCutscenev", 0x55AB11, 0x7D2, 2),
+    ("gLargeTextCount", 0x16DA0DA, 0x2, 1),
+    ("_Z20SaveGamePlayerCursorP12GameMenuItemi", 0x576BB1, 0xA6D, 2),
+    ("_Z18SaveGameMenuActionP12GameMenuItemi", 0x59B85E, 0x146A, 2),
+    ("_Z18CopyGameMenuActionP12GameMenuItemi", 0x5B1B09, 0x17EF, 2),
+    ("_Z19ClearGameMenuActionP12GameMenuItemi", 0x5B0A65, 0x10A4, 2),
+    ("_Z28setGameMessageStringClippingP9SpriteRecii", 0x568FB6, 0x69B, 2),
+]
+
+
+def b1_like(drop: str = "", sizes: dict[str, int] | None = None, extra: bool = False) -> elf.Image:
+    """A binary with B1's symbols the targets name (and with ``extra`` the helper's too)."""
+    sizes = sizes or {}
+    symbols = [
+        (name, value, sizes.get(name, size), 1, True)
+        for name, value, size in B1_SYMBOLS
+        if name != drop
+    ]
+    if extra:
+        symbols += [(n, v, s, t, True) for n, v, s, t in B1_HELPER_SYMBOLS if n != drop]
+    return elf.parse(elf_image(symbols=symbols))
+
+
 # --- a seed's plan, and a fresh save of its mode ---------------------------------------------
 
 AMOUNTS = (3, 17, 3, 122, 0, 12)  # Standard's, in save order
+SAVE_ROOM = 0x22  # the value a fresh save's start cell holds
 CELLS = [(i % 54, i // 54) for i in range(sp.LOCATIONS)]  # distinct, sorted by y then x
 
 
@@ -200,7 +316,7 @@ def fresh(
     save[sp.ITEM_TABLE : sp.ITEM_TABLE + sp.LOCATIONS] = bytes([7] * sp.LOCATIONS)
     if start_cell is not None:
         x, y = start_cell
-        save[sp.MAP_GRID + y * ids.MAP_SIZE + x] = sp.SAVE_ROOM
+        save[sp.MAP_GRID + y * ids.MAP_SIZE + x] = SAVE_ROOM
     return save
 
 
@@ -316,6 +432,248 @@ def section(p: sp.SeedPlan) -> bytearray:
     section[sp.TABLE_AT : sp.TABLE_AT + len(p.table)] = p.table
     struct.pack_into("<3H", section, sp.START_AT, *p.start)
     return section
+
+
+class Showing:
+    """A running game whose state() is ``shown``; nothing else is read."""
+
+    def __init__(self, shown: str) -> None:
+        self.shown = shown
+
+    def state(self) -> str:
+        return self.shown
+
+
+class Running(Showing):
+    """A running game, its process alive (game_alive)."""
+
+    def __init__(self, shown: str) -> None:
+        super().__init__(shown)
+        self.pm = types.SimpleNamespace(alive=lambda: True)
+
+
+# --- a stand-in /proc -----------------------------------------------------------------------
+
+
+def fake_proc(
+    tmp_path: Path, processes: dict[str, bytes] | None = None, nspid: str = "100"
+) -> Path:
+    """A ``/proc`` of ``processes`` (id to comm), with ``self`` in a namespace of ``nspid`` (the
+    ``NSpid`` line of its status)."""
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / "self").mkdir()  # not a process id
+    (proc / "self" / "comm").write_bytes(b"Zexion\n")
+    (proc / "self" / "status").write_text(f"Name:\tpython\nNSpid:\t{nspid}\n")
+    for pid, comm in (processes or {}).items():
+        proc_entry(proc, pid, comm)
+    return proc
+
+
+def proc_entry(
+    proc: Path,
+    pid: str,
+    comm: bytes,
+    cmdline: bytes = b"",
+    exe: bytes | str | None = None,
+    nspid: str = "",
+) -> None:
+    """Process ``pid`` in the ``/proc`` ``proc``: its name, command line, ``NSpid`` (its own id
+    when not given), start time (the id times 10) and ``exe``: a binary's bytes (the file itself
+    stands for the link, as a read follows it) or a link's target."""
+    entry = proc / pid
+    entry.mkdir()
+    (entry / "comm").write_bytes(comm)
+    (entry / "cmdline").write_bytes(cmdline)
+    (entry / "status").write_text(f"Name:\t{comm.decode().strip()}\nNSpid:\t{nspid or pid}\n")
+    # /proc/<pid>/stat: the pid, the name in parentheses, then fields 3 on; 22 is the start time.
+    rest = " ".join(["S"] + ["0"] * 18 + [str(int(pid) * 10)] + ["0"] * 30)
+    (entry / "stat").write_text(f"{pid} ({comm.decode().strip()}) {rest}\n")
+    if isinstance(exe, bytes):
+        (entry / "exe").write_bytes(exe)
+    elif exe:
+        (entry / "exe").symlink_to(exe)
+
+
+# --- helpers that answer by script ----------------------------------------------------------
+
+
+class Answering:
+    """A helper that answers by script and keeps what it was asked. ``replies`` maps the first word
+    of a request to its reply: a string, an exception to raise, or a function of the request's
+    text; any other request is answered with ``default``. ``apply`` (a batch of popups) is its
+    own word, "applied" unless scripted. It serves as the Windows helper (native.Helper's
+    ``request``, ``close``) and as a ``linux_helper.LinuxMod`` or its process, as far as the ticks
+    reach them."""
+
+    loaded_here = False  # native.Helper's: already in the game when attached
+
+    def __init__(self, replies: dict | None = None, default: str = "none") -> None:
+        self.replies = dict(replies or {})
+        self.default = default
+        self.requests: list[str] = []
+        self.closed = 0
+        self.hello_fields: dict[str, str] = {}
+        self.hellos = 0
+
+    def _answer(self, text: str, word: str, default: str) -> str:
+        self.requests.append(text)
+        reply = self.replies.get(word, default)
+        if isinstance(reply, BaseException):
+            raise reply
+        return reply(text) if callable(reply) else reply
+
+    def request(self, text: str, seconds: float = 2.0) -> str:
+        words = text.split(None, 1)
+        return self._answer(text, words[0] if words else "", self.default)
+
+    def apply(self, text: str) -> str:
+        return self._answer(text, "apply", "applied")
+
+    def hello(self) -> dict[str, str]:
+        """The Windows helper's hello: its version and ``hello_fields`` (``lang``, ``feats``)."""
+        self.hellos += 1
+        return {"version": "1.0.0", **self.hello_fields}
+
+    def firsts(self) -> list[str]:
+        """Each request's first word."""
+        return [(r.split(None, 1) or [""])[0] for r in self.requests]
+
+    def notices(self) -> list[str]:
+        """The notice lines of every batch applied (or requested)."""
+        lines = [line for r in self.requests for line in r.splitlines()]
+        return [line for line in lines if line.startswith("notice")]
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+class LinuxPm(Answering):
+    """The game's Linux helper connection (linux_helper.LinuxProcess) on B1's symbols: answers by
+    ``replies`` (``config`` "ok" unless scripted, any other request an unknown one), counts the
+    connections made and let go. ``token_path``: where the helper's token was found."""
+
+    def __init__(self, replies: dict | None = None) -> None:
+        super().__init__({"config": "ok", **(replies or {})}, default="error unknown request")
+        self.game = types.SimpleNamespace(image=b1_like(extra=True))
+        self.connection = 1  # the connections made
+        self.connected = True
+        self.disconnects = 0
+        self.token_path: Path | None = None
+
+    @property
+    def sent(self) -> list[str]:
+        return self.requests
+
+    def disconnect(self) -> None:  # closed, made again on use
+        self.connected = False
+        self.disconnects += 1
+
+    def alive(self) -> bool:
+        return True
+
+
+def said(caplog) -> list[str]:
+    """The lines the client's window got (the "Client" logger) among what ``caplog`` caught."""
+    return [r.getMessage() for r in caplog.records if r.name == "Client"]
+
+
+# --- the client's context on Archipelago's stand-ins ----------------------------------------
+
+
+class CommonContext:
+    """What ZexionContext and the ticks read of CommonClient's context."""
+
+    def __init__(self, server_address: str | None, password: str | None) -> None:
+        self.items_received: list = []
+        self.locations_checked: set[int] = set()
+        self.checked_locations: set[int] = set()  # the server's
+        self.stored_data: dict = {}
+        self.stored_data_notification_keys: set[str] = set()
+        self.gets: list[list[str]] = []  # the keys of each Get sent, as CommonClient sends them
+        self.player_names: dict[int, str] = {1: "Me", 2: "Bob"}
+        self.slot_info: dict = {}
+        self.locations_info: dict = {}  # what the server said each location holds
+        self.slot, self.team = 1, 0
+        self.server_seed_name = self.seed_name = None
+        self.finished_game = False
+        self.deaths_sent: list[str] = []
+
+    def set_notify(self, *keys: str) -> None:
+        if new := [k for k in keys if k not in self.stored_data_notification_keys]:
+            self.stored_data_notification_keys.update(new)
+            self.gets.append(new)
+
+    async def disconnect(self, allow_autoreconnect: bool = False) -> None:
+        pass
+
+    async def update_death_link(self, on: bool) -> None:
+        pass
+
+    async def send_msgs(self, msgs: list[dict]) -> None:
+        pass
+
+    async def send_death(self, text: str = "") -> None:
+        self.deaths_sent.append(text)
+
+
+def _import_zexion_client() -> types.ModuleType:
+    """client/zexion_client.py, imported with Archipelago's modules stood in (it is not installed
+    here). Only the stand-ins are put back as they were (the client's modules stay the ones the
+    other tests use), and this copy of zexion_client is not left for another test to import."""
+    common = types.ModuleType("CommonClient")
+    common.CommonContext = CommonContext
+    common.ClientCommandProcessor = object
+    common.logger = logging.getLogger("Client")
+    common.get_base_parser = common.handle_url_arg = common.server_loop = None
+    common.gui_enabled = False
+    net = types.ModuleType("NetUtils")
+    net.ClientStatus = None
+    stand_ins = {"CommonClient": common, "NetUtils": net, "Utils": types.ModuleType("Utils")}
+    saved = {name: sys.modules.get(name) for name in stand_ins}
+    sys.modules.update(stand_ins)
+    try:
+        with mock.patch.dict(os.environ, ZEXION_AP_DIR=os.devnull):  # not a folder: not on the path
+            from client import zexion_client
+    finally:
+        sys.modules.pop("client.zexion_client", None)
+        vars(sys.modules["client"]).pop("zexion_client", None)  # the package's name for it too
+        for name, module in saved.items():
+            if module is None:
+                del sys.modules[name]
+            else:
+                sys.modules[name] = module
+    return zexion_client
+
+
+zc = _import_zexion_client()
+
+
+def context(conn: state.Connection, g, dropped: bool = False) -> zc.ZexionContext:
+    """The client's context connected as ``conn`` to its seed, with ``g`` the attached game (a
+    stand-in, or None). ``dropped``: the connection is down (no slot), as reset_server_state
+    leaves it."""
+    ctx = zc.ZexionContext(None, None)
+    ctx.conn, ctx.seed_state, ctx.game_conn = conn, seed_state(conn), g
+    if dropped:
+        ctx.slot = None  # no connection steps (away_tick)
+    return ctx
+
+
+def stepping(monkeypatch, ctx: zc.ZexionContext, result: session.Step | None = None) -> list[dict]:
+    """The session's step replaced by one that records the keywords of each call (``helper``,
+    ``give``, ``followups``...) and returns ``result``, or, with none, ends the poll there as a
+    game that closed does (GameNotRunning). The records are the list returned."""
+    calls: list[dict] = []
+
+    def step(g, received, **kwargs):
+        calls.append(kwargs)
+        if result is None:
+            raise game.GameNotRunning("Zexion is not running")
+        return result
+
+    monkeypatch.setattr(ctx.seed_state.session, "step", step)
+    return calls
 
 
 # --- a scripted time.sleep, for the tools' polling loops ---------------------------------------
