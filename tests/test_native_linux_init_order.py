@@ -23,8 +23,8 @@ What this covers, exactly:
   checked below). Not seen by this scan: a type declared together with its object
   (``struct { ... } g;``), a direct-initialized object (``T g(call());``, read as a function), and
   an initializer naming a non-constexpr variable that is not a ``g_`` global.
-* ``feats_linux.cpp``'s stand-in holder, which the Steam export answers with from any thread, must be
-  ``constinit``.
+* ``feats_linux.cpp``'s stand-in holder, which the Steam export answers with from any thread,
+  must be ``constinit``.
 * With a Linux build (``native/build``, or ``ZEXION_NATIVE_BUILD``), the order itself, in each
   helper's own ``.init_array``: after the constructor come only the C++ runtime's own initializers
   (``*.cc``), none of this project's (``*.cpp``). That covers every shared source, not only the
@@ -65,7 +65,7 @@ PRIORITY = re.compile(r"__attribute__\(\(init_priority\((\d+)\)\)\)")
 CONSTANT = re.compile(
     r"^(?:thread_local\s+|static\s+|inline\s+|extern\s+)*"
     r"(?:constexpr\b|constinit\b|const\s+(?:char|int|bool)\b"
-    r"|std::atomic(?:_flag)?\b|std::mutex\b"  # a mutex's constructor is constexpr
+    r"|std::atomic(?:_flag)?\b|std::mutex\b|std::once_flag\b"  # their constructors are constexpr
     r"|(?:const\s+)?(?:bool|char|int|long|unsigned|float|double|size_t|ssize_t|uint\d+_t"
     r"|int\d+_t|uintptr_t|intptr_t|DWORD|BYTE|Swap)\b"
     r"|zap::linux_helper::SymbolSpan\b)"
@@ -168,8 +168,6 @@ def test_the_scan_finds_the_globals_the_serving_thread_reads() -> None:
         "g_token",
         "g_loads",
         "g_code",
-        "g_spans_once",
-        "g_map_mutex",
         "g_map",
     } <= names
 

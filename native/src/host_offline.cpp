@@ -147,9 +147,8 @@ void HostOffline::copy_loop() {
         if (generation == done) continue;
         done = generation;
         try {
-            const std::vector<OfflineSeed> saved = saved_.get();
-            OfflineFiles files = read_offline_files(offline_dir(), build_, save_dir(), true, &saved);
-            if (!files.error.empty()) note_error(files.error);
+            const std::string error = copy_pass(offline_dir(), build_, save_dir(), saved_);
+            if (!error.empty()) note_error(error);
         } catch (...) {
             // Nothing may end this thread but being asked to.
         }

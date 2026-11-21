@@ -582,6 +582,12 @@ OfflineFiles read_offline_files(const std::wstring& folder, const char* build,
     return files;
 }
 
+std::string copy_pass(const std::wstring& folder, const char* build, const std::wstring& save,
+                      const SavedSeeds& saved) {
+    const std::vector<OfflineSeed> slots = saved.get();
+    return read_offline_files(folder, build, save, true, &slots).error;
+}
+
 bool SavedSeeds::publish(const std::vector<OfflineSeed>& seeds) {
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
     if (!lock.owns_lock()) return false;  // a reader has it: the next call publishes

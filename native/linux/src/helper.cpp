@@ -1185,12 +1185,10 @@ void* copy_loop(void*) {
         if (generation == done) continue;
         done = generation;
         try {
-            std::vector<zap::OfflineSeed> saved = g_saved->get();
-            zap::OfflineFiles files = zap::read_offline_files(*g_offline_folder, g_build,
-                                                              *g_save_folder, true, &saved);
-            if (!files.error.empty()) {
-                std::fprintf(stderr, "zexion-ap %s: seed copies: %s\n", kVersion,
-                             files.error.c_str());
+            const std::string error =
+                zap::copy_pass(*g_offline_folder, g_build, *g_save_folder, *g_saved);
+            if (!error.empty()) {
+                std::fprintf(stderr, "zexion-ap %s: seed copies: %s\n", kVersion, error.c_str());
             }
         } catch (...) {
         }

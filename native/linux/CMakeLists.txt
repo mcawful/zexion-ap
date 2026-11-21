@@ -37,7 +37,7 @@ add_library(zap_shared_objs OBJECT
             ../src/mission.cpp ../src/pause.cpp ../src/files.cpp ../src/intel.cpp
             ../src/title.cpp ../src/mapmarks.cpp ../src/trap.cpp
             ../src/apitem.cpp ../src/looks.cpp ../src/feats.cpp ../src/feats_linux.cpp ../src/translation.cpp
-            ../src/game_mem.cpp ../src/game_mem_linux.cpp ../src/mailbox_linux.cpp)
+            ../src/game_mem.cpp ../src/game_mem_linux.cpp ../src/mailbox_linux.cpp ../src/mailbox_serve.cpp)
 target_include_directories(zap_shared_objs PUBLIC ../src)
 target_compile_options(zap_shared_objs PRIVATE -Wno-missing-field-initializers)
 foreach(core IN ITEMS zap_shared zap_shared_test)
