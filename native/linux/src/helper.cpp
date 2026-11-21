@@ -661,6 +661,16 @@ std::string parse_config(std::string_view request, zap::GameAddresses& out) {
     return "";
 }
 
+// Each part on its own, so one that throws keeps none of the others from running, and nothing
+// reaches the game.
+template <class Work>
+void guarded(Work&& work) {
+    try {
+        work();
+    } catch (...) {
+    }
+}
+
 // ARCHIPELAGO's callback: the game calls it with no arguments (docs/re/linux.md, "Mapped by
 // disassembly: menus and UI"), on its thread; the parameters are WidgetCallback's and unused.
 void archipelago_chosen(void*, int) {
@@ -670,72 +680,51 @@ void archipelago_chosen(void*, int) {
     }
 }
 
+// A wrapper in place of a game function that takes `Args` and returns nothing, as the Windows
+// helper's handler_event is: the game's own (what `Original` gives, null for none), then the
+// helper's part (`After`), guarded, with the same arguments. The game calls menu callbacks with no
+// arguments on Linux and handlers with (widget, event): docs/re/linux.md, "Mapped by
+// disassembly: menus and UI".
+template <class... Args>
+struct Wrapper {
+    template <void* (*Original)(Args...), void (*After)(Args...)>
+    static void run(Args... args) {
+        auto original = reinterpret_cast<void (*)(Args...)>(Original(args...));
+        if (original != nullptr) original(args...);
+        guarded([&] { After(args...); });
+    }
+};
+
 // The game-mode panel's handler while the choice is up: the game's own, then the hover border
 // fitted around ARCHIPELAGO in the frame the game laid it out (choice.h, fit_border).
-void panel_hook(void* widget, int event) {
-    auto original = reinterpret_cast<void (*)(void*, int)>(g_game->panel_handler());
-    if (original != nullptr) original(widget, event);
-    try {
-        g_game->fit_archipelago_border();
-    } catch (...) {
-    }
-}
+void* panel_game(void*, int) { return g_game->panel_handler(); }
+void panel_after(void*, int) { g_game->fit_archipelago_border(); }
 
 // The map's move procedure while the names are up (mapmarks.h, MapCursorNames): the game's own,
 // MapMoveProc, which the game calls with the map's child alone (docs/re/linux.md, `map_handler`),
 // then the cursor's name written over a stand-in's in the frame the game wrote it.
-void map_hook(void* child) {
-    auto original = reinterpret_cast<void (*)(void*)>(g_game->map_original(child));
-    if (original != nullptr) original(child);
-    try {
-        g_game->map_after();
-    } catch (...) {
-    }
-}
+void* map_game(void* child) { return g_game->map_original(child); }
+void map_after(void*) { g_game->map_after(); }
 
 // EQUIPMENT's callback while the disks are counted (equip.h): the game's screen, then the disk's
-// widget added. The game calls a menu callback with no arguments on Linux (`map_hook`'s note).
-void equipment_hook() {
-    auto original = reinterpret_cast<void (*)()>(g_game->equipment_fn());
-    if (original != nullptr) original();
-    try {
-        g_game->equipment_built();
-    } catch (...) {
-    }
-}
+// widget added.
+void* equipment_game() { return g_game->equipment_fn(); }
+void equipment_after() { g_game->equipment_built(); }
 
 // The Energy Tank panel's handler while it shows the disk (equip.h): the game's, then the disk's
-// name and description when it is hovered or selected. Handlers take (widget, event) on Linux too.
-void equipment_panel_hook(void* widget, int event) {
-    auto original = reinterpret_cast<void (*)(void*, int)>(g_game->equip_panel_fn());
-    if (original != nullptr) original(widget, event);
-    try {
-        g_game->equipment_event(widget, event);
-    } catch (...) {
-    }
-}
+// name and description when it is hovered or selected.
+void* equipment_panel_game(void*, int) { return g_game->equip_panel_fn(); }
+void equipment_panel_after(void* widget, int event) { g_game->equipment_event(widget, event); }
 
 // A save entry's handler on the file select, COPY FILE and DELETE FILE while the logo or the disk
 // counts are on (files.h): the game's, then the entry rewritten after its fill (event 0xF).
-void file_entry_hook(void* widget, int event) {
-    auto original = reinterpret_cast<void (*)(void*, int)>(g_game->file_entry_original(widget));
-    if (original != nullptr) original(widget, event);
-    try {
-        g_game->file_event(widget, event);
-    } catch (...) {
-    }
-}
+void* file_entry_game(void* widget, int) { return g_game->file_entry_original(widget); }
+void file_entry_after(void* widget, int event) { g_game->file_event(widget, event); }
 
 // The pause menu's way back from OPTION MENU (pause.h): the game's, then the disk row turned in
 // the same call (refreshPauseFromOption takes the menu's screen).
-void options_back_hook(void* menu) {
-    auto original = reinterpret_cast<void (*)(void*)>(g_game->options_back_fn());
-    if (original != nullptr) original(menu);
-    try {
-        g_game->options_returned(menu);
-    } catch (...) {
-    }
-}
+void* options_back_game(void*) { return g_game->options_back_fn(); }
+void options_back_after(void* menu) { g_game->options_returned(menu); }
 
 // RETURN HOME WITH THE DISKS? (mission.h): the opener and the ending run as the game's
 // transition; YES is the prompt's menu callback, which the game calls with no arguments on Linux,
@@ -764,16 +753,6 @@ void mission_yes_hook() {
 void mission_end_hook() {
     try {
         g_game->mission_end();
-    } catch (...) {
-    }
-}
-
-// Each part on its own, so one that throws keeps none of the others from running, and nothing
-// reaches the game.
-template <class Work>
-void guarded(Work&& work) {
-    try {
-        work();
     } catch (...) {
     }
 }
@@ -816,15 +795,19 @@ std::string on_game(const std::function<std::string()>& work, bool needs_config,
 // after the first changes nothing the choice or the popups hold), a client's (`active`) or the
 // helper's own (configure_self).
 void install_config(const zap::GameAddresses& found, bool active) {
-    g_game->set_hooks({.panel = reinterpret_cast<void*>(&panel_hook),
-                      .equipment = reinterpret_cast<void*>(&equipment_hook),
-                      .equipment_panel = reinterpret_cast<void*>(&equipment_panel_hook),
-                      .mission_open = reinterpret_cast<void*>(&mission_open_hook),
-                      .mission_yes = reinterpret_cast<void*>(&mission_yes_hook),
-                      .mission_end = reinterpret_cast<void*>(&mission_end_hook),
-                      .file_entry = reinterpret_cast<void*>(&file_entry_hook),
-                      .map = reinterpret_cast<void*>(&map_hook),
-                      .options_back = reinterpret_cast<void*>(&options_back_hook)});
+    g_game->set_hooks(
+        {.panel = reinterpret_cast<void*>(&Wrapper<void*, int>::run<&panel_game, &panel_after>),
+         .equipment = reinterpret_cast<void*>(&Wrapper<>::run<&equipment_game, &equipment_after>),
+         .equipment_panel = reinterpret_cast<void*>(
+             &Wrapper<void*, int>::run<&equipment_panel_game, &equipment_panel_after>),
+         .mission_open = reinterpret_cast<void*>(&mission_open_hook),
+         .mission_yes = reinterpret_cast<void*>(&mission_yes_hook),
+         .mission_end = reinterpret_cast<void*>(&mission_end_hook),
+         .file_entry = reinterpret_cast<void*>(
+             &Wrapper<void*, int>::run<&file_entry_game, &file_entry_after>),
+         .map = reinterpret_cast<void*>(&Wrapper<void*>::run<&map_game, &map_after>),
+         .options_back = reinterpret_cast<void*>(
+             &Wrapper<void*>::run<&options_back_game, &options_back_after>)});
     g_game->configure(found, active);
     // The icon sheets as traced only with the game's definitions counted as traced, read again at
     // each config (a self-config at the first frame may come before the game counts them).
@@ -1391,27 +1374,10 @@ __attribute__((noinline)) bool called_through_wrapper(uintptr_t site) {
     return walk.found && walk.above != 0 && in_frame_function(walk.above);
 }
 
-// A wrapper may call the helper's swap more than once for one call of its own from the frame
-// function (a frame pacer, a duplicating layer), and frame work should run once a game frame, as
-// its frame-counted timers (the popups' gap, the file select's, the Steam retry) assume. The
-// helper cannot tell the game's frames apart from the wrapper's calls: the game's frame_clock
-// (`gGameState+0xB0`, docs/re/linux.md) is recorded, but stands still while a menu pauses the
-// game, so it cannot key frame work. So a call through a wrapper runs the work only if
-// kWrapperGapUs had passed, when it began, since the last call through a wrapper, of any kind,
-// returned from the real swap: every such call stamps its return, so a wrapper's third and fourth
-// calls follow the second's return as the second followed the first's, however long the real swap
-// waits for the refresh (inferred from the game's measured call rate, not seen). The premise, an
-// assumption: the game's work for a frame, from one swap's return to the next call, takes longer
-// than kWrapperGapUs. Backstop: a tight loop of calls through a wrapper (a game loop with no
-// work between swaps) would never be due, so the work runs anyway once kWrapperBackstopUs have
-// passed since the last run began. Limits, both timing: a wrapper that does something slow
-// between its repeated calls still has the work run for each; and two real frames closer than
-// the gap (`loadState`'s swap, then the frame's) lose the second's work, which waits one frame.
-// The direct path has neither.
-constexpr int64_t kWrapperGapUs = 100;
-constexpr int64_t kWrapperBackstopUs = 50000;
-std::atomic<int64_t> g_wrapper_returned_us{INT64_MIN / 2};  // the last wrapper call's return
-std::atomic<int64_t> g_wrapper_ran_us{INT64_MIN / 2};       // the last run through one, begun
+// A call through a wrapper runs frame work only if wrapper_call_is_due (core.h) says so, from
+// when the last call through one returned and when the last run through one began.
+std::atomic<int64_t> g_wrapper_returned_us{kBeforeAnyCall};  // the last wrapper call's return
+std::atomic<int64_t> g_wrapper_ran_us{kBeforeAnyCall};       // the last run through one, begun
 
 int64_t now_us() {
     return std::chrono::duration_cast<std::chrono::microseconds>(
@@ -1474,11 +1440,8 @@ bool game_frame(uintptr_t site, int64_t start_us) {
         return false;
     }
     if (!called_through_wrapper(site)) return false;
-    const bool apart = start_us - g_wrapper_returned_us.load(std::memory_order_relaxed) >=
-                       kWrapperGapUs;
-    const bool overdue = start_us - g_wrapper_ran_us.load(std::memory_order_relaxed) >=
-                         kWrapperBackstopUs;
-    if (apart || overdue) {
+    if (wrapper_call_is_due(start_us, g_wrapper_returned_us.load(std::memory_order_relaxed),
+                            g_wrapper_ran_us.load(std::memory_order_relaxed))) {
         g_wrapper_ran_us.store(start_us, std::memory_order_relaxed);
         frame_work();
     }

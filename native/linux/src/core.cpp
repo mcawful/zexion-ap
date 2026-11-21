@@ -286,6 +286,12 @@ std::map<std::string, SymbolSpan> find_symbols(std::string_view elf,
     return out;
 }
 
+bool wrapper_call_is_due(int64_t start_us, int64_t last_return_us, int64_t last_run_us) {
+    const bool apart = start_us - last_return_us >= kWrapperGapUs;
+    const bool overdue = start_us - last_run_us >= kWrapperBackstopUs;
+    return apart || overdue;
+}
+
 std::string socket_name(long pid) { return "zexion-ap-" + std::to_string(pid); }
 
 std::string reply(std::string_view request, const State& state, const Reader& read,

@@ -319,7 +319,34 @@ void test_private_folders() {
     fs::remove_all(root);
 }
 
+// A call through a wrapper runs frame work once a game frame (core.h, wrapper_call_is_due): the
+// first of a frame's calls, apart from the last one's return by the gap, or past the backstop.
+void test_a_wrapper_call_is_due_after_the_gap_or_the_backstop() {
+    const int64_t t = 10'000'000;
+    check(wrapper_call_is_due(t, kBeforeAnyCall, kBeforeAnyCall),
+          "the first call through a wrapper is due, the clock having no call before it");
+    check(!wrapper_call_is_due(t + 5, t, t - 1000),
+          "a call 5 us after the last returned is the same frame's again: not due");
+    check(!wrapper_call_is_due(t + kWrapperGapUs - 1, t, t - 1000), "just inside the gap: not due");
+    check(wrapper_call_is_due(t + kWrapperGapUs, t, t - 1000), "the gap passed: the next frame's");
+    // A tight loop of calls (nothing between a wrapper's calls) is never apart by the gap: the
+    // backstop runs the work once the last run began kWrapperBackstopUs ago.
+    check(!wrapper_call_is_due(t + 1, t, t + 1 - (kWrapperBackstopUs - 1)),
+          "just inside the backstop: not due");
+    check(wrapper_call_is_due(t + 1, t, t + 1 - kWrapperBackstopUs), "the backstop: due");
+    // Every call through a wrapper stamps its return: a third and fourth call follow the
+    // second's, however long the real swap waited between the first and the second.
+    const int64_t first_returned = t + 16'000;  // the real swap waited for the refresh
+    check(!wrapper_call_is_due(first_returned + 3, first_returned, t),
+          "the second call of a frame, after a long swap: not due");
+    check(!wrapper_call_is_due(first_returned + 6, first_returned + 3, t),
+          "the third follows the second's return: not due");
+    check(wrapper_call_is_due(first_returned + 16'000, first_returned + 3, t),
+          "the next frame's first call, a refresh later: due");
+}
+
 int main() {
+    test_a_wrapper_call_is_due_after_the_gap_or_the_backstop();
     test_private_folders();
     test_builds();
     test_notes();
