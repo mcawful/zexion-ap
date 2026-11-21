@@ -735,7 +735,7 @@ def test_every_shells_env_var_spelling_expands(spelling: str, monkeypatch) -> No
 # The mod's offline files, %LOCALAPPDATA%\ZexionAP: only the helper writes them.
 LOCAL = "C:/Users/someone/AppData/Local"
 OFFLINE = f"{LOCAL}/ZexionAP"
-SCRATCH = f"{LOCAL}/Temp/claude/2745d331536e48bf/7c00b8f6-7f48-4f26-95c9-decf1adcccd1/scratchpad"
+SCRATCH = f"{LOCAL}/Temp/claude/s/scratchpad"
 
 
 @pytest.mark.parametrize(
@@ -2289,13 +2289,13 @@ ABOVE_BLOCKED = [
     ("Bash", "cmd /c rd /s /q C:\\"),
     ("Bash", 'rm -r "$APPDATA" "$HOME"'),
     # Git Bash's spelling of a drive, and where a cd leaves the shell (round 7, review of #195)
-    ("Bash", "cd /c/Users/DKboy && rm -rf *"),
-    ("Bash", "cd /c/Users/DKboy && git clean -fdx"),
-    ("Bash", "cd /c/Users/DKboy && find . -type f -mtime -1 -delete"),
+    ("Bash", "cd /c/Users/someone && rm -rf *"),
+    ("Bash", "cd /c/Users/someone && git clean -fdx"),
+    ("Bash", "cd /c/Users/someone && find . -type f -mtime -1 -delete"),
     ("Bash", "cd /c && rm -rf Users"),
     ("Bash", "cd /c && rm -rf *"),
     ("Bash", "cd /c/Users && rm -rf *"),
-    ("Bash", "cd /mnt/c/Users/DKboy && rm -rf *"),
+    ("Bash", "cd /mnt/c/Users/someone && rm -rf *"),
     ("Bash", "cd && rm -rf *"),
     ("Bash", "cd; find . -delete"),
     ("Bash", "cd -- && rm -rf *"),
@@ -2428,10 +2428,10 @@ ABOVE_BLOCKED = [
     ("Bash", "d=$(git --git-dir=x rev-parse --show-toplevel); cd $d; rm -rf *"),
     ("Bash", 'export TEMP=$HOME; cd "$TEMP" && rm -rf *'),
     ("Bash", "TMP=~ && cd $TMP && git clean -fdx"),
-    ("PowerShell", '$env:TMP = "C:\\Users\\DKboy"; cd $env:TMP; ri -r *'),
+    ("PowerShell", '$env:TMP = "C:\\Users\\someone"; cd $env:TMP; ri -r *'),
     # cmd scripts keep their backslashes, switches before /c, call, start, if exist
-    ("Bash", 'cmd /c "rd /s /q C:\\Users\\DKboy"'),
-    ("PowerShell", 'cmd /c "rd /s /q C:\\Users\\DKboy"'),
+    ("Bash", 'cmd /c "rd /s /q C:\\Users\\someone"'),
+    ("PowerShell", 'cmd /c "rd /s /q C:\\Users\\someone"'),
     ("Bash", 'cmd /v:on /c "rd /s /q %USERPROFILE%"'),
     ("Bash", "cmd /c call rd /s /q %USERPROFILE%"),
     ("Bash", 'cmd /c "start /b rd /s /q %USERPROFILE%"'),
