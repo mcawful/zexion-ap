@@ -838,6 +838,18 @@ class TestSlotDataForTheClient(ZexionTestBase):
         # Received, the client's helper runs its pickup event, which gives the shield.
         self.assertNotIn("Energy Shield", self.world.options.local_items.value)
 
+    def test_the_energy_shield_is_filler_and_the_navcore_is_not(self) -> None:
+        # No rule reads the shield, and a disks seed's disks replace it last. As filler it can fill
+        # the places only filler may take (a minimal accessibility player's unreachable
+        # locations, excluded ones), so those do not run out of filler before the disks leave
+        # the useful items a place; the Navcore stays useful, the limit the OS Install Disks
+        # option's text names.
+        shield = self.world.create_item("Energy Shield")
+        self.assertEqual(shield.classification, ItemClassification.filler)
+        self.assertEqual(
+            self.world.create_item("Navcore").classification, ItemClassification.useful
+        )
+
     def test_a_second_progressive_copy_is_the_upgrade(self) -> None:
         # As AP's Main does for start_inventory, which the test base does not run.
         for name in ("Progressive Snake", "Progressive Snake", "Missile Box"):
@@ -1023,10 +1035,11 @@ class TestAreaMapsStayInTheirOwnWorld(unittest.TestCase):
 
 
 def filler_left(world: ZexionWorld, placed: int) -> int:
-    """The filler items (Scrap, Area Maps as Intel Chips) a Standard world with this many disks
-    keeps: its pool's drawn Scrap and Area Maps and the keys' four places as Scrap Metal, less
-    one for each disk (DISC_REPLACES). Standard keeps all 154 locations."""
-    return max(0, sum(world.pool_codes.count(c) for c in FILLER_ORDER) + 4 - placed)
+    """The filler items (Scrap, Area Maps as Intel Chips, Energy Shields) a Standard world with
+    this many disks keeps: its pool's drawn Scrap, Area Maps and Energy Shields and the keys'
+    four places as Scrap Metal, less one for each disk (DISC_REPLACES). Standard keeps all 154
+    locations."""
+    return max(0, sum(world.pool_codes.count(c) for c in DISC_REPLACES) + 4 - placed)
 
 
 class TestExcludedLocationsNeedFiller(ZexionTestBase):
