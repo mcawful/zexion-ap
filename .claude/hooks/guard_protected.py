@@ -126,8 +126,13 @@ Claude Code sends the tool call as JSON on stdin. Exit 2 blocks it and shows std
     ``$TMP``, ``$TMPDIR``), and a variable set from one (``d=$(mktemp -d)``, ``t=$TMPDIR/x``):
     by value, as the whole word with only ``/name`` parts after it (never ``..``), ``mktemp`` with
     no ``..`` or exactly ``git rev-parse --show-toplevel``; a name the line sets to anything else
-    (``TMPDIR=~``) is not known from then on, and a variable the line sets is not read from the
-    hook's environment.
+    (``TMPDIR=~``, ``read TMPDIR``, ``for TMPDIR in``, ``printf -v``, ``Set-Variable``, ``Set-Item
+    env:``) is not known from then on, and a variable the line sets is not read from the hook's
+    environment. Only the judgment of what runs uses the mark: the folders the rest of the guard
+    reads (a redirect's target, a path that names a protected folder) are the real ones, what the
+    hook's environment expands the word to. A ``..`` taken from a known folder (``cd ..``,
+    ``rm -rf ../*``, ``> ../ZexionAP/x``; ``%TEMP%\\..`` holds ``ZexionAP``) is an unknown folder,
+    and a name that is a protected folder's or file's after one counts.
     A relative operand is joined to that folder (``rm -rf ../../..`` from a folder under the home
     folder). Words are read again as a command's in ``sh -c`` (also ``-lc``, with ``$0``, ``$1``
     and ``"$@"`` filled from the words after it), ``eval``, ``cmd /c "…"``, ``powershell
@@ -195,7 +200,10 @@ and the folders above a protected one that other variables name: ``$PUBLIC/..``,
 ``$PWD/../..``, ``$env:SystemDrive/``, ``~+``, a variable set by another variable
 (``H=$X``), and UNC admin shares (``//localhost/C$/Users/…``, which the guard does not ask the
 network about). A script that is a word of more than 2000 characters (``sh -c``, ``eval``, ``cmd
-/c``) is not read again. Wrappers it does not know (``chrt``, ``taskset``, ``flock``, ``strace``,
+/c``) is not read again. cmd forms beyond the common ones are missed: ``@rd``, ``rd/s/q`` with no
+spaces, ``^"`` escapes, ``if /i a==a``, ``if errorlevel``. A subshell in the middle of a pipeline
+(``ls ~ | (cat) | xargs rm -rf``) cuts the link between ``ls ~`` and ``xargs``. Wrappers it
+does not know (``chrt``, ``taskset``, ``flock``, ``strace``,
 ``watch``, ``unbuffer``, ``script -qc``, ``parallel``, ``wsl``) hide the verb; so do
 ``command cd`` and ``builtin cd``, ``bash -c --`` and ``-o … -c``, a script piped or here-stringed
 into a shell with no ``-c``, ``xargs … sh -c`` with the listing, ``pwsh -co``, a variable that
@@ -1174,6 +1182,8 @@ def _walk_cds(
     --show-toplevel)`` and variables set to one, as the whole word with only ``/name`` parts
     after it. It is by value: a variable the line sets to anything else (``TMPDIR=~``) is not
     known from then on, and a variable the line sets is not read from the hook's environment.
+    ``..`` from it leaves it: the folder is then unknown (None); the list of the ``cd``'s
+    folders (the second result) holds the real ones, or None where the word is not known here.
     """
     current: str | None = cwd or os.getcwd()
     assigned = _assigned_names(code, segments)
@@ -1195,6 +1205,7 @@ def _walk_cds(
                 pending.append(lname)
             elif _known_folder_word(value, safe_vars):
                 safe_vars.add(lname)
+        safe_vars -= _command_assigns(words)  # ``read d``, ``for d in …``, ``Set-Variable TEMP``
         words = _strip_prefix(words, powershell)
         if not words:
             continue
@@ -1212,20 +1223,25 @@ def _walk_cds(
         target = raw if names & assigned else _expand_env(protected._expand(raw), assigned)
         if re.fullmatch(r"[A-Za-z]:", target):
             target += "/"  # ``cd C:``: the drive's root here (and its own folder in cmd: close)
-        if _known_folder_word(raw, safe_vars) or (
+        known = _known_folder_word(raw, safe_vars) or (
             raw.endswith("$") and _known_command_ends(nxt, code)
-        ):
-            new = SAFE_FOLDER  # a temporary folder, or the repo: not the home folder
-        elif raw == "-" or re.search(r"\$\{?(?:OLDPWD|PWD)\b|%CD%", raw, re.IGNORECASE):
+        )
+        if raw == "-" or re.search(r"\$\{?(?:OLDPWD|PWD)\b|%CD%", raw, re.IGNORECASE):
             new = None  # the shell's own variables: the environment here says nothing of them
         elif re.search(r"[$%`]", target) or target.startswith("~"):
             new = target if protected.holds_protected(target) else None
         elif _is_absolute(target):
             new = target
+        elif current is None:
+            new = None
+        elif current.startswith(SAFE_FOLDER):  # ``..`` leaves a known folder for an unknown one
+            new = None if ".." in re.split(r"[\\/]", target) else os.path.join(current, target)
         else:
-            new = os.path.join(current, target) if current is not None else None
-        targets.append(new)
-        current = new
+            new = os.path.join(current, target)
+        # The folders the rest of the guard reads are the real ones (what the hook's environment
+        # expands the word to, else unknown); the known mark is for the judgment of what runs.
+        targets.append(None if new and new.startswith(SAFE_FOLDER) else new)
+        current = SAFE_FOLDER if known else new
     return before, targets
 
 
@@ -1335,7 +1351,7 @@ SAFE_FOLDER_VARS = {
 }
 # What may follow a known folder: ``/name`` parts, never ``..`` (``$TMPDIR/../..`` is the home
 # folder's parent).
-_KNOWN_SUFFIX = r"((?:/(?!\.\.(?:/|$))[\w.-]+)*)/?"
+_KNOWN_SUFFIX = r"((?:/(?!\.+(?![\w.-]))[\w.-]+)*)/?"
 _KNOWN_VARIABLE = re.compile(r"(?:\$\{?(?:env:)?(\w+)\}?|%(\w+)%)" + _KNOWN_SUFFIX, re.IGNORECASE)
 _KNOWN_SUBSTITUTION = re.compile(
     r"(?:\$\(\s*(mktemp\b[^()`]*|git\s+rev-parse\s+--show-toplevel)\s*\)"
@@ -1468,8 +1484,13 @@ def _operand_ancestor(
     if _is_absolute(path) or path.startswith(("~", "$", "%")):
         return False
     named = _HAS_NAME.search(re.sub(r"\[[^\]]*\]", "", path)) is not None
-    if folder is None:
-        return not named
+    parts = [p for p in re.split(r"[\\/]", path) if p]
+    if folder is None or (".." in parts and folder.startswith(SAFE_FOLDER)):
+        # Unknown, or ``..`` from a known folder (``%TEMP%\..`` holds ``ZexionAP``): dots and
+        # wildcards stand for one, and so does a name that is a protected folder's or file's.
+        return not named or bool(
+            parts and protected.pattern_may_name_protected(parts[-1], "name", False)
+        )
     if named and not join_names:
         return False
     return protected.is_ancestor_folder(os.path.join(folder, path))
@@ -2181,16 +2202,40 @@ def _may_reach_protected(text, words, targets, folders, protected) -> bool:
     )
 
 
+def _command_assigns(words: list[Word]) -> set[str]:
+    """The variables (lower case) a simple command sets other than as ``NAME=value``: ``read``,
+    ``for``, ``printf -v``, PowerShell's ``Set-Variable``, ``sv``, ``New-Variable``, ``nv`` and
+    ``Set-Item env:NAME``."""
+    words = _strip_prefix(words, False)
+    if not words:
+        return set()
+    verb, args = _verb(words[0]), [str(w) for w in words[1:]]
+    plain = [a for a in args if not a.startswith("-")]
+    if verb == "read":
+        return {a.lower() for a in plain}
+    if verb == "for":
+        return {args[0].lower()} if args else set()
+    if verb == "printf" and "-v" in args and args.index("-v") + 1 < len(args):
+        return {args[args.index("-v") + 1].lower()}
+    if verb in ("set-variable", "sv", "new-variable", "nv"):
+        named = _option_value([Word(a) for a in args], r"-name")
+        return {n.lower() for n in (named or plain[:1])}
+    if verb in ("set-item", "si"):
+        paths = [*_option_value([Word(a) for a in args], r"-(?:literal)?path"), *plain[:1]]
+        return {p[4:].lower() for p in paths if p.lower().startswith("env:")}
+    return set()
+
+
 def _assigned_names(code: str, segments: list[list[Word]]) -> set[str]:
     """Variables the command sets itself, which the hook's environment says nothing about."""
     names = re.findall(r"(?:^|[\s;&|(])(?:export\s+|local\s+)?([A-Za-z_]\w*)\+?=", code)
     names += re.findall(r"\bfor\s+([A-Za-z_]\w*)\s+in\b", code)
     names += re.findall(r"\$(?:env:)?(\w+)\s*(?:[-+*/%]|\?\?)?=(?!=)", code, re.I)
     names += re.findall(r"foreach\s*\(\s*\$(\w+)", code, re.I)
+    found = {n.lower() for n in names}
     for words in segments:
-        if words and _verb(words[0]) == "read":
-            names += [w for w in words[1:] if not w.startswith("-")]
-    return {n.lower() for n in names}
+        found |= _command_assigns(words)
+    return found
 
 
 def _expand_env(text: str, assigned: set[str]) -> str:

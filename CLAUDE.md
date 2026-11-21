@@ -405,7 +405,9 @@ Committed under `.claude/`, so they apply to anyone working here:
   shell forms that hide the verb (`command cd`, a script piped into a shell), PowerShell and .NET
   calls, other tools (`takeown`, `icacls`, `Clear-Content`), code in other languages
   (`python -c shutil.rmtree`), other variables (`$PUBLIC/..`, `$HOMEDRIVE$HOMEPATH`, `~+`), UNC
-  admin shares and links, and a script word over 2000 characters (`sh -c`, `eval`, `cmd /c`); and
+  admin shares and links, a script word over 2000 characters (`sh -c`, `eval`, `cmd /c`), cmd
+  forms like `@rd`, `rd/s/q` and `if errorlevel`, and a subshell in the middle of a pipeline
+  (`ls ~ | (cat) | xargs rm -rf`); and
   archives or tree copies into the home folder (`tar -x -C ~`, `rsync -a x ~/`, `cp -r x ~`)
   pass: they add files and overwrite only what the archive holds, unless the overwrite is asked
   for (`unzip -o`, `tar --overwrite`, `Expand-Archive -Force`). The
