@@ -619,7 +619,9 @@ To release:
    attempt (a re-run too); nothing else is built, and nothing tagged or published, before that.
    It then takes the Linux helper, builds the helper and proxy, runs the native tests, builds the
    release with `tools/build_apworld.py` (which checks the Linux helper before it packs it), tags
-   `v<VERSION>` and publishes a GitHub Release of the files below. Its message is the one
+   `v<VERSION>` and publishes a GitHub Release of its three files: `zexion.apworld` on its own,
+   and the archives `zexion-ap-<VERSION>-windows.zip` and `zexion-ap-<VERSION>-linux.tar.gz`,
+   each with what a player on that system needs to start (below). Its message is the one
    `tools/release_notes.py` builds: the version's notes, then the install-and-update guide in
    `.github/release-footer.md`, then the compare link from the latest release; if the notes are
    missing or unfinished, nothing is built into the release or published (the helper and proxy
@@ -632,8 +634,9 @@ To release:
    `develop`, raise the version (the gate wants it above `main`'s), and merge `develop` into
    `main` again.
 
-What `tools/build_apworld.py` writes into `dist/` and what it refuses: [`CLAUDE.md`](../CLAUDE.md),
-"Releases and versions". Run locally, rebuild `native/` first after a checkout that touched it;
+What `tools/build_apworld.py` writes into `dist/` (what each archive holds, and its `README.md`,
+made from the setup guide's section for that system, so a change to that section changes it) and
+what it refuses: [`CLAUDE.md`](../CLAUDE.md), "Releases and versions". Run locally, rebuild `native/` first after a checkout that touched it;
 the Linux helper it packs must load in the Steam Runtime (Windows can't build one, and one built
 on a newer glibc is refused when it asks for that glibc): CI's `native-linux-runtime` job's
 `libzexion_ap-runtime` artifact in `native/build`, or a build in the SDK's container.

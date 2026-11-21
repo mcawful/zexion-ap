@@ -6,21 +6,23 @@
   on Windows or Linux (and the Steam Deck). The client tells you if yours isn't supported.
 - Archipelago 0.6.8 or newer, for your system.
 - The latest release of this world, from the
-  [Releases page](https://github.com/mcawful/zexion-ap/releases): `zexion.apworld` and the mod
-  for your system, from the same release. Each release also has this guide
-  (`zexion-setup-guide.md`), the game page (`zexion-game-page.md`) and a sample YAML for each
-  mode.
+  [Releases page](https://github.com/mcawful/zexion-ap/releases): the archive for your system,
+  `zexion-ap-<version>-windows.zip` on Windows, or `zexion-ap-<version>-linux.tar.gz` on Linux
+  and the Steam Deck. Unpack it: its folder holds `zexion.apworld`, the mod for your system, this
+  guide (`zexion-setup-guide.md`), the game page (`zexion-game-page.md`), a sample YAML for each
+  mode and a short `README.md`. The release also has `zexion.apworld` on its own, for anyone who
+  needs only that (to generate a game with Zexion in it).
 
 **The mod** is `zexion_ap.dll` and `version.dll` on Windows, and `libzexion_ap.so` on Linux and
 the Steam Deck. It is required: without it, the game can't start a seed.
 
 ## Install
 
-1. In the Archipelago Launcher, choose **Install APWorld** and pick `zexion.apworld`. The
-   Launcher then lists **Zexion Client**.
+1. In the Archipelago Launcher, choose **Install APWorld** and pick `zexion.apworld`, from the
+   folder you unpacked. The Launcher then lists **Zexion Client**.
 2. Close Zexion. Copy `zexion_ap.dll` and `version.dll` into Zexion's folder (in Steam:
-   right-click Zexion, Manage, Browse local files). On Linux or the Steam Deck, copy
-   `libzexion_ap.so` there instead and set the launch option: "Linux and Steam Deck", below.
+   right-click Zexion, Manage, Browse local files). On Linux or the Steam Deck, follow "Linux and
+   Steam Deck", below, instead.
 
 Once the mod is in, the title screen shows ARCHIPELAGO MOD and its version. It also says START
 THE AP CLIENT TO PLAY A SEED until the client connects, and again once you close the client (in
@@ -214,10 +216,10 @@ it gives the mod the seed's file again. Saves from before this feature need that
 - Finish your seed first, or keep the old release until it ends: a seed made with an older
   release may not play with a newer one (the client says so). Every Zexion player in a game
   uses the same release.
-- To update: download the new release from the Releases page, close Zexion, then replace all
-  the files with the new release's. Install the new `zexion.apworld`, and copy the new
-  `zexion_ap.dll` and `version.dll` into Zexion's folder (on Linux, the new `libzexion_ap.so`:
-  the launch option stays as it is).
+- To update: download the new release's archive for your system from the Releases page and
+  unpack it, close Zexion, then replace all the files with the new release's. Install the new
+  `zexion.apworld`, and copy the new `zexion_ap.dll` and `version.dll` into Zexion's folder (on
+  Linux, the new `libzexion_ap.so`: the launch option stays as it is).
 - Then connect the client once with Zexion running. It gives the mod what it needs to play your
   seed's saves with the client closed, such as where your own traps are, which go off at their
   pickup only once it has.

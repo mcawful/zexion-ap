@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import tarfile
 import time
 import zipfile
 from pathlib import Path
@@ -64,9 +66,121 @@ def refused(tmp_path: Path, why: str) -> None:
     assert not (tmp_path / "dist").exists()
 
 
-def test_the_release_holds_the_apworld_the_dlls_and_the_guides(tmp_path: Path, dlls) -> None:
+MODES = ("easy", "standard", "ohko", "custom")
+SAMPLES = {f"zexion-{m}.yaml" for m in MODES}
+GUIDE_NAMES = {"zexion-setup-guide.md", "zexion-game-page.md"}
+
+
+def unpacked(archive: Path) -> dict[str, tuple[bytes, int | None]]:
+    """Each file in ``archive`` with its bytes, and its mode in a tarball (None in a zip)."""
+    if archive.name.endswith(".zip"):
+        with zipfile.ZipFile(archive) as zf:
+            return {n: (zf.read(n), None) for n in zf.namelist() if not n.endswith("/")}
+    with tarfile.open(archive) as tf:
+        return {m.name: (tf.extractfile(m).read(), m.mode) for m in tf.getmembers() if m.isfile()}
+
+
+def guide_section(heading: str) -> str:
+    """The setup guide's section under ``## heading``, read here apart from the builder."""
+    text = (bap.WORLD / "docs" / "setup_en.md").read_text(encoding="utf-8")
+    start = text.index(f"\n## {heading}\n") + 1
+    end = text.find("\n## ", start)
+    return text[start : end if end != -1 else len(text)].strip()
+
+
+def test_the_release_is_the_apworld_and_an_archive_for_each_system(tmp_path: Path, dlls) -> None:
     out = tmp_path / "dist"
-    apworld = bap.build(out)
+    version = bap.client_version()
+    assets = bap.build(out)
+    assert [p.name for p in assets] == [
+        "zexion.apworld",
+        f"zexion-ap-{version}-windows.zip",
+        f"zexion-ap-{version}-linux.tar.gz",
+    ]
+    assert sorted(p.name for p in out.iterdir()) == sorted(p.name for p in assets)
+
+
+@pytest.mark.parametrize(
+    ("platform", "suffix", "mod"),
+    [
+        ("windows", ".zip", {"zexion_ap.dll", "version.dll"}),
+        ("linux", ".tar.gz", {"libzexion_ap.so"}),
+    ],
+)
+def test_each_archive_holds_exactly_what_its_system_needs(
+    tmp_path: Path, dlls, platform: str, suffix: str, mod: set[str]
+) -> None:
+    out = tmp_path / "dist"
+    version = bap.client_version()
+    bap.build(out)
+    folder = f"zexion-ap-{version}-{platform}"
+    files = unpacked(out / f"{folder}{suffix}")
+    expected = {"zexion.apworld", "README.md", *GUIDE_NAMES, *SAMPLES, *mod}
+    assert set(files) == {f"{folder}/{name}" for name in expected}
+    data = {name.removeprefix(f"{folder}/"): blob for name, (blob, _) in files.items()}
+    assert data["zexion.apworld"] == (out / "zexion.apworld").read_bytes()
+    for helper in bap.helpers(platform):
+        assert data[helper.name] == helper.read_bytes()
+    docs = bap.WORLD / "docs"
+    assert data["zexion-setup-guide.md"] == (docs / "setup_en.md").read_bytes()
+    assert data["zexion-game-page.md"] == (docs / "en_Zexion.md").read_bytes()
+    for sample in bap.SAMPLES.glob("*.yaml"):
+        assert data[sample.name] == sample.read_bytes()
+
+
+def test_the_linux_helper_is_executable_in_the_tarball(tmp_path: Path, dlls) -> None:
+    # The release is built on Windows, where the file has no Unix mode to keep.
+    out = tmp_path / "dist"
+    version = bap.client_version()
+    bap.build(out)
+    folder = f"zexion-ap-{version}-linux"
+    with tarfile.open(out / f"{folder}.tar.gz") as tf:
+        members = {m.name: m for m in tf.getmembers()}
+    assert members[folder].isdir() and members[folder].mode == 0o755
+    assert members[f"{folder}/libzexion_ap.so"].mode == 0o755
+    others = [m for name, m in members.items() if m.isfile() and not name.endswith(".so")]
+    assert others and all(m.mode == 0o644 for m in others)
+    # Every file is inside the archive's own folder: nothing unpacks beside it.
+    assert all(name == folder or name.startswith(f"{folder}/") for name in members)
+
+
+@pytest.mark.parametrize(
+    ("platform", "system", "heading"),
+    [
+        ("windows", "Windows", "Install"),
+        ("linux", "Linux and the Steam Deck", "Linux and Steam Deck"),
+    ],
+)
+def test_each_readme_is_the_setup_guides_section_for_its_system(
+    tmp_path: Path, dlls, platform: str, system: str, heading: str
+) -> None:
+    out = tmp_path / "dist"
+    version = bap.client_version()
+    bap.build(out)
+    folder = f"zexion-ap-{version}-{platform}"
+    suffix = bap.PLATFORMS[platform].suffix
+    text = unpacked(out / f"{folder}{suffix}")[f"{folder}/README.md"][0].decode("utf-8")
+    title, intro, rest = text.split("\n\n", 2)
+    assert title == f"# Zexion AP {version} for {system}"
+    assert "`zexion-setup-guide.md`" in intro
+    # The guide's own section, as it is: nothing kept by hand to drift from it.
+    assert rest.strip() == guide_section(heading)
+    assert rest.startswith(f"## {heading}\n")
+    # And each file the README tells the player to copy is in the archive.
+    for name in re.findall(r"`([\w.-]+\.(?:dll|so|apworld))`", rest):
+        assert f"{folder}/{name}" in unpacked(out / f"{folder}{suffix}"), name
+
+
+def test_a_setup_guide_without_a_readmes_section_is_refused(
+    tmp_path: Path, monkeypatch, dlls
+) -> None:
+    monkeypatch.setitem(bap.PLATFORMS, "linux", bap.Platform(".tar.gz", "Linux", "No such section"))
+    refused(tmp_path, r'no "## No such section" section')
+
+
+def test_the_apworld_holds_the_world_and_the_client(tmp_path: Path, dlls) -> None:
+    out = tmp_path / "dist"
+    apworld = bap.build(out)[0]
     world = json.loads((bap.WORLD / "archipelago.json").read_text(encoding="utf-8"))
     with zipfile.ZipFile(apworld) as zf:
         names = set(zf.namelist())
@@ -84,23 +198,11 @@ def test_the_release_holds_the_apworld_the_dlls_and_the_guides(tmp_path: Path, d
     assert "zexion/client/zexion_client.py" in names
     assert not [n for n in names if "/test/" in n or n.endswith(".pyc")]
     assert sorted(names).count("zexion/archipelago.json") == 1
-    assert (out / "zexion_ap.dll").is_file()
-    assert (out / "version.dll").is_file()
-    assert (out / "libzexion_ap.so").read_bytes() == bap.LINUX_HELPER.read_bytes()
-    # The player guides go beside the apworld.
-    docs = bap.WORLD / "docs"
-    for source, name in (
-        ("setup_en.md", "zexion-setup-guide.md"),
-        ("en_Zexion.md", "zexion-game-page.md"),
-    ):
-        assert (out / name).read_bytes() == (docs / source).read_bytes()
     # The setup guide sends the player to the game page by its shipped name.
-    assert "zexion-game-page.md" in (docs / "setup_en.md").read_text(encoding="utf-8")
-    # And the sample YAMLs, one per mode, as they are.
-    modes = ("easy", "standard", "ohko", "custom")
-    assert sorted(p.name for p in out.glob("*.yaml")) == sorted(f"zexion-{m}.yaml" for m in modes)
-    for sample in bap.SAMPLES.glob("*.yaml"):
-        assert (out / sample.name).read_bytes() == sample.read_bytes()
+    setup = (bap.WORLD / "docs" / "setup_en.md").read_text(encoding="utf-8")
+    assert "zexion-game-page.md" in setup
+    # The sample YAMLs the archives carry are one per mode.
+    assert {p.name for p in bap.SAMPLES.glob("*.yaml")} == SAMPLES
 
 
 def test_a_sample_for_another_version_is_refused(tmp_path: Path, monkeypatch, dlls) -> None:
